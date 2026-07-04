@@ -86,6 +86,8 @@ chmod 600 secrets/*.txt
 | `BOT_SUPPORT_ID` | да | — | нет | ID поддержки. |
 | `BOT_PORT` | нет | `8080` | нет | Внутренний порт (за Traefik). |
 | `WEBHOOK_SECRET` | реком. | — | **да** | `secret_token` вебхука Telegram (B7). Секрет `webhook_secret`. |
+| `TELEGRAM_API_URL` | нет | `https://api.telegram.org` | нет | Кастомный Bot API (локальный сервер/зеркало). Базовый URL без `/bot<token>`. |
+| `TELEGRAM_API_IS_LOCAL` | нет | `False` | нет | `True` для self-hosted `telegram-bot-api` в режиме `--local` (файлы на диске сервера). |
 | `TRAEFIK_CERTRESOLVER` | да | `letsencrypt` | нет | Имя ACME-резолвера ВАШЕГО Traefik. |
 | `SHOP_APPROVAL_REQUIRED` | нет | `True` | нет | Апрув-гейт для новых юзеров. `False` → как в upstream. |
 | `SHOP_PAYMENT_STARS_ENABLED` | нет | `True` | нет | Оплата Telegram Stars. |

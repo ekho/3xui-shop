@@ -4,6 +4,8 @@ from urllib.parse import urljoin
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.client.telegram import TelegramAPIServer
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.storage.redis import RedisStorage
@@ -95,9 +97,20 @@ async def main() -> None:
     storage = RedisStorage.from_url(url=config.redis.url())
     # storage = MemoryStorage()
 
+    # Кастомный Telegram Bot API (локальный сервер/зеркало) — если задан TELEGRAM_API_URL,
+    # иначе aiogram использует https://api.telegram.org по умолчанию.
+    session = None
+    if config.bot.API_URL:
+        api_server = TelegramAPIServer.from_base(
+            config.bot.API_URL, is_local=config.bot.API_IS_LOCAL
+        )
+        session = AiohttpSession(api=api_server)
+        logging.info(f"Using custom Telegram API server: {config.bot.API_URL}")
+
     # Initialize the bot with the token and default properties
     bot = Bot(
         token=config.bot.TOKEN,
+        session=session,
         default=DefaultBotProperties(
             parse_mode=ParseMode.HTML, link_preview_is_disabled=True
         ),

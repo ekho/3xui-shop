@@ -88,6 +88,8 @@ class BotConfig:
     DOMAIN: str
     PORT: int
     WEBHOOK_SECRET: str | None
+    API_URL: str | None  # кастомный Telegram Bot API (напр. локальный/зеркало); None → api.telegram.org
+    API_IS_LOCAL: bool  # True для self-hosted telegram-bot-api в режиме --local (файлы на диске сервера)
 
 
 @dataclass
@@ -314,6 +316,8 @@ def load_config() -> Config:
             DOMAIN=f"https://{env.str('BOT_DOMAIN')}",
             PORT=env.int("BOT_PORT", default=DEFAULT_BOT_PORT),
             WEBHOOK_SECRET=env_or_file(env, "WEBHOOK_SECRET", default=None),  # B7
+            API_URL=env.str("TELEGRAM_API_URL", default=None),
+            API_IS_LOCAL=env.bool("TELEGRAM_API_IS_LOCAL", default=False),
         ),
         shop=ShopConfig(
             APPROVAL_REQUIRED=env.bool(
