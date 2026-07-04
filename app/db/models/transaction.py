@@ -92,6 +92,27 @@ class Transaction(Base):
             return None
 
     @classmethod
+    async def set_status_atomic(
+        cls,
+        session: AsyncSession,
+        payment_id: str,
+        expected: TransactionStatus,
+        new_status: TransactionStatus,
+    ) -> bool:
+        """B2: атомарный compare-and-set статуса. Возвращает True, только если ИМЕННО этот
+        вызов выполнил переход (rowcount == 1). Повторная доставка вебхука / гонка двух
+        админов получат False и пропустят повторный провижининг. Одиночный UPDATE атомарен
+        и на SQLite, и на Postgres (G9).
+        """
+        result = await session.execute(
+            update(Transaction)
+            .where(Transaction.payment_id == payment_id, Transaction.status == expected)
+            .values(status=new_status)
+        )
+        await session.commit()
+        return (result.rowcount or 0) == 1
+
+    @classmethod
     async def update(cls, session: AsyncSession, payment_id: str, **kwargs: Any) -> Self | None:
         transaction = await Transaction.get_by_id(session=session, payment_id=payment_id)
 

@@ -34,7 +34,10 @@ class ServerPoolService:
                 logger=logging.getLogger(f"xui_{server.name}"),
             )
             try:
-                await api.login()
+                # P1: в py3xui 0.7.0 login() бросает RuntimeError при заданном token
+                # («No need to login if using the token already»). Логинимся только по паролю.
+                if not self.config.xui.TOKEN:
+                    await api.login()
                 server.online = True
                 server_conn = Connection(server=server, api=api)
                 self._servers[server.id] = server_conn

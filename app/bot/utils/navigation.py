@@ -11,6 +11,8 @@ class NavMain(str, Enum):
 class NavProfile(str, Enum):
     MAIN = "profile"
     SHOW_KEY = "show_key"
+    CANCEL_STARS_SUB = "cancel_stars_sub"  # G4: отменить автопродление Stars
+    RESUME_STARS_SUB = "resume_stars_sub"  # m4: возобновить (пока период активен)
 
 
 class NavReferral(str, Enum):
@@ -48,6 +50,7 @@ class NavSubscription(str, Enum):
     PAY_CRYPTOMUS = f"{PAY}_cryptomus"
     PAY_HELEKET = f"{PAY}_heleket"
     PAY_YOOMONEY = f"{PAY}_yoomoney"
+    PAY_MANUAL = f"{PAY}_manual"  # G3: ручная карта→карта
     BACK_TO_DURATION = "back_to_duration"
     BACK_TO_PAYMENT = "back_to_payment"
 

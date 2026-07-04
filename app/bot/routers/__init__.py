@@ -26,10 +26,12 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         support.handler.router,
         download.handler.router,
         subscription.subscription_handler.router,
+        subscription.manual_handler.router,  # M3: до payment_handler (перехватывает PAY_MANUAL)
         subscription.payment_handler.router,
         subscription.promocode_handler.router,
         subscription.trial_handler.router,
         admin_tools.admin_tools_handler.router,
+        admin_tools.approval_handler.router,
         admin_tools.backup_handler.router,
         admin_tools.invites_handler.router,
         admin_tools.maintenance_handler.router,

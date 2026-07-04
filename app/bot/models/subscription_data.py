@@ -10,4 +10,5 @@ class SubscriptionData(CallbackData, prefix="subscription"):
     user_id: int = 0
     devices: int = 0
     duration: int = 0
+    traffic: int = 0  # G2: лимит трафика в ГБ (0 = безлимит)
     price: float = 0

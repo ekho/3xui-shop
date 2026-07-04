@@ -10,6 +10,7 @@ from app.config import Config
 from ._gateway import PaymentGateway
 from .cryptomus import Cryptomus
 from .heleket import Heleket
+from .manual_card import ManualCard
 from .telegram_stars import TelegramStars
 from .yookassa import Yookassa
 from .yoomoney import Yoomoney
@@ -49,6 +50,7 @@ class GatewayFactory:
             (config.shop.PAYMENT_HELEKET_ENABLED, Heleket),
             (config.shop.PAYMENT_YOOKASSA_ENABLED, Yookassa),
             (config.shop.PAYMENT_YOOMONEY_ENABLED, Yoomoney),
+            (config.shop.PAYMENT_MANUAL_ENABLED, ManualCard),
         ]
 
         for enabled, gateway_cls in gateways:

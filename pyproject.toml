@@ -12,7 +12,7 @@ aiogram = "^3.15.0"
 babel = "^2.16.0"
 environs = "^11.2.1"
 cachetools = "^5.5.0"
-py3xui = "^0.3.2"
+py3xui = "^0.7.0"  # B6: 3x-ui v3.1+ (у нас v3.4.2) перенёс клиентские эндпоинты в panel/api/clients/*; 0.3.x даёт 404
 yookassa = "^3.4.3"
 sqlalchemy = {extras = ["asyncio"], version = "^2.0.36"}
 aiosqlite = "^0.20.0"

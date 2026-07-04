@@ -4,6 +4,7 @@
     "plans": [
         {
             "devices": 1,
+            "traffic_gb": 0,
             "prices": {
                 "RUB": {
                     "30": 70,

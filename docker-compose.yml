@@ -1,60 +1,83 @@
+# Бот работает ЗА ВНЕШНИМ Traefik (G11): TLS терминируется на вашем Traefik,
+# бот слушает plain HTTP :8080 во внутренней сети и порты наружу НЕ публикует.
+# Секреты — через docker compose secrets (G10), читаются из /run/secrets/* по конвенции *_FILE.
 services:
-  traefik:
-    image: "traefik:v3.0"
-    container_name: "traefik"
-    restart: always
-    ports:
-      - "80:80"
-      - "443:443"
-    env_file:
-      - .env
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
-      - "letsencrypt_data:/letsencrypt"
-    command:
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--certificatesresolvers.letsencrypt.acme.email=${LETSENCRYPT_EMAIL}"
-      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
-      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
-      - "--log.level=INFO"
-    labels:
-      - "traefik.enable=true"
-
   redis:
-    image: redis:latest
+    image: redis:7.4-alpine            # M1: пин версии вместо :latest (детерминированная сборка)
     container_name: 3xui-shop-redis
     restart: always
+    networks: [default]
     volumes:
-      - redis_data:/data
+      - redis_data:/data               # FSM + дедуп-ключи напоминаний переживают рестарт
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   bot:
     build: .
     container_name: 3xui-shop-bot
+    networks: [traefik-proxy, default]  # порты наружу НЕ публикуем — доступ только через Traefik
     volumes:
-      - ./app/data:/app/data
+      - ./app/data:/app/data            # B8: bot_database.sqlite3 (юзеры/транзакции/серверы) — персистентно
       - ./plans.json:/app/data/plans.json
       - ./app/locales:/app/locales
       - ./app/logs:/app/logs
     env_file:
-      - .env
+      - .env                            # только НЕсекретные значения
+    environment:                        # G10: секреты — из файлов /run/secrets/* по конвенции *_FILE
+      BOT_TOKEN_FILE: /run/secrets/bot_token
+      XUI_PASSWORD_FILE: /run/secrets/xui_password
+      WEBHOOK_SECRET_FILE: /run/secrets/webhook_secret   # B7
+      # CRYPTOMUS_API_KEY_FILE: /run/secrets/cryptomus_api_key       # раскомментировать при Cryptomus
+      # CRYPTOMUS_MERCHANT_ID_FILE: /run/secrets/cryptomus_merchant_id
+      # MANUAL_CARD_DETAILS_FILE: /run/secrets/manual_card_details   # Этап 4
+    secrets:
+      - bot_token
+      - xui_password
+      - webhook_secret
+      # - cryptomus_api_key
+      # - cryptomus_merchant_id
+      # - manual_card_details
     stop_signal: SIGINT
     restart: unless-stopped
-    command: sh -c " 
-      poetry run pybabel compile -d /app/locales -D bot && 
-      poetry run alembic -c /app/db/alembic.ini upgrade head && 
-      poetry run python /app/__main__.py"
+    # локали + миграции + запуск выполняет ENTRYPOINT образа (docker-entrypoint.sh)
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy      # M1: bot не стартует раньше готового redis
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.bot.rule=Host(`${BOT_DOMAIN}`)"
       - "traefik.http.routers.bot.entrypoints=websecure"
-      - "traefik.http.routers.bot.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.bot.tls.certresolver=${TRAEFIK_CERTRESOLVER}"  # имя резолвера ВАШЕГО Traefik
       - "traefik.http.services.bot.loadbalancer.server.port=8080"
+      - "traefik.docker.network=traefik-proxy"
+      # B7 (defense-in-depth): ограничить /webhook подсетями Telegram
+      # - "traefik.http.routers.bot-webhook.rule=Host(`${BOT_DOMAIN}`) && Path(`/webhook`)"
+      # - "traefik.http.routers.bot-webhook.entrypoints=websecure"
+      # - "traefik.http.routers.bot-webhook.tls.certresolver=${TRAEFIK_CERTRESOLVER}"
+      # - "traefik.http.routers.bot-webhook.middlewares=tg-ipallowlist"
+      # - "traefik.http.middlewares.tg-ipallowlist.ipwhitelist.sourcerange=149.154.160.0/20,91.108.4.0/22"
+
+networks:
+  traefik-proxy:
+    external: true                      # внешняя сеть вашего Traefik (создать заранее)
+  default:
 
 volumes:
   redis_data:
-  letsencrypt_data:
+
+secrets:
+  bot_token:
+    file: ./secrets/bot_token.txt
+  xui_password:
+    file: ./secrets/xui_password.txt
+  webhook_secret:
+    file: ./secrets/webhook_secret.txt
+  # cryptomus_api_key:
+  #   file: ./secrets/cryptomus_api_key.txt
+  # cryptomus_merchant_id:
+  #   file: ./secrets/cryptomus_merchant_id.txt
+  # manual_card_details:
+  #   file: ./secrets/manual_card_details.txt

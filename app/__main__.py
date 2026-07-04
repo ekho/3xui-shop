@@ -18,6 +18,7 @@ from app.bot.middlewares import MaintenanceMiddleware
 from app.bot.models import ServicesContainer
 from app.bot.payment_gateways import GatewayFactory
 from app.bot.utils import commands
+from app.bot.utils.py3xui_compat import apply_py3xui_patches
 from app.bot.utils.constants import (
     BOT_STARTED_TAG,
     BOT_STOPPED_TAG,
@@ -48,10 +49,12 @@ async def on_startup(
 ) -> None:
     webhook_url = urljoin(config.bot.DOMAIN, TELEGRAM_WEBHOOK)
 
-    if await bot.get_webhook_info() != webhook_url:
-        await bot.set_webhook(webhook_url)
-
+    # B7: сравнивать .url (раньше сравнивался объект WebhookInfo со строкой → всегда True).
+    #     Пересоздаём вебхук при смене URL; secret_token аутентифицирует входящие апдейты.
     current_webhook = await bot.get_webhook_info()
+    if current_webhook.url != webhook_url:
+        await bot.set_webhook(webhook_url, secret_token=config.bot.WEBHOOK_SECRET or None)
+        current_webhook = await bot.get_webhook_info()
     logging.info(f"Current webhook URL: {current_webhook.url}")
 
     await services.notification.notify_developer(BOT_STARTED_TAG)
@@ -80,6 +83,9 @@ async def main() -> None:
 
     # Set up logging
     logger.setup_logging(config.logging)
+
+    # P2: пропатчить модели py3xui под 3x-ui v3.1+ (иначе inbound.get_list падает на инбаундах без security)
+    apply_py3xui_patches()
 
     # Initialize database
     db = Database(config.database)
@@ -147,7 +153,7 @@ async def main() -> None:
     MaintenanceMiddleware.set_mode(False)
 
     # Register middlewares
-    middlewares.register(dispatcher=dispatcher, i18n=i18n, session=db.session)
+    middlewares.register(dispatcher=dispatcher, i18n=i18n, session=db.session, config=config)
 
     # Register filters
     filters.register(
@@ -163,7 +169,11 @@ async def main() -> None:
     await commands.setup(bot)
 
     # Set up webhook request handler
-    webhook_requests_handler = SimpleRequestHandler(dispatcher=dispatcher, bot=bot)
+    # B7: secret_token заставляет aiogram сверять заголовок X-Telegram-Bot-Api-Secret-Token
+    #     (secrets.compare_digest) и возвращать 401 на подделки. None → проверка отключена.
+    webhook_requests_handler = SimpleRequestHandler(
+        dispatcher=dispatcher, bot=bot, secret_token=config.bot.WEBHOOK_SECRET or None
+    )
     webhook_requests_handler.register(app, path=TELEGRAM_WEBHOOK)
 
     # Set up application and run

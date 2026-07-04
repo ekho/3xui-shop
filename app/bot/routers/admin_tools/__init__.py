@@ -1,5 +1,6 @@
 from . import (
     admin_tools_handler,
+    approval_handler,
     backup_handler,
     invites_handler,
     maintenance_handler,

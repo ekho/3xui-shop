@@ -2,12 +2,13 @@ import logging
 from datetime import datetime
 from typing import Any, Optional, Self
 
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy import ForeignKey, String, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column, relationship, selectinload
 
-from app.bot.utils.constants import DEFAULT_LANGUAGE
+from app.bot.utils.constants import DEFAULT_LANGUAGE, ApprovalStatus
 
 from . import Base
 
@@ -55,6 +56,20 @@ class User(Base):
         "Promocode", back_populates="activated_user"
     )
     is_trial_used: Mapped[bool] = mapped_column(default=False, nullable=False)
+    # G1: апрув-гейт. Хранить значение enum ("pending"/...) как в TransactionStatus (values_callable).
+    approval_status: Mapped[ApprovalStatus] = mapped_column(
+        SQLEnum(ApprovalStatus, values_callable=lambda obj: [e.value for e in obj]),
+        default=ApprovalStatus.PENDING,
+        server_default=ApprovalStatus.APPROVED.value,  # backfill существующих юзеров в approved
+        nullable=False,
+    )
+    # M6: дедуп уведомления админам о заявке (не завязываемся на is_new_user)
+    approval_requested_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # G4/Stars-рекуррент: charge_id ПЕРВОГО платежа подписки (B4 — его принимает
+    # editUserStarSubscription), флаг активного автопродления, дата следующего списания (B5).
+    stars_charge_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    is_stars_auto_renew: Mapped[bool] = mapped_column(default=False, nullable=False)
+    stars_expires_at: Mapped[int | None] = mapped_column(nullable=True)  # subscription_expiration_date (unix, сек)
     referrals_sent: Mapped[list["Referral"]] = relationship(  # type: ignore
         "Referral",
         foreign_keys="Referral.referrer_tg_id",

@@ -1253,3 +1253,139 @@ msgstr[0] "1 месяц"
 msgstr[1] "{} месяца"
 msgstr[2] "{} месяцев"
 
+
+#: app/bot/middlewares/approval.py
+msgid "approval:notice:pending"
+msgstr "⏳ <i>Ваша заявка на рассмотрении у администратора. Пожалуйста, подождите.</i>"
+
+#: app/bot/routers/main_menu/handler.py
+msgid "approval:message:pending"
+msgstr "⏳ <b>Заявка отправлена</b>\n\nДоступ откроется после подтверждения администратором."
+
+#: app/bot/routers/main_menu/handler.py
+msgid "approval:message:rejected"
+msgstr "🚫 <b>Доступ отклонён</b>\n\nОбратитесь в поддержку, если считаете это ошибкой."
+
+#: app/bot/routers/main_menu/handler.py
+msgid "approval:admin:new_request"
+msgstr "🆕 <b>Новая заявка на доступ</b>\n\nИмя: {name}\nUsername: @{username}\nID: <code>{tg_id}</code>"
+
+#: app/bot/routers/admin_tools/approval_handler.py
+msgid "approval:admin:done"
+msgstr "✅ Решение: <b>{status}</b>"
+
+#: app/bot/routers/admin_tools/approval_handler.py
+msgid "approval:admin:user_not_found"
+msgstr "Пользователь не найден."
+
+#: app/bot/routers/admin_tools/approval_handler.py
+msgid "approval:user:granted"
+msgstr "✅ <b>Доступ открыт!</b>\n\nНажмите /start, чтобы начать."
+
+#: app/bot/routers/admin_tools/approval_handler.py
+msgid "approval:user:denied"
+msgstr "🚫 <b>Доступ отклонён.</b>"
+
+#: app/bot/routers/admin_tools/approval_handler.py
+msgid "approval:button:approve"
+msgstr "✅ Одобрить"
+
+#: app/bot/routers/admin_tools/approval_handler.py
+msgid "approval:button:reject"
+msgstr "🚫 Отклонить"
+
+#: app/bot/tasks/subscription_expiry.py
+msgid "task:button:extend"
+msgstr "🔄 Продлить"
+
+#: app/bot/tasks/subscription_expiry.py
+msgid "task:message:expiry"
+msgstr "⏳ <b>Подписка скоро закончится</b>\n\nДо конца срока осталось дней: {days}. Продлите, чтобы не потерять доступ."
+
+#: app/bot/tasks/subscription_expiry.py
+msgid "task:message:traffic_used"
+msgstr "📊 <b>Трафик на исходе</b>\n\nИспользовано {percent}% лимита. Продлите тариф, чтобы не остаться без доступа."
+
+#: app/bot/tasks/subscription_expiry.py
+msgid "task:message:traffic_depleted"
+msgstr "🚫 <b>Трафик исчерпан</b>\n\nДоступ приостановлен. Продлите тариф — трафик обнулится."
+
+#: app/bot/routers/profile/handler.py
+msgid "profile:message:traffic_limit"
+msgstr "📦 Осталось трафика: {remaining} из {limit}"
+
+#: app/bot/payment_gateways/manual_card.py
+msgid "payment:gateway:manual"
+msgstr "💳 Карта"
+
+#: app/bot/routers/subscription/manual_handler.py
+msgid "payment:manual:instructions"
+msgstr "💳 <b>Оплата картой</b>\n\nПереведите <b>{price} {currency}</b> по реквизитам:\n<code>{details}</code>\n\nПосле перевода нажмите «Я оплатил» — заявку проверит администратор."
+
+#: app/bot/routers/subscription/manual_handler.py
+msgid "payment:manual:button:paid"
+msgstr "✅ Я оплатил"
+
+#: app/bot/routers/subscription/manual_handler.py
+msgid "payment:manual:awaiting_admin"
+msgstr "⏳ <b>Заявка отправлена администратору.</b>\n\nОжидайте подтверждения — доступ откроется после проверки платежа."
+
+#: app/bot/routers/subscription/manual_handler.py
+msgid "payment:manual:already_sent"
+msgstr "Заявка уже отправлена, ожидайте."
+
+#: app/bot/routers/subscription/manual_handler.py
+msgid "payment:manual:already_processed"
+msgstr "Заявка уже обработана."
+
+#: app/bot/routers/subscription/manual_handler.py
+msgid "payment:manual:cancel_autorenew_first"
+msgstr "У вас включено автопродление Stars. Сначала отключите его в профиле, затем оплачивайте картой."
+
+#: app/bot/routers/subscription/manual_handler.py
+msgid "payment:manual:admin_request"
+msgstr "🧾 <b>Ручная оплата — проверка</b>\n\nПользователь: {username} (<code>{user_id}</code>)\nСумма: <b>{price} {currency}</b>\nТариф: {devices} | {duration} | трафик {traffic} ГБ\nID платежа: <code>{payment_id}</code>\n\nСверьте поступление и решите:"
+
+#: app/bot/routers/subscription/manual_handler.py
+msgid "payment:manual:button:approve"
+msgstr "✅ Подтвердить"
+
+#: app/bot/routers/subscription/manual_handler.py
+msgid "payment:manual:button:reject"
+msgstr "🚫 Отклонить"
+
+#: app/bot/routers/subscription/manual_handler.py
+msgid "payment:manual:rejected"
+msgstr "🚫 <b>Оплата картой отклонена.</b>\n\nЕсли вы уверены, что перевели средства — обратитесь в поддержку."
+
+#: app/bot/routers/subscription/manual_handler.py
+msgid "payment:manual:done"
+msgstr "✔️ Обработано: {action}"
+
+#: app/bot/routers/profile/handler.py
+msgid "profile:message:autorenew_on"
+msgstr "🔁 Автопродление (Stars): включено"
+
+#: app/bot/routers/profile/keyboard.py
+msgid "profile:button:cancel_autorenew"
+msgstr "🚫 Отменить автопродление"
+
+#: app/bot/routers/profile/keyboard.py
+msgid "profile:button:resume_autorenew"
+msgstr "🔁 Возобновить автопродление"
+
+#: app/bot/routers/profile/handler.py
+msgid "profile:stars:no_sub"
+msgstr "Активной Stars-подписки нет."
+
+#: app/bot/routers/profile/handler.py
+msgid "profile:stars:canceled"
+msgstr "Автопродление отменено. Доступ сохранится до конца оплаченного периода; возобновить можно тут же, пока период не истёк."
+
+#: app/bot/routers/profile/handler.py
+msgid "profile:stars:resumed"
+msgstr "Автопродление возобновлено."
+
+#: app/bot/routers/profile/handler.py
+msgid "profile:stars:resume_failed"
+msgstr "Не удалось возобновить: период уже истёк. Оформите подписку заново."

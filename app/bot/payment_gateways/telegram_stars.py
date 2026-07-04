@@ -19,6 +19,9 @@ from app.config import Config
 
 logger = logging.getLogger(__name__)
 
+# Telegram допускает единственное значение периода подписки Stars — 30 дней.
+STARS_SUBSCRIPTION_PERIOD = 2592000
+
 
 class TelegramStars(PaymentGateway):
     name = ""
@@ -56,18 +59,27 @@ class TelegramStars(PaymentGateway):
         duration = format_subscription_period(data.duration)
         title = _("payment:invoice:title").format(devices=devices, duration=duration)
         description = _("payment:invoice:description").format(devices=devices, duration=duration)
-        pay_url = await self.bot.create_invoice_link(
+
+        kwargs = dict(
             title=title,
             description=description,
             prices=prices,
             payload=data.pack(),
             currency=self.currency.code,
         )
+        # G4: авто-рекуррент только для 30-дн. тарифа и только на «свежей» покупке
+        # (не продление/смена). Продления/прочие сроки — разовые платежи.
+        if data.duration == 30 and not data.is_extend and not data.is_change:
+            kwargs["subscription_period"] = STARS_SUBSCRIPTION_PERIOD
+
+        pay_url = await self.bot.create_invoice_link(**kwargs)
         logger.info(f"Payment link created for user {data.user_id}: {pay_url}")
         return pay_url
 
     async def handle_payment_succeeded(self, payment_id: str) -> None:
-        await self._on_payment_succeeded(payment_id)
+        # B2: транзакция Stars создаётся сразу COMPLETED в successful_payment (дедуп там же),
+        # поэтому без PENDING-CAS — иначе первый же легитимный вызов был бы отброшен.
+        await self._on_payment_succeeded(payment_id, expected_status=None)
 
     async def handle_payment_canceled(self, payment_id: str) -> None:
         await self._on_payment_canceled(payment_id)

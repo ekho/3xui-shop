@@ -1,6 +1,26 @@
+# VCS / meta
+.git
+.github
+.gitignore
+
+# Секреты и env — НИКОГДА в образ
+secrets/
+.env
+.env.*
+
+# Runtime-данные и логи (монтируются volume'ами; не бейкать dev-БД/логи в образ)
+app/data/
+app/logs/
+plans.json
+
+# Документация — не нужна в рантайме
+*.md
+
+# Python / OS
+__pycache__
+*.pyc
+*.pyo
+.DS_Store
 *.log
 *.zip
 *.gz
-.env
-__pycache__
-*.pyc

@@ -1,4 +1,5 @@
 import logging
+import os
 from dataclasses import dataclass
 from logging.handlers import MemoryHandler
 from pathlib import Path
@@ -22,6 +23,7 @@ DEFAULT_PLANS_DIR = DEFAULT_DATA_DIR / "plans.json"
 DEFAULT_BOT_HOST = "0.0.0.0"
 DEFAULT_BOT_PORT = 8080
 
+DEFAULT_SHOP_APPROVAL_REQUIRED = True
 DEFAULT_SHOP_EMAIL = "support@3xui-shop.com"
 DEFAULT_SHOP_CURRENCY = Currency.RUB.code
 DEFAULT_SHOP_TRIAL_ENABLED = True
@@ -40,6 +42,7 @@ DEFAULT_SHOP_PAYMENT_CRYPTOMUS_ENABLED = False
 DEFAULT_SHOP_PAYMENT_HELEKET_ENABLED = False
 DEFAULT_SHOP_PAYMENT_YOOKASSA_ENABLED = False
 DEFAULT_SHOP_PAYMENT_YOOMONEY_ENABLED = False
+DEFAULT_SHOP_PAYMENT_MANUAL_ENABLED = False
 DEFAULT_DB_NAME = "bot_database"
 
 DEFAULT_REDIS_DB_NAME = "0"
@@ -60,6 +63,22 @@ memory_handler.setFormatter(logging.Formatter(DEFAULT_LOG_FORMAT))
 logger.addHandler(memory_handler)
 
 
+def env_or_file(env: Env, name: str, default: str | None = None, required: bool = False) -> str | None:
+    """Read a STRING secret from a file via the ``<NAME>_FILE`` convention (docker compose
+    secrets mounted at /run/secrets/<name>), falling back to the plain ``<NAME>`` env var.
+
+    Only for string secrets (BOT_TOKEN, XUI_PASSWORD, *_API_KEY, WEBHOOK_SECRET, ...).
+    Numeric/list vars keep typed reading via env.int/env.list to preserve subcast/validation.
+    """
+    path = env.str(f"{name}_FILE", default=None)
+    if path and os.path.isfile(path):
+        with open(path, encoding="utf-8") as file:
+            return file.read().strip()
+    if required:
+        return env.str(name)  # raises if missing — preserves previous required semantics
+    return env.str(name, default=default)
+
+
 @dataclass
 class BotConfig:
     TOKEN: str
@@ -68,10 +87,12 @@ class BotConfig:
     SUPPORT_ID: int
     DOMAIN: str
     PORT: int
+    WEBHOOK_SECRET: str | None
 
 
 @dataclass
 class ShopConfig:
+    APPROVAL_REQUIRED: bool
     EMAIL: str
     CURRENCY: str
     TRIAL_ENABLED: bool
@@ -90,12 +111,14 @@ class ShopConfig:
     PAYMENT_HELEKET_ENABLED: bool
     PAYMENT_YOOKASSA_ENABLED: bool
     PAYMENT_YOOMONEY_ENABLED: bool
+    PAYMENT_MANUAL_ENABLED: bool  # G3: ручная карта
+    MANUAL_CARD_DETAILS: str | None
 
 
 @dataclass
 class XUIConfig:
-    USERNAME: str
-    PASSWORD: str
+    USERNAME: str | None
+    PASSWORD: str | None
     TOKEN: str | None
     SUBSCRIPTION_PORT: int
     SUBSCRIPTION_PATH: str
@@ -180,9 +203,13 @@ def load_config() -> Config:
     if not bot_admins:
         logger.warning("BOT_ADMINS list is empty.")
 
-    xui_token = env.str("XUI_TOKEN", default=None)
-    if not xui_token:
-        logger.warning("XUI_TOKEN is not set.")
+    # P1: авторизация в 3x-ui — по токену ЛИБО username+password. py3xui 0.7.0 при заданном
+    # token не требует (и не допускает) login по паролю; при токен-авторизации логин/пароль опциональны.
+    xui_token = env_or_file(env, "XUI_TOKEN", default=None)
+    xui_username = env.str("XUI_USERNAME", default=None)
+    xui_password = env_or_file(env, "XUI_PASSWORD", default=None)
+    if not xui_token and not (xui_username and xui_password):
+        logger.error("XUI auth is not configured: set XUI_TOKEN or XUI_USERNAME + XUI_PASSWORD.")
 
     payment_stars_enabled = env.bool(
         "SHOP_PAYMENT_STARS_ENABLED",
@@ -194,8 +221,8 @@ def load_config() -> Config:
         default=DEFAULT_SHOP_PAYMENT_CRYPTOMUS_ENABLED,
     )
     if payment_cryptomus_enabled:
-        cryptomus_api_key = env.str("CRYPTOMUS_API_KEY", default=None)
-        cryptomus_merchant_id = env.str("CRYPTOMUS_MERCHANT_ID", default=None)
+        cryptomus_api_key = env_or_file(env, "CRYPTOMUS_API_KEY", default=None)
+        cryptomus_merchant_id = env_or_file(env, "CRYPTOMUS_MERCHANT_ID", default=None)
         if not cryptomus_api_key or not cryptomus_merchant_id:
             logger.error(
                 "CRYPTOMUS_API_KEY or CRYPTOMUS_MERCHANT_ID is not set. Payment Cryptomus is disabled."
@@ -241,12 +268,22 @@ def load_config() -> Config:
             )
             payment_yoomoney_enabled = False
 
+    payment_manual_enabled = env.bool(
+        "SHOP_PAYMENT_MANUAL_ENABLED",
+        default=DEFAULT_SHOP_PAYMENT_MANUAL_ENABLED,
+    )
+    manual_card_details = env_or_file(env, "MANUAL_CARD_DETAILS", default=None)
+    if payment_manual_enabled and not manual_card_details:
+        logger.error("MANUAL_CARD_DETAILS is not set. Manual card payment is disabled.")
+        payment_manual_enabled = False
+
     if (
         not payment_stars_enabled
         and not payment_cryptomus_enabled
         and not payment_heleket_enabled
         and not payment_yookassa_enabled
         and not payment_yoomoney_enabled
+        and not payment_manual_enabled
     ):
         logger.warning("No payment methods are enabled. Enabling Stars payment method.")
         payment_stars_enabled = True
@@ -270,14 +307,18 @@ def load_config() -> Config:
 
     return Config(
         bot=BotConfig(
-            TOKEN=env.str("BOT_TOKEN"),
+            TOKEN=env_or_file(env, "BOT_TOKEN", required=True),
             ADMINS=bot_admins,
             DEV_ID=env.int("BOT_DEV_ID"),
             SUPPORT_ID=env.int("BOT_SUPPORT_ID"),
             DOMAIN=f"https://{env.str('BOT_DOMAIN')}",
             PORT=env.int("BOT_PORT", default=DEFAULT_BOT_PORT),
+            WEBHOOK_SECRET=env_or_file(env, "WEBHOOK_SECRET", default=None),  # B7
         ),
         shop=ShopConfig(
+            APPROVAL_REQUIRED=env.bool(
+                "SHOP_APPROVAL_REQUIRED", default=DEFAULT_SHOP_APPROVAL_REQUIRED
+            ),
             EMAIL=env.str("SHOP_EMAIL", default=DEFAULT_SHOP_EMAIL),
             CURRENCY=env.str(
                 "SHOP_CURRENCY",
@@ -336,10 +377,12 @@ def load_config() -> Config:
             PAYMENT_HELEKET_ENABLED=payment_heleket_enabled,
             PAYMENT_YOOKASSA_ENABLED=payment_yookassa_enabled,
             PAYMENT_YOOMONEY_ENABLED=payment_yoomoney_enabled,
+            PAYMENT_MANUAL_ENABLED=payment_manual_enabled,
+            MANUAL_CARD_DETAILS=manual_card_details,
         ),
         xui=XUIConfig(
-            USERNAME=env.str("XUI_USERNAME"),
-            PASSWORD=env.str("XUI_PASSWORD"),
+            USERNAME=xui_username,
+            PASSWORD=xui_password,
             TOKEN=xui_token,
             SUBSCRIPTION_PORT=env.int("XUI_SUBSCRIPTION_PORT", default=DEFAULT_SUBSCRIPTION_PORT),
             SUBSCRIPTION_PATH=env.str(
@@ -348,8 +391,8 @@ def load_config() -> Config:
             ),
         ),
         cryptomus=CryptomusConfig(
-            API_KEY=env.str("CRYPTOMUS_API_KEY", default=None),
-            MERCHANT_ID=env.str("CRYPTOMUS_MERCHANT_ID", default=None),
+            API_KEY=env_or_file(env, "CRYPTOMUS_API_KEY", default=None),
+            MERCHANT_ID=env_or_file(env, "CRYPTOMUS_MERCHANT_ID", default=None),
         ),
         heleket=HeleketConfig(
             API_KEY=env.str("HELEKET_API_KEY", default=None),

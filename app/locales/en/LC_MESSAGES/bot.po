@@ -1237,3 +1237,139 @@ msgid_plural "{} months"
 msgstr[0] ""
 msgstr[1] ""
 
+
+#: app/bot/middlewares/approval.py
+msgid "approval:notice:pending"
+msgstr "⏳ <i>Your request is awaiting admin approval. Please wait.</i>"
+
+#: app/bot/routers/main_menu/handler.py
+msgid "approval:message:pending"
+msgstr "⏳ <b>Request sent</b>\n\nAccess will be granted once an administrator approves it."
+
+#: app/bot/routers/main_menu/handler.py
+msgid "approval:message:rejected"
+msgstr "🚫 <b>Access denied</b>\n\nContact support if you believe this is a mistake."
+
+#: app/bot/routers/main_menu/handler.py
+msgid "approval:admin:new_request"
+msgstr "🆕 <b>New access request</b>\n\nName: {name}\nUsername: @{username}\nID: <code>{tg_id}</code>"
+
+#: app/bot/routers/admin_tools/approval_handler.py
+msgid "approval:admin:done"
+msgstr "✅ Decision: <b>{status}</b>"
+
+#: app/bot/routers/admin_tools/approval_handler.py
+msgid "approval:admin:user_not_found"
+msgstr "User not found."
+
+#: app/bot/routers/admin_tools/approval_handler.py
+msgid "approval:user:granted"
+msgstr "✅ <b>Access granted!</b>\n\nPress /start to begin."
+
+#: app/bot/routers/admin_tools/approval_handler.py
+msgid "approval:user:denied"
+msgstr "🚫 <b>Access denied.</b>"
+
+#: app/bot/routers/admin_tools/approval_handler.py
+msgid "approval:button:approve"
+msgstr "✅ Approve"
+
+#: app/bot/routers/admin_tools/approval_handler.py
+msgid "approval:button:reject"
+msgstr "🚫 Reject"
+
+#: app/bot/tasks/subscription_expiry.py
+msgid "task:button:extend"
+msgstr "🔄 Extend"
+
+#: app/bot/tasks/subscription_expiry.py
+msgid "task:message:expiry"
+msgstr "⏳ <b>Your subscription is expiring</b>\n\n{days} day(s) left. Extend it to keep your access."
+
+#: app/bot/tasks/subscription_expiry.py
+msgid "task:message:traffic_used"
+msgstr "📊 <b>Traffic running low</b>\n\n{percent}% of your limit used. Extend your plan to keep access."
+
+#: app/bot/tasks/subscription_expiry.py
+msgid "task:message:traffic_depleted"
+msgstr "🚫 <b>Traffic depleted</b>\n\nAccess suspended. Extend your plan — traffic will reset."
+
+#: app/bot/routers/profile/handler.py
+msgid "profile:message:traffic_limit"
+msgstr "📦 Traffic left: {remaining} of {limit}"
+
+#: app/bot/payment_gateways/manual_card.py
+msgid "payment:gateway:manual"
+msgstr "💳 Card"
+
+#: app/bot/routers/subscription/manual_handler.py
+msgid "payment:manual:instructions"
+msgstr "💳 <b>Card payment</b>\n\nTransfer <b>{price} {currency}</b> to:\n<code>{details}</code>\n\nAfter the transfer press «I paid» — an administrator will review your request."
+
+#: app/bot/routers/subscription/manual_handler.py
+msgid "payment:manual:button:paid"
+msgstr "✅ I paid"
+
+#: app/bot/routers/subscription/manual_handler.py
+msgid "payment:manual:awaiting_admin"
+msgstr "⏳ <b>Request sent to the administrator.</b>\n\nPlease wait — access will be granted once the payment is verified."
+
+#: app/bot/routers/subscription/manual_handler.py
+msgid "payment:manual:already_sent"
+msgstr "Request already sent, please wait."
+
+#: app/bot/routers/subscription/manual_handler.py
+msgid "payment:manual:already_processed"
+msgstr "Request already processed."
+
+#: app/bot/routers/subscription/manual_handler.py
+msgid "payment:manual:cancel_autorenew_first"
+msgstr "Stars auto-renewal is active. Disable it in your profile first, then pay by card."
+
+#: app/bot/routers/subscription/manual_handler.py
+msgid "payment:manual:admin_request"
+msgstr "🧾 <b>Manual payment — review</b>\n\nUser: {username} (<code>{user_id}</code>)\nAmount: <b>{price} {currency}</b>\nPlan: {devices} | {duration} | traffic {traffic} GB\nPayment ID: <code>{payment_id}</code>\n\nVerify the transfer and decide:"
+
+#: app/bot/routers/subscription/manual_handler.py
+msgid "payment:manual:button:approve"
+msgstr "✅ Approve"
+
+#: app/bot/routers/subscription/manual_handler.py
+msgid "payment:manual:button:reject"
+msgstr "🚫 Reject"
+
+#: app/bot/routers/subscription/manual_handler.py
+msgid "payment:manual:rejected"
+msgstr "🚫 <b>Card payment rejected.</b>\n\nIf you are sure you sent the money — contact support."
+
+#: app/bot/routers/subscription/manual_handler.py
+msgid "payment:manual:done"
+msgstr "✔️ Processed: {action}"
+
+#: app/bot/routers/profile/handler.py
+msgid "profile:message:autorenew_on"
+msgstr "🔁 Auto-renewal (Stars): on"
+
+#: app/bot/routers/profile/keyboard.py
+msgid "profile:button:cancel_autorenew"
+msgstr "🚫 Cancel auto-renewal"
+
+#: app/bot/routers/profile/keyboard.py
+msgid "profile:button:resume_autorenew"
+msgstr "🔁 Resume auto-renewal"
+
+#: app/bot/routers/profile/handler.py
+msgid "profile:stars:no_sub"
+msgstr "No active Stars subscription."
+
+#: app/bot/routers/profile/handler.py
+msgid "profile:stars:canceled"
+msgstr "Auto-renewal canceled. Access stays until the end of the paid period; you can resume it here while the period is active."
+
+#: app/bot/routers/profile/handler.py
+msgid "profile:stars:resumed"
+msgstr "Auto-renewal resumed."
+
+#: app/bot/routers/profile/handler.py
+msgid "profile:stars:resume_failed"
+msgstr "Could not resume: the period has already ended. Please subscribe again."

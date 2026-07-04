@@ -76,6 +76,12 @@ class TransactionStatus(Enum):
     REFUNDED = "refunded"
 
 
+class ApprovalStatus(Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
 class Currency(Enum):
     RUB = ("RUB", "₽")
     USD = ("USD", "$")

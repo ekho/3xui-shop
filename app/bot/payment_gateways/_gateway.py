@@ -63,20 +63,57 @@ class PaymentGateway(ABC):
     async def handle_payment_canceled(self, payment_id: str) -> None:
         pass
 
-    async def _on_payment_succeeded(self, payment_id: str) -> None:
+    async def _on_payment_succeeded(
+        self,
+        payment_id: str,
+        expected_status: TransactionStatus | None = TransactionStatus.PENDING,
+    ) -> None:
+        """Провижининг после оплаты.
+
+        B2 — идемпотентность: для шлюзов с PENDING-жизненным циклом (Cryptomus/Heleket/YooKassa/
+        YooMoney/manual) переход PENDING→COMPLETED делается атомарным CAS; повторная доставка
+        вебхука проигрывает гонку и выходит без повторного провижининга.
+        Для Stars транзакция создаётся сразу COMPLETED в successful_payment (там же дедуп по
+        charge_id через Transaction.create), поэтому вызывается с expected_status=None.
+        """
         logger.info(f"Payment succeeded {payment_id}")
 
         async with self.session() as session:
             transaction = await Transaction.get_by_id(session=session, payment_id=payment_id)
+            if transaction is None:
+                logger.error(f"Payment {payment_id}: transaction not found; skip provisioning.")
+                await self.services.notification.notify_developer(
+                    text=f"{EVENT_PAYMENT_SUCCEEDED_TAG}\n\nTransaction {payment_id} not found."
+                )
+                return
+
             data = SubscriptionData.unpack(transaction.subscription)
             logger.debug(f"Subscription data unpacked: {data}")
             user = await User.get(session=session, tg_id=data.user_id)
+            if user is None:
+                # M7/B2: деньги списаны, но провижинить некому — алерт админу, не тихий крэш.
+                logger.error(f"Payment {payment_id}: user {data.user_id} not found; manual action required.")
+                await self.services.notification.notify_developer(
+                    text=f"{EVENT_PAYMENT_SUCCEEDED_TAG}\n\nUser {data.user_id} not found for paid "
+                    f"{payment_id}. Manual re-provision required."
+                )
+                return
 
-            await Transaction.update(
-                session=session,
-                payment_id=payment_id,
-                status=TransactionStatus.COMPLETED,
-            )
+            if expected_status is not None:
+                won = await Transaction.set_status_atomic(
+                    session, payment_id, expected_status, TransactionStatus.COMPLETED
+                )
+                if not won:
+                    logger.info(
+                        f"Payment {payment_id} already processed (status != {expected_status.value}); skip."
+                    )
+                    return
+            else:
+                await Transaction.update(
+                    session=session,
+                    payment_id=payment_id,
+                    status=TransactionStatus.COMPLETED,
+                )
 
         if self.config.shop.REFERRER_REWARD_ENABLED:
             await self.services.referral.add_referrers_rewards_on_payment(
@@ -106,52 +143,70 @@ class PaymentGateway(ABC):
                 storage=self.storage,
             )
 
-            if data.is_extend:
-                await self.services.vpn.extend_subscription(
-                    user=user,
-                    devices=data.devices,
-                    duration=data.duration,
-                )
-                logger.info(f"Subscription extended for user {user.tg_id}")
-                await self.services.notification.notify_extend_success(
-                    user_id=user.tg_id,
-                    data=data,
-                )
-            elif data.is_change:
-                await self.services.vpn.change_subscription(
-                    user=user,
-                    devices=data.devices,
-                    duration=data.duration,
-                )
-                logger.info(f"Subscription changed for user {user.tg_id}")
-                await self.services.notification.notify_change_success(
-                    user_id=user.tg_id,
-                    data=data,
-                )
-            else:
-                await self.services.vpn.create_subscription(
-                    user=user,
-                    devices=data.devices,
-                    duration=data.duration,
-                )
-                logger.info(f"Subscription created for user {user.tg_id}")
-                key = await self.services.vpn.get_key(user)
-                await self.services.notification.notify_purchase_success(
-                    user_id=user.tg_id,
-                    key=key,
+            # B2: провижининг после CAS. Если упадёт — статус уже COMPLETED, повтор вебхука
+            # будет отброшен как обработанный, поэтому НЕ проглатываем молча: алерт разработчику
+            # с пометкой "ручной re-provision", иначе получим "оплачено, но не выдано".
+            try:
+                if data.is_extend:
+                    await self.services.vpn.extend_subscription(
+                        user=user,
+                        devices=data.devices,
+                        duration=data.duration,
+                        traffic_gb=data.traffic,  # G2
+                    )
+                    logger.info(f"Subscription extended for user {user.tg_id}")
+                    await self.services.notification.notify_extend_success(
+                        user_id=user.tg_id,
+                        data=data,
+                    )
+                elif data.is_change:
+                    await self.services.vpn.change_subscription(
+                        user=user,
+                        devices=data.devices,
+                        duration=data.duration,
+                        traffic_gb=data.traffic,  # G2
+                    )
+                    logger.info(f"Subscription changed for user {user.tg_id}")
+                    await self.services.notification.notify_change_success(
+                        user_id=user.tg_id,
+                        data=data,
+                    )
+                else:
+                    await self.services.vpn.create_subscription(
+                        user=user,
+                        devices=data.devices,
+                        duration=data.duration,
+                        traffic_gb=data.traffic,  # G2
+                    )
+                    logger.info(f"Subscription created for user {user.tg_id}")
+                    key = await self.services.vpn.get_key(user)
+                    await self.services.notification.notify_purchase_success(
+                        user_id=user.tg_id,
+                        key=key,
+                    )
+            except Exception as exception:
+                logger.error(f"Provisioning failed for paid {payment_id} (user {user.tg_id}): {exception}")
+                await self.services.notification.notify_developer(
+                    text=f"{EVENT_PAYMENT_SUCCEEDED_TAG}\n\n⚠️ Provisioning FAILED for paid "
+                    f"{payment_id} (user {user.tg_id}). Manual re-provision required: {exception}"
                 )
 
     async def _on_payment_canceled(self, payment_id: str) -> None:
         logger.info(f"Payment canceled {payment_id}")
         async with self.session() as session:
             transaction = await Transaction.get_by_id(session=session, payment_id=payment_id)
+            if transaction is None:
+                logger.warning(f"Payment cancel {payment_id}: transaction not found; skip.")
+                return
             data = SubscriptionData.unpack(transaction.subscription)
 
-            await Transaction.update(
-                session=session,
-                payment_id=payment_id,
-                status=TransactionStatus.CANCELED,
+            # B2: cancel-вебхук после completed НЕ должен перетирать статус и слать ложное уведомление.
+            won = await Transaction.set_status_atomic(
+                session, payment_id, TransactionStatus.PENDING, TransactionStatus.CANCELED
             )
+            if not won:
+                logger.info(f"Payment {payment_id} already finalized; ignore cancel.")
+                return
 
         await self.services.notification.notify_developer(
             text=EVENT_PAYMENT_CANCELED_TAG
