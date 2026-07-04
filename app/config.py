@@ -49,8 +49,6 @@ DEFAULT_REDIS_DB_NAME = "0"
 DEFAULT_REDIS_HOST = "3xui-shop-redis"
 DEFAULT_REDIS_PORT = 6379
 
-DEFAULT_SUBSCRIPTION_PORT = 2096
-DEFAULT_SUBSCRIPTION_PATH = "/user/"
 
 DEFAULT_LOG_LEVEL = "DEBUG"
 DEFAULT_LOG_FORMAT = "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
@@ -90,7 +88,7 @@ class BotConfig:
     WEBHOOK_SECRET: str | None
     API_URL: str | None  # кастомный Telegram Bot API (напр. локальный/зеркало); None → api.telegram.org
     API_IS_LOCAL: bool  # True для self-hosted telegram-bot-api в режиме --local (файлы на диске сервера)
-    USE_WEBHOOK: bool  # True → вебхук (Traefik+домен); False → long-polling (getUpdates, домен/вебхук не нужны)
+    USE_WEBHOOK: bool  # True → вебхук (нужен домен + TLS reverse-proxy); False → long-polling (getUpdates, домен/вебхук не нужны)
 
 
 @dataclass
@@ -123,8 +121,6 @@ class XUIConfig:
     USERNAME: str | None
     PASSWORD: str | None
     TOKEN: str | None
-    SUBSCRIPTION_PORT: int
-    SUBSCRIPTION_PATH: str
 
 
 @dataclass
@@ -401,11 +397,6 @@ def load_config() -> Config:
             USERNAME=xui_username,
             PASSWORD=xui_password,
             TOKEN=xui_token,
-            SUBSCRIPTION_PORT=env.int("XUI_SUBSCRIPTION_PORT", default=DEFAULT_SUBSCRIPTION_PORT),
-            SUBSCRIPTION_PATH=env.str(
-                "XUI_SUBSCRIPTION_PATH",
-                default=DEFAULT_SUBSCRIPTION_PATH,
-            ),
         ),
         cryptomus=CryptomusConfig(
             API_KEY=env_or_file(env, "CRYPTOMUS_API_KEY", default=None),

@@ -11,7 +11,6 @@ from py3xui import Client, Inbound
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.bot.models import ClientData
-from app.bot.utils.network import extract_base_url
 from app.bot.utils.time import (
     add_days_to_timestamp,
     days_to_timestamp,
@@ -154,16 +153,20 @@ class VPNService:
         async with self.session() as session:
             user = await User.get(session=session, tg_id=user.tg_id)
 
-        if not user.server_id:
+        if not user.server_id or not user.server:
             logger.debug(f"Server ID for user {user.tg_id} not found.")
             return None
 
-        subscription = extract_base_url(
-            url=user.server.host,
-            port=self.config.xui.SUBSCRIPTION_PORT,
-            path=self.config.xui.SUBSCRIPTION_PATH,
-        )
-        key = f"{subscription}{user.vpn_id}"
+        # Базовый URL подписки берётся из настроек самой панели (Server.subscription_url),
+        # прочитанных при добавлении сервера. Если пусто — подписка на панели не настроена/не прочитана.
+        if not user.server.subscription_url:
+            logger.error(
+                f"Subscription URL is not set for server '{user.server.name}' "
+                f"(user {user.tg_id}). Проверьте настройки подписки в панели."
+            )
+            return None
+
+        key = f"{user.server.subscription_url}{user.vpn_id}"
         logger.debug(f"Fetched key for {user.tg_id}: {key}.")
         return key
 

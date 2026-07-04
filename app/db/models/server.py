@@ -35,6 +35,8 @@ class Server(Base):
     max_clients: Mapped[int] = mapped_column(Integer, nullable=False)
     location: Mapped[str | None] = mapped_column(String(32), nullable=True)
     online: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Базовый URL подписки, прочитанный из настроек самой панели (subURI) при добавлении сервера.
+    subscription_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     users: Mapped[list["User"]] = relationship("User", back_populates="server")  # type: ignore
 
     @hybrid_property

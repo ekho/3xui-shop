@@ -74,7 +74,7 @@ async def on_startup(
         # (иначе — "Unclosed client session" и рестарт-луп с невнятным трейсом).
         hint = (
             f"Проверьте BOT_DOMAIN: это должен быть ПУБЛИЧНЫЙ домен с валидным TLS, "
-            f"который DNS-резолвится и проксируется вашим Traefik на бота (порт {config.bot.PORT})."
+            f"который DNS-резолвится и проксируется вашим reverse-proxy на бота (порт {config.bot.PORT})."
         )
         if config.bot.API_URL:
             hint += (
@@ -214,7 +214,7 @@ async def main() -> None:
     await commands.setup(bot)
 
     if config.bot.USE_WEBHOOK:
-        # Webhook: Telegram шлёт апдейты на /webhook (через Traefik).
+        # Webhook: Telegram шлёт апдейты на /webhook (через ваш reverse-proxy, если используется).
         # B7: secret_token заставляет aiogram сверять заголовок X-Telegram-Bot-Api-Secret-Token
         #     (secrets.compare_digest) и возвращать 401 на подделки. None → проверка отключена.
         webhook_requests_handler = SimpleRequestHandler(

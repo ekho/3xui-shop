@@ -1,5 +1,7 @@
-# Бот работает ЗА ВНЕШНИМ Traefik (G11): TLS терминируется на вашем Traefik,
-# бот слушает plain HTTP :8080 во внутренней сети и порты наружу НЕ публикует.
+# Бот слушает plain HTTP на BOT_PORT (по умолчанию 8080) и публикует этот порт на хост.
+# Если используете вебхук-режим (BOT_USE_WEBHOOK=True), поставьте перед ботом свой
+# reverse-proxy с TLS (Traefik/Nginx/Caddy и т.п.) — пример для Traefik см. в DEPLOYMENT.md.
+# Для long-polling (BOT_USE_WEBHOOK=False) публичный домен/TLS не нужны вовсе.
 # Секреты — через docker compose secrets (G10), читаются из /run/secrets/* по конвенции *_FILE.
 services:
   redis:
@@ -18,7 +20,8 @@ services:
   bot:
     build: .
     container_name: 3xui-shop-bot
-    networks: [traefik-proxy, default]  # порты наружу НЕ публикуем — доступ только через Traefik
+    ports:
+      - "${BOT_PORT:-8080}:${BOT_PORT:-8080}"
     volumes:
       - ./app/data:/app/data            # B8: bot_database.sqlite3 (юзеры/транзакции/серверы) — персистентно
       - ./plans.json:/app/data/plans.json
@@ -47,22 +50,12 @@ services:
       redis:
         condition: service_healthy      # M1: bot не стартует раньше готового redis
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.bot.rule=Host(`${BOT_DOMAIN}`)"
-      - "traefik.http.routers.bot.entrypoints=websecure"
-      - "traefik.http.routers.bot.tls.certresolver=${TRAEFIK_CERTRESOLVER}"  # имя резолвера ВАШЕГО Traefik
-      - "traefik.http.services.bot.loadbalancer.server.port=8080"
-      - "traefik.docker.network=traefik-proxy"
-      # B7 (defense-in-depth): ограничить /webhook подсетями Telegram
-      # - "traefik.http.routers.bot-webhook.rule=Host(`${BOT_DOMAIN}`) && Path(`/webhook`)"
-      # - "traefik.http.routers.bot-webhook.entrypoints=websecure"
-      # - "traefik.http.routers.bot-webhook.tls.certresolver=${TRAEFIK_CERTRESOLVER}"
-      # - "traefik.http.routers.bot-webhook.middlewares=tg-ipallowlist"
-      # - "traefik.http.middlewares.tg-ipallowlist.ipwhitelist.sourcerange=149.154.160.0/20,91.108.4.0/22"
+      # gobackup: SQLite-БД бота как database-модель (обнаружение по gobackup.* меткам, аналогично archive).
+      # Путь указан внутри контейнера gobackup — он должен монтировать data-том бота (см. ниже).
+      - "gobackup.databases.shop.type=sqlite"
+      - "gobackup.databases.shop.path=/app/data/bot_database.sqlite3"
 
 networks:
-  traefik-proxy:
-    external: true                      # внешняя сеть вашего Traefik (создать заранее)
   default:
 
 volumes:

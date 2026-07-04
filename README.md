@@ -32,7 +32,7 @@
 >**[Check out the new project](https://github.com/snoups/remnashop/) — it’s faster, cleaner, and much more capable!**
 
 > [!IMPORTANT]
-> **Форк с доработками.** Этот форк отличается от upstream: внешний Traefik, docker secrets, апрув-гейт, лимит трафика в тарифах, ручная оплата картой, авто-рекуррент Stars, совместимость с 3x-ui v3.1+ (py3xui 0.7.0).
+> **Форк с доработками.** Этот форк отличается от upstream: прямая публикация порта бота (без встроенного Traefik/Let's Encrypt — TLS настраивается вашим reverse-proxy или не нужен вовсе на long-polling), docker secrets, апрув-гейт, лимит трафика в тарифах, ручная оплата картой, авто-рекуррент Stars, совместимость с 3x-ui v3.1+ (py3xui 0.7.0).
 > **Развёртывание и все переменные — в [DEPLOYMENT.md](DEPLOYMENT.md).** Раздел «Docker Installation» ниже описывает исходную (upstream) схему со встроенным Traefik и в этом форке не применяется.
 
 <a id="overview"></a>

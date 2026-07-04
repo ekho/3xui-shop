@@ -2,7 +2,7 @@
 
 Руководство по запуску **этого форка** `snoups/3xui-shop`. Форк отличается от upstream:
 
-- работает **за внешним Traefik** (встроенный Traefik + Let's Encrypt удалены);
+- публикует HTTP-порт бота напрямую (встроенный Traefik + Let's Encrypt удалены); перед ботом можно поставить **любой** reverse-proxy с TLS (пример для Traefik — в Приложении) либо обойтись без него на long-polling;
 - секреты — через **docker compose secrets** (`/run/secrets/*`), не в `.env`;
 - **апрув-гейт**: новые пользователи ждут подтверждения администратора;
 - **трёхмерные тарифы**: срок + устройства + **лимит трафика**;
@@ -28,24 +28,20 @@
 ## 1. Требования
 
 - VPS (Linux), **Docker** + **Docker Compose v2**.
-- **Внешний Traefik** (v3) с настроенным HTTPS-резолвером, подключённый к **внешней docker-сети** (по умолчанию `traefik-proxy`). Бот не публикует порты — доступ только через Traefik.
-- Домен, указывающий на сервер (`BOT_DOMAIN`).
+- Для вебхук-режима (по умолчанию, `BOT_USE_WEBHOOK=True`): домен, указывающий на сервер (`BOT_DOMAIN`), и **любой reverse-proxy с TLS** (Traefik/Nginx/Caddy и т.п.) перед ботом — бот публикует на хост plain HTTP порт `BOT_PORT` (по умолчанию `8080`), TLS терминируется на вашем proxy. Пример настройки с Traefik — в Приложении.
+- Либо long-polling (`BOT_USE_WEBHOOK=False`) — домен, TLS и reverse-proxy не нужны вовсе.
 - Панель **3x-ui v3.1+** (рекоменд. v3.4.2) с созданным inbound (vless/reality и т.п.).
 - Токен Telegram-бота (@BotFather).
 
 ---
 
-## 2. Подготовка внешнего Traefik
+## 2. TLS и вебхук
 
-Бот подключается к внешней сети Traefik и объявляет маршрут через labels (см. `docker-compose.yml`). На стороне Traefik нужно:
+Бот сам не терминирует TLS. Варианты:
 
-1. **Внешняя сеть** (если ещё нет):
-   ```bash
-   docker network create traefik-proxy
-   ```
-   Имя должно совпадать с сетью `traefik-proxy` в `docker-compose.yml` и label `traefik.docker.network`.
-2. **HTTPS-резолвер** (ACME/Let's Encrypt) и entrypoint `websecure` (:443). Имя резолвера укажите в `.env` → `TRAEFIK_CERTRESOLVER`.
-3. **Проброс реального IP клиента** (`forwardedHeaders.trustedIPs`) на entrypoint — нужно для проверки IP Cryptomus-вебхука, если включаете крипту.
+1. **Long-polling** (`BOT_USE_WEBHOOK=False`) — самый простой путь: бот сам забирает апдейты через `getUpdates`, публичный домен и TLS не нужны.
+2. **Вебхук** (`BOT_USE_WEBHOOK=True`, по умолчанию) — нужен публичный `BOT_DOMAIN` с валидным TLS. Поставьте перед ботом (порт `BOT_PORT`, по умолчанию `8080`) любой reverse-proxy — Nginx, Caddy, Traefik и т.п. Пример конфигурации для внешнего Traefik — в Приложении в конце документа.
+   - Если включаете Cryptomus: убедитесь, что ваш reverse-proxy передаёт боту реальный IP клиента (`X-Forwarded-For`/`X-Real-IP` либо аналог) — иначе IP-allowlist Cryptomus-вебхука может резать легитимные запросы.
 
 ---
 
@@ -80,16 +76,15 @@ chmod 600 secrets/*.txt
 | Переменная | Обяз. | По умолчанию | Секрет | Описание |
 |---|---|---|---|---|
 | `BOT_TOKEN` | да | — | **да** | Токен бота (@BotFather). Секрет `bot_token`. |
-| `BOT_DOMAIN` | да | — | нет | Домен бота (Host-rule Traefik, построение URL вебхука). |
+| `BOT_DOMAIN` | вебхук | — | нет | Домен бота (Host для вашего reverse-proxy, построение URL вебхука). Не нужен на long-polling. |
 | `BOT_ADMINS` | нет | `[]` | нет | ID админов через запятую (апрув, модерация, рассылка). |
 | `BOT_DEV_ID` | да | — | нет | ID разработчика (получает алерты, тест-рефанды Stars). |
 | `BOT_SUPPORT_ID` | да | — | нет | ID поддержки. |
-| `BOT_PORT` | нет | `8080` | нет | Внутренний порт (за Traefik). |
+| `BOT_PORT` | нет | `8080` | нет | Порт бота, публикуется на хост (см. `docker-compose.yml`). |
 | `WEBHOOK_SECRET` | реком.* | — | **да** | `secret_token` вебхука Telegram (B7). Секрет `webhook_secret`. *только для вебхук-режима. |
-| `BOT_USE_WEBHOOK` | нет | `True` | нет | `True` — вебхук (нужны публичный `BOT_DOMAIN` + Traefik); `False` — long-polling (`getUpdates`, домен/вебхук не нужны). |
+| `BOT_USE_WEBHOOK` | нет | `True` | нет | `True` — вебхук (нужны публичный `BOT_DOMAIN` + reverse-proxy с TLS); `False` — long-polling (`getUpdates`, домен/вебхук не нужны). |
 | `TELEGRAM_API_URL` | нет | `https://api.telegram.org` | нет | Кастомный Bot API (локальный сервер/зеркало). Базовый URL без `/bot<token>`. |
 | `TELEGRAM_API_IS_LOCAL` | нет | `False` | нет | `True` для self-hosted `telegram-bot-api` в режиме `--local` (файлы на диске сервера). |
-| `TRAEFIK_CERTRESOLVER` | да | `letsencrypt` | нет | Имя ACME-резолвера ВАШЕГО Traefik. |
 | `SHOP_APPROVAL_REQUIRED` | нет | `True` | нет | Апрув-гейт для новых юзеров. `False` → как в upstream. |
 | `SHOP_PAYMENT_STARS_ENABLED` | нет | `True` | нет | Оплата Telegram Stars. |
 | `SHOP_PAYMENT_CRYPTOMUS_ENABLED` | нет | `False` | нет | Оплата Cryptomus (нужны ключи + вебхук). |
@@ -100,8 +95,6 @@ chmod 600 secrets/*.txt
 | `XUI_USERNAME` | токен\|п.п. | — | нет | Логин панели (если не токен). |
 | `XUI_PASSWORD` | токен\|п.п. | — | **да** | Пароль панели (если не токен). Секрет `xui_password`. |
 | `XUI_TOKEN` | токен\|п.п. | — | да | Токен панели (если не логин/пароль). Секрет `xui_token`. |
-| `XUI_SUBSCRIPTION_PORT` | нет | `2096` | нет | Порт subscription-сервиса панели. |
-| `XUI_SUBSCRIPTION_PATH` | нет | `/user/` | нет | Путь subscription-сервиса. |
 | `CRYPTOMUS_API_KEY` / `CRYPTOMUS_MERCHANT_ID` | если крипта | — | да | Ключи Cryptomus. Секреты `cryptomus_*`. |
 | `REDIS_HOST` / `REDIS_PORT` | нет | `3xui-shop-redis` / `6379` | нет | Redis (FSM + дедуп напоминаний). |
 | `LOG_LEVEL` | нет | `DEBUG` | нет | Уровень логов. |
@@ -109,6 +102,7 @@ chmod 600 secrets/*.txt
 \* «карта-реквизиты» технически не секрет (показываются юзеру), но хранение через docker secret удобно и не мешает.
 
 > Хост панели 3x-ui хранится в БД (таблица `server`, добавляется через админку бота), а НЕ в env — поэтому `XUI_HOST` тут нет.
+> **Базовый URL подписки** больше не задаётся через env: при добавлении сервера бот сам читает его из настроек панели (`subURI`, иначе `subDomain`+`subPort`+`subPath`) и сохраняет в `server.subscription_url`. Поэтому `XUI_SUBSCRIPTION_PORT`/`XUI_SUBSCRIPTION_PATH` удалены. На панели должна быть включена и настроена подписка (Subscription).
 
 ---
 
@@ -133,11 +127,10 @@ chmod 600 secrets/*.txt
 
 ```bash
 # 1. Конфиг
-cp .env.example .env && nano .env        # BOT_DOMAIN, BOT_DEV_ID, BOT_ADMINS, TRAEFIK_CERTRESOLVER, флаги
+cp .env.example .env && nano .env        # BOT_DOMAIN, BOT_DEV_ID, BOT_ADMINS, флаги
 cp plans.example.json plans.json && nano plans.json
 
-# 2. Секреты (см. §3) + внешняя сеть Traefik (см. §2)
-docker network create traefik-proxy      # если ещё нет
+# 2. Секреты (см. §3) + при вебхук-режиме — reverse-proxy перед портом BOT_PORT (см. §2)
 
 # 3. Сборка
 docker compose build
@@ -176,7 +169,7 @@ docker compose logs -f bot
 | `RuntimeError: No need to login ... token` при старте | Задан `XUI_TOKEN` — login по паролю не нужен; форк это учитывает. Проверьте, что не задавали одновременно противоречивую конфигурацию. |
 | `inbound.get_list` падает с `ValidationError ... security` | Compat-патч не применился. Убедитесь, что `apply_py3xui_patches()` вызывается в `__main__.py`. |
 | Оплата прошла, доступ не выдан | Смотрите алерты разработчику (`BOT_DEV_ID`): при ошибке провижининга бот шлёт «Manual re-provision required». |
-| Крипто-оплата не активирует подписку (403 на вебхуке) | За внешним Traefik не пробрасывается реальный IP → IP-allowlist Cryptomus режет. Настройте `forwardedHeaders.trustedIPs`. |
+| Крипто-оплата не активирует подписку (403 на вебхуке) | Ваш reverse-proxy не пробрасывает реальный IP клиента → IP-allowlist Cryptomus режет. Настройте передачу реального IP на proxy (для Traefik — `forwardedHeaders.trustedIPs`, см. Приложение). |
 | Поддельные апдейты / обход апрува | Проверьте, что задан `WEBHOOK_SECRET` (секрет `webhook_secret`) — иначе `/webhook` не аутентифицирован (B7). |
 | `set_webhook`: `bad webhook: Failed to resolve host` | Telegram/ваш API-сервер не резолвит `BOT_DOMAIN`. Для self-hosted `telegram-bot-api` (tdlib свой резолвер, игнорит `/etc/hosts`) проще перейти на long-polling: `BOT_USE_WEBHOOK=False` — вебхук и резолвинг домена больше не нужны. |
 | `database is locked` под нагрузкой | SQLite; WAL+busy_timeout включены, но при реальной нагрузке рассмотрите PostgreSQL (`DB_HOST`/`DB_PORT`/…). |
@@ -226,4 +219,53 @@ git push origin 1.2.3        # workflow соберёт и опубликует 1
 - Убедитесь, что в репозитории разрешены GitHub Actions (Settings → Actions) и запись пакетов (Settings → Actions → Workflow permissions, либо job-level `packages: write` — уже задано в workflow).
 
 > Образ собирается **multi-arch** — `linux/amd64` и `linux/arm64` (arm64 через QEMU-эмуляцию, шаг `setup-qemu-action`). Docker на любой из этих архитектур подтянет нужный вариант автоматически по manifest list. Сборка arm64 под эмуляцией заметно медленнее — если arm64 не нужен, уберите его из `platforms` и шаг QEMU.
+
+---
+
+## Приложение: пример подключения к внешнему Traefik
+
+Бот сам по себе Traefik не использует и не требует — по умолчанию (`docker-compose.yml`) он просто публикует `BOT_PORT` на хост. Ниже — пример, если у вас **уже есть** свой Traefik и вы хотите подключить бота к нему вместо публикации порта напрямую.
+
+1. Убедитесь, что у Traefik настроен HTTPS-резолвер (ACME/Let's Encrypt) и entrypoint `websecure` (:443), а также (если планируете Cryptomus) проброс реального IP клиента (`forwardedHeaders.trustedIPs`).
+
+2. В `docker-compose.yml` у сервиса `bot` замените `ports:` на подключение к внешней сети Traefik и добавьте labels:
+
+   ```yaml
+   services:
+     bot:
+       # ports:                          # убрать публикацию порта — доступ только через Traefik
+       #   - "${BOT_PORT:-8080}:${BOT_PORT:-8080}"
+       networks: [traefik-proxy, default]
+       labels:
+         - "traefik.enable=true"
+         - "traefik.http.routers.bot.rule=Host(`${BOT_DOMAIN}`)"
+         - "traefik.http.routers.bot.entrypoints=websecure"
+         - "traefik.http.routers.bot.tls.certresolver=letsencrypt"   # имя резолвера вашего Traefik
+         - "traefik.http.services.bot.loadbalancer.server.port=8080"
+         - "traefik.docker.network=traefik-proxy"
+         # gobackup label (если используете) можно оставить как есть
+
+   networks:
+     traefik-proxy:
+       external: true                    # внешняя сеть вашего Traefik (создать заранее)
+     default:
+   ```
+
+3. Создайте внешнюю сеть (если её ещё нет) и подключите к ней Traefik и бота:
+
+   ```bash
+   docker network create traefik-proxy
+   ```
+
+4. (Опционально, defense-in-depth B7) Ограничьте `/webhook` подсетями Telegram отдельным роутером:
+
+   ```yaml
+   - "traefik.http.routers.bot-webhook.rule=Host(`${BOT_DOMAIN}`) && Path(`/webhook`)"
+   - "traefik.http.routers.bot-webhook.entrypoints=websecure"
+   - "traefik.http.routers.bot-webhook.tls.certresolver=letsencrypt"
+   - "traefik.http.routers.bot-webhook.middlewares=tg-ipallowlist"
+   - "traefik.http.middlewares.tg-ipallowlist.ipwhitelist.sourcerange=149.154.160.0/20,91.108.4.0/22"
+   ```
+
+Это лишь один из вариантов reverse-proxy — с тем же успехом можно использовать Nginx, Caddy и т.п.: главное, чтобы TLS терминировался перед ботом и запросы доходили на `BOT_PORT`.
 

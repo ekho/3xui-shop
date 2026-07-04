@@ -1,5 +1,6 @@
 import logging
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from py3xui import AsyncApi
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -8,6 +9,9 @@ from app.config import Config
 from app.db.models import Server, User
 
 logger = logging.getLogger(__name__)
+
+# Настройки подписки живут в настройках самой панели (py3xui их не оборачивает) — читаем сырым POST.
+SETTINGS_ENDPOINT = "panel/api/setting/all"
 
 
 @dataclass
@@ -46,8 +50,49 @@ class ServerPoolService:
                 server.online = False
                 logger.error(f"Failed to add server {server.name} ({server.host}): {exception}")
 
+            # Базовый URL подписки берём из настроек панели (subURI) — при добавлении и как бэкфилл
+            # для серверов без сохранённого значения. Обновляем в БД только при успешном чтении.
+            update_kwargs = {"online": server.online}
+            if server.online and not server.subscription_url:
+                sub_url = await self._fetch_subscription_url(api, server.host)
+                if sub_url:
+                    update_kwargs["subscription_url"] = sub_url
+                    server.subscription_url = sub_url
+
             async with self.session() as session:
-                await Server.update(session=session, name=server.name, online=server.online)
+                await Server.update(session=session, name=server.name, **update_kwargs)
+
+    async def _fetch_subscription_url(self, api: AsyncApi, host: str) -> str | None:
+        """Читает настройки подписки панели и возвращает базовый URL (с завершающим '/').
+
+        Приоритет — subURI (готовый внешний URL); иначе строим {scheme}://{subDomain|host}:{subPort}{subPath}
+        (scheme=https, если задан TLS-сертификат подписки). py3xui не оборачивает настройки — сырой POST.
+        """
+        try:
+            response = await api.inbound._post(api.inbound._url(SETTINGS_ENDPOINT), {}, {})
+            obj = response.json().get("obj") or {}
+        except Exception as exception:
+            logger.error(f"Failed to read subscription settings from {host}: {exception}")
+            return None
+
+        if not obj.get("subEnable", False):
+            logger.warning(f"Subscription service is disabled on panel {host}; links may not work.")
+
+        base = (obj.get("subURI") or "").strip()
+        if not base:
+            sub_port = obj.get("subPort")
+            sub_path = obj.get("subPath") or "/"
+            sub_domain = (obj.get("subDomain") or "").strip() or urlparse(host).hostname
+            if not sub_domain or not sub_port:
+                logger.error(f"Cannot build subscription URL for {host}: subURI empty and subDomain/subPort missing.")
+                return None
+            scheme = "https" if (obj.get("subKeyFile") or obj.get("subCertFile")) else "http"
+            base = f"{scheme}://{sub_domain}:{sub_port}{sub_path}"
+
+        if not base.endswith("/"):
+            base += "/"
+        logger.info(f"Subscription base URL for {host}: {base}")
+        return base
 
     def _remove_server(self, server: Server) -> None:
         if server.id in self._servers:
