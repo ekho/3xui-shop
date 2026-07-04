@@ -11,7 +11,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.utils.i18n import I18n
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
-from aiohttp.web import Application, _run_app
+from aiohttp.web import Application, AppRunner, TCPSite, _run_app
 from redis.asyncio.client import Redis
 
 from app import logger
@@ -49,19 +49,51 @@ async def on_startup(
     redis: Redis,
     i18n: I18n,
 ) -> None:
+    # Long-polling: вебхук не нужен — снимаем его (иначе getUpdates вернёт ошибку) и выходим.
+    if not config.bot.USE_WEBHOOK:
+        await bot.delete_webhook()
+        logging.info("Polling mode: webhook removed, receiving updates via getUpdates.")
+        await services.notification.notify_developer(BOT_STARTED_TAG)
+        logging.info("Bot started.")
+        _start_schedulers(config, db, redis, i18n, services)
+        return
+
     webhook_url = urljoin(config.bot.DOMAIN, TELEGRAM_WEBHOOK)
 
     # B7: сравнивать .url (раньше сравнивался объект WebhookInfo со строкой → всегда True).
     #     Пересоздаём вебхук при смене URL; secret_token аутентифицирует входящие апдейты.
-    current_webhook = await bot.get_webhook_info()
-    if current_webhook.url != webhook_url:
-        await bot.set_webhook(webhook_url, secret_token=config.bot.WEBHOOK_SECRET or None)
+    try:
         current_webhook = await bot.get_webhook_info()
-    logging.info(f"Current webhook URL: {current_webhook.url}")
+        if current_webhook.url != webhook_url:
+            await bot.set_webhook(webhook_url, secret_token=config.bot.WEBHOOK_SECRET or None)
+            current_webhook = await bot.get_webhook_info()
+        logging.info(f"Current webhook URL: {current_webhook.url}")
+    except Exception as exception:
+        # Частая причина: BOT_DOMAIN не публичный/не резолвится/без валидного TLS, или бот
+        # не проксируется на этот домен. Логируем понятно и закрываем сессию, чтобы не текла
+        # (иначе — "Unclosed client session" и рестарт-луп с невнятным трейсом).
+        hint = (
+            f"Проверьте BOT_DOMAIN: это должен быть ПУБЛИЧНЫЙ домен с валидным TLS, "
+            f"который DNS-резолвится и проксируется вашим Traefik на бота (порт {config.bot.PORT})."
+        )
+        if config.bot.API_URL:
+            hint += (
+                f"\nИспользуется кастомный Telegram API '{config.bot.API_URL}' — именно ЭТОТ сервер "
+                f"должен уметь резолвить и достучаться до домена вебхука. 'Failed to resolve host' "
+                f"обычно значит, что у API-сервера сломан/изолирован DNS."
+            )
+        logging.critical(f"Не удалось настроить вебхук '{webhook_url}': {exception}\n{hint}")
+        await bot.session.close()
+        raise
 
     await services.notification.notify_developer(BOT_STARTED_TAG)
     logging.info("Bot started.")
+    _start_schedulers(config, db, redis, i18n, services)
 
+
+def _start_schedulers(
+    config: Config, db: Database, redis: Redis, i18n: I18n, services: ServicesContainer
+) -> None:
     tasks.transactions.start_scheduler(db.session)
     if config.shop.REFERRER_REWARD_ENABLED:
         tasks.referral.start_scheduler(
@@ -181,17 +213,30 @@ async def main() -> None:
     # Set up bot commands
     await commands.setup(bot)
 
-    # Set up webhook request handler
-    # B7: secret_token заставляет aiogram сверять заголовок X-Telegram-Bot-Api-Secret-Token
-    #     (secrets.compare_digest) и возвращать 401 на подделки. None → проверка отключена.
-    webhook_requests_handler = SimpleRequestHandler(
-        dispatcher=dispatcher, bot=bot, secret_token=config.bot.WEBHOOK_SECRET or None
-    )
-    webhook_requests_handler.register(app, path=TELEGRAM_WEBHOOK)
+    if config.bot.USE_WEBHOOK:
+        # Webhook: Telegram шлёт апдейты на /webhook (через Traefik).
+        # B7: secret_token заставляет aiogram сверять заголовок X-Telegram-Bot-Api-Secret-Token
+        #     (secrets.compare_digest) и возвращать 401 на подделки. None → проверка отключена.
+        webhook_requests_handler = SimpleRequestHandler(
+            dispatcher=dispatcher, bot=bot, secret_token=config.bot.WEBHOOK_SECRET or None
+        )
+        webhook_requests_handler.register(app, path=TELEGRAM_WEBHOOK)
 
-    # Set up application and run
-    setup_application(app, dispatcher, bot=bot)
-    await _run_app(app, host=DEFAULT_BOT_HOST, port=config.bot.PORT)
+        # Set up application and run
+        setup_application(app, dispatcher, bot=bot)
+        await _run_app(app, host=DEFAULT_BOT_HOST, port=config.bot.PORT)
+    else:
+        # Long-polling: апдейты забираем через getUpdates — публичный вебхук/домен не нужны.
+        # Веб-сервер всё равно поднимаем для НЕ-Telegram роутов (Cryptomus-вебхук, редирект
+        # подключения); start_polling сам управляет startup/shutdown диспетчера и закрывает сессию.
+        runner = AppRunner(app)
+        await runner.setup()
+        site = TCPSite(runner, host=DEFAULT_BOT_HOST, port=config.bot.PORT)
+        await site.start()
+        try:
+            await dispatcher.start_polling(bot)
+        finally:
+            await runner.cleanup()
 
 
 if __name__ == "__main__":

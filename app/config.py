@@ -90,6 +90,7 @@ class BotConfig:
     WEBHOOK_SECRET: str | None
     API_URL: str | None  # кастомный Telegram Bot API (напр. локальный/зеркало); None → api.telegram.org
     API_IS_LOCAL: bool  # True для self-hosted telegram-bot-api в режиме --local (файлы на диске сервера)
+    USE_WEBHOOK: bool  # True → вебхук (Traefik+домен); False → long-polling (getUpdates, домен/вебхук не нужны)
 
 
 @dataclass
@@ -205,6 +206,17 @@ def load_config() -> Config:
     if not bot_admins:
         logger.warning("BOT_ADMINS list is empty.")
 
+    # Нормализуем BOT_DOMAIN: убираем случайно указанную схему и хвостовые слэши,
+    # иначе f"https://{...}" даёт https://https://... → Telegram: "bad webhook: Failed to resolve host".
+    bot_domain = env.str("BOT_DOMAIN").strip().rstrip("/")
+    for _scheme in ("https://", "http://"):
+        if bot_domain.lower().startswith(_scheme):
+            bot_domain = bot_domain[len(_scheme):]
+    if not bot_domain or "/" in bot_domain or "." not in bot_domain:
+        logger.warning(
+            f"BOT_DOMAIN looks invalid: '{bot_domain}'. Ожидается публичный хост, напр. bot.example.com."
+        )
+
     # P1: авторизация в 3x-ui — по токену ЛИБО username+password. py3xui 0.7.0 при заданном
     # token не требует (и не допускает) login по паролю; при токен-авторизации логин/пароль опциональны.
     xui_token = env_or_file(env, "XUI_TOKEN", default=None)
@@ -313,11 +325,12 @@ def load_config() -> Config:
             ADMINS=bot_admins,
             DEV_ID=env.int("BOT_DEV_ID"),
             SUPPORT_ID=env.int("BOT_SUPPORT_ID"),
-            DOMAIN=f"https://{env.str('BOT_DOMAIN')}",
+            DOMAIN=f"https://{bot_domain}",
             PORT=env.int("BOT_PORT", default=DEFAULT_BOT_PORT),
             WEBHOOK_SECRET=env_or_file(env, "WEBHOOK_SECRET", default=None),  # B7
             API_URL=env.str("TELEGRAM_API_URL", default=None),
             API_IS_LOCAL=env.bool("TELEGRAM_API_IS_LOCAL", default=False),
+            USE_WEBHOOK=env.bool("BOT_USE_WEBHOOK", default=True),
         ),
         shop=ShopConfig(
             APPROVAL_REQUIRED=env.bool(

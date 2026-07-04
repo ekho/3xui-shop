@@ -85,7 +85,8 @@ chmod 600 secrets/*.txt
 | `BOT_DEV_ID` | да | — | нет | ID разработчика (получает алерты, тест-рефанды Stars). |
 | `BOT_SUPPORT_ID` | да | — | нет | ID поддержки. |
 | `BOT_PORT` | нет | `8080` | нет | Внутренний порт (за Traefik). |
-| `WEBHOOK_SECRET` | реком. | — | **да** | `secret_token` вебхука Telegram (B7). Секрет `webhook_secret`. |
+| `WEBHOOK_SECRET` | реком.* | — | **да** | `secret_token` вебхука Telegram (B7). Секрет `webhook_secret`. *только для вебхук-режима. |
+| `BOT_USE_WEBHOOK` | нет | `True` | нет | `True` — вебхук (нужны публичный `BOT_DOMAIN` + Traefik); `False` — long-polling (`getUpdates`, домен/вебхук не нужны). |
 | `TELEGRAM_API_URL` | нет | `https://api.telegram.org` | нет | Кастомный Bot API (локальный сервер/зеркало). Базовый URL без `/bot<token>`. |
 | `TELEGRAM_API_IS_LOCAL` | нет | `False` | нет | `True` для self-hosted `telegram-bot-api` в режиме `--local` (файлы на диске сервера). |
 | `TRAEFIK_CERTRESOLVER` | да | `letsencrypt` | нет | Имя ACME-резолвера ВАШЕГО Traefik. |
@@ -177,6 +178,7 @@ docker compose logs -f bot
 | Оплата прошла, доступ не выдан | Смотрите алерты разработчику (`BOT_DEV_ID`): при ошибке провижининга бот шлёт «Manual re-provision required». |
 | Крипто-оплата не активирует подписку (403 на вебхуке) | За внешним Traefik не пробрасывается реальный IP → IP-allowlist Cryptomus режет. Настройте `forwardedHeaders.trustedIPs`. |
 | Поддельные апдейты / обход апрува | Проверьте, что задан `WEBHOOK_SECRET` (секрет `webhook_secret`) — иначе `/webhook` не аутентифицирован (B7). |
+| `set_webhook`: `bad webhook: Failed to resolve host` | Telegram/ваш API-сервер не резолвит `BOT_DOMAIN`. Для self-hosted `telegram-bot-api` (tdlib свой резолвер, игнорит `/etc/hosts`) проще перейти на long-polling: `BOT_USE_WEBHOOK=False` — вебхук и резолвинг домена больше не нужны. |
 | `database is locked` под нагрузкой | SQLite; WAL+busy_timeout включены, но при реальной нагрузке рассмотрите PostgreSQL (`DB_HOST`/`DB_PORT`/…). |
 | Напоминания по трафику не приходят | Тариф должен иметь `traffic_gb > 0`; лимит читается из settings инбаунда. |
 | Логи | `docker compose logs -f bot`; файлы — в `./app/logs`. |
