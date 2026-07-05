@@ -66,5 +66,13 @@ def download_keyboard(platform: NavDownload, url: str, key: str) -> InlineKeyboa
         callback_data=NavSubscription.MAIN if not key else None,
     )
 
+    if key:
+        builder.row(
+            InlineKeyboardButton(
+                text=_("download:button:show_qr"),
+                callback_data=NavDownload.SHOW_QR,
+            )
+        )
+
     builder.row(back_button(NavDownload.MAIN))
     return builder.as_markup()

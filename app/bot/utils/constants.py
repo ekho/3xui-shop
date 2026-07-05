@@ -52,6 +52,7 @@ I18N_DOMAIN = "bot"
 # region: Constants
 UNLIMITED = "∞"
 DB_FORMAT = "sqlite3"
+QR_CODE_AUTO_DELETE_SECONDS = 30  # ключ в QR — тот же секрет, что и в profile:show_key
 LOG_ZIP_ARCHIVE_FORMAT = "zip"
 LOG_GZ_ARCHIVE_FORMAT = "gz"
 MESSAGE_EFFECT_IDS = {

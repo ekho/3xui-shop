@@ -712,6 +712,20 @@ msgstr "📥 Download"
 msgid "download:button:connect"
 msgstr "🔌 Connect"
 
+#: app/bot/routers/download/keyboard.py:72
+msgid "download:button:show_qr"
+msgstr "🔳 Show QR-code"
+
+#: app/bot/routers/download/handler.py:126
+msgid "download:message:qr_caption"
+msgstr ""
+"🔳 Scan this QR-code in your VPN app to connect.\n\n"
+"<i>This message will self-destruct in {seconds} seconds.</i>"
+
+#: app/bot/routers/download/handler.py:119
+msgid "download:popup:qr_unavailable"
+msgstr "❌ Failed to generate QR-code: subscription key is unavailable."
+
 #: app/bot/routers/main_menu/handler.py:103
 #: app/bot/routers/main_menu/handler.py:127
 #: app/bot/routers/main_menu/handler.py:158

@@ -720,6 +720,20 @@ msgstr "📥 Скачать"
 msgid "download:button:connect"
 msgstr "🔌 Подключиться"
 
+#: app/bot/routers/download/keyboard.py:72
+msgid "download:button:show_qr"
+msgstr "🔳 Показать QR-код"
+
+#: app/bot/routers/download/handler.py:126
+msgid "download:message:qr_caption"
+msgstr ""
+"🔳 Отсканируйте этот QR-код в приложении VPN, чтобы подключиться.\n\n"
+"<i>Это сообщение самоуничтожится через {seconds} секунд.</i>"
+
+#: app/bot/routers/download/handler.py:119
+msgid "download:popup:qr_unavailable"
+msgstr "❌ Не удалось создать QR-код: ключ подписки недоступен."
+
 #: app/bot/routers/main_menu/handler.py:103
 #: app/bot/routers/main_menu/handler.py:127
 #: app/bot/routers/main_menu/handler.py:158

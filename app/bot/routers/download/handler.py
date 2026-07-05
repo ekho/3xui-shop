@@ -1,8 +1,9 @@
+import asyncio
 import logging
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery
+from aiogram.types import BufferedInputFile, CallbackQuery
 from aiogram.utils.i18n import gettext as _
 from aiohttp.web import HTTPFound, Request, Response
 
@@ -13,9 +14,11 @@ from app.bot.utils.constants import (
     APP_WINDOWS_SCHEME,
     MAIN_MESSAGE_ID_KEY,
     PREVIOUS_CALLBACK_KEY,
+    QR_CODE_AUTO_DELETE_SECONDS,
 )
 from app.bot.utils.navigation import NavDownload, NavMain
 from app.bot.utils.network import parse_redirect_url
+from app.bot.utils.qrcode import generate_qr_png
 from app.config import Config
 from app.db.models import User
 
@@ -99,3 +102,33 @@ async def callback_platform(
         text=_("download:message:connect_to_vpn").format(platform=platform),
         reply_markup=download_keyboard(platform=callback.data, key=key, url=config.bot.DOMAIN),
     )
+
+
+@router.callback_query(F.data == NavDownload.SHOW_QR)
+async def callback_show_qr(
+    callback: CallbackQuery,
+    user: User,
+    services: ServicesContainer,
+) -> None:
+    logger.info(f"User {user.tg_id} requested subscription QR code.")
+    key = await services.vpn.get_key(user)
+
+    if not key:
+        await services.notification.show_popup(
+            callback=callback,
+            text=_("download:popup:qr_unavailable"),
+        )
+        return
+
+    photo = BufferedInputFile(generate_qr_png(key), filename="subscription_qr.png")
+    message = await callback.message.answer_photo(
+        photo=photo,
+        caption=_("download:message:qr_caption").format(seconds=QR_CODE_AUTO_DELETE_SECONDS),
+    )
+
+    # Ключ в QR — тот же секрет, что и в profile:show_key: не оставляем его висеть в чате.
+    await asyncio.sleep(QR_CODE_AUTO_DELETE_SECONDS)
+    try:
+        await message.delete()
+    except Exception as exception:
+        logger.error(f"Failed to delete QR message for {user.tg_id}: {exception}")
