@@ -20,7 +20,8 @@ async def initialize(
     bot: Bot,
 ) -> ServicesContainer:
     server_pool = ServerPoolService(config=config, session=session)
-    plan = PlanService()
+    plan = PlanService(session_factory=session)
+    await plan.load()
     vpn = VPNService(config=config, session=session, server_pool_service=server_pool)
     notification = NotificationService(config=config, bot=bot)
     referral = ReferralService(config=config, session_factory=session, vpn_service=vpn)

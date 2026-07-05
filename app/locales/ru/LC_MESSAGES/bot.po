@@ -213,6 +213,153 @@ msgstr "🔗 Инвайт-ссылки"
 msgid "admin_tools:button:promocode_editor"
 msgstr "🎟 Редактор промокодов"
 
+#: app/bot/routers/admin_tools/keyboard.py:54
+msgid "admin_tools:button:plan_editor"
+msgstr "💳 Редактор тарифов"
+
+#: app/bot/routers/admin_tools/plan_handler.py:82
+msgid "plan_editor:message:main"
+msgstr "💳 <b>Редактор тарифов:</b>\n"
+
+#: app/bot/routers/admin_tools/plan_handler.py:84
+msgid "plan_editor:message:empty"
+msgstr "<i>Тарифов пока нет. Создайте первый!</i>"
+
+#: app/bot/routers/admin_tools/keyboard.py:411
+msgid "plan_editor:button:create"
+msgstr "➕ Создать тариф"
+
+#: app/bot/routers/admin_tools/keyboard.py:425
+msgid "plan_editor:button:edit_prices"
+msgstr "💰 Изменить цены"
+
+#: app/bot/routers/admin_tools/keyboard.py:431
+msgid "plan_editor:button:edit_traffic"
+msgstr "📶 Изменить лимит трафика"
+
+#: app/bot/routers/admin_tools/keyboard.py:437
+msgid "plan_editor:button:delete"
+msgstr "🗑 Удалить тариф"
+
+#: app/bot/routers/admin_tools/keyboard.py:451
+msgid "plan_editor:button:confirm_create"
+msgstr "✅ Подтвердить создание"
+
+#: app/bot/routers/admin_tools/keyboard.py:464
+msgid "plan_editor:button:confirm_delete"
+msgstr "✅ Подтвердить удаление"
+
+#: app/bot/routers/admin_tools/plan_handler.py:100
+msgid "plan_editor:message:enter_devices"
+msgstr "💳 <b>Создание тарифа</b>\n\nВведите количество устройств для нового тарифа (например, <code>5</code>):"
+
+#: app/bot/routers/admin_tools/plan_handler.py:133
+#: app/bot/routers/admin_tools/plan_handler.py:298
+msgid "plan_editor:message:enter_traffic"
+msgstr "Введите лимит трафика в ГБ (<code>0</code> = безлимит):"
+
+#: app/bot/routers/admin_tools/plan_handler.py:58
+msgid "plan_editor:message:prices_format"
+msgstr ""
+"Отправьте цены построчно, один срок — одна строка:\n"
+"<code>срок RUB USD XTR</code>\n"
+"\n"
+"Нужна ровно одна строка на каждый из существующих сроков: <b>{days}</b>.\n"
+"\n"
+"Пример:\n"
+"<code>30 70 0.7 60</code>"
+
+#: app/bot/routers/admin_tools/plan_handler.py:363
+msgid "plan_editor:message:current_prices"
+msgstr "Текущие цены (отредактируйте и отправьте заново):"
+
+#: app/bot/routers/admin_tools/plan_handler.py:190
+msgid "plan_editor:message:create_confirm"
+msgstr ""
+"💳 <b>Подтвердите новый тариф</b>\n"
+"\n"
+"Устройства: {devices}\n"
+"Лимит трафика: {traffic}\n"
+"\n"
+"Цены:\n"
+"<code>{prices}</code>"
+
+#: app/bot/routers/admin_tools/plan_handler.py:269
+#: app/bot/routers/admin_tools/plan_handler.py:410
+msgid "plan_editor:message:details"
+msgstr ""
+"💳 <b>Тариф: {devices}</b>\n"
+"\n"
+"Лимит трафика: {traffic}\n"
+"\n"
+"Цены:\n"
+"<code>{prices}</code>"
+
+#: app/bot/routers/admin_tools/plan_handler.py:53
+msgid "plan_editor:message:unlimited_traffic"
+msgstr "Безлимит"
+
+#: app/bot/routers/admin_tools/plan_handler.py:439
+msgid "plan_editor:message:confirm_delete"
+msgstr "Удалить тариф <b>{devices}</b>? Действие необратимо."
+
+#: app/bot/routers/admin_tools/plan_handler.py:118
+msgid "plan_editor:ntf:invalid_devices"
+msgstr "❌ Введите корректное количество устройств (положительное число)."
+
+#: app/bot/routers/admin_tools/plan_handler.py:126
+msgid "plan_editor:ntf:devices_exists"
+msgstr "❌ Тариф с таким количеством устройств уже существует."
+
+#: app/bot/routers/admin_tools/plan_handler.py:153
+#: app/bot/routers/admin_tools/plan_handler.py:318
+msgid "plan_editor:ntf:invalid_traffic"
+msgstr "❌ Введите корректный лимит трафика в ГБ (0 = безлимит)."
+
+#: app/bot/routers/admin_tools/plan_handler.py:182
+#: app/bot/routers/admin_tools/plan_handler.py:384
+msgid "plan_editor:ntf:invalid_prices"
+msgstr ""
+"❌ Неверный формат. Отправьте по одной строке на срок: <code>срок RUB USD XTR</code>, "
+"и ровно по одной строке на каждый существующий срок."
+
+#: app/bot/routers/admin_tools/plan_handler.py:236
+msgid "plan_editor:ntf:created_success"
+msgstr "✅ Тариф {devices} создан."
+
+#: app/bot/routers/admin_tools/plan_handler.py:327
+#: app/bot/routers/admin_tools/plan_handler.py:393
+msgid "plan_editor:ntf:update_failed"
+msgstr "❌ Не удалось обновить тариф."
+
+#: app/bot/routers/admin_tools/plan_handler.py:334
+#: app/bot/routers/admin_tools/plan_handler.py:400
+msgid "plan_editor:ntf:updated_success"
+msgstr "✅ Тариф обновлён."
+
+#: app/bot/routers/admin_tools/plan_handler.py:241
+msgid "plan_editor:popup:create_failed"
+msgstr "❌ Не удалось создать тариф."
+
+#: app/bot/routers/admin_tools/plan_handler.py:263
+#: app/bot/routers/admin_tools/plan_handler.py:289
+#: app/bot/routers/admin_tools/plan_handler.py:351
+msgid "plan_editor:popup:not_found"
+msgstr "❌ Тариф не найден."
+
+#: app/bot/routers/admin_tools/plan_handler.py:434
+#: app/bot/routers/admin_tools/plan_handler.py:457
+msgid "plan_editor:popup:cannot_delete_last"
+msgstr "❌ Нельзя удалить последний тариф — магазину нужен хотя бы один."
+
+#: app/bot/routers/admin_tools/plan_handler.py:468
+msgid "plan_editor:popup:deleted_success"
+msgstr "✅ Тариф удалён."
+
+#: app/bot/routers/admin_tools/plan_handler.py:472
+msgid "plan_editor:popup:delete_failed"
+msgstr "❌ Не удалось удалить тариф."
+
 #: app/bot/routers/admin_tools/keyboard.py:52
 msgid "admin_tools:button:notification"
 msgstr "📣 Отправить уведомление"

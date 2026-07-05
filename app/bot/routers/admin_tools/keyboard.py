@@ -2,11 +2,13 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.i18n import gettext as _
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from app.bot.models.plan import Plan
 from app.bot.routers.misc.keyboard import (
     back_button,
     back_to_main_menu_button,
     cancel_button,
 )
+from app.bot.utils.formatting import format_device_count
 from app.bot.utils.navigation import NavAdminTools
 from app.db.models import Server
 from app.db.models.invite import Invite
@@ -45,6 +47,12 @@ def admin_tools_keyboard(is_dev: bool) -> InlineKeyboardMarkup:
         InlineKeyboardButton(
             text=_("admin_tools:button:promocode_editor"),
             callback_data=NavAdminTools.PROMOCODE_EDITOR,
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=_("admin_tools:button:plan_editor"),
+            callback_data=NavAdminTools.PLAN_EDITOR,
         )
     )
     builder.row(
@@ -384,4 +392,78 @@ def confirm_delete_invite_keyboard(invite_id: int) -> InlineKeyboardMarkup:
         ),
     )
     builder.row(cancel_button(NavAdminTools.SHOW_INVITE_DETAILS + f"_{invite_id}"))
+    return builder.as_markup()
+
+
+def plan_editor_keyboard(plans: list[Plan]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    for plan in plans:
+        builder.row(
+            InlineKeyboardButton(
+                text=f"📱 {format_device_count(plan.devices)}",
+                callback_data=NavAdminTools.SHOW_PLAN + f"_{plan.devices}",
+            )
+        )
+
+    builder.row(
+        InlineKeyboardButton(
+            text=_("plan_editor:button:create"),
+            callback_data=NavAdminTools.CREATE_PLAN,
+        )
+    )
+    builder.row(back_button(NavAdminTools.MAIN))
+    builder.row(back_to_main_menu_button())
+    return builder.as_markup()
+
+
+def plan_details_keyboard(devices: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
+            text=_("plan_editor:button:edit_prices"),
+            callback_data=NavAdminTools.EDIT_PLAN_PRICES + f"_{devices}",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=_("plan_editor:button:edit_traffic"),
+            callback_data=NavAdminTools.EDIT_PLAN_TRAFFIC + f"_{devices}",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=_("plan_editor:button:delete"),
+            callback_data=NavAdminTools.CONFIRM_DELETE_PLAN + f"_{devices}",
+        )
+    )
+    builder.row(back_button(NavAdminTools.PLAN_EDITOR))
+    builder.row(back_to_main_menu_button())
+    return builder.as_markup()
+
+
+def confirm_create_plan_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
+            text=_("plan_editor:button:confirm_create"),
+            callback_data=NavAdminTools.CONFIRM_CREATE_PLAN,
+        )
+    )
+    builder.row(cancel_button(NavAdminTools.PLAN_EDITOR))
+    return builder.as_markup()
+
+
+def confirm_delete_plan_keyboard(devices: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
+            text=_("plan_editor:button:confirm_delete"),
+            callback_data=NavAdminTools.DELETE_PLAN + f"_{devices}",
+        )
+    )
+    builder.row(cancel_button(NavAdminTools.SHOW_PLAN + f"_{devices}"))
     return builder.as_markup()

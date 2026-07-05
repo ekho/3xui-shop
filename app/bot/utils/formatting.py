@@ -5,7 +5,7 @@ from decimal import ROUND_DOWN, Decimal
 
 from aiogram.utils.i18n import gettext as _
 
-from app.bot.utils.constants import UNLIMITED
+from app.bot.utils.constants import UNLIMITED, Currency
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +71,17 @@ def format_subscription_period(days: int) -> str:
     if days % 30 == 0 and days != 0:
         return _("1 month", "{} months", days // 30).format(days // 30)
     return _("1 day", "{} days", days).format(days)
+
+
+def format_plan_prices(prices: dict[str, dict[int, float]], durations: list[int]) -> str:
+    lines = []
+    for duration in durations:
+        parts = []
+        for currency in (Currency.RUB, Currency.USD, Currency.XTR):
+            price = prices.get(currency.code, {}).get(duration)
+            parts.append(f"{price} {currency.symbol}" if price is not None else "—")
+        lines.append(f"{format_subscription_period(duration)}: {' | '.join(parts)}")
+    return "\n".join(lines)
 
 
 def to_decimal(amount: float | str | Decimal | int) -> Decimal:

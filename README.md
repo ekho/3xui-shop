@@ -195,6 +195,11 @@ Before starting the installation, make sure you have the installed [**Docker**](
 
 ### Subscription Plans Configuration
 
+> Plans now live in the database and are managed from the bot itself: **Admin Tools → Plans Editor**
+> (create/delete a plan, edit its traffic limit and prices — no redeploy needed). `plans.json` below
+> is only used **once**, to seed the database on first run if it's still empty; after that the file
+> is ignored, so further edits to it won't have any effect.
+
 ```json
 {
     "durations": [30, 60, 180, 365],  // Available subscription durations in days

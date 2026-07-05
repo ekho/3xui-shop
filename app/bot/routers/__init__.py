@@ -36,6 +36,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         admin_tools.invites_handler.router,
         admin_tools.maintenance_handler.router,
         admin_tools.notification_handler.router,
+        admin_tools.plan_handler.router,
         admin_tools.promocode_handler.router,
         admin_tools.restart_handler.router,
         admin_tools.server_handler.router,

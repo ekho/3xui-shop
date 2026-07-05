@@ -207,6 +207,153 @@ msgstr "🔗 Invite Links"
 msgid "admin_tools:button:promocode_editor"
 msgstr "🎟 Promocode editor"
 
+#: app/bot/routers/admin_tools/keyboard.py:54
+msgid "admin_tools:button:plan_editor"
+msgstr "💳 Plans editor"
+
+#: app/bot/routers/admin_tools/plan_handler.py:82
+msgid "plan_editor:message:main"
+msgstr "💳 <b>Plans editor:</b>\n"
+
+#: app/bot/routers/admin_tools/plan_handler.py:84
+msgid "plan_editor:message:empty"
+msgstr "<i>No plans yet. Create the first one!</i>"
+
+#: app/bot/routers/admin_tools/keyboard.py:411
+msgid "plan_editor:button:create"
+msgstr "➕ Create plan"
+
+#: app/bot/routers/admin_tools/keyboard.py:425
+msgid "plan_editor:button:edit_prices"
+msgstr "💰 Edit prices"
+
+#: app/bot/routers/admin_tools/keyboard.py:431
+msgid "plan_editor:button:edit_traffic"
+msgstr "📶 Edit traffic limit"
+
+#: app/bot/routers/admin_tools/keyboard.py:437
+msgid "plan_editor:button:delete"
+msgstr "🗑 Delete plan"
+
+#: app/bot/routers/admin_tools/keyboard.py:451
+msgid "plan_editor:button:confirm_create"
+msgstr "✅ Confirm creation"
+
+#: app/bot/routers/admin_tools/keyboard.py:464
+msgid "plan_editor:button:confirm_delete"
+msgstr "✅ Confirm deletion"
+
+#: app/bot/routers/admin_tools/plan_handler.py:100
+msgid "plan_editor:message:enter_devices"
+msgstr "💳 <b>Create plan</b>\n\nEnter the device count for the new plan (e.g. <code>5</code>):"
+
+#: app/bot/routers/admin_tools/plan_handler.py:133
+#: app/bot/routers/admin_tools/plan_handler.py:298
+msgid "plan_editor:message:enter_traffic"
+msgstr "Enter the traffic limit in GB (<code>0</code> = unlimited):"
+
+#: app/bot/routers/admin_tools/plan_handler.py:58
+msgid "plan_editor:message:prices_format"
+msgstr ""
+"Send prices as one line per duration:\n"
+"<code>days RUB USD XTR</code>\n"
+"\n"
+"Exactly these durations are required, one line each: <b>{days}</b>.\n"
+"\n"
+"Example:\n"
+"<code>30 70 0.7 60</code>"
+
+#: app/bot/routers/admin_tools/plan_handler.py:363
+msgid "plan_editor:message:current_prices"
+msgstr "Current prices (edit and resend):"
+
+#: app/bot/routers/admin_tools/plan_handler.py:190
+msgid "plan_editor:message:create_confirm"
+msgstr ""
+"💳 <b>Confirm new plan</b>\n"
+"\n"
+"Devices: {devices}\n"
+"Traffic limit: {traffic}\n"
+"\n"
+"Prices:\n"
+"<code>{prices}</code>"
+
+#: app/bot/routers/admin_tools/plan_handler.py:269
+#: app/bot/routers/admin_tools/plan_handler.py:410
+msgid "plan_editor:message:details"
+msgstr ""
+"💳 <b>Plan: {devices}</b>\n"
+"\n"
+"Traffic limit: {traffic}\n"
+"\n"
+"Prices:\n"
+"<code>{prices}</code>"
+
+#: app/bot/routers/admin_tools/plan_handler.py:53
+msgid "plan_editor:message:unlimited_traffic"
+msgstr "Unlimited"
+
+#: app/bot/routers/admin_tools/plan_handler.py:439
+msgid "plan_editor:message:confirm_delete"
+msgstr "Delete plan <b>{devices}</b>? This cannot be undone."
+
+#: app/bot/routers/admin_tools/plan_handler.py:118
+msgid "plan_editor:ntf:invalid_devices"
+msgstr "❌ Enter a valid device count (a positive number)."
+
+#: app/bot/routers/admin_tools/plan_handler.py:126
+msgid "plan_editor:ntf:devices_exists"
+msgstr "❌ A plan for this device count already exists."
+
+#: app/bot/routers/admin_tools/plan_handler.py:153
+#: app/bot/routers/admin_tools/plan_handler.py:318
+msgid "plan_editor:ntf:invalid_traffic"
+msgstr "❌ Enter a valid traffic limit in GB (0 = unlimited)."
+
+#: app/bot/routers/admin_tools/plan_handler.py:182
+#: app/bot/routers/admin_tools/plan_handler.py:384
+msgid "plan_editor:ntf:invalid_prices"
+msgstr ""
+"❌ Invalid format. Send one line per duration: <code>days RUB USD XTR</code>, "
+"covering every existing duration exactly once."
+
+#: app/bot/routers/admin_tools/plan_handler.py:236
+msgid "plan_editor:ntf:created_success"
+msgstr "✅ Plan {devices} created."
+
+#: app/bot/routers/admin_tools/plan_handler.py:327
+#: app/bot/routers/admin_tools/plan_handler.py:393
+msgid "plan_editor:ntf:update_failed"
+msgstr "❌ Failed to update the plan."
+
+#: app/bot/routers/admin_tools/plan_handler.py:334
+#: app/bot/routers/admin_tools/plan_handler.py:400
+msgid "plan_editor:ntf:updated_success"
+msgstr "✅ Plan updated."
+
+#: app/bot/routers/admin_tools/plan_handler.py:241
+msgid "plan_editor:popup:create_failed"
+msgstr "❌ Failed to create the plan."
+
+#: app/bot/routers/admin_tools/plan_handler.py:263
+#: app/bot/routers/admin_tools/plan_handler.py:289
+#: app/bot/routers/admin_tools/plan_handler.py:351
+msgid "plan_editor:popup:not_found"
+msgstr "❌ Plan not found."
+
+#: app/bot/routers/admin_tools/plan_handler.py:434
+#: app/bot/routers/admin_tools/plan_handler.py:457
+msgid "plan_editor:popup:cannot_delete_last"
+msgstr "❌ Can't delete the last remaining plan — the shop needs at least one."
+
+#: app/bot/routers/admin_tools/plan_handler.py:468
+msgid "plan_editor:popup:deleted_success"
+msgstr "✅ Plan deleted."
+
+#: app/bot/routers/admin_tools/plan_handler.py:472
+msgid "plan_editor:popup:delete_failed"
+msgstr "❌ Failed to delete the plan."
+
 #: app/bot/routers/admin_tools/keyboard.py:52
 msgid "admin_tools:button:notification"
 msgstr "📣 Send notification"

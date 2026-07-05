@@ -21,6 +21,10 @@ SERVER_NAME_KEY = "server_name"
 SERVER_HOST_KEY = "server_host"
 SERVER_MAX_CLIENTS_KEY = "server_max_clients"
 
+PLAN_DEVICES_KEY = "plan_devices"
+PLAN_TRAFFIC_GB_KEY = "plan_traffic_gb"
+PLAN_PRICES_KEY = "plan_prices"
+
 NOTIFICATION_CHAT_IDS_KEY = "notification_chat_ids"
 NOTIFICATION_LAST_MESSAGE_IDS_KEY = "notification_last_message_ids"
 NOTIFICATION_MESSAGE_TEXT_KEY = "notification_message_text"

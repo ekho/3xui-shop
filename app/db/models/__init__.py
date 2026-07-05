@@ -1,5 +1,7 @@
 from ._base import Base
 from .invite import Invite
+from .plan import Plan
+from .plan_duration import PlanDuration
 from .promocode import Promocode
 from .referral import Referral
 from .referrer_reward import ReferrerReward

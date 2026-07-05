@@ -85,6 +85,15 @@ class NavAdminTools(str, Enum):
     DELETE_PROMOCODE = "delete_promocode"
     EDIT_PROMOCODE = "edit_promocode"
 
+    PLAN_EDITOR = "plan_editor"
+    CREATE_PLAN = "create_plan"
+    CONFIRM_CREATE_PLAN = "confirm_create_plan"
+    SHOW_PLAN = "show_plan"
+    EDIT_PLAN_TRAFFIC = "edit_plan_traffic"
+    EDIT_PLAN_PRICES = "edit_plan_prices"
+    CONFIRM_DELETE_PLAN = "confirm_delete_plan"
+    DELETE_PLAN = "delete_plan"
+
     NOTIFICATION = "notification"
     SEND_NOTIFICATION_USER = "send_notification_user"
     SEND_NOTIFICATION_ALL = "send_notification_all"
