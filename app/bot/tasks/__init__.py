@@ -1,1 +1,1 @@
-from . import referral, subscription_expiry, transactions
+from . import approval_reminder, referral, subscription_expiry, transactions

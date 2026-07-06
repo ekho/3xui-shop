@@ -7,6 +7,7 @@ from . import (
     notification_handler,
     plan_handler,
     promocode_handler,
+    rejected_users_handler,
     restart_handler,
     server_handler,
     statistics_handler,

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.filters import IsAdmin
 from app.bot.utils.constants import DEFAULT_LANGUAGE, ApprovalStatus
+from app.config import Config
 from app.db.models import User
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,16 @@ def approval_keyboard(user_id: int) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def rejected_contact_keyboard(support_id: int) -> InlineKeyboardMarkup:
+    # Импорт внутри функции — избегаем циклической зависимости на уровне модуля
+    # (support роутер грузится позже admin_tools в routers/__init__.py).
+    from app.bot.routers.support.keyboard import contact_button
+
+    builder = InlineKeyboardBuilder()
+    builder.row(contact_button(support_id))
+    return builder.as_markup()
+
+
 @router.callback_query(ApprovalCallback.filter(), IsAdmin())
 async def on_approval(
     callback: CallbackQuery,
@@ -42,6 +53,7 @@ async def on_approval(
     session: AsyncSession,
     bot: Bot,
     i18n: I18n,
+    config: Config,
 ) -> None:
     new_status = (
         ApprovalStatus.APPROVED
@@ -82,8 +94,14 @@ async def on_approval(
             if new_status == ApprovalStatus.APPROVED
             else _("approval:user:denied")
         )
+    # Отказанному юзеру — стоп-лист: единственный оставшийся канал это связь с админом напрямую.
+    user_markup = (
+        rejected_contact_keyboard(config.bot.SUPPORT_ID)
+        if new_status == ApprovalStatus.REJECTED
+        else None
+    )
     try:
-        await bot.send_message(callback_data.user_id, user_text)
+        await bot.send_message(callback_data.user_id, user_text, reply_markup=user_markup)
     except TelegramForbiddenError:
         logger.info(f"User {callback_data.user_id} blocked the bot; approval notice skipped.")
 

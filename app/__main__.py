@@ -106,6 +106,13 @@ def _start_schedulers(
         vpn_service=services.vpn,
         notification_service=services.notification,
     )
+    if config.shop.APPROVAL_REQUIRED:
+        tasks.approval_reminder.start_scheduler(
+            session_factory=db.session,
+            config=config,
+            i18n=i18n,
+            notification_service=services.notification,
+        )
 
 
 async def main() -> None:

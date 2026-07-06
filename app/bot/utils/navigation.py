@@ -71,6 +71,12 @@ class NavAdminTools(str, Enum):
     STATISTICS = "statistics"
     USER_EDITOR = "user_editor"
 
+    REJECTED_USERS = "rejected_users"
+    SHOW_REJECTED_PAGE = "show_rejected_page"
+    SHOW_REJECTED_DETAILS = "show_rejected_details"
+    CONFIRM_UNREJECT_USER = "confirm_unreject_user"
+    UNREJECT_USER = "unreject_user"
+
     INVITE_EDITOR = "invite_editor"
     CREATE_INVITE = "create_invite"
     DELETE_INVITE = "delete_invite"

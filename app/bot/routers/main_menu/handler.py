@@ -135,11 +135,16 @@ async def command_main_menu(
             await User.update(
                 session, tg_id=user.tg_id, approval_requested_at=datetime.now(timezone.utc)
             )
-        await message.answer(
-            _("approval:message:pending")
-            if user.approval_status == ApprovalStatus.PENDING
-            else _("approval:message:rejected")
-        )
+        if user.approval_status == ApprovalStatus.PENDING:
+            await message.answer(_("approval:message:pending"))
+        else:
+            # Стоп-лист: отказанному юзеру оставляем только связь с админом напрямую.
+            from app.bot.routers.admin_tools.approval_handler import rejected_contact_keyboard
+
+            await message.answer(
+                _("approval:message:rejected"),
+                reply_markup=rejected_contact_keyboard(config.bot.SUPPORT_ID),
+            )
         return
 
     main_menu = await message.answer(

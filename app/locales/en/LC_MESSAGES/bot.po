@@ -199,6 +199,10 @@ msgstr "📈 Statistics"
 msgid "admin_tools:button:user_editor"
 msgstr "👤 User editor"
 
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "admin_tools:button:rejected_users"
+msgstr "🚫 Rejected users"
+
 #: app/bot/routers/admin_tools/keyboard.py:40
 msgid "admin_tools:button:invite_editor"
 msgstr "🔗 Invite Links"
@@ -1399,6 +1403,46 @@ msgstr[0] ""
 msgstr[1] ""
 
 
+#: app/bot/routers/admin_tools/rejected_users_handler.py
+msgid "rejected_users:message:list"
+msgstr "🚫 <b>Rejected users</b>\n\nSelect a user to return them to the review queue."
+
+#: app/bot/routers/admin_tools/rejected_users_handler.py
+msgid "rejected_users:message:no_rejected"
+msgstr "<i>No rejected users.</i>"
+
+#: app/bot/routers/admin_tools/rejected_users_handler.py
+msgid "rejected_users:message:details"
+msgstr "🚫 <b>Rejected user</b>\n\nName: {name}\nUsername: @{username}\nID: <code>{tg_id}</code>"
+
+#: app/bot/routers/admin_tools/rejected_users_handler.py
+msgid "rejected_users:message:confirm_unreject"
+msgstr "Return user <b>{name}</b> (<code>{tg_id}</code>) to the review queue?"
+
+#: app/bot/routers/admin_tools/rejected_users_handler.py
+msgid "rejected_users:popup:not_found"
+msgstr "❌ User not found or no longer in the rejected list"
+
+#: app/bot/routers/admin_tools/rejected_users_handler.py
+msgid "rejected_users:popup:unrejected"
+msgstr "✅ {name} returned to the review queue"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "rejected_users:button:unreject"
+msgstr "♻️ Return to queue"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "rejected_users:button:confirm_unreject"
+msgstr "✅ Confirm return"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "rejected_users:button:previous_page"
+msgstr "◀️ Previous page"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "rejected_users:button:next_page"
+msgstr "▶️ Next page"
+
 #: app/bot/middlewares/approval.py
 msgid "approval:notice:pending"
 msgstr "⏳ <i>Your request is awaiting admin approval. Please wait.</i>"
@@ -1415,6 +1459,10 @@ msgstr "🚫 <b>Access denied</b>\n\nContact support if you believe this is a mi
 msgid "approval:admin:new_request"
 msgstr "🆕 <b>New access request</b>\n\nName: {name}\nUsername: @{username}\nID: <code>{tg_id}</code>"
 
+#: app/bot/tasks/approval_reminder.py
+msgid "approval:admin:reminder"
+msgstr "⏰ <b>Reminder: request awaiting decision</b>\n\nName: {name}\nUsername: @{username}\nID: <code>{tg_id}</code>"
+
 #: app/bot/routers/admin_tools/approval_handler.py
 msgid "approval:admin:done"
 msgstr "✅ Decision: <b>{status}</b>"
@@ -1429,7 +1477,7 @@ msgstr "✅ <b>Access granted!</b>\n\nPress /start to begin."
 
 #: app/bot/routers/admin_tools/approval_handler.py
 msgid "approval:user:denied"
-msgstr "🚫 <b>Access denied.</b>"
+msgstr "🚫 <b>Access denied.</b>\n\nIf you believe this is a mistake, contact support."
 
 #: app/bot/routers/admin_tools/approval_handler.py
 msgid "approval:button:approve"

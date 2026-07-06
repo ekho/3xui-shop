@@ -10,7 +10,7 @@ from app.bot.routers.misc.keyboard import (
 )
 from app.bot.utils.formatting import format_device_count
 from app.bot.utils.navigation import NavAdminTools
-from app.db.models import Server
+from app.db.models import Server, User
 from app.db.models.invite import Invite
 
 
@@ -35,6 +35,12 @@ def admin_tools_keyboard(is_dev: bool) -> InlineKeyboardMarkup:
         InlineKeyboardButton(
             text=_("admin_tools:button:user_editor"),
             callback_data=NavAdminTools.USER_EDITOR,
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=_("admin_tools:button:rejected_users"),
+            callback_data=NavAdminTools.REJECTED_USERS,
         )
     )
     builder.row(
@@ -466,4 +472,77 @@ def confirm_delete_plan_keyboard(devices: int) -> InlineKeyboardMarkup:
         )
     )
     builder.row(cancel_button(NavAdminTools.SHOW_PLAN + f"_{devices}"))
+    return builder.as_markup()
+
+
+def rejected_users_keyboard(
+    users: list[User], page: int = 0, limit: int = 5
+) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    total_users = len(users)
+    start_idx = page * limit
+    end_idx = min(start_idx + limit, total_users)
+
+    for i in range(start_idx, end_idx):
+        rejected_user = users[i]
+        label = (
+            f"{rejected_user.first_name} (@{rejected_user.username})"
+            if rejected_user.username
+            else f"{rejected_user.first_name} ({rejected_user.tg_id})"
+        )
+        builder.row(
+            InlineKeyboardButton(
+                text=label,
+                callback_data=NavAdminTools.SHOW_REJECTED_DETAILS + f"_{rejected_user.tg_id}",
+            )
+        )
+
+    row = []
+    if page > 0:
+        row.append(
+            InlineKeyboardButton(
+                text=_("rejected_users:button:previous_page"),
+                callback_data=NavAdminTools.SHOW_REJECTED_PAGE + f"_{page-1}",
+            )
+        )
+
+    if (page + 1) * limit < total_users:
+        row.append(
+            InlineKeyboardButton(
+                text=_("rejected_users:button:next_page"),
+                callback_data=NavAdminTools.SHOW_REJECTED_PAGE + f"_{page+1}",
+            )
+        )
+
+    if row:
+        builder.row(*row)
+
+    builder.row(back_button(NavAdminTools.MAIN))
+    builder.row(back_to_main_menu_button())
+    return builder.as_markup()
+
+
+def rejected_user_details_keyboard(tg_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
+            text=_("rejected_users:button:unreject"),
+            callback_data=NavAdminTools.CONFIRM_UNREJECT_USER + f"_{tg_id}",
+        )
+    )
+    builder.row(back_button(NavAdminTools.REJECTED_USERS))
+    return builder.as_markup()
+
+
+def confirm_unreject_user_keyboard(tg_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
+            text=_("rejected_users:button:confirm_unreject"),
+            callback_data=NavAdminTools.UNREJECT_USER + f"_{tg_id}",
+        )
+    )
+    builder.row(cancel_button(NavAdminTools.SHOW_REJECTED_DETAILS + f"_{tg_id}"))
     return builder.as_markup()
