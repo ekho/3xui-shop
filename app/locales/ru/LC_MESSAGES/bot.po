@@ -320,6 +320,7 @@ msgstr ""
 "💳 <b>Тариф: {devices}</b>\n"
 "\n"
 "Лимит трафика: {traffic}\n"
+"Группы инбаундов: <code>{groups}</code>\n"
 "\n"
 "Цены:\n"
 "<code>{prices}</code>"
@@ -1623,3 +1624,131 @@ msgstr "Автопродление возобновлено."
 #: app/bot/routers/profile/handler.py
 msgid "profile:stars:resume_failed"
 msgstr "Не удалось возобновить: период уже истёк. Оформите подписку заново."
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "admin_tools:button:group_management"
+msgstr "🏷 Группы инбаундов"
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:message:main"
+msgstr "🏷 <b>Группы инбаундов</b>\n\nГруппа = префикс тега инбаунда в панели (до первого дефиса). Профиль юзера — набор групп; подписка собирает ссылки всех инбаундов набора.\n\n"
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:message:empty"
+msgstr "<i>Групп пока нет — создайте первую.</i>"
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:message:group_line"
+msgstr "• <code>{name}</code> — инбаундов: {inbounds}, юзеров: {users}, тарифов: {plans}"
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:message:details"
+msgstr "🏷 Группа <code>{name}</code>\nЮзеров с группой: {users} | В тарифах: {plans}\n\nТап по инбаунду включает/исключает его (бот переименует тег в панели).\n⚠️ Смена тега перезапускает xray; правила роутинга по старому <code>inboundTag</code> поправьте вручную."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:message:enter_name"
+msgstr "🏷 <b>Новая группа</b>\n\nВведите имя (строчные латинские буквы и цифры, без дефисов — например, <code>premium</code>):"
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:message:enter_new_name"
+msgstr "🏷 Переименование группы <code>{name}</code>\n\nВведите новое имя (строчные латинские буквы и цифры, без дефисов). Теги инбаундов и наборы юзеров будут обновлены автоматически:"
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:message:enter_user_id"
+msgstr "👤 <b>Группы пользователя</b>\n\nВведите Telegram ID пользователя:"
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:message:user_groups"
+msgstr "👤 Пользователь <code>{tg_id}</code>\nНабор групп: <code>{groups}</code>\n\nТап по группе включает/исключает её. Изменения применяются к панели сразу."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:message:confirm_delete"
+msgstr "❗️ Удалить группу <code>{name}</code>?\n\nУдаление возможно, только если группа не используется тарифами, юзерами и инбаундами."
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "group_mgmt:button:create"
+msgstr "➕ Создать группу"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "group_mgmt:button:user_groups"
+msgstr "👤 Группы пользователя"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "group_mgmt:button:rename"
+msgstr "✏️ Переименовать"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "group_mgmt:button:delete"
+msgstr "🗑 Удалить"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "group_mgmt:button:confirm_delete"
+msgstr "❗️ Подтвердить удаление"
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:invalid_name"
+msgstr "Некорректное имя: только строчные латинские буквы и цифры, без дефисов."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:exists"
+msgstr "Группа с таким именем уже существует."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:not_found"
+msgstr "Группа не найдена."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:referenced_by_plans"
+msgstr "Группа используется тарифами — сначала уберите её из тарифов."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:referenced_by_users"
+msgstr "Группа назначена пользователям — сначала снимите её с них."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:has_inbounds"
+msgstr "На группу указывают теги инбаундов — сначала исключите инбаунды из группы."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:api_error"
+msgstr "Ошибка панели (возможно, конфликт тега). Состав не изменён — подробности в логах."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:deleted_success"
+msgstr "Группа удалена."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:retagged"
+msgstr "Тег обновлён. Членства юзеров доведёт reconciler (или назначьте вручную сейчас)."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:empty_set_refused"
+msgstr "У пользователя должна остаться хотя бы одна группа."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:empty_resolve"
+msgstr "Набор пуст: на сервере пользователя нет инбаундов этих групп. Изменение отклонено."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:ntf:created_success"
+msgstr "Группа <code>{name}</code> создана."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:ntf:renamed_success"
+msgstr "Группа <code>{old}</code> переименована в <code>{new}</code>."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:ntf:user_not_found"
+msgstr "Пользователь не найден. Введите числовой Telegram ID."
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "plan_editor:button:edit_groups"
+msgstr "🏷 Изменить группы"
+
+#: app/bot/routers/admin_tools/plan_handler.py
+msgid "plan_editor:message:enter_groups"
+msgstr "🏷 Введите группы инбаундов тарифа через пробел (например, <code>regular premium</code>).\n\nДоступные группы: <code>{available}</code>"
+
+#: app/bot/routers/admin_tools/plan_handler.py
+msgid "plan_editor:ntf:invalid_groups"
+msgstr "Некорректный список: все группы должны существовать в реестре (Группы инбаундов)."

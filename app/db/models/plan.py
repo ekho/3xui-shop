@@ -6,6 +6,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.bot.utils.constants import DEFAULT_INBOUND_GROUPS
+
 from . import Base
 
 logger = logging.getLogger(__name__)
@@ -28,6 +30,10 @@ class Plan(Base):
     devices: Mapped[int] = mapped_column(Integer, unique=True, nullable=False)
     traffic_gb: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     prices: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    # Набор групп инбаундов, который получает купивший этот тариф (JSON-массив имён).
+    inbound_groups: Mapped[list[str]] = mapped_column(
+        JSON, default=lambda: list(DEFAULT_INBOUND_GROUPS), nullable=False
+    )
 
     def __repr__(self) -> str:
         return f"<Plan(id={self.id}, devices={self.devices}, traffic_gb={self.traffic_gb})>"

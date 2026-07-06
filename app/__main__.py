@@ -106,6 +106,13 @@ def _start_schedulers(
         vpn_service=services.vpn,
         notification_service=services.notification,
     )
+    tasks.inbound_reconcile.start_scheduler(
+        session_factory=db.session,
+        redis=redis,
+        server_pool_service=services.server_pool,
+        inbound_group_service=services.inbound_groups,
+        notification_service=services.notification,
+    )
     if config.shop.APPROVAL_REQUIRED:
         tasks.approval_reminder.start_scheduler(
             session_factory=db.session,

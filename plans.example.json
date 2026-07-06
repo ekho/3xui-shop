@@ -5,6 +5,7 @@
         {
             "devices": 1,
             "traffic_gb": 0,
+            "inbound_groups": ["regular"],
             "prices": {
                 "RUB": {
                     "30": 70,

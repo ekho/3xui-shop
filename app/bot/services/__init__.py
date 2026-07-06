@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from app.bot.models import ServicesContainer
 from app.config import Config
 
+from .inbound_groups import InboundGroupService
 from .invite_stats import InviteStatsService
 from .notification import NotificationService
 from .payment_stats import PaymentStatsService
@@ -22,7 +23,18 @@ async def initialize(
     server_pool = ServerPoolService(config=config, session=session)
     plan = PlanService(session_factory=session)
     await plan.load()
-    vpn = VPNService(config=config, session=session, server_pool_service=server_pool)
+    inbound_groups = InboundGroupService(session_factory=session)
+    # Группы из тарифов авторегистрируются в реестре (тариф — деплой-контролируемый
+    # источник; опечатка даст группу с 0 инбаундов → сработает fail+алерт при выдаче).
+    plan_groups = sorted({name for p in plan.get_all_plans() for name in p.inbound_groups})
+    await inbound_groups.ensure_registered(plan_groups)
+    vpn = VPNService(
+        config=config,
+        session=session,
+        server_pool_service=server_pool,
+        plan_service=plan,
+        inbound_group_service=inbound_groups,
+    )
     notification = NotificationService(config=config, bot=bot)
     referral = ReferralService(config=config, session_factory=session, vpn_service=vpn)
     subscription = SubscriptionService(config=config, session_factory=session, vpn_service=vpn)
@@ -32,6 +44,7 @@ async def initialize(
     return ServicesContainer(
         server_pool=server_pool,
         plan=plan,
+        inbound_groups=inbound_groups,
         vpn=vpn,
         notification=notification,
         referral=referral,

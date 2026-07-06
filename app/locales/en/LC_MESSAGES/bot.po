@@ -314,6 +314,7 @@ msgstr ""
 "💳 <b>Plan: {devices}</b>\n"
 "\n"
 "Traffic limit: {traffic}\n"
+"Inbound groups: <code>{groups}</code>\n"
 "\n"
 "Prices:\n"
 "<code>{prices}</code>"
@@ -1607,3 +1608,131 @@ msgstr "Auto-renewal resumed."
 #: app/bot/routers/profile/handler.py
 msgid "profile:stars:resume_failed"
 msgstr "Could not resume: the period has already ended. Please subscribe again."
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "admin_tools:button:group_management"
+msgstr "🏷 Inbound groups"
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:message:main"
+msgstr "🏷 <b>Inbound groups</b>\n\nGroup = inbound tag prefix in the panel (up to the first dash). A user's profile is a set of groups; the subscription serves links of every inbound in the set.\n\n"
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:message:empty"
+msgstr "<i>No groups yet — create the first one.</i>"
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:message:group_line"
+msgstr "• <code>{name}</code> — inbounds: {inbounds}, users: {users}, plans: {plans}"
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:message:details"
+msgstr "🏷 Group <code>{name}</code>\nUsers with this group: {users} | In plans: {plans}\n\nTap an inbound to include/exclude it (the bot renames its tag in the panel).\n⚠️ Retagging restarts xray; fix routing rules referencing the old <code>inboundTag</code> manually."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:message:enter_name"
+msgstr "🏷 <b>New group</b>\n\nEnter a name (lowercase latin letters and digits, no dashes — e.g. <code>premium</code>):"
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:message:enter_new_name"
+msgstr "🏷 Renaming group <code>{name}</code>\n\nEnter the new name (lowercase latin letters and digits, no dashes). Inbound tags and user sets will be updated automatically:"
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:message:enter_user_id"
+msgstr "👤 <b>User groups</b>\n\nEnter the user's Telegram ID:"
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:message:user_groups"
+msgstr "👤 User <code>{tg_id}</code>\nGroup set: <code>{groups}</code>\n\nTap a group to toggle it. Changes are applied to the panel immediately."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:message:confirm_delete"
+msgstr "❗️ Delete group <code>{name}</code>?\n\nDeletion is possible only when no plans, users or inbounds reference the group."
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "group_mgmt:button:create"
+msgstr "➕ Create group"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "group_mgmt:button:user_groups"
+msgstr "👤 User groups"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "group_mgmt:button:rename"
+msgstr "✏️ Rename"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "group_mgmt:button:delete"
+msgstr "🗑 Delete"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "group_mgmt:button:confirm_delete"
+msgstr "❗️ Confirm deletion"
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:invalid_name"
+msgstr "Invalid name: lowercase latin letters and digits only, no dashes."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:exists"
+msgstr "A group with this name already exists."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:not_found"
+msgstr "Group not found."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:referenced_by_plans"
+msgstr "The group is used by plans — remove it from the plans first."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:referenced_by_users"
+msgstr "The group is assigned to users — unassign it first."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:has_inbounds"
+msgstr "Inbound tags still reference this group — exclude those inbounds first."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:api_error"
+msgstr "Panel error (possibly a tag conflict). Nothing was changed — see logs."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:deleted_success"
+msgstr "Group deleted."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:retagged"
+msgstr "Tag updated. The reconciler will converge user memberships (or assign manually now)."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:empty_set_refused"
+msgstr "The user must keep at least one group."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:empty_resolve"
+msgstr "Empty set: the user's server has no inbounds of these groups. Change rejected."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:ntf:created_success"
+msgstr "Group <code>{name}</code> created."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:ntf:renamed_success"
+msgstr "Group <code>{old}</code> renamed to <code>{new}</code>."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:ntf:user_not_found"
+msgstr "User not found. Enter a numeric Telegram ID."
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "plan_editor:button:edit_groups"
+msgstr "🏷 Edit groups"
+
+#: app/bot/routers/admin_tools/plan_handler.py
+msgid "plan_editor:message:enter_groups"
+msgstr "🏷 Enter the plan's inbound groups separated by spaces (e.g. <code>regular premium</code>).\n\nAvailable groups: <code>{available}</code>"
+
+#: app/bot/routers/admin_tools/plan_handler.py
+msgid "plan_editor:ntf:invalid_groups"
+msgstr "Invalid list: every group must exist in the registry (Inbound groups)."

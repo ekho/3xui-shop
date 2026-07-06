@@ -38,7 +38,12 @@ class PlanService:
 
         self._plans = [
             Plan.from_dict(
-                {"devices": p.devices, "traffic_gb": p.traffic_gb, "prices": p.prices}
+                {
+                    "devices": p.devices,
+                    "traffic_gb": p.traffic_gb,
+                    "inbound_groups": p.inbound_groups,
+                    "prices": p.prices,
+                }
             )
             for p in db_plans
         ]
@@ -67,11 +72,17 @@ class PlanService:
             for duration in data.get("durations", []):
                 await PlanDuration.create(session=session, days=int(duration))
             for plan_data in data.get("plans", []):
+                kwargs = {
+                    "traffic_gb": plan_data.get("traffic_gb", 0),
+                    "prices": plan_data["prices"],
+                }
+                # Опциональное поле: без него колонка получит дефолт ["regular"].
+                if plan_data.get("inbound_groups"):
+                    kwargs["inbound_groups"] = list(plan_data["inbound_groups"])
                 await PlanModel.create(
                     session=session,
                     devices=plan_data["devices"],
-                    traffic_gb=plan_data.get("traffic_gb", 0),
-                    prices=plan_data["prices"],
+                    **kwargs,
                 )
 
     def get_plan(self, devices: int) -> Plan | None:

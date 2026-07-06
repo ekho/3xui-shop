@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.bot.services import (
+        InboundGroupService,
         NotificationService,
         PlanService,
         ServerPoolService,
@@ -21,6 +22,7 @@ from dataclasses import dataclass
 class ServicesContainer:
     server_pool: ServerPoolService
     plan: PlanService
+    inbound_groups: InboundGroupService
     vpn: VPNService
     notification: NotificationService
     referral: ReferralService

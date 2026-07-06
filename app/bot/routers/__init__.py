@@ -33,6 +33,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         admin_tools.admin_tools_handler.router,
         admin_tools.approval_handler.router,
         admin_tools.backup_handler.router,
+        admin_tools.group_handler.router,
         admin_tools.invites_handler.router,
         admin_tools.maintenance_handler.router,
         admin_tools.notification_handler.router,

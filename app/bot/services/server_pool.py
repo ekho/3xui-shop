@@ -108,13 +108,9 @@ class ServerPoolService:
         await self._add_server(server)
         logger.info(f"Server {server.name} reinitialized successfully.")
 
-    async def get_inbound_id(self, api: AsyncApi) -> int | None:
-        try:
-            inbounds = await api.inbound.get_list()
-        except Exception as exception:
-            logger.error(f"Failed to fetch inbounds: {exception}")
-            return None
-        return inbounds[0].id
+    def all_connections(self) -> list[Connection]:
+        """Все живые коннекшены пула (для операций по всем серверам: ретег, зеркала групп)."""
+        return list(self._servers.values())
 
     async def get_connection(self, user: User) -> Connection | None:
         if not user.server_id:

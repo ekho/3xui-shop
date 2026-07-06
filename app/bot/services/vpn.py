@@ -3,11 +3,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .server_pool import ServerPoolService
+    from .inbound_groups import InboundGroupService
+    from .plan import PlanService
+    from .server_pool import Connection, ServerPoolService
 
 import logging
 
-from py3xui import Client, Inbound
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.bot.models import ClientData
@@ -19,6 +20,9 @@ from app.bot.utils.time import (
 from app.config import Config
 from app.db.models import Promocode, User
 
+from .inbound_groups import EmptyInboundSetError
+from .xui_clients import ClientView, XuiClientsApi
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,53 +32,67 @@ def gb_to_bytes(gb: int) -> int:
 
 
 class VPNService:
+    """Работа с клиентами панели через клиент-центричный API v3.4.2 (/panel/api/clients).
+
+    Клиент живёт в НАБОРЕ инбаундов (группы = тег-префиксы, см. InboundGroupService);
+    панель сама пропагирует правки во все членства и агрегирует трафик, подписка
+    автоматически отдаёт ссылки всех инбаундов с subId клиента.
+    """
+
     def __init__(
         self,
         config: Config,
         session: async_sessionmaker,
         server_pool_service: ServerPoolService,
+        plan_service: PlanService,
+        inbound_group_service: InboundGroupService,
     ) -> None:
         self.config = config
         self.session = session
         self.server_pool_service = server_pool_service
+        self.plan_service = plan_service
+        self.inbound_group_service = inbound_group_service
         logger.info("VPN Service initialized.")
 
     @staticmethod
-    async def _get_by_email(api, email: str) -> Client | None:
-        """P3: py3xui 0.7.0 + 3x-ui v3.1+ БРОСАЕТ ValueError 'record not found' для
-        несуществующего клиента вместо возврата None. Приводим к None, остальные ошибки пробрасываем.
-        """
-        try:
-            return await api.client.get_by_email(email)
-        except ValueError as exception:
-            if "record not found" in str(exception).lower():
-                return None
-            raise
+    def _clients(connection: Connection) -> XuiClientsApi:
+        return XuiClientsApi(connection.api)
 
-    async def get_client_settings(self, connection, email: str) -> tuple[int | None, int]:
-        """P4: (limit_ip, total_gb в байтах) читаются из settings инбаунда. На 3x-ui v3.4.2
-        client.total из get_by_email всегда 0 — настоящий лимит трафика лежит в settings.totalGB
-        (как limit_ip). Возвращает (None, 0), если клиент не найден в инбаундах.
-        """
+    async def _resolve_inbounds(self, connection: Connection, groups: list[str]) -> list[int]:
+        """Инбаунды набора на сервере юзера. Пустой резолв — EmptyInboundSetError:
+        опечатка в теге/удалённый инбаунд не должны молча выдавать пустую подписку
+        (алерт делает вызывающий слой — шлюз или крон)."""
+        inbound_ids = await self.inbound_group_service.resolve_ids(connection.api, groups)
+        if not inbound_ids:
+            logger.critical(
+                f"Inbound groups {groups} resolve to EMPTY set on server "
+                f"'{connection.server.name}' — check inbound tags in the panel."
+            )
+            raise EmptyInboundSetError(groups, connection.server.name)
+        return inbound_ids
+
+    async def _persist_groups(self, user: User, groups: list[str]) -> None:
+        async with self.session() as session:
+            await User.update(session=session, tg_id=user.tg_id, inbound_groups=list(groups))
+        user.inbound_groups = list(groups)
+
+    async def _mirror_group_label(
+        self, clients: XuiClientsApi, groups: list[str], email: str
+    ) -> None:
+        """Метка client.group в панели — косметика для админа (фильтры/bulk в UI).
+        Best-effort: её падение не валит выдачу."""
         try:
-            inbounds: list[Inbound] = await connection.api.inbound.get_list()
+            await clients.set_group_label(self.inbound_group_service.profile_label(groups), [email])
         except Exception as exception:
-            logger.error(f"Failed to fetch inbounds: {exception}")
-            return None, 0
-        for inbound in inbounds:
-            for inbound_client in inbound.settings.clients:
-                if inbound_client.email == email:
-                    return inbound_client.limit_ip, (inbound_client.total_gb or 0)
-        logger.warning(f"Client {email} not found in inbounds settings.")
-        return None, 0
+            logger.warning(f"Failed to mirror group label for {email}: {exception}")
 
-    async def is_client_exists(self, user: User) -> Client | None:
+    async def is_client_exists(self, user: User) -> ClientView | None:
         connection = await self.server_pool_service.get_connection(user)
 
         if not connection:
             return None
 
-        client = await self._get_by_email(connection.api, str(user.tg_id))
+        client = await self._clients(connection).get(str(user.tg_id))
 
         if client:
             logger.debug(f"Client {user.tg_id} exists on server {connection.server.name}.")
@@ -83,26 +101,8 @@ class VPNService:
 
         return client
 
-    async def get_limit_ip(self, user: User, client: Client) -> int | None:
-        connection = await self.server_pool_service.get_connection(user)
-
-        if not connection:
-            return None
-
-        try:
-            inbounds: list[Inbound] = await connection.api.inbound.get_list()
-        except Exception as exception:
-            logger.error(f"Failed to fetch inbounds: {exception}")
-            return None
-
-        for inbound in inbounds:
-            for inbound_client in inbound.settings.clients:
-                if inbound_client.email == client.email:
-                    logger.debug(f"Client {client.email} limit ip: {inbound_client.limit_ip}")
-                    return inbound_client.limit_ip
-
-        logger.critical(f"Client {client.email} not found in inbounds.")
-        return None
+    async def get_limit_ip(self, user: User, client: ClientView) -> int | None:
+        return client.limit_ip
 
     async def get_client_data(self, user: User) -> ClientData | None:
         logger.debug(f"Starting to retrieve client data for {user.tg_id}.")
@@ -113,19 +113,27 @@ class VPNService:
             return None
 
         try:
-            client = await self._get_by_email(connection.api, str(user.tg_id))
+            clients = self._clients(connection)
+            view = await clients.get(str(user.tg_id))
 
-            if not client:
+            if not view:
                 logger.critical(
                     f"Client {user.tg_id} not found on server {connection.server.name}."
                 )
                 return None
 
-            # P4: limit_ip И лимит трафика читаем из settings (client.total из API v3.4.2 = 0).
-            limit_ip, total_limit = await self.get_client_settings(connection, client.email)
-            max_devices = -1 if not limit_ip else limit_ip
-            expiry_time = -1 if client.expiry_time == 0 else client.expiry_time
-            traffic_used = client.up + client.down
+            # Трафик и лимит — агрегаты по ВСЕМУ набору инбаундов клиента (панель сама
+            # суммирует; отдельный поход по settings инбаундов больше не нужен).
+            traffic = await clients.traffic(str(user.tg_id))
+            if traffic is not None:
+                traffic_up, traffic_down = traffic
+            else:
+                traffic_up, traffic_down = (view.used_traffic or 0), 0
+            traffic_used = traffic_up + traffic_down
+
+            max_devices = -1 if not view.limit_ip else view.limit_ip
+            expiry_time = -1 if view.expiry_time == 0 else view.expiry_time
+            total_limit = view.total_gb
 
             if total_limit <= 0:  # безлимит
                 traffic_total = -1
@@ -139,8 +147,8 @@ class VPNService:
                 traffic_total=traffic_total,
                 traffic_remaining=traffic_remaining,
                 traffic_used=traffic_used,
-                traffic_up=client.up,
-                traffic_down=client.down,
+                traffic_up=traffic_up,
+                traffic_down=traffic_down,
                 expiry_time=expiry_time,
             )
             logger.debug(f"Successfully retrieved client data for {user.tg_id}: {client_data}.")
@@ -178,8 +186,13 @@ class VPNService:
         enable: bool = True,
         flow: str = "xtls-rprx-vision",
         total_gb: int = 0,
-        inbound_id: int = 1,
+        groups: list[str] | None = None,
     ) -> bool:
+        """Создать клиента сразу во всех инбаундах его набора групп.
+
+        groups=None -> набор юзера из БД или дефолт. Пустой резолв набора
+        пробрасывает EmptyInboundSetError (политика fail+алерт).
+        """
         logger.info(f"Creating new client {user.tg_id} | {devices} devices {duration} days.")
 
         await self.server_pool_service.assign_server_to_user(user)
@@ -188,21 +201,32 @@ class VPNService:
         if not connection:
             return False
 
-        new_client = Client(
-            email=str(user.tg_id),
-            enable=enable,
-            id=user.vpn_id,
-            expiry_time=days_to_timestamp(duration),
-            flow=flow,
-            limit_ip=devices,
-            sub_id=user.vpn_id,
-            total_gb=total_gb,
-        )
-        inbound_id = await self.server_pool_service.get_inbound_id(connection.api)
+        groups = list(groups or self.inbound_group_service.effective_groups(user))
+        inbound_ids = await self._resolve_inbounds(connection, groups)
+
+        # Per-protocol секреты (пароль SS и т.п.) панель генерирует сама для каждого
+        # инбаунда набора; uuid и subId задаём свои — на subId собирается подписка.
+        new_client = {
+            "email": str(user.tg_id),
+            "id": user.vpn_id,
+            "subId": user.vpn_id,
+            "flow": flow,
+            "limitIp": devices,
+            "totalGB": total_gb,
+            "expiryTime": days_to_timestamp(duration),
+            "enable": enable,
+            "tgId": 0,
+        }
 
         try:
-            await connection.api.client.add(inbound_id=inbound_id, clients=[new_client])
-            logger.info(f"Successfully created client for {user.tg_id}")
+            clients = self._clients(connection)
+            await clients.add(new_client, inbound_ids)
+            await self._persist_groups(user, groups)
+            await self._mirror_group_label(clients, groups, str(user.tg_id))
+            logger.info(
+                f"Successfully created client for {user.tg_id} "
+                f"in inbounds {inbound_ids} (groups: {groups})."
+            )
             return True
         except Exception as exception:
             logger.error(f"Error creating client for {user.tg_id}: {exception}")
@@ -226,68 +250,122 @@ class VPNService:
             return False
 
         try:
-            client = await self._get_by_email(connection.api, str(user.tg_id))  # P3
+            clients = self._clients(connection)
+            view = await clients.get(str(user.tg_id))
 
-            if client is None:
+            if view is None:
                 logger.critical(f"Client {user.tg_id} not found for update.")
                 return False
 
-            # P4: текущие limit_ip и лимит трафика — из settings (client.* из API v3.4.2 ненадёжны).
-            current_device_limit, current_total_gb = await self.get_client_settings(
-                connection, client.email
-            )
             if not replace_devices:
-                devices = (current_device_limit or 0) + devices
+                devices = view.limit_ip + devices
 
             current_time = get_current_timestamp()
 
             if not replace_duration:
-                expiry_time_to_use = max(client.expiry_time, current_time)
+                expiry_time_to_use = max(view.expiry_time, current_time)
             else:
                 expiry_time_to_use = current_time
 
             expiry_time = add_days_to_timestamp(timestamp=expiry_time_to_use, days=duration)
 
-            client.enable = enable
-            client.id = user.vpn_id
-            client.expiry_time = expiry_time
-            client.flow = flow
-            client.limit_ip = devices
-            client.sub_id = user.vpn_id
-            # M10/P4: total_gb=None → сохранить ТЕКУЩИЙ лимит из settings (current_total_gb),
-            # а НЕ client.total (на v3.4.2 он = 0 → промокод/бонус молча снял бы платный лимит).
-            client.total_gb = (current_total_gb or 0) if total_gb is None else total_gb
+            # update/:email заменяет запись, панель пропагирует её во все инбаунды клиента.
+            # Опущенные id/password/auth панель сохраняет от текущей записи (не ротирует),
+            # поэтому payload строим явно, а не копией сырой записи.
+            # M10/P4: total_gb=None → сохранить текущий лимит (промокод/бонус не должен
+            # молча снять платный лимит трафика).
+            updated_client = {
+                "email": str(user.tg_id),
+                "subId": user.vpn_id,
+                "flow": flow,
+                "limitIp": devices,
+                "totalGB": view.total_gb if total_gb is None else total_gb,
+                "expiryTime": expiry_time,
+                "enable": enable,
+                "tgId": int(view.raw.get("tgId") or 0),
+                "comment": view.raw.get("comment") or "",
+            }
+            if view.group:
+                updated_client["group"] = view.group  # не затирать метку группы
 
-            await connection.api.client.update(client_uuid=client.id, client=client)
+            await clients.update(str(user.tg_id), updated_client)
             logger.info(f"Client {user.tg_id} updated successfully.")
             return True
         except Exception as exception:
             logger.error(f"Error updating client {user.tg_id}: {exception}")
             return False
 
+    async def apply_inbound_groups(self, user: User, groups: list[str] | None = None) -> bool:
+        """Привести членства клиента к набору групп (diff -> attach/detach).
+
+        Детачим ТОЛЬКО из инбаундов известных групп: ручные прицепки админа к
+        инбаундам с «чужими» тегами не трогаются. Пустой резолв — исключение
+        (никогда не приводим клиента к пустому набору).
+        """
+        connection = await self.server_pool_service.get_connection(user)
+
+        if not connection:
+            return False
+
+        groups = list(groups or self.inbound_group_service.effective_groups(user))
+        desired = set(await self._resolve_inbounds(connection, groups))
+
+        clients = self._clients(connection)
+        view = await clients.get(str(user.tg_id))
+        if view is None:
+            logger.critical(f"Client {user.tg_id} not found to apply groups {groups}.")
+            return False
+
+        have = set(view.inbound_ids)
+        managed = await self.inbound_group_service.managed_inbound_ids(connection.api)
+        to_attach = sorted(desired - have)
+        to_detach = sorted((have & managed) - desired)
+
+        try:
+            await clients.attach(str(user.tg_id), to_attach)
+            await clients.detach(str(user.tg_id), to_detach)
+        except Exception as exception:
+            logger.error(f"Failed to apply groups {groups} for {user.tg_id}: {exception}")
+            return False
+
+        await self._persist_groups(user, groups)
+        await self._mirror_group_label(clients, groups, str(user.tg_id))
+
+        if to_attach or to_detach:
+            logger.info(
+                f"Applied groups {groups} for {user.tg_id}: +{to_attach} -{to_detach}."
+            )
+        return True
+
     async def reset_traffic(self, user: User) -> bool:
-        """G8/m1: обнулить использованный трафик. В py3xui 0.7.0 метод — client.reset_stats(inbound_id, email)."""
+        """G8/m1: обнулить использованный трафик — разом по всем инбаундам клиента."""
         connection = await self.server_pool_service.get_connection(user)
         if not connection:
             return False
-        inbound_id = await self.server_pool_service.get_inbound_id(connection.api)
-        if inbound_id is None:
-            logger.error(f"reset_traffic {user.tg_id}: inbound_id not found.")
-            return False
         try:
-            await connection.api.client.reset_stats(inbound_id=inbound_id, email=str(user.tg_id))
+            await self._clients(connection).reset_traffic(str(user.tg_id))
             logger.info(f"Traffic reset for {user.tg_id}.")
             return True
         except Exception as exception:
             logger.error(f"reset_traffic failed for {user.tg_id}: {exception}")
             return False
 
+    def _plan_groups(self, devices: int) -> list[str] | None:
+        """Набор групп купленного тарифа (по devices — ключ тарифа). None, если тариф
+        не найден (напр. тариф удалили после покупки) — тогда берётся набор юзера."""
+        plan = self.plan_service.get_plan(devices)
+        return list(plan.inbound_groups) if plan else None
+
     async def create_subscription(
         self, user: User, devices: int, duration: int, traffic_gb: int = 0
     ) -> bool:
         if not await self.is_client_exists(user):
             return await self.create_client(
-                user=user, devices=devices, duration=duration, total_gb=gb_to_bytes(traffic_gb)
+                user=user,
+                devices=devices,
+                duration=duration,
+                total_gb=gb_to_bytes(traffic_gb),
+                groups=self._plan_groups(devices),
             )
         return False
 
@@ -303,6 +381,8 @@ class VPNService:
         )
         if not ok:
             return False
+        # Набор групп мог смениться (правка тарифа) — сходимся к актуальному.
+        await self.apply_inbound_groups(user, groups=self._plan_groups(devices))
         # m7: продление сбрасывает использованный трафик. extend не считать успешным без сброса
         # (иначе после исчерпания лимита юзер продлил, а счётчик остался > лимита → доступа нет).
         if not await self.reset_traffic(user):
@@ -323,21 +403,29 @@ class VPNService:
                 total_gb=gb_to_bytes(traffic_gb),
             )
             if ok:
+                # Смена тарифа = возможно другой набор инбаундов (например, regular -> premium).
+                await self.apply_inbound_groups(user, groups=self._plan_groups(devices))
                 await self.reset_traffic(user)  # смена тарифа — начать новый лимит с чистого счётчика
             return ok
         return False
 
     async def process_bonus_days(self, user: User, duration: int, devices: int) -> bool:
-        if await self.is_client_exists(user):
-            updated = await self.update_client(user=user, devices=0, duration=duration)
-            if updated:
-                logger.info(f"Updated client {user.tg_id} with additional {duration} days(-s).")
-                return True
-        else:
-            created = await self.create_client(user=user, devices=devices, duration=duration)
-            if created:
-                logger.info(f"Created client {user.tg_id} with additional {duration} days(-s)")
-                return True
+        try:
+            if await self.is_client_exists(user):
+                updated = await self.update_client(user=user, devices=0, duration=duration)
+                if updated:
+                    logger.info(f"Updated client {user.tg_id} with additional {duration} days(-s).")
+                    return True
+            else:
+                created = await self.create_client(user=user, devices=devices, duration=duration)
+                if created:
+                    logger.info(f"Created client {user.tg_id} with additional {duration} days(-s)")
+                    return True
+        except EmptyInboundSetError as exception:
+            # Триал/промокод — не платёж: алертить некому прямо тут, но отказ видим
+            # (флоу вернёт юзеру ошибку), а reconciler дополнительно поднимет алерт.
+            logger.critical(f"Bonus days for {user.tg_id} failed: {exception}")
+            return False
 
         return False
 

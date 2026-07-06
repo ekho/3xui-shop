@@ -49,6 +49,10 @@ class EditPlanPricesStates(StatesGroup):
     prices = State()
 
 
+class EditPlanGroupsStates(StatesGroup):
+    groups = State()
+
+
 def _format_traffic(traffic_gb: int) -> str:
     return f"{traffic_gb} {_('GB')}" if traffic_gb else _("plan_editor:message:unlimited_traffic")
 
@@ -269,6 +273,7 @@ async def callback_show_plan(
     text = _("plan_editor:message:details").format(
         devices=format_device_count(plan.devices),
         traffic=_format_traffic(plan.traffic_gb),
+        groups=", ".join(plan.inbound_groups),
         prices=format_plan_prices(plan.prices, durations),
     )
     await callback.message.edit_text(text=text, reply_markup=plan_details_keyboard(devices))
@@ -410,6 +415,7 @@ async def show_plan_after_update(
     text = _("plan_editor:message:details").format(
         devices=format_device_count(plan.devices),
         traffic=_format_traffic(plan.traffic_gb),
+        groups=", ".join(plan.inbound_groups),
         prices=format_plan_prices(plan.prices, durations),
     )
     await message.bot.edit_message_text(
@@ -417,6 +423,71 @@ async def show_plan_after_update(
         chat_id=message.chat.id,
         message_id=main_message_id,
         reply_markup=plan_details_keyboard(devices),
+    )
+
+
+@router.callback_query(F.data.startswith(NavAdminTools.EDIT_PLAN_GROUPS), IsAdmin())
+async def callback_edit_plan_groups(
+    callback: CallbackQuery,
+    user: User,
+    state: FSMContext,
+    services: ServicesContainer,
+) -> None:
+    devices = int(callback.data.split("_")[3])
+    logger.info(f"Admin {user.tg_id} started editing inbound groups for plan {devices}.")
+
+    plan = services.plan.get_plan(devices)
+    if not plan:
+        await services.notification.show_popup(
+            callback=callback, text=_("plan_editor:popup:not_found")
+        )
+        return
+
+    available = sorted(await services.inbound_groups.known_groups())
+    await state.set_state(EditPlanGroupsStates.groups)
+    await state.update_data(
+        {MAIN_MESSAGE_ID_KEY: callback.message.message_id, PLAN_DEVICES_KEY: devices}
+    )
+    await callback.message.edit_text(
+        text=_("plan_editor:message:enter_groups").format(available=", ".join(available))
+        + f"\n\n<code>{' '.join(plan.inbound_groups)}</code>",
+        reply_markup=back_keyboard(NavAdminTools.SHOW_PLAN + f"_{devices}"),
+    )
+
+
+@router.message(EditPlanGroupsStates.groups, IsAdmin())
+async def message_edit_plan_groups(
+    message: Message,
+    user: User,
+    session: AsyncSession,
+    state: FSMContext,
+    services: ServicesContainer,
+) -> None:
+    data = await state.get_data()
+    devices = data[PLAN_DEVICES_KEY]
+    names = sorted({part.lower() for part in (message.text or "").replace(",", " ").split()})
+    logger.info(f"Admin {user.tg_id} entered groups {names} for plan {devices}.")
+
+    known = await services.inbound_groups.known_groups()
+    if not names or any(name not in known for name in names):
+        await services.notification.notify_by_message(
+            message=message, text=_("plan_editor:ntf:invalid_groups"), duration=5
+        )
+        return
+
+    plan = await PlanModel.update(session=session, devices=devices, inbound_groups=names)
+    await state.set_state(None)
+
+    if not plan:
+        await services.notification.notify_by_message(
+            message=message, text=_("plan_editor:ntf:update_failed"), duration=5
+        )
+        return
+
+    await services.plan.load()
+    await show_plan_after_update(message=message, state=state, services=services, devices=devices)
+    await services.notification.notify_by_message(
+        message=message, text=_("plan_editor:ntf:updated_success"), duration=5
     )
 
 

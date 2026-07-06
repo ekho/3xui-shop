@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 from typing import Any, Optional, Self
 
+from sqlalchemy import JSON
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy import ForeignKey, String, func, select, update
 from sqlalchemy.exc import IntegrityError
@@ -70,6 +71,9 @@ class User(Base):
     stars_charge_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     is_stars_auto_renew: Mapped[bool] = mapped_column(default=False, nullable=False)
     stars_expires_at: Mapped[int | None] = mapped_column(nullable=True)  # subscription_expiration_date (unix, сек)
+    # Набор групп инбаундов (JSON-массив имён). None -> дефолт DEFAULT_INBOUND_GROUPS;
+    # заполняется при провижининге из тарифа, переопределяется админом (User Editor).
+    inbound_groups: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     referrals_sent: Mapped[list["Referral"]] = relationship(  # type: ignore
         "Referral",
         foreign_keys="Referral.referrer_tg_id",
