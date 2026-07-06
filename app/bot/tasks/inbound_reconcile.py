@@ -46,7 +46,6 @@ async def reconcile_inbound_groups(
         if user.server_id:
             users_by_server.setdefault(user.server_id, []).append(user)
 
-    known = sorted(await inbound_group_service.known_groups())
     attached = detached = skipped = 0
 
     for server_id, server_users in users_by_server.items():
@@ -58,6 +57,9 @@ async def reconcile_inbound_groups(
 
         clients = XuiClientsApi(connection.api)
         try:
+            # Список групп синкается с панели этого сервера (страница Groups —
+            # единственное место, где группы создаются/редактируются).
+            known = sorted(await inbound_group_service.known_groups(connection.api))
             group_map = await inbound_group_service.resolve(connection.api, known)
             managed = await inbound_group_service.managed_inbound_ids(connection.api)
             by_email = {view.email: view for view in await clients.export()}

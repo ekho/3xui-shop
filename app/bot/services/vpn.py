@@ -80,9 +80,18 @@ class VPNService:
         self, clients: XuiClientsApi, groups: list[str], email: str
     ) -> None:
         """Метка client.group в панели — косметика для админа (фильтры/bulk в UI).
-        Best-effort: её падение не валит выдачу."""
+
+        Группы создаются ТОЛЬКО в панели, а bulkAdd с новым именем создал бы
+        группу — поэтому пишем метку лишь для набора из одной группы и только
+        если она в панели существует. Best-effort: падение не валит выдачу.
+        """
+        if len(groups) != 1:
+            return
+        label = groups[0]
         try:
-            await clients.set_group_label(self.inbound_group_service.profile_label(groups), [email])
+            existing = {row.get("name") for row in await clients.list_groups()}
+            if label in existing:
+                await clients.set_group_label(label, [email])
         except Exception as exception:
             logger.warning(f"Failed to mirror group label for {email}: {exception}")
 

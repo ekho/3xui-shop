@@ -487,23 +487,11 @@ def confirm_delete_plan_keyboard(devices: int) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def group_management_keyboard(group_names: list[str]) -> InlineKeyboardMarkup:
+def group_management_keyboard() -> InlineKeyboardMarkup:
+    """Обзор групп read-only: группы создаются/редактируются в панели 3x-ui,
+    из бота управляется только связка пользователь<->группы."""
     builder = InlineKeyboardBuilder()
 
-    for name in group_names:
-        builder.row(
-            InlineKeyboardButton(
-                text=f"🏷 {name}",
-                callback_data=NavAdminTools.SHOW_GROUP + f"_{name}",
-            )
-        )
-
-    builder.row(
-        InlineKeyboardButton(
-            text=_("group_mgmt:button:create"),
-            callback_data=NavAdminTools.CREATE_GROUP,
-        )
-    )
     builder.row(
         InlineKeyboardButton(
             text=_("group_mgmt:button:user_groups"),
@@ -512,50 +500,6 @@ def group_management_keyboard(group_names: list[str]) -> InlineKeyboardMarkup:
     )
     builder.row(back_button(NavAdminTools.MAIN))
     builder.row(back_to_main_menu_button())
-    return builder.as_markup()
-
-
-def group_details_keyboard(
-    group: str, entries: list[tuple[int, int, str, bool]]
-) -> InlineKeyboardMarkup:
-    """entries: (server_id, inbound_id, подпись, в_группе). Тап по инбаунду = ретег."""
-    builder = InlineKeyboardBuilder()
-
-    for server_id, inbound_id, label, in_group in entries:
-        mark = "✅" if in_group else "⬜️"
-        builder.row(
-            InlineKeyboardButton(
-                text=f"{mark} {label}",
-                callback_data=NavAdminTools.TOGGLE_GROUP_INBOUND
-                + f"_{group}_{server_id}_{inbound_id}",
-            )
-        )
-
-    builder.row(
-        InlineKeyboardButton(
-            text=_("group_mgmt:button:rename"),
-            callback_data=NavAdminTools.RENAME_GROUP + f"_{group}",
-        ),
-        InlineKeyboardButton(
-            text=_("group_mgmt:button:delete"),
-            callback_data=NavAdminTools.CONFIRM_DELETE_GROUP + f"_{group}",
-        ),
-    )
-    builder.row(back_button(NavAdminTools.GROUP_MANAGEMENT))
-    builder.row(back_to_main_menu_button())
-    return builder.as_markup()
-
-
-def confirm_delete_group_keyboard(group: str) -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-
-    builder.row(
-        InlineKeyboardButton(
-            text=_("group_mgmt:button:confirm_delete"),
-            callback_data=NavAdminTools.DELETE_GROUP + f"_{group}",
-        )
-    )
-    builder.row(cancel_button(NavAdminTools.SHOW_GROUP + f"_{group}"))
     return builder.as_markup()
 
 

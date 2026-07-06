@@ -443,7 +443,7 @@ async def callback_edit_plan_groups(
         )
         return
 
-    available = sorted(await services.inbound_groups.known_groups())
+    available = sorted(await services.inbound_groups.known_groups_union(services.server_pool))
     await state.set_state(EditPlanGroupsStates.groups)
     await state.update_data(
         {MAIN_MESSAGE_ID_KEY: callback.message.message_id, PLAN_DEVICES_KEY: devices}
@@ -468,7 +468,7 @@ async def message_edit_plan_groups(
     names = sorted({part.lower() for part in (message.text or "").replace(",", " ").split()})
     logger.info(f"Admin {user.tg_id} entered groups {names} for plan {devices}.")
 
-    known = await services.inbound_groups.known_groups()
+    known = await services.inbound_groups.known_groups_union(services.server_pool)
     if not names or any(name not in known for name in names):
         await services.notification.notify_by_message(
             message=message, text=_("plan_editor:ntf:invalid_groups"), duration=5

@@ -102,12 +102,6 @@ class NavAdminTools(str, Enum):
     DELETE_PLAN = "delete_plan"
 
     GROUP_MANAGEMENT = "group_mgmt"
-    SHOW_GROUP = "show_group"
-    CREATE_GROUP = "create_group"
-    RENAME_GROUP = "rename_group"
-    CONFIRM_DELETE_GROUP = "confirm_del_group"
-    DELETE_GROUP = "del_group"
-    TOGGLE_GROUP_INBOUND = "tgl_grp_ib"
     USER_GROUPS = "user_groups"
     TOGGLE_USER_GROUP = "tgl_usr_grp"
 

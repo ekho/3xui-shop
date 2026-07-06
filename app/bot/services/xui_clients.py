@@ -143,7 +143,9 @@ class XuiClientsApi:
             for row in rows
         ]
 
-    # --- панельные группы клиентов (косметика: метка в UI панели, членств не меняет) ---
+    # --- панельные группы клиентов ---
+    # Группы создаются/редактируются только в панели (страница Groups) — бот их
+    # лишь читает; единственная запись — метка существующей группы на клиенте.
 
     async def list_groups(self) -> list[dict[str, Any]]:
         return await self._get(f"{_BASE}/groups") or []
@@ -151,16 +153,3 @@ class XuiClientsApi:
     async def set_group_label(self, group: str, emails: list[str]) -> None:
         if emails:
             await self._post(f"{_BASE}/groups/bulkAdd", {"emails": emails, "group": group})
-
-    async def clear_group_label(self, emails: list[str]) -> None:
-        if emails:
-            await self._post(f"{_BASE}/groups/bulkRemove", {"emails": emails})
-
-    async def create_group(self, name: str) -> None:
-        await self._post(f"{_BASE}/groups/create", {"name": name})
-
-    async def rename_group(self, old_name: str, new_name: str) -> None:
-        await self._post(f"{_BASE}/groups/rename", {"oldName": old_name, "newName": new_name})
-
-    async def delete_group(self, name: str) -> None:
-        await self._post(f"{_BASE}/groups/delete", {"name": name})

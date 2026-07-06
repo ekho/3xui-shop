@@ -1,5 +1,4 @@
 from ._base import Base
-from .inbound_group import InboundGroup
 from .invite import Invite
 from .plan import Plan
 from .plan_duration import PlanDuration

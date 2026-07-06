@@ -23,11 +23,9 @@ async def initialize(
     server_pool = ServerPoolService(config=config, session=session)
     plan = PlanService(session_factory=session)
     await plan.load()
+    # Реестра групп в боте нет: список групп живёт в панели (страница Groups)
+    # и синкается сервисом по требованию.
     inbound_groups = InboundGroupService(session_factory=session)
-    # Группы из тарифов авторегистрируются в реестре (тариф — деплой-контролируемый
-    # источник; опечатка даст группу с 0 инбаундов → сработает fail+алерт при выдаче).
-    plan_groups = sorted({name for p in plan.get_all_plans() for name in p.inbound_groups})
-    await inbound_groups.ensure_registered(plan_groups)
     vpn = VPNService(
         config=config,
         session=session,

@@ -25,13 +25,10 @@ PLAN_DEVICES_KEY = "plan_devices"
 PLAN_TRAFFIC_GB_KEY = "plan_traffic_gb"
 PLAN_PRICES_KEY = "plan_prices"
 
-INBOUND_GROUP_NAME_KEY = "inbound_group_name"
-
-# Наборы инбаундов: группа = префикс тега инбаунда до первого дефиса (например,
-# тег `regular-n2-in-8443-tcp` -> группа `regular`). Дефис в имени группы запрещён —
-# он разделитель. Юзер без назначенного набора получает дефолтный.
+# Наборы инбаундов: список групп живёт в панели (страница Groups), инбаунд
+# принадлежит группе, если её имя встречается сегментом его тега (через дефис):
+# `regular-n2-in-8443-tcp` -> regular. Юзер без назначенного набора получает дефолт.
 DEFAULT_INBOUND_GROUPS = ("regular",)
-INBOUND_GROUP_NAME_PATTERN = r"^[a-z0-9]+$"
 
 NOTIFICATION_CHAT_IDS_KEY = "notification_chat_ids"
 NOTIFICATION_LAST_MESSAGE_IDS_KEY = "notification_last_message_ids"
