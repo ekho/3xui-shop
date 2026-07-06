@@ -112,3 +112,75 @@ class InviteStatsService:
             return await _get_stats(session)
         async with self.session_factory() as session:
             return await _get_stats(session)
+
+    async def get_global_stats(
+        self,
+        session: Optional[AsyncSession] = None,
+        payment_method_currencies: Optional[Dict[str, str]] = None,
+    ) -> InviteStats:
+        """
+        Get site-wide statistics across all users (revenue, signup->paid conversion, repeat
+        purchase rate, active subscriptions) — same shape as get_detailed_stats() but without
+        filtering by invite.
+
+        Args:
+            session: Optional existing database session
+            payment_method_currencies: Dictionary mapping payment methods to currency codes
+
+        Returns:
+            InviteStats object containing global statistics
+        """
+
+        async def _get_stats(s: AsyncSession) -> InviteStats:
+            users_query = await s.execute(select(User))
+            users = users_query.scalars().all()
+
+            if not users:
+                return InviteStats()
+
+            user_ids = [user.tg_id for user in users]
+            trial_users_count = sum(1 for user in users if user.is_trial_used)
+            active_subscriptions_count = sum(1 for user in users if user.server_id)
+
+            # Get users with transactions
+            tx_users_query = await s.execute(
+                select(Transaction.tg_id)
+                .where(
+                    Transaction.tg_id.in_(user_ids),
+                    Transaction.status == TransactionStatus.COMPLETED,
+                )
+                .distinct()
+            )
+            paid_users = set(user_id for user_id, in tx_users_query)
+
+            # Get users with more than one transaction
+            repeat_users_query = await s.execute(
+                select(Transaction.tg_id)
+                .where(
+                    Transaction.tg_id.in_(user_ids),
+                    Transaction.status == TransactionStatus.COMPLETED,
+                )
+                .group_by(Transaction.tg_id)
+                .having(func.count(Transaction.id) > 1)
+            )
+            repeat_customers = set(user_id for user_id, in repeat_users_query)
+
+            # Global revenue — не нужно суммировать по каждому юзеру отдельно (в отличие от
+            # per-invite среза), достаточно одного агрегата по всем завершённым транзакциям.
+            revenue = await self.payment_stats.get_total_revenue_stats(
+                session=s, payment_method_currencies=payment_method_currencies
+            )
+
+            return InviteStats(
+                revenue=revenue,
+                users_count=len(users),
+                trial_users_count=trial_users_count,
+                paid_users_count=len(paid_users),
+                repeat_customers_count=len(repeat_customers),
+                active_subscriptions_count=active_subscriptions_count,
+            )
+
+        if session:
+            return await _get_stats(session)
+        async with self.session_factory() as session:
+            return await _get_stats(session)

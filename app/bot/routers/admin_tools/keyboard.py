@@ -546,3 +546,17 @@ def confirm_unreject_user_keyboard(tg_id: int) -> InlineKeyboardMarkup:
     )
     builder.row(cancel_button(NavAdminTools.SHOW_REJECTED_DETAILS + f"_{tg_id}"))
     return builder.as_markup()
+
+
+def statistics_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
+            text=_("statistics:button:refresh"),
+            callback_data=NavAdminTools.STATISTICS,
+        )
+    )
+    builder.row(back_button(NavAdminTools.MAIN))
+    builder.row(back_to_main_menu_button())
+    return builder.as_markup()

@@ -201,6 +201,31 @@ msgstr "🌐 Управление серверами"
 msgid "admin_tools:button:statistics"
 msgstr "📈 Статистика"
 
+#: app/bot/routers/admin_tools/statistics_handler.py:56
+msgid "statistics:message:main"
+msgstr ""
+"📊 <b>Статистика</b>\n"
+"\n"
+"💰 <b>Выручка (за всё время):</b>\n"
+"{revenue}\n"
+"\n"
+"👥 <b>Пользователи:</b>\n"
+"• Всего: {users_count}\n"
+"• Активировали триал: {trial_users_count} ({trial_percent})\n"
+"• Хотя бы раз оплатили: {paid_users_count} ({signup_to_paid_percent} от всех пользователей)\n"
+"• Повторные покупки: {repeat_customers_count} ({repeat_percent} от платящих)\n"
+"• Активных подписок сейчас: {active_subscriptions_count}\n"
+"\n"
+"🌐 <b>Серверы:</b> {servers_count} (🟢 {online_servers_count} онлайн) — {total_clients} клиентов всего"
+
+#: app/bot/routers/admin_tools/statistics_handler.py:27
+msgid "statistics:revenue:none"
+msgstr "выручки пока нет"
+
+#: app/bot/routers/admin_tools/keyboard.py:556
+msgid "statistics:button:refresh"
+msgstr "🔄 Обновить"
+
 #: app/bot/routers/admin_tools/keyboard.py:34
 msgid "admin_tools:button:user_editor"
 msgstr "👤 Редактор пользователей"
