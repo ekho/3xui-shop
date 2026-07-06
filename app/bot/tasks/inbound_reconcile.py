@@ -68,10 +68,15 @@ async def reconcile_inbound_groups(
             skipped += len(server_users)
             continue
 
+        to_disable: list[str] = []
+
         for user in server_users:
             groups = inbound_group_service.effective_groups(user)
+            # Резолвим только access-группы: banned инбаундов не имеет и доступ не даёт.
             desired = {
-                inbound_id for name in groups for inbound_id in group_map.get(name, [])
+                inbound_id
+                for name in inbound_group_service.access_groups(groups)
+                for inbound_id in group_map.get(name, [])
             }
 
             if not desired:
@@ -98,6 +103,11 @@ async def reconcile_inbound_groups(
                 logger.debug(f"[reconcile] Client {user.tg_id} not present on panel; skip.")
                 continue
 
+            # Бан: принудительно только в сторону ВЫКЛЮЧЕНИЯ (ручной disable клиента
+            # админом в панели не перетираем; включение — только явный разбан в боте).
+            if inbound_group_service.is_banned(user) and view.enable:
+                to_disable.append(str(user.tg_id))
+
             have = set(view.inbound_ids)
             to_attach = sorted(desired - have)
             to_detach = sorted((have & managed) - desired)
@@ -115,6 +125,13 @@ async def reconcile_inbound_groups(
             except Exception as exception:
                 logger.error(f"[reconcile] Failed for {user.tg_id}: {exception}")
                 skipped += 1
+
+        if to_disable:
+            try:
+                await clients.set_clients_enabled(to_disable, False)
+                logger.info(f"[reconcile] Ban enforced (disabled): {to_disable}.")
+            except Exception as exception:
+                logger.error(f"[reconcile] Failed to enforce bans {to_disable}: {exception}")
 
     logger.info(
         f"[reconcile] Done: +{attached} attach, -{detached} detach, {skipped} skipped."

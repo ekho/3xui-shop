@@ -92,6 +92,8 @@ async def _render_user_groups(
     text = _("group_mgmt:message:user_groups").format(
         tg_id=target.tg_id, groups=", ".join(sorted(member)) or "—"
     )
+    if services.inbound_groups.is_banned(target):
+        text += _("group_mgmt:message:user_banned")
     return text, user_groups_keyboard(target.tg_id, names, member)
 
 
@@ -138,8 +140,9 @@ async def callback_toggle_user_group(
 
     current = set(services.inbound_groups.effective_groups(target))
     new_groups = sorted(current - {group} if group in current else current | {group})
-    if not new_groups:
-        # Политика «не до нуля»: у юзера всегда минимум одна группа.
+    if not services.inbound_groups.access_groups(new_groups):
+        # Политика «не до нуля»: минимум одна группа помимо banned — иначе после
+        # разбана нечего восстанавливать.
         await services.notification.show_popup(
             callback=callback, text=_("group_mgmt:popup:empty_set_refused")
         )
@@ -148,9 +151,12 @@ async def callback_toggle_user_group(
     logger.info(f"Admin {user.tg_id} sets groups {new_groups} for user {target.tg_id}.")
 
     if target.server_id:
-        # Немедленная сходимость: attach/detach + запись набора + зеркало метки.
+        # Немедленная сходимость: attach/detach + бан/разбан + запись набора + метка.
+        # enforce_enable=True: явное действие админа — единственный путь разбана.
         try:
-            applied = await services.vpn.apply_inbound_groups(target, groups=new_groups)
+            applied = await services.vpn.apply_inbound_groups(
+                target, groups=new_groups, enforce_enable=True
+            )
         except EmptyInboundSetError:
             await services.notification.show_popup(
                 callback=callback, text=_("group_mgmt:popup:empty_resolve")

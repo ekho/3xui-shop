@@ -29,6 +29,10 @@ PLAN_PRICES_KEY = "plan_prices"
 # принадлежит группе, если её имя встречается сегментом его тега (через дефис):
 # `regular-n2-in-8443-tcp` -> regular. Юзер без назначенного набора получает дефолт.
 DEFAULT_INBOUND_GROUPS = ("regular",)
+# Спец-группа бана: наличие в наборе юзера = клиент отключён (enable=false) во всех
+# инбаундах, подписка пустеет. Членства сохраняются — разбан мгновенный. Инбаундов
+# у этой группы нет; в наборе всегда должна оставаться хотя бы одна другая группа.
+BANNED_INBOUND_GROUP = "banned"
 
 NOTIFICATION_CHAT_IDS_KEY = "notification_chat_ids"
 NOTIFICATION_LAST_MESSAGE_IDS_KEY = "notification_last_message_ids"

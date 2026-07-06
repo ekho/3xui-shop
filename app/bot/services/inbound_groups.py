@@ -5,7 +5,7 @@ import logging
 from py3xui import AsyncApi, Inbound
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.bot.utils.constants import DEFAULT_INBOUND_GROUPS
+from app.bot.utils.constants import BANNED_INBOUND_GROUP, DEFAULT_INBOUND_GROUPS
 from app.db.models import Plan, User
 
 from .xui_clients import XuiClientsApi
@@ -62,6 +62,16 @@ class InboundGroupService:
     def effective_groups(user: User) -> list[str]:
         """Набор групп юзера; None/пусто -> дефолт."""
         return list(user.inbound_groups or DEFAULT_INBOUND_GROUPS)
+
+    @staticmethod
+    def access_groups(groups: list[str]) -> list[str]:
+        """Группы, дающие доступ: набор без спец-группы бана (по ним резолвятся
+        инбаунды; banned инбаундов не имеет и в резолве не участвует)."""
+        return [group for group in groups if group != BANNED_INBOUND_GROUP]
+
+    @staticmethod
+    def is_banned(user: User) -> bool:
+        return BANNED_INBOUND_GROUP in (user.inbound_groups or [])
 
     # --- синк списка групп из панели ---
 

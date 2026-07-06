@@ -12,6 +12,7 @@ import logging
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.bot.models import ClientData
+from app.bot.utils.constants import BANNED_INBOUND_GROUP
 from app.bot.utils.time import (
     add_days_to_timestamp,
     days_to_timestamp,
@@ -59,10 +60,12 @@ class VPNService:
         return XuiClientsApi(connection.api)
 
     async def _resolve_inbounds(self, connection: Connection, groups: list[str]) -> list[int]:
-        """Инбаунды набора на сервере юзера. Пустой резолв — EmptyInboundSetError:
+        """Инбаунды набора на сервере юзера. Резолвятся только access-группы
+        (banned инбаундов не имеет). Пустой резолв — EmptyInboundSetError:
         опечатка в теге/удалённый инбаунд не должны молча выдавать пустую подписку
         (алерт делает вызывающий слой — шлюз или крон)."""
-        inbound_ids = await self.inbound_group_service.resolve_ids(connection.api, groups)
+        access = self.inbound_group_service.access_groups(groups)
+        inbound_ids = await self.inbound_group_service.resolve_ids(connection.api, access)
         if not inbound_ids:
             logger.critical(
                 f"Inbound groups {groups} resolve to EMPTY set on server "
@@ -70,6 +73,20 @@ class VPNService:
             )
             raise EmptyInboundSetError(groups, connection.server.name)
         return inbound_ids
+
+    async def _enforce_ban(self, clients: XuiClientsApi, user: User) -> None:
+        """Принудительно отключить забаненного (bulkDisable — сразу выкидывает из
+        работающего xray; конфиги в подписке остаются видны, но не работают —
+        проверено live: sub фильтрует только по enable ИНБАУНДА). Только в сторону
+        выключения: ручной disable клиента админом в панели бот не перетирает;
+        включение — лишь при явном разбане (apply_inbound_groups(enforce_enable=True))."""
+        if not self.inbound_group_service.is_banned(user):
+            return
+        try:
+            await clients.set_clients_enabled([str(user.tg_id)], False)
+            logger.info(f"Ban enforced for {user.tg_id}: client disabled.")
+        except Exception as exception:
+            logger.error(f"Failed to enforce ban for {user.tg_id}: {exception}")
 
     async def _persist_groups(self, user: User, groups: list[str]) -> None:
         async with self.session() as session:
@@ -85,9 +102,14 @@ class VPNService:
         группу — поэтому пишем метку лишь для набора из одной группы и только
         если она в панели существует. Best-effort: падение не валит выдачу.
         """
-        if len(groups) != 1:
+        # Забаненный зеркалится меткой banned (когорта видна в панели UI);
+        # иначе метку получает только одиночный набор.
+        if len(self.inbound_group_service.access_groups(groups)) != len(groups):
+            label = BANNED_INBOUND_GROUP
+        elif len(groups) == 1:
+            label = groups[0]
+        else:
             return
-        label = groups[0]
         try:
             existing = {row.get("name") for row in await clients.list_groups()}
             if label in existing:
@@ -223,7 +245,8 @@ class VPNService:
             "limitIp": devices,
             "totalGB": total_gb,
             "expiryTime": days_to_timestamp(duration),
-            "enable": enable,
+            # Забаненный остаётся забаненным, что бы ни провижинилось.
+            "enable": enable and BANNED_INBOUND_GROUP not in groups,
             "tgId": 0,
         }
 
@@ -290,7 +313,8 @@ class VPNService:
                 "limitIp": devices,
                 "totalGB": view.total_gb if total_gb is None else total_gb,
                 "expiryTime": expiry_time,
-                "enable": enable,
+                # Продление/бонус не разбанивает: enable перекрывается баном.
+                "enable": enable and not self.inbound_group_service.is_banned(user),
                 "tgId": int(view.raw.get("tgId") or 0),
                 "comment": view.raw.get("comment") or "",
             }
@@ -304,12 +328,18 @@ class VPNService:
             logger.error(f"Error updating client {user.tg_id}: {exception}")
             return False
 
-    async def apply_inbound_groups(self, user: User, groups: list[str] | None = None) -> bool:
+    async def apply_inbound_groups(
+        self, user: User, groups: list[str] | None = None, enforce_enable: bool = False
+    ) -> bool:
         """Привести членства клиента к набору групп (diff -> attach/detach).
 
         Детачим ТОЛЬКО из инбаундов известных групп: ручные прицепки админа к
         инбаундам с «чужими» тегами не трогаются. Пустой резолв — исключение
         (никогда не приводим клиента к пустому набору).
+
+        Бан: banned в наборе -> клиент отключается всегда; ВКЛЮЧАЕТСЯ обратно
+        только при enforce_enable=True (явный разбан из админки) — ручной
+        disable клиента админом в панели бот сам не перетирает.
         """
         connection = await self.server_pool_service.get_connection(user)
 
@@ -333,6 +363,14 @@ class VPNService:
         try:
             await clients.attach(str(user.tg_id), to_attach)
             await clients.detach(str(user.tg_id), to_detach)
+
+            banned = BANNED_INBOUND_GROUP in groups
+            if banned and view.enable:
+                await clients.set_clients_enabled([str(user.tg_id)], False)
+                logger.info(f"User {user.tg_id} banned: client disabled.")
+            elif not banned and not view.enable and enforce_enable:
+                await clients.set_clients_enabled([str(user.tg_id)], True)
+                logger.info(f"User {user.tg_id} unbanned: client enabled.")
         except Exception as exception:
             logger.error(f"Failed to apply groups {groups} for {user.tg_id}: {exception}")
             return False
@@ -391,12 +429,20 @@ class VPNService:
         if not ok:
             return False
         # Набор групп мог смениться (правка тарифа) — сходимся к актуальному.
-        await self.apply_inbound_groups(user, groups=self._plan_groups(devices))
+        # Бан при этом сохраняется: тариф задаёт access-группы, banned остаётся в наборе.
+        plan_groups = self._plan_groups(devices)
+        if plan_groups is not None and self.inbound_group_service.is_banned(user):
+            plan_groups = plan_groups + [BANNED_INBOUND_GROUP]
+        await self.apply_inbound_groups(user, groups=plan_groups)
         # m7: продление сбрасывает использованный трафик. extend не считать успешным без сброса
         # (иначе после исчерпания лимита юзер продлил, а счётчик остался > лимита → доступа нет).
         if not await self.reset_traffic(user):
             logger.error(f"extend {user.tg_id}: reset_traffic failed after update.")
             return False
+        # resetTraffic на стороне панели заодно ВКЛЮЧАЕТ клиента — бан надо переналожить.
+        connection = await self.server_pool_service.get_connection(user)
+        if connection:
+            await self._enforce_ban(self._clients(connection), user)
         return True
 
     async def change_subscription(
@@ -413,8 +459,16 @@ class VPNService:
             )
             if ok:
                 # Смена тарифа = возможно другой набор инбаундов (например, regular -> premium).
-                await self.apply_inbound_groups(user, groups=self._plan_groups(devices))
+                # Бан сохраняется поверх набора нового тарифа.
+                plan_groups = self._plan_groups(devices)
+                if plan_groups is not None and self.inbound_group_service.is_banned(user):
+                    plan_groups = plan_groups + [BANNED_INBOUND_GROUP]
+                await self.apply_inbound_groups(user, groups=plan_groups)
                 await self.reset_traffic(user)  # смена тарифа — начать новый лимит с чистого счётчика
+                # resetTraffic заодно включает клиента — бан переналожить.
+                connection = await self.server_pool_service.get_connection(user)
+                if connection:
+                    await self._enforce_ban(self._clients(connection), user)
             return ok
         return False
 

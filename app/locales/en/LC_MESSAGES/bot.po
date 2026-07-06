@@ -1643,7 +1643,7 @@ msgstr "Panel error (possibly a tag conflict). Nothing was changed — see logs.
 
 #: app/bot/routers/admin_tools/group_handler.py
 msgid "group_mgmt:popup:empty_set_refused"
-msgstr "The user must keep at least one group."
+msgstr "The user must keep at least one group besides banned."
 
 #: app/bot/routers/admin_tools/group_handler.py
 msgid "group_mgmt:popup:empty_resolve"
@@ -1652,6 +1652,10 @@ msgstr "Empty set: the user's server has no inbounds of these groups. Change rej
 #: app/bot/routers/admin_tools/group_handler.py
 msgid "group_mgmt:ntf:user_not_found"
 msgstr "User not found. Enter a numeric Telegram ID."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:message:user_banned"
+msgstr "\n\n🚫 <b>User is banned</b> (banned group): the client is disabled in every inbound, subscription configs stop working. Remove the banned group to restore access."
 
 #: app/bot/routers/admin_tools/keyboard.py
 msgid "plan_editor:button:edit_groups"

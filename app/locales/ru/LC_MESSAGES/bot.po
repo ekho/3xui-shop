@@ -1659,7 +1659,7 @@ msgstr "Ошибка панели (возможно, конфликт тега).
 
 #: app/bot/routers/admin_tools/group_handler.py
 msgid "group_mgmt:popup:empty_set_refused"
-msgstr "У пользователя должна остаться хотя бы одна группа."
+msgstr "У пользователя должна остаться хотя бы одна группа помимо banned."
 
 #: app/bot/routers/admin_tools/group_handler.py
 msgid "group_mgmt:popup:empty_resolve"
@@ -1668,6 +1668,10 @@ msgstr "Набор пуст: на сервере пользователя нет
 #: app/bot/routers/admin_tools/group_handler.py
 msgid "group_mgmt:ntf:user_not_found"
 msgstr "Пользователь не найден. Введите числовой Telegram ID."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:message:user_banned"
+msgstr "\n\n🚫 <b>Пользователь заблокирован</b> (группа banned): клиент отключён во всех инбаундах, конфиги из подписки не работают. Снимите группу banned, чтобы восстановить доступ."
 
 #: app/bot/routers/admin_tools/keyboard.py
 msgid "plan_editor:button:edit_groups"

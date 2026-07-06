@@ -131,6 +131,13 @@ class XuiClientsApi:
         """Обнулить up/down по всем инбаундам клиента (и снова включить его в xray)."""
         await self._post(f"{_BASE}/resetTraffic/{email}", {})
 
+    async def set_clients_enabled(self, emails: list[str], enable: bool) -> None:
+        """Включить/выключить клиентов разом по всем их инбаундам; панель сразу
+        добавляет/убирает юзеров в работающем xray (бан действует мгновенно)."""
+        if emails:
+            endpoint = "bulkEnable" if enable else "bulkDisable"
+            await self._post(f"{_BASE}/{endpoint}", {"emails": emails})
+
     async def export(self) -> list[ClientView]:
         """Все клиенты сервера как {client, inboundIds} — один вызов, для reconciler."""
         rows = await self._get(f"{_BASE}/export") or []

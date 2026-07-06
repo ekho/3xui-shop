@@ -469,7 +469,13 @@ async def message_edit_plan_groups(
     logger.info(f"Admin {user.tg_id} entered groups {names} for plan {devices}.")
 
     known = await services.inbound_groups.known_groups_union(services.server_pool)
-    if not names or any(name not in known for name in names):
+    # banned тарифу назначать нельзя — это бан каждого покупателя, а не набор доступа.
+    valid = (
+        bool(names)
+        and all(name in known for name in names)
+        and names == services.inbound_groups.access_groups(names)
+    )
+    if not valid:
         await services.notification.notify_by_message(
             message=message, text=_("plan_editor:ntf:invalid_groups"), duration=5
         )
