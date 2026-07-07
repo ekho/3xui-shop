@@ -23,7 +23,8 @@ class User(Base):
     Attributes:
         id (int): Unique primary key for the user.
         tg_id (int): Unique Telegram user ID.
-        vpn_id (str): Unique VPN identifier for the user.
+        vpn_id (str): Unique VPN identifier (client `id`/UUID credential on the panel).
+        sub_id (str): Unique subscription identifier (panel `subId`; tail of the subscription URL).
         server_id (int | None): Foreign key referencing the server.
         first_name (str): First name of the user.
         username (str | None): Telegram username of the user.
@@ -40,6 +41,10 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     tg_id: Mapped[int] = mapped_column(unique=True, nullable=False)
     vpn_id: Mapped[str] = mapped_column(String(36), unique=True, nullable=False)
+    # subId страницы подписки (как в 3x-ui). Отделён от vpn_id (=client id/UUID): у новых
+    # юзеров генерируется через generate_sub_id() (16 симв. [0-9a-z]); у существующих
+    # забэкфиллен значением vpn_id, чтобы их ссылки продолжали работать без переезда.
+    sub_id: Mapped[str] = mapped_column(String(36), unique=True, nullable=False)
     server_id: Mapped[int | None] = mapped_column(
         ForeignKey("servers.id", ondelete="SET NULL"), nullable=True
     )
@@ -93,7 +98,7 @@ class User(Base):
     def __repr__(self) -> str:
         return (
             f"<User(id={self.id}, tg_id={self.tg_id}, vpn_id='{self.vpn_id}', "
-            f"server_id={self.server_id}, first_name='{self.first_name}', "
+            f"sub_id='{self.sub_id}', server_id={self.server_id}, first_name='{self.first_name}', "
             f"username='{self.username}', language_code='{self.language_code}', "
             f"created_at={self.created_at}, is_trial_used={self.is_trial_used})>"
         )

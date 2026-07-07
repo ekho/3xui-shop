@@ -7,6 +7,7 @@ from aiogram.types import TelegramObject
 from aiogram.types import User as TelegramUser
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.bot.utils.misc import generate_sub_id
 from app.db.models import User
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,10 @@ class DBSessionMiddleware(BaseMiddleware):
                     user = await User.create(
                         session=session,
                         tg_id=tg_user.id,
+                        # vpn_id = client id/UUID (креденшл), sub_id = subId страницы
+                        # подписки в формате 3x-ui (RandomUtil.randomLowerAndNum(16)).
                         vpn_id=str(uuid.uuid4()),
+                        sub_id=generate_sub_id(),
                         first_name=tg_user.first_name,
                         username=tg_user.username,
                         language_code=tg_user.language_code,

@@ -134,7 +134,7 @@ class VPNService:
 
     async def reconcile_from_panel(self, user: User) -> ClientView | None:
         """Найти клиента панели по email=tg_id на ЛЮБОМ сервере пула и «усыновить»
-        его в БД бота (server_id + vpn_id=subId).
+        его в БД бота (server_id + vpn_id=client id + sub_id=subId).
 
         Нужно, когда клиент уже есть в панели, а бот про него не знает: сброс/миграция
         БД бота при живой панели, ручное заведение клиента админом, клиенты прежней
@@ -177,12 +177,18 @@ class VPNService:
         if found_view is None:
             return None
 
-        # vpn_id бота = subId (хвост ссылки подписки; update таргетит по email). Берём
-        # существующий subId клиента, чтобы ссылка заработала сразу, а update был
-        # идемпотентен; пустой subId → uuid клиента; в крайнем случае — текущий vpn_id.
-        adopted_vpn_id = found_view.sub_id or found_view.raw.get("id") or user.vpn_id
+        # Разносим креденшл и подписку (как в 3x-ui): vpn_id = client id (UUID),
+        # sub_id = subId (хвост ссылки подписки). Берём оба из записи панели, чтобы
+        # ссылка заработала сразу, а update по email был идемпотентен. Фолбэки:
+        # пустой id панели → текущий vpn_id; пустой subId → id панели → текущий sub_id.
+        adopted_vpn_id = found_view.raw.get("id") or user.vpn_id
+        adopted_sub_id = found_view.sub_id or found_view.raw.get("id") or user.sub_id
 
-        if user.server_id == found_server.id and user.vpn_id == adopted_vpn_id:
+        if (
+            user.server_id == found_server.id
+            and user.vpn_id == adopted_vpn_id
+            and user.sub_id == adopted_sub_id
+        ):
             return found_view  # уже привязан — ничего не пишем
 
         try:
@@ -192,12 +198,14 @@ class VPNService:
                     tg_id=user.tg_id,
                     server_id=found_server.id,
                     vpn_id=adopted_vpn_id,
+                    sub_id=adopted_sub_id,
                 )
             user.server_id = found_server.id
             user.vpn_id = adopted_vpn_id
+            user.sub_id = adopted_sub_id
             logger.info(
                 f"reconcile {user.tg_id}: adopted panel client from '{found_server.name}' "
-                f"(subId={adopted_vpn_id}, inbounds={found_view.inbound_ids})."
+                f"(id={adopted_vpn_id}, subId={adopted_sub_id}, inbounds={found_view.inbound_ids})."
             )
         except Exception as exception:
             logger.error(f"reconcile {user.tg_id}: failed to persist adoption: {exception}")
@@ -278,7 +286,8 @@ class VPNService:
             )
             return None
 
-        key = f"{user.server.subscription_url}{user.vpn_id}"
+        # Хвост ссылки подписки — subId клиента (как в 3x-ui), т.е. sub_id, а не vpn_id.
+        key = f"{user.server.subscription_url}{user.sub_id}"
         logger.debug(f"Fetched key for {user.tg_id}: {key}.")
         return key
 
@@ -309,11 +318,12 @@ class VPNService:
         inbound_ids = await self._resolve_inbounds(connection, groups)
 
         # Per-protocol секреты (пароль SS и т.п.) панель генерирует сама для каждого
-        # инбаунда набора; uuid и subId задаём свои — на subId собирается подписка.
+        # инбаунда набора; id (UUID-креденшл) и subId задаём свои — на subId собирается
+        # подписка. Как в 3x-ui, это разные значения: id=vpn_id, subId=sub_id.
         new_client = {
             "email": str(user.tg_id),
             "id": user.vpn_id,
-            "subId": user.vpn_id,
+            "subId": user.sub_id,
             "flow": flow,
             "limitIp": devices,
             "totalGB": total_gb,
@@ -381,7 +391,7 @@ class VPNService:
             # молча снять платный лимит трафика).
             updated_client = {
                 "email": str(user.tg_id),
-                "subId": user.vpn_id,
+                "subId": user.sub_id,
                 "flow": flow,
                 "limitIp": devices,
                 "totalGB": view.total_gb if total_gb is None else total_gb,
