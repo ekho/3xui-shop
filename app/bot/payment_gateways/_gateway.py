@@ -147,37 +147,46 @@ class PaymentGateway(ABC):
             # будет отброшен как обработанный, поэтому НЕ проглатываем молча: алерт разработчику
             # с пометкой "ручной re-provision", иначе получим "оплачено, но не выдано".
             try:
+                # Провижининг возвращает bool: False — тоже провал (не только исключение).
+                # Не проглатываем: поднимаем в except ниже → алерт «ручной re-provision»,
+                # иначе получим "оплачено, но не выдано" при тихом False.
                 if data.is_extend:
-                    await self.services.vpn.extend_subscription(
+                    ok = await self.services.vpn.extend_subscription(
                         user=user,
                         devices=data.devices,
                         duration=data.duration,
                         traffic_gb=data.traffic,  # G2
                     )
+                    if not ok:
+                        raise RuntimeError("extend_subscription returned False")
                     logger.info(f"Subscription extended for user {user.tg_id}")
                     await self.services.notification.notify_extend_success(
                         user_id=user.tg_id,
                         data=data,
                     )
                 elif data.is_change:
-                    await self.services.vpn.change_subscription(
+                    ok = await self.services.vpn.change_subscription(
                         user=user,
                         devices=data.devices,
                         duration=data.duration,
                         traffic_gb=data.traffic,  # G2
                     )
+                    if not ok:
+                        raise RuntimeError("change_subscription returned False")
                     logger.info(f"Subscription changed for user {user.tg_id}")
                     await self.services.notification.notify_change_success(
                         user_id=user.tg_id,
                         data=data,
                     )
                 else:
-                    await self.services.vpn.create_subscription(
+                    ok = await self.services.vpn.create_subscription(
                         user=user,
                         devices=data.devices,
                         duration=data.duration,
                         traffic_gb=data.traffic,  # G2
                     )
+                    if not ok:
+                        raise RuntimeError("create_subscription returned False")
                     logger.info(f"Subscription created for user {user.tg_id}")
                     key = await self.services.vpn.get_key(user)
                     await self.services.notification.notify_purchase_success(

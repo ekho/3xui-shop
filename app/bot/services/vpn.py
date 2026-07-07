@@ -132,6 +132,79 @@ class VPNService:
 
         return client
 
+    async def reconcile_from_panel(self, user: User) -> ClientView | None:
+        """Найти клиента панели по email=tg_id на ЛЮБОМ сервере пула и «усыновить»
+        его в БД бота (server_id + vpn_id=subId).
+
+        Нужно, когда клиент уже есть в панели, а бот про него не знает: сброс/миграция
+        БД бота при живой панели, ручное заведение клиента админом, клиенты прежней
+        установки. Без этого первая же покупка/триал пошли бы по ветке create — либо
+        клиент-дубль на другом сервере пула (осиротив старую подписку), либо тихий
+        отказ add/:email на дубликате («оплачено, но не выдано»).
+
+        Идемпотентно и best-effort: недоступность сервера/ошибка записи не валит
+        вызывающий флоу (регистрация/оплата), а лишь логируется.
+        """
+        try:
+            await self.server_pool_service.sync_servers()
+            connections = self.server_pool_service.all_connections()
+        except Exception as exception:
+            logger.error(f"reconcile {user.tg_id}: server pool sync failed: {exception}")
+            return None
+
+        found_server = None
+        found_view = None
+        for connection in connections:
+            try:
+                view = await self._clients(connection).get(str(user.tg_id))
+            except Exception as exception:
+                logger.warning(
+                    f"reconcile {user.tg_id}: lookup on '{connection.server.name}' failed: {exception}"
+                )
+                continue
+            if view is None:
+                continue
+            if found_view is None:
+                found_view, found_server = view, connection.server
+            else:
+                # Клиент с этим email на НЕСКОЛЬКИХ серверах пула — модель бота знает
+                # один server_id. Берём первый; остальные оставляем админу/reconciler'у.
+                logger.warning(
+                    f"reconcile {user.tg_id}: client also on '{connection.server.name}'; "
+                    f"keeping '{found_server.name}'."
+                )
+
+        if found_view is None:
+            return None
+
+        # vpn_id бота = subId (хвост ссылки подписки; update таргетит по email). Берём
+        # существующий subId клиента, чтобы ссылка заработала сразу, а update был
+        # идемпотентен; пустой subId → uuid клиента; в крайнем случае — текущий vpn_id.
+        adopted_vpn_id = found_view.sub_id or found_view.raw.get("id") or user.vpn_id
+
+        if user.server_id == found_server.id and user.vpn_id == adopted_vpn_id:
+            return found_view  # уже привязан — ничего не пишем
+
+        try:
+            async with self.session() as session:
+                await User.update(
+                    session=session,
+                    tg_id=user.tg_id,
+                    server_id=found_server.id,
+                    vpn_id=adopted_vpn_id,
+                )
+            user.server_id = found_server.id
+            user.vpn_id = adopted_vpn_id
+            logger.info(
+                f"reconcile {user.tg_id}: adopted panel client from '{found_server.name}' "
+                f"(subId={adopted_vpn_id}, inbounds={found_view.inbound_ids})."
+            )
+        except Exception as exception:
+            logger.error(f"reconcile {user.tg_id}: failed to persist adoption: {exception}")
+            return None
+
+        return found_view
+
     async def get_limit_ip(self, user: User, client: ClientView) -> int | None:
         return client.limit_ip
 
@@ -406,15 +479,23 @@ class VPNService:
     async def create_subscription(
         self, user: User, devices: int, duration: int, traffic_gb: int = 0
     ) -> bool:
-        if not await self.is_client_exists(user):
-            return await self.create_client(
-                user=user,
-                devices=devices,
-                duration=duration,
-                total_gb=gb_to_bytes(traffic_gb),
-                groups=self._plan_groups(devices),
+        # Клиент мог уже существовать в панели (email=tg_id), а в БД бота — нет: сброс/
+        # миграция БД бота при живой панели, ручное заведение админом, клиенты прежней
+        # установки. Усыновляем и ПРОДЛЕВАЕМ существующего, а не создаём заново — иначе
+        # add/:email упал бы дубликатом (тихо → «оплачено, но не выдано») либо создал бы
+        # клиента-дубль на другом сервере пула, осиротив старую подписку/ссылку.
+        if await self.reconcile_from_panel(user) or await self.is_client_exists(user):
+            logger.info(f"Client {user.tg_id} already on panel — extending instead of creating.")
+            return await self.extend_subscription(
+                user=user, devices=devices, duration=duration, traffic_gb=traffic_gb
             )
-        return False
+        return await self.create_client(
+            user=user,
+            devices=devices,
+            duration=duration,
+            total_gb=gb_to_bytes(traffic_gb),
+            groups=self._plan_groups(devices),
+        )
 
     async def extend_subscription(
         self, user: User, devices: int, duration: int, traffic_gb: int = 0

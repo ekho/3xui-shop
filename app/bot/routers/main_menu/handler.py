@@ -120,6 +120,15 @@ async def command_main_menu(
         else:
             await process_invite_attribution(session=session, user=user, invite_hash=command.args)
 
+    # Клиент мог уже существовать в панели (email=tg_id) до регистрации в боте — усыновляем
+    # его (server_id + subId в БД), чтобы профиль/подписка сразу отражали реального клиента,
+    # а первая покупка не завела дубль. Best-effort: не валит /start при недоступной панели.
+    if is_new_user:
+        try:
+            await services.vpn.reconcile_from_panel(user)
+        except Exception as exception:
+            logger.error(f"Failed to reconcile new user {user.tg_id} with panel: {exception}")
+
     is_admin = await IsAdmin()(user_id=user.tg_id)
 
     # G1: апрув-гейт. Админы авто-approved; остальные не-approved видят статус и блокируются.
