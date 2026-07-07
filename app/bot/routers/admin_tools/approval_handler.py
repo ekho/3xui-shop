@@ -65,6 +65,15 @@ async def on_approval(
         await callback.answer(_("approval:admin:user_not_found"), show_alert=True)
         return
 
+    # Идемпотентность: повторный тап по «протухшей» кнопке (напоминание/исходное уведомление
+    # у другого админа, оставшиеся после решения) не должен заново прогонять уже решённую
+    # заявку и повторно слать юзеру granted/denied. Блокируем только повторное применение ТОГО
+    # ЖЕ статуса — смену решения (approve↔reject) и повторную заявку (статус снова PENDING)
+    # пропускаем.
+    if target.approval_status == new_status:
+        await callback.answer(_("approval:admin:already_processed"), show_alert=True)
+        return
+
     # M6: сбрасываем метку заявки, чтобы повторный запрос (rejected → снова) отправил новое уведомление
     await User.update(
         session,

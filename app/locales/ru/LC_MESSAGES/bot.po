@@ -1514,6 +1514,10 @@ msgid "approval:admin:user_not_found"
 msgstr "Пользователь не найден."
 
 #: app/bot/routers/admin_tools/approval_handler.py
+msgid "approval:admin:already_processed"
+msgstr "Эта заявка уже обработана."
+
+#: app/bot/routers/admin_tools/approval_handler.py
 msgid "approval:user:granted"
 msgstr "✅ <b>Доступ открыт!</b>\n\nНажмите /start, чтобы начать."
 

@@ -152,6 +152,16 @@ class NotificationService:
             bot=self.bot,
         )
 
+    async def delete_message(self, chat_id: int, message_id: int) -> bool:
+        """Удалить сообщение по chat_id+message_id. Best-effort: сообщение старше 48ч
+        или уже удалённое даёт ошибку Telegram — глотаем и возвращаем False."""
+        try:
+            await self.bot.delete_message(chat_id=chat_id, message_id=message_id)
+            return True
+        except Exception as exception:
+            logger.debug(f"Failed to delete message {message_id} in {chat_id}: {exception}")
+            return False
+
     @staticmethod
     async def show_popup(callback: CallbackQuery, text: str, cache_time: int = 0) -> None:
         try:

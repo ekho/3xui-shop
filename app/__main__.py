@@ -119,6 +119,7 @@ def _start_schedulers(
             config=config,
             i18n=i18n,
             notification_service=services.notification,
+            redis=redis,
         )
 
 
