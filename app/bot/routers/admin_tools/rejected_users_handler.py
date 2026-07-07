@@ -44,7 +44,7 @@ async def callback_rejected_users(
     else:
         await callback.message.edit_text(
             text=_("rejected_users:message:no_rejected"),
-            reply_markup=back_keyboard(NavAdminTools.MAIN),
+            reply_markup=back_keyboard(NavAdminTools.REGISTRATION_REQUESTS),
         )
 
 

@@ -39,8 +39,8 @@ def admin_tools_keyboard(is_dev: bool) -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(
-            text=_("admin_tools:button:rejected_users"),
-            callback_data=NavAdminTools.REJECTED_USERS,
+            text=_("admin_tools:button:registration_requests"),
+            callback_data=NavAdminTools.REGISTRATION_REQUESTS,
         )
     )
     builder.row(
@@ -522,6 +522,91 @@ def user_groups_keyboard(
     return builder.as_markup()
 
 
+def registration_requests_keyboard() -> InlineKeyboardMarkup:
+    """Раздел «Запросы на регистрацию»: заявки в ожидании и уже отклонённые."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
+            text=_("registration_requests:button:pending"),
+            callback_data=NavAdminTools.PENDING_USERS,
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=_("registration_requests:button:rejected"),
+            callback_data=NavAdminTools.REJECTED_USERS,
+        )
+    )
+    builder.row(back_button(NavAdminTools.MAIN))
+    builder.row(back_to_main_menu_button())
+    return builder.as_markup()
+
+
+def pending_users_keyboard(
+    users: list[User], page: int = 0, limit: int = 5
+) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    total_users = len(users)
+    start_idx = page * limit
+    end_idx = min(start_idx + limit, total_users)
+
+    for i in range(start_idx, end_idx):
+        pending_user = users[i]
+        label = (
+            f"{pending_user.first_name} (@{pending_user.username})"
+            if pending_user.username
+            else f"{pending_user.first_name} ({pending_user.tg_id})"
+        )
+        builder.row(
+            InlineKeyboardButton(
+                text=label,
+                callback_data=NavAdminTools.SHOW_PENDING_DETAILS + f"_{pending_user.tg_id}",
+            )
+        )
+
+    row = []
+    if page > 0:
+        row.append(
+            InlineKeyboardButton(
+                text=_("pending_users:button:previous_page"),
+                callback_data=NavAdminTools.SHOW_PENDING_PAGE + f"_{page-1}",
+            )
+        )
+
+    if (page + 1) * limit < total_users:
+        row.append(
+            InlineKeyboardButton(
+                text=_("pending_users:button:next_page"),
+                callback_data=NavAdminTools.SHOW_PENDING_PAGE + f"_{page+1}",
+            )
+        )
+
+    if row:
+        builder.row(*row)
+
+    builder.row(back_button(NavAdminTools.REGISTRATION_REQUESTS))
+    builder.row(back_to_main_menu_button())
+    return builder.as_markup()
+
+
+def pending_user_details_keyboard(tg_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
+            text=_("approval:button:approve"),
+            callback_data=NavAdminTools.PENDING_APPROVE + f"_{tg_id}",
+        ),
+        InlineKeyboardButton(
+            text=_("approval:button:reject"),
+            callback_data=NavAdminTools.PENDING_REJECT + f"_{tg_id}",
+        ),
+    )
+    builder.row(back_button(NavAdminTools.PENDING_USERS))
+    return builder.as_markup()
+
+
 def rejected_users_keyboard(
     users: list[User], page: int = 0, limit: int = 5
 ) -> InlineKeyboardMarkup:
@@ -564,7 +649,7 @@ def rejected_users_keyboard(
     if row:
         builder.row(*row)
 
-    builder.row(back_button(NavAdminTools.MAIN))
+    builder.row(back_button(NavAdminTools.REGISTRATION_REQUESTS))
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
 

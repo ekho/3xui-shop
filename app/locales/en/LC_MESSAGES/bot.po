@@ -225,8 +225,8 @@ msgid "admin_tools:button:user_editor"
 msgstr "👤 User editor"
 
 #: app/bot/routers/admin_tools/keyboard.py
-msgid "admin_tools:button:rejected_users"
-msgstr "🚫 Rejected users"
+msgid "admin_tools:button:registration_requests"
+msgstr "📋 Registration requests"
 
 #: app/bot/routers/admin_tools/keyboard.py:40
 msgid "admin_tools:button:invite_editor"
@@ -1467,6 +1467,54 @@ msgstr "◀️ Previous page"
 
 #: app/bot/routers/admin_tools/keyboard.py
 msgid "rejected_users:button:next_page"
+msgstr "▶️ Next page"
+
+#: app/bot/routers/admin_tools/admin_tools_handler.py
+msgid "registration_requests:message:main"
+msgstr "📋 <b>Registration requests</b>\n\nChoose a section to manage."
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "registration_requests:button:pending"
+msgstr "⏳ Pending"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "registration_requests:button:rejected"
+msgstr "🚫 Rejected"
+
+#: app/bot/routers/admin_tools/pending_users_handler.py
+msgid "pending_users:message:list"
+msgstr "⏳ <b>Pending requests</b>\n\nSelect a user to approve or reject their request."
+
+#: app/bot/routers/admin_tools/pending_users_handler.py
+msgid "pending_users:message:no_pending"
+msgstr "<i>No pending requests.</i>"
+
+#: app/bot/routers/admin_tools/pending_users_handler.py
+msgid "pending_users:message:details"
+msgstr "⏳ <b>Pending request</b>\n\nName: {name}\nUsername: @{username}\nID: <code>{tg_id}</code>\nRequested: {requested_at}"
+
+#: app/bot/routers/admin_tools/pending_users_handler.py
+msgid "pending_users:popup:not_found"
+msgstr "❌ User not found or request already processed"
+
+#: app/bot/routers/admin_tools/pending_users_handler.py
+msgid "pending_users:popup:approved"
+msgstr "✅ {name}'s request approved"
+
+#: app/bot/routers/admin_tools/pending_users_handler.py
+msgid "pending_users:popup:rejected"
+msgstr "🚫 {name}'s request rejected"
+
+#: app/bot/routers/admin_tools/pending_users_handler.py
+msgid "pending_users:popup:already"
+msgstr "ℹ️ This request has already been processed"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "pending_users:button:previous_page"
+msgstr "◀️ Previous page"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "pending_users:button:next_page"
 msgstr "▶️ Next page"
 
 #: app/bot/middlewares/approval.py

@@ -6,6 +6,7 @@ from . import (
     invites_handler,
     maintenance_handler,
     notification_handler,
+    pending_users_handler,
     plan_handler,
     promocode_handler,
     rejected_users_handler,

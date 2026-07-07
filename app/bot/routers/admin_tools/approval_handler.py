@@ -46,38 +46,38 @@ def rejected_contact_keyboard(support_id: int) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-@router.callback_query(ApprovalCallback.filter(), IsAdmin())
-async def on_approval(
-    callback: CallbackQuery,
-    callback_data: ApprovalCallback,
+async def apply_approval_decision(
     session: AsyncSession,
     bot: Bot,
     i18n: I18n,
     config: Config,
-) -> None:
-    new_status = (
-        ApprovalStatus.APPROVED
-        if callback_data.action == "approve"
-        else ApprovalStatus.REJECTED
-    )
-    target = await User.get(session, tg_id=callback_data.user_id)
-    if target is None:
-        await callback.answer(_("approval:admin:user_not_found"), show_alert=True)
-        return
+    target: User,
+    new_status: ApprovalStatus,
+) -> bool:
+    """Применяет решение по заявке (approve/reject) и уведомляет пользователя.
 
+    Единый источник правды для обоих каналов: реактивных кнопок в уведомлении
+    (`on_approval`) и экрана «Ожидающие» в разделе запросов на регистрацию.
+
+    Инкапсулирует: идемпотентность (повторный тап по «протухшей» кнопке), сброс
+    `approval_requested_at`, отмену Stars-подписки при reject и отправку юзеру
+    granted/denied в ЕГО локали.
+
+    Возвращает False, если статус уже был установлен (повторный тап — no-op),
+    иначе True.
+    """
     # Идемпотентность: повторный тап по «протухшей» кнопке (напоминание/исходное уведомление
     # у другого админа, оставшиеся после решения) не должен заново прогонять уже решённую
     # заявку и повторно слать юзеру granted/denied. Блокируем только повторное применение ТОГО
     # ЖЕ статуса — смену решения (approve↔reject) и повторную заявку (статус снова PENDING)
     # пропускаем.
     if target.approval_status == new_status:
-        await callback.answer(_("approval:admin:already_processed"), show_alert=True)
-        return
+        return False
 
     # M6: сбрасываем метку заявки, чтобы повторный запрос (rejected → снова) отправил новое уведомление
     await User.update(
         session,
-        tg_id=callback_data.user_id,
+        tg_id=target.tg_id,
         approval_status=new_status,
         approval_requested_at=None,
     )
@@ -110,9 +110,36 @@ async def on_approval(
         else None
     )
     try:
-        await bot.send_message(callback_data.user_id, user_text, reply_markup=user_markup)
+        await bot.send_message(target.tg_id, user_text, reply_markup=user_markup)
     except TelegramForbiddenError:
-        logger.info(f"User {callback_data.user_id} blocked the bot; approval notice skipped.")
+        logger.info(f"User {target.tg_id} blocked the bot; approval notice skipped.")
+
+    return True
+
+
+@router.callback_query(ApprovalCallback.filter(), IsAdmin())
+async def on_approval(
+    callback: CallbackQuery,
+    callback_data: ApprovalCallback,
+    session: AsyncSession,
+    bot: Bot,
+    i18n: I18n,
+    config: Config,
+) -> None:
+    new_status = (
+        ApprovalStatus.APPROVED
+        if callback_data.action == "approve"
+        else ApprovalStatus.REJECTED
+    )
+    target = await User.get(session, tg_id=callback_data.user_id)
+    if target is None:
+        await callback.answer(_("approval:admin:user_not_found"), show_alert=True)
+        return
+
+    applied = await apply_approval_decision(session, bot, i18n, config, target, new_status)
+    if not applied:
+        await callback.answer(_("approval:admin:already_processed"), show_alert=True)
+        return
 
     # сообщение админу — в локали текущего апдейта (админа), это корректно
     try:

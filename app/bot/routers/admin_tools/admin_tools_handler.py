@@ -9,7 +9,7 @@ from app.bot.services import ServicesContainer
 from app.bot.utils.navigation import NavAdminTools
 from app.db.models import User
 
-from .keyboard import admin_tools_keyboard
+from .keyboard import admin_tools_keyboard, registration_requests_keyboard
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
@@ -22,6 +22,15 @@ async def callback_admin_tools(callback: CallbackQuery, user: User) -> None:
     await callback.message.edit_text(
         text=_("admin_tools:message:main"),
         reply_markup=admin_tools_keyboard(is_dev),
+    )
+
+
+@router.callback_query(F.data == NavAdminTools.REGISTRATION_REQUESTS, IsAdmin())
+async def callback_registration_requests(callback: CallbackQuery, user: User) -> None:
+    logger.info(f"Admin {user.tg_id} opened registration requests.")
+    await callback.message.edit_text(
+        text=_("registration_requests:message:main"),
+        reply_markup=registration_requests_keyboard(),
     )
 
 

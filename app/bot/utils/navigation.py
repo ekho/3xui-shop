@@ -71,6 +71,14 @@ class NavAdminTools(str, Enum):
     STATISTICS = "statistics"
     USER_EDITOR = "user_editor"
 
+    REGISTRATION_REQUESTS = "registration_requests"
+
+    PENDING_USERS = "pending_users"
+    SHOW_PENDING_PAGE = "show_pending_page"
+    SHOW_PENDING_DETAILS = "show_pending_details"
+    PENDING_APPROVE = "pending_approve"
+    PENDING_REJECT = "pending_reject"
+
     REJECTED_USERS = "rejected_users"
     SHOW_REJECTED_PAGE = "show_rejected_page"
     SHOW_REJECTED_DETAILS = "show_rejected_details"
