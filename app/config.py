@@ -270,7 +270,7 @@ def load_config() -> Config:
         default=DEFAULT_SHOP_PAYMENT_YOOMONEY_ENABLED,
     )
     if payment_yoomoney_enabled:
-        yoomoney_notification_secret = env.str("YOOMONEY_NOTIFICATION_SECRET", default=None)
+        yoomoney_notification_secret = env_or_file(env, "YOOMONEY_NOTIFICATION_SECRET", default=None)
         yoomoney_wallet_id = env.str("YOOMONEY_WALLET_ID", default=None)
         if not yoomoney_notification_secret or not yoomoney_wallet_id:
             logger.error(
@@ -411,7 +411,7 @@ def load_config() -> Config:
             SHOP_ID=env.int("YOOKASSA_SHOP_ID", default=None),
         ),
         yoomoney=YooMoneyConfig(
-            NOTIFICATION_SECRET=env.str("YOOMONEY_NOTIFICATION_SECRET", default=None),
+            NOTIFICATION_SECRET=env_or_file(env, "YOOMONEY_NOTIFICATION_SECRET", default=None),
             WALLET_ID=env.str("YOOMONEY_WALLET_ID", default=None),
         ),
         database=DatabaseConfig(
