@@ -22,6 +22,7 @@ DEFAULT_PLANS_DIR = DEFAULT_DATA_DIR / "plans.json"
 
 DEFAULT_BOT_HOST = "0.0.0.0"
 DEFAULT_BOT_PORT = 8080
+DEFAULT_BOT_TIMEZONE = "UTC"  # часовой пояс для календарных джобов (месячный сброс безлимита)
 
 DEFAULT_SHOP_APPROVAL_REQUIRED = True
 DEFAULT_SHOP_EMAIL = "support@3xui-shop.com"
@@ -90,6 +91,7 @@ class BotConfig:
     API_URL: str | None  # кастомный Telegram Bot API (напр. локальный/зеркало); None → api.telegram.org
     API_IS_LOCAL: bool  # True для self-hosted telegram-bot-api в режиме --local (файлы на диске сервера)
     USE_WEBHOOK: bool  # True → вебхук (нужен домен + TLS reverse-proxy); False → long-polling (getUpdates, домен/вебхук не нужны)
+    TIMEZONE: str  # IANA-имя (напр. Europe/Moscow) для календарных джобов; резолвится pytz
 
 
 @dataclass
@@ -329,6 +331,7 @@ def load_config() -> Config:
             API_URL=env.str("TELEGRAM_API_URL", default=None),
             API_IS_LOCAL=env.bool("TELEGRAM_API_IS_LOCAL", default=False),
             USE_WEBHOOK=env.bool("BOT_USE_WEBHOOK", default=True),
+            TIMEZONE=env.str("BOT_TIMEZONE", default=DEFAULT_BOT_TIMEZONE),
         ),
         shop=ShopConfig(
             APPROVAL_REQUIRED=env.bool(

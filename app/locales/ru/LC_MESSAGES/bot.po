@@ -1683,7 +1683,7 @@ msgstr "🏷 Группы"
 
 #: app/bot/routers/admin_tools/group_handler.py
 msgid "group_mgmt:message:main"
-msgstr "🏷 <b>Группы</b>\n\nГруппы создаются и редактируются в панели 3x-ui (страница Groups); принадлежность инбаунда группе задаётся его тегом (имя группы — сегмент тега через дефис). Бот синкает их и управляет только связкой пользователь↔группы.\n\n"
+msgstr "🏷 <b>Группы</b>\n\nНабор групп фиксирован: <code>banned</code>, <code>regular</code>, <code>unlimited</code> — новые не создаются. Принадлежность инбаунда группе задаётся его тегом (имя группы — сегмент тега через дефис). Группа <code>unlimited</code> включает все инбаунды <code>regular</code>. Админ управляет только связкой пользователь↔группы.\n\n"
 
 #: app/bot/routers/admin_tools/group_handler.py
 msgid "group_mgmt:message:empty"

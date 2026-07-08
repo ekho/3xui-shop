@@ -448,12 +448,6 @@ def plan_details_keyboard(devices: int) -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(
-            text=_("plan_editor:button:edit_groups"),
-            callback_data=NavAdminTools.EDIT_PLAN_GROUPS + f"_{devices}",
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
             text=_("plan_editor:button:delete"),
             callback_data=NavAdminTools.CONFIRM_DELETE_PLAN + f"_{devices}",
         )

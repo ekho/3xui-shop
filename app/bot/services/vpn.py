@@ -64,11 +64,11 @@ class VPNService:
         return XuiClientsApi(connection.api)
 
     async def _resolve_inbounds(self, connection: Connection, groups: list[str]) -> list[int]:
-        """Инбаунды набора на сервере юзера. Резолвятся только access-группы
-        (banned инбаундов не имеет). Пустой резолв — EmptyInboundSetError:
-        опечатка в теге/удалённый инбаунд не должны молча выдавать пустую подписку
-        (алерт делает вызывающий слой — шлюз или крон)."""
-        access = self.inbound_group_service.access_groups(groups)
+        """Инбаунды набора на сервере юзера. Резолвятся access-группы с наследованием
+        (unlimited ⊇ regular, см. expand_access_groups); banned инбаундов не имеет.
+        Пустой резолв — EmptyInboundSetError: опечатка в теге/удалённый инбаунд не
+        должны молча выдавать пустую подписку (алерт делает вызывающий слой)."""
+        access = self.inbound_group_service.expand_access_groups(groups)
         inbound_ids = await self.inbound_group_service.resolve_ids(connection.api, access)
         if not inbound_ids:
             logger.critical(

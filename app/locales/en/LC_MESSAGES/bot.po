@@ -1667,7 +1667,7 @@ msgstr "🏷 Groups"
 
 #: app/bot/routers/admin_tools/group_handler.py
 msgid "group_mgmt:message:main"
-msgstr "🏷 <b>Groups</b>\n\nGroups are created and edited in the 3x-ui panel (Groups page); an inbound belongs to a group when the group name appears as a dash-separated segment of its tag. The bot syncs them and only manages the user↔groups binding.\n\n"
+msgstr "🏷 <b>Groups</b>\n\nThe group set is fixed: <code>banned</code>, <code>regular</code>, <code>unlimited</code> — no new groups are created. An inbound belongs to a group when the group name appears as a dash-separated segment of its tag. The <code>unlimited</code> group includes all <code>regular</code> inbounds. The admin only manages the user↔groups binding.\n\n"
 
 #: app/bot/routers/admin_tools/group_handler.py
 msgid "group_mgmt:message:empty"

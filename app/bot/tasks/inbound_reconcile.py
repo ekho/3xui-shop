@@ -57,8 +57,7 @@ async def reconcile_inbound_groups(
 
         clients = XuiClientsApi(connection.api)
         try:
-            # Список групп синкается с панели этого сервера (страница Groups —
-            # единственное место, где группы создаются/редактируются).
+            # Набор групп фиксирован (banned/regular/unlimited); из панели не синкается.
             known = sorted(await inbound_group_service.known_groups(connection.api))
             group_map = await inbound_group_service.resolve(connection.api, known)
             managed = await inbound_group_service.managed_inbound_ids(connection.api)
@@ -72,10 +71,12 @@ async def reconcile_inbound_groups(
 
         for user in server_users:
             groups = inbound_group_service.effective_groups(user)
-            # Резолвим только access-группы: banned инбаундов не имеет и доступ не даёт.
+            # Access-группы с наследованием (unlimited ⊇ regular). ВАЖНО: то же
+            # расширение, что и при выдаче (VPNService._resolve_inbounds) — иначе
+            # крон отцеплял бы унаследованные regular-инбаунды у безлимитчиков.
             desired = {
                 inbound_id
-                for name in inbound_group_service.access_groups(groups)
+                for name in inbound_group_service.expand_access_groups(groups)
                 for inbound_id in group_map.get(name, [])
             }
 

@@ -113,6 +113,11 @@ def _start_schedulers(
         inbound_group_service=services.inbound_groups,
         notification_service=services.notification,
     )
+    tasks.unlimited_reset.start_scheduler(
+        session_factory=db.session,
+        vpn_service=services.vpn,
+        timezone_name=config.bot.TIMEZONE,
+    )
     if config.shop.APPROVAL_REQUIRED:
         tasks.approval_reminder.start_scheduler(
             session_factory=db.session,

@@ -5,10 +5,13 @@ import logging
 from py3xui import AsyncApi, Inbound
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.bot.utils.constants import BANNED_INBOUND_GROUP, DEFAULT_INBOUND_GROUPS
+from app.bot.utils.constants import (
+    BANNED_INBOUND_GROUP,
+    DEFAULT_INBOUND_GROUPS,
+    INBOUND_GROUP_INCLUDES,
+    INBOUND_GROUPS,
+)
 from app.db.models import Plan, User
-
-from .xui_clients import XuiClientsApi
 
 logger = logging.getLogger(__name__)
 
@@ -31,17 +34,18 @@ class EmptyInboundSetError(Exception):
 
 
 class InboundGroupService:
-    """Группы инбаундов. Источник истины — ПАНЕЛЬ:
+    """Группы инбаундов. Набор групп ФИКСИРОВАН (INBOUND_GROUPS = banned/regular/
+    unlimited); новые группы не создаются и из панели не синкаются:
 
-    - список групп создаётся/редактируется только на странице Groups панели
-      (client_groups); бот его синкает (GET /panel/api/clients/groups);
     - принадлежность инбаунда группе задаётся тегом инбаунда в панели: инбаунд
       входит в группу, если её имя встречается сегментом тега (через дефис),
-      например `regular-n2-in-8443-tcp` -> regular, `regular-premium-x` -> обе;
+      например `regular-n2-in-8443-tcp` -> regular, `unlimited-x` -> unlimited;
+    - доступ наследуется: unlimited ⊇ regular (см. expand_access_groups), т.е.
+      безлимитчик получает и unlimited-, и все regular-инбаунды;
     - бот группами НЕ управляет (не создаёт, не переименовывает, не ретегает) —
-      в боте админ управляет только связкой пользователь<->группы.
+      админ управляет только связкой пользователь<->группы (regular/unlimited/banned).
 
-    Инбаунды, в теге которых нет ни одной панельной группы, для бота невидимы —
+    Инбаунды, в теге которых нет ни одной из фиксированных групп, для бота невидимы —
     их членства reconciler не трогает.
     """
 
@@ -70,27 +74,32 @@ class InboundGroupService:
         return [group for group in groups if group != BANNED_INBOUND_GROUP]
 
     @staticmethod
+    def expand_access_groups(groups: list[str]) -> list[str]:
+        """Access-группы + наследуемые ими группы (INBOUND_GROUP_INCLUDES): unlimited
+        подтягивает regular. Это НАБОР ИМЁН для резолва инбаундов. Применяется и при
+        выдаче (VPNService), и в кроне сверки — иначе крон отцеплял бы унаследованные
+        инбаунды. Banned исключён (доступа не даёт)."""
+        expanded = {group for group in groups if group != BANNED_INBOUND_GROUP}
+        for group in list(expanded):
+            expanded.update(INBOUND_GROUP_INCLUDES.get(group, ()))
+        return sorted(expanded)
+
+    @staticmethod
     def is_banned(user: User) -> bool:
         return BANNED_INBOUND_GROUP in (user.inbound_groups or [])
 
-    # --- синк списка групп из панели ---
+    # --- фиксированный набор групп ---
+    # Группы больше НЕ создаются и не синкаются из панели: набор захардкожен
+    # (INBOUND_GROUPS = banned/regular/unlimited). api/server_pool в сигнатурах
+    # сохранены для совместимости с вызывающими, но не используются.
 
     async def known_groups(self, api: AsyncApi) -> set[str]:
-        """Группы, определённые в панели ЭТОГО сервера (страница Groups)."""
-        try:
-            rows = await XuiClientsApi(api).list_groups()
-        except Exception as exception:
-            logger.error(f"Failed to sync group list from panel: {exception}")
-            return set()
-        return {row.get("name") for row in rows if row.get("name")}
+        """Фиксированный набор групп бота (banned/regular/unlimited)."""
+        return set(INBOUND_GROUPS)
 
     async def known_groups_union(self, server_pool) -> set[str]:
-        """Объединение групп всех панелей пула — для экранов админки и валидации
-        тарифов (наборы юзера/тарифа не привязаны к конкретному серверу)."""
-        union: set[str] = set()
-        for connection in server_pool.all_connections():
-            union |= await self.known_groups(connection.api)
-        return union
+        """Тот же фиксированный набор — наборы юзера/тарифа не привязаны к серверу."""
+        return set(INBOUND_GROUPS)
 
     async def references(self, name: str) -> tuple[int, int]:
         """(число юзеров с группой в наборе, число тарифов с группой) — для обзора."""

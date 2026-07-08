@@ -25,10 +25,11 @@ PLAN_DEVICES_KEY = "plan_devices"
 PLAN_TRAFFIC_GB_KEY = "plan_traffic_gb"
 PLAN_PRICES_KEY = "plan_prices"
 
-# Наборы инбаундов: список групп живёт в панели (страница Groups), инбаунд
-# принадлежит группе, если её имя встречается сегментом его тега (через дефис):
+# Наборы инбаундов: набор групп ФИКСИРОВАН (см. INBOUND_GROUPS ниже), новые группы
+# не создаются. Принадлежность инбаунда группе — по сегменту его тега (через дефис):
 # `regular-n2-in-8443-tcp` -> regular. Юзер без назначенного набора получает дефолт.
-DEFAULT_INBOUND_GROUPS = ("regular",)
+REGULAR_INBOUND_GROUP = "regular"
+DEFAULT_INBOUND_GROUPS = (REGULAR_INBOUND_GROUP,)
 # Спец-группа бана: наличие в наборе юзера = клиент отключён (enable=false) во всех
 # инбаундах, подписка пустеет. Членства сохраняются — разбан мгновенный. Инбаундов
 # у этой группы нет; в наборе всегда должна оставаться хотя бы одна другая группа.
@@ -44,6 +45,14 @@ UNLIMITED_INBOUND_GROUP = "unlimited"
 # «до 7 устройств» и «до 100ГБ ежемесячного трафика».
 UNLIMITED_PLAN_DEVICES = 7
 UNLIMITED_PLAN_TRAFFIC_GB = 100
+# Фиксированный набор групп бота: НОВЫЕ группы не создаются, эти три неизменны.
+# banned — бан (инбаундов нет), regular — базовый доступ, unlimited — свои инбаунды
+# ПЛЮС все инбаунды regular (см. INBOUND_GROUP_INCLUDES). Список групп из панели
+# больше НЕ синкается — он захардкожен здесь.
+INBOUND_GROUPS = (BANNED_INBOUND_GROUP, REGULAR_INBOUND_GROUP, UNLIMITED_INBOUND_GROUP)
+# Наследование доступа: группа → чьи ещё инбаунды в неё входят. unlimited ⊇ regular
+# (безлимитчик получает и unlimited-, и все regular-инбаунды).
+INBOUND_GROUP_INCLUDES = {UNLIMITED_INBOUND_GROUP: (REGULAR_INBOUND_GROUP,)}
 
 NOTIFICATION_CHAT_IDS_KEY = "notification_chat_ids"
 NOTIFICATION_LAST_MESSAGE_IDS_KEY = "notification_last_message_ids"

@@ -153,6 +153,7 @@ Before starting the installation, make sure you have the installed [**Docker**](
 | BOT_SUPPORT_ID | 🔴 | - | ID of the support person |
 | BOT_DOMAIN | 🔴 | - | Domain of the bot (e.g., 3xui-shop.com) |
 | BOT_PORT | ⭕ | 8080 | Port of the bot |
+| BOT_TIMEZONE | ⭕ | UTC | IANA timezone for calendar jobs (e.g. Europe/Moscow); used by the monthly unlimited traffic reset (1st of month, 00:00) |
 | | | |
 | SHOP_EMAIL | ⭕ | support@3xui-shop.com | Email for receipts |
 | SHOP_CURRENCY | ⭕ | RUB | Currency for buttons (e.g., RUB, USD, XTR) |
