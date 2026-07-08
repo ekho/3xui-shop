@@ -2,27 +2,25 @@ import logging
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery
 from aiogram.utils.i18n import gettext as _
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.filters import IsAdmin
 from app.bot.models import ServicesContainer
-from app.bot.routers.misc.keyboard import back_keyboard
 from app.bot.services.inbound_groups import EmptyInboundSetError
-from app.bot.utils.constants import MAIN_MESSAGE_ID_KEY, UNLIMITED_INBOUND_GROUP
+from app.bot.utils.constants import UNLIMITED_INBOUND_GROUP
 from app.bot.utils.navigation import NavAdminTools
 from app.db.models import User
 
-from .keyboard import group_management_keyboard, user_groups_keyboard
+from .keyboard import (
+    group_management_keyboard,
+    user_groups_keyboard,
+    user_groups_users_keyboard,
+)
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
-
-
-class UserGroupsStates(StatesGroup):
-    tg_id = State()
 
 
 # region Groups overview (read-only: группы создаются и редактируются в панели)
@@ -73,14 +71,29 @@ async def callback_group_management(
 async def callback_user_groups(
     callback: CallbackQuery,
     user: User,
+    session: AsyncSession,
     state: FSMContext,
 ) -> None:
-    logger.info(f"Admin {user.tg_id} started editing user groups.")
-    await state.set_state(UserGroupsStates.tg_id)
-    await state.update_data({MAIN_MESSAGE_ID_KEY: callback.message.message_id})
+    logger.info(f"Admin {user.tg_id} opened the user-groups picker.")
+    await state.set_state(None)
+    users = await User.get_all(session=session)
     await callback.message.edit_text(
-        text=_("group_mgmt:message:enter_user_id"),
-        reply_markup=back_keyboard(NavAdminTools.GROUP_MANAGEMENT),
+        text=_("group_mgmt:message:select_user"),
+        reply_markup=user_groups_users_keyboard(users, page=0),
+    )
+
+
+@router.callback_query(F.data.startswith(NavAdminTools.USER_GROUPS_PAGE), IsAdmin())
+async def callback_user_groups_page(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+) -> None:
+    page = int(callback.data.rsplit("_", 1)[-1])
+    users = await User.get_all(session=session)
+    await callback.message.edit_text(
+        text=_("group_mgmt:message:select_user"),
+        reply_markup=user_groups_users_keyboard(users, page=page),
     )
 
 
@@ -97,30 +110,25 @@ async def _render_user_groups(
     return text, user_groups_keyboard(target.tg_id, names, member)
 
 
-@router.message(UserGroupsStates.tg_id, IsAdmin())
-async def message_user_groups_tg_id(
-    message: Message,
+@router.callback_query(F.data.startswith(NavAdminTools.PICK_USER_GROUPS), IsAdmin())
+async def callback_pick_user_groups(
+    callback: CallbackQuery,
     user: User,
     session: AsyncSession,
-    state: FSMContext,
     services: ServicesContainer,
 ) -> None:
-    raw = (message.text or "").strip()
-    logger.info(f"Admin {user.tg_id} entered user id for group editing: {raw}")
+    tg_id = int(callback.data.rsplit("_", 1)[-1])
+    logger.info(f"Admin {user.tg_id} picked user {tg_id} for group editing.")
 
-    target = await User.get(session=session, tg_id=int(raw)) if raw.isdigit() else None
+    target = await User.get(session=session, tg_id=tg_id)
     if target is None:
-        await services.notification.notify_by_message(
-            message=message, text=_("group_mgmt:ntf:user_not_found"), duration=5
+        await services.notification.show_popup(
+            callback=callback, text=_("group_mgmt:ntf:user_not_found")
         )
         return
 
-    await state.set_state(None)
-    main_message_id = await state.get_value(MAIN_MESSAGE_ID_KEY)
     text, keyboard = await _render_user_groups(services, target)
-    await message.bot.edit_message_text(
-        text=text, chat_id=message.chat.id, message_id=main_message_id, reply_markup=keyboard
-    )
+    await callback.message.edit_text(text=text, reply_markup=keyboard)
 
 
 @router.callback_query(F.data.startswith(NavAdminTools.TOGGLE_USER_GROUP), IsAdmin())

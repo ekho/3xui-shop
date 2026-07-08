@@ -1663,11 +1663,11 @@ msgstr "Could not resume: the period has already ended. Please subscribe again."
 
 #: app/bot/routers/admin_tools/keyboard.py
 msgid "admin_tools:button:group_management"
-msgstr "🏷 Inbound groups"
+msgstr "🏷 Groups"
 
 #: app/bot/routers/admin_tools/group_handler.py
 msgid "group_mgmt:message:main"
-msgstr "🏷 <b>Inbound groups</b>\n\nGroups are created and edited in the 3x-ui panel (Groups page); an inbound belongs to a group when the group name appears as a dash-separated segment of its tag. The bot syncs them and only manages the user↔groups binding.\n\n"
+msgstr "🏷 <b>Groups</b>\n\nGroups are created and edited in the 3x-ui panel (Groups page); an inbound belongs to a group when the group name appears as a dash-separated segment of its tag. The bot syncs them and only manages the user↔groups binding.\n\n"
 
 #: app/bot/routers/admin_tools/group_handler.py
 msgid "group_mgmt:message:empty"
@@ -1688,6 +1688,18 @@ msgstr "👤 User <code>{tg_id}</code>\nGroup set: <code>{groups}</code>\n\nTap 
 #: app/bot/routers/admin_tools/keyboard.py
 msgid "group_mgmt:button:user_groups"
 msgstr "👤 User groups"
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:message:select_user"
+msgstr "👤 Select a user:"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "group_mgmt:button:previous_page"
+msgstr "◀️ Previous page"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "group_mgmt:button:next_page"
+msgstr "▶️ Next page"
 
 #: app/bot/routers/admin_tools/group_handler.py
 msgid "group_mgmt:popup:api_error"

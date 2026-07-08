@@ -505,6 +505,52 @@ def group_management_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def user_groups_users_keyboard(
+    users: list[User], page: int = 0, limit: int = 8
+) -> InlineKeyboardMarkup:
+    """Пагинированный выбор пользователя для редактирования его групп."""
+    builder = InlineKeyboardBuilder()
+    total_users = len(users)
+    start_idx = page * limit
+    end_idx = min(start_idx + limit, total_users)
+
+    for i in range(start_idx, end_idx):
+        target = users[i]
+        label = (
+            f"{target.first_name} (@{target.username})"
+            if target.username
+            else f"{target.first_name} ({target.tg_id})"
+        )
+        builder.row(
+            InlineKeyboardButton(
+                text=label,
+                callback_data=NavAdminTools.PICK_USER_GROUPS + f"_{target.tg_id}",
+            )
+        )
+
+    row = []
+    if page > 0:
+        row.append(
+            InlineKeyboardButton(
+                text=_("group_mgmt:button:previous_page"),
+                callback_data=NavAdminTools.USER_GROUPS_PAGE + f"_{page-1}",
+            )
+        )
+    if (page + 1) * limit < total_users:
+        row.append(
+            InlineKeyboardButton(
+                text=_("group_mgmt:button:next_page"),
+                callback_data=NavAdminTools.USER_GROUPS_PAGE + f"_{page+1}",
+            )
+        )
+    if row:
+        builder.row(*row)
+
+    builder.row(back_button(NavAdminTools.GROUP_MANAGEMENT))
+    builder.row(back_to_main_menu_button())
+    return builder.as_markup()
+
+
 def user_groups_keyboard(
     tg_id: int, group_names: list[str], member: set[str]
 ) -> InlineKeyboardMarkup:
@@ -519,7 +565,8 @@ def user_groups_keyboard(
             )
         )
 
-    builder.row(back_button(NavAdminTools.GROUP_MANAGEMENT))
+    # Назад — к списку выбора пользователя (а не в обзор групп).
+    builder.row(back_button(NavAdminTools.USER_GROUPS))
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
 

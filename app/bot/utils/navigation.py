@@ -111,6 +111,8 @@ class NavAdminTools(str, Enum):
 
     GROUP_MANAGEMENT = "group_mgmt"
     USER_GROUPS = "user_groups"
+    USER_GROUPS_PAGE = "user_groups_page"
+    PICK_USER_GROUPS = "pick_user_groups"
     TOGGLE_USER_GROUP = "tgl_usr_grp"
 
     NOTIFICATION = "notification"
