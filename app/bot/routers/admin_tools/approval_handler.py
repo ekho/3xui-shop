@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.filters import IsAdmin
 from app.bot.utils.constants import DEFAULT_LANGUAGE, ApprovalStatus
-from app.config import Config
+from app.config import BotConfig, Config
 from app.db.models import User
 
 logger = logging.getLogger(__name__)
@@ -36,13 +36,13 @@ def approval_keyboard(user_id: int) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def rejected_contact_keyboard(support_id: int) -> InlineKeyboardMarkup:
+def rejected_contact_keyboard(bot_config: BotConfig) -> InlineKeyboardMarkup:
     # Импорт внутри функции — избегаем циклической зависимости на уровне модуля
     # (support роутер грузится позже admin_tools в routers/__init__.py).
     from app.bot.routers.support.keyboard import contact_button
 
     builder = InlineKeyboardBuilder()
-    builder.row(contact_button(support_id))
+    builder.row(contact_button(bot_config))
     return builder.as_markup()
 
 
@@ -105,7 +105,7 @@ async def apply_approval_decision(
         )
     # Отказанному юзеру — стоп-лист: единственный оставшийся канал это связь с админом напрямую.
     user_markup = (
-        rejected_contact_keyboard(config.bot.SUPPORT_ID)
+        rejected_contact_keyboard(config.bot)
         if new_status == ApprovalStatus.REJECTED
         else None
     )

@@ -152,7 +152,7 @@ async def command_main_menu(
 
             await message.answer(
                 _("approval:message:rejected"),
-                reply_markup=rejected_contact_keyboard(config.bot.SUPPORT_ID),
+                reply_markup=rejected_contact_keyboard(config.bot),
             )
         return
 

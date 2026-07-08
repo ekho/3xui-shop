@@ -14,7 +14,7 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from aiohttp.web import Application, AppRunner, TCPSite, _run_app
 from redis.asyncio.client import Redis
 
-from app import logger
+from app import logger, support_bot
 from app.bot import filters, middlewares, routers, services, tasks
 from app.bot.middlewares import MaintenanceMiddleware
 from app.bot.models import ServicesContainer
@@ -128,6 +128,36 @@ def _start_schedulers(
         )
 
 
+def _log_support_task_done(task: "asyncio.Task") -> None:
+    """Фоновый polling умирает молча (fire-and-forget) — без этого колбэка магазин
+    работал бы днями с лежащей поддержкой и без единой строчки в логах."""
+    if task.cancelled():
+        return
+    exception = task.exception()
+    if exception:
+        logging.critical(
+            f"Support bot polling crashed: {exception!r}. Поддержка НЕ работает; "
+            "основной бот продолжает работу. Проверьте SUPPORT_BOT_TOKEN/SUPPORT_GROUP_ID."
+        )
+
+
+async def _stop_support_task(task: "asyncio.Task | None") -> None:
+    """Останавливает polling support-бота; cancel прерывает start_polling, его
+    finally эмитит shutdown диспетчера (закрытие сессии — в support_bot._on_shutdown).
+    Никогда не поднимает исключение: за ним в finally идёт runner.cleanup()."""
+    if task is None:
+        return
+    if task.done():
+        return  # упавший таск уже отлогирован done-колбэком; await пере-поднял бы его исключение
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    except Exception as exception:
+        logging.error(f"Support bot polling stopped with error: {exception!r}")
+
+
 async def main() -> None:
     # Create web application
     app = Application()
@@ -233,6 +263,18 @@ async def main() -> None:
     # Set up bot commands
     await commands.setup(bot)
 
+    # Support-прокси: второй бот в этом же процессе (см. app/support_bot/__init__.py).
+    # Всегда long-polling — независимо от режима основного бота (разные токены, конфликтов нет).
+    support_task: asyncio.Task | None = None
+    if config.bot.SUPPORT_BOT_TOKEN and config.bot.SUPPORT_GROUP_ID:
+        support_bot_instance, support_dispatcher = support_bot.create(config=config, db=db, i18n=i18n)
+        # handle_signals=False: сигналами управляет основной цикл (start_polling основного
+        # бота или _run_app); второй набор signal-хендлеров затёр бы первый.
+        support_task = asyncio.create_task(
+            support_dispatcher.start_polling(support_bot_instance, handle_signals=False)
+        )
+        support_task.add_done_callback(_log_support_task_done)
+
     if config.bot.USE_WEBHOOK:
         # Webhook: Telegram шлёт апдейты на /webhook (через ваш reverse-proxy, если используется).
         # B7: secret_token заставляет aiogram сверять заголовок X-Telegram-Bot-Api-Secret-Token
@@ -244,7 +286,10 @@ async def main() -> None:
 
         # Set up application and run
         setup_application(app, dispatcher, bot=bot)
-        await _run_app(app, host=DEFAULT_BOT_HOST, port=config.bot.PORT)
+        try:
+            await _run_app(app, host=DEFAULT_BOT_HOST, port=config.bot.PORT)
+        finally:
+            await _stop_support_task(support_task)
     else:
         # Long-polling: апдейты забираем через getUpdates — публичный вебхук/домен не нужны.
         # Веб-сервер всё равно поднимаем для НЕ-Telegram роутов (Cryptomus-вебхук, редирект
@@ -256,6 +301,7 @@ async def main() -> None:
         try:
             await dispatcher.start_polling(bot)
         finally:
+            await _stop_support_task(support_task)
             await runner.cleanup()
 
 

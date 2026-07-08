@@ -4,13 +4,20 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.bot.routers.misc.keyboard import back_button, back_to_main_menu_button
 from app.bot.utils.navigation import NavDownload, NavSubscription, NavSupport
+from app.config import BotConfig
 
 
-def contact_button(support_id: int) -> InlineKeyboardButton:
-    return InlineKeyboardButton(text=_("support:button:contact"), url=f"tg://user?id={support_id}")
+def contact_button(bot_config: BotConfig) -> InlineKeyboardButton:
+    # Прокси-поддержка включена → deep-link на support-бота (username берётся из get_me()
+    # на старте); иначе — прежнее поведение: личка оператора SUPPORT_ID.
+    if bot_config.SUPPORT_BOT_USERNAME:
+        url = f"https://t.me/{bot_config.SUPPORT_BOT_USERNAME}"
+    else:
+        url = f"tg://user?id={bot_config.SUPPORT_ID}"
+    return InlineKeyboardButton(text=_("support:button:contact"), url=url)
 
 
-def support_keyboard(support_id: int) -> InlineKeyboardMarkup:
+def support_keyboard(bot_config: BotConfig) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     builder.row(
@@ -26,12 +33,12 @@ def support_keyboard(support_id: int) -> InlineKeyboardMarkup:
         )
     )
 
-    builder.row(contact_button(support_id))
+    builder.row(contact_button(bot_config))
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
 
 
-def how_to_connect_keyboard(support_id: int) -> InlineKeyboardMarkup:
+def how_to_connect_keyboard(bot_config: BotConfig) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     builder.row(
@@ -47,13 +54,13 @@ def how_to_connect_keyboard(support_id: int) -> InlineKeyboardMarkup:
         )
     )
 
-    builder.row(contact_button(support_id))
+    builder.row(contact_button(bot_config))
     builder.row(back_button(NavSupport.MAIN))
     return builder.as_markup()
 
 
-def contact_keyboard(support_id: int) -> InlineKeyboardMarkup:
+def contact_keyboard(bot_config: BotConfig) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(contact_button(support_id))
+    builder.row(contact_button(bot_config))
     builder.row(back_button(NavSupport.MAIN))
     return builder.as_markup()

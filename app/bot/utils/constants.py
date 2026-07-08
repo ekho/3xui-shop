@@ -116,6 +116,12 @@ class ApprovalStatus(Enum):
     REJECTED = "rejected"
 
 
+class SupportTicketStatus(Enum):
+    OPEN = "open"
+    CLOSED = "closed"
+    BANNED = "banned"
+
+
 class Currency(Enum):
     RUB = ("RUB", "₽")
     USD = ("USD", "$")

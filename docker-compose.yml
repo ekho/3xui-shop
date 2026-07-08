@@ -33,6 +33,7 @@ services:
       BOT_TOKEN_FILE: /run/secrets/bot_token
       XUI_PASSWORD_FILE: /run/secrets/xui_password
       WEBHOOK_SECRET_FILE: /run/secrets/webhook_secret   # B7
+      # SUPPORT_BOT_TOKEN_FILE: /run/secrets/support_bot_token       # прокси-поддержка (+ SUPPORT_GROUP_ID в .env)
       # CRYPTOMUS_API_KEY_FILE: /run/secrets/cryptomus_api_key       # раскомментировать при Cryptomus
       # CRYPTOMUS_MERCHANT_ID_FILE: /run/secrets/cryptomus_merchant_id
       # MANUAL_CARD_DETAILS_FILE: /run/secrets/manual_card_details   # Этап 4
@@ -40,6 +41,7 @@ services:
       - bot_token
       - xui_password
       - webhook_secret
+      # - support_bot_token
       # - cryptomus_api_key
       # - cryptomus_merchant_id
       # - manual_card_details
@@ -68,6 +70,8 @@ secrets:
     file: ./secrets/xui_password.txt
   webhook_secret:
     file: ./secrets/webhook_secret.txt
+  # support_bot_token:
+  #   file: ./secrets/support_bot_token.txt
   # cryptomus_api_key:
   #   file: ./secrets/cryptomus_api_key.txt
   # cryptomus_merchant_id:

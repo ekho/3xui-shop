@@ -6,5 +6,6 @@ from .promocode import Promocode
 from .referral import Referral
 from .referrer_reward import ReferrerReward
 from .server import Server
+from .support_ticket import SupportTicket
 from .transaction import Transaction
 from .user import User

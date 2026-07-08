@@ -1744,3 +1744,22 @@ msgstr "🏷 Enter the plan's inbound groups separated by spaces (e.g. <code>reg
 #: app/bot/routers/admin_tools/plan_handler.py
 msgid "plan_editor:ntf:invalid_groups"
 msgstr "Invalid list: every group must exist in the 3x-ui panel (Groups page)."
+
+#: app/support_bot/routers/user.py
+msgid "support_bot:message:welcome"
+msgstr ""
+"👋 Hi! This is the support chat.\n"
+"\n"
+"Describe your issue — an operator will reply right here. You can attach photos, videos and files."
+
+#: app/support_bot/service.py
+msgid "support_bot:message:banned"
+msgstr "🚫 You have been restricted from contacting support."
+
+#: app/support_bot/service.py
+msgid "support_bot:message:delivery_failed"
+msgstr "⚠️ Your message could not be delivered. Please try again later."
+
+#: app/support_bot/service.py
+msgid "support_bot:message:closed_by_operator"
+msgstr "✅ The operator has closed this conversation. If the issue persists, just send a new message."

@@ -85,6 +85,11 @@ class BotConfig:
     ADMINS: list[int]
     DEV_ID: int
     SUPPORT_ID: int
+    # Прокси-поддержка: отдельный бот-«прокси» между юзером и админами. Включается,
+    # только когда заданы ОБА значения; иначе кнопка поддержки ведёт в личку SUPPORT_ID.
+    SUPPORT_BOT_TOKEN: str | None
+    SUPPORT_GROUP_ID: int | None  # супергруппа-форум (Topics включены, бот — админ с can_manage_topics)
+    SUPPORT_BOT_USERNAME: str | None  # заполняется на старте из get_me(); в env не задаётся
     DOMAIN: str
     PORT: int
     WEBHOOK_SECRET: str | None
@@ -225,6 +230,18 @@ def load_config() -> Config:
     if not xui_token and not (xui_username and xui_password):
         logger.error("XUI auth is not configured: set XUI_TOKEN or XUI_USERNAME + XUI_PASSWORD.")
 
+    # Прокси-поддержка: нужны и токен второго бота, и id супергруппы-форума.
+    # Полуконфигурация — это ошибка оператора: громко предупреждаем и выключаем фичу.
+    support_bot_token = env_or_file(env, "SUPPORT_BOT_TOKEN", default=None)
+    support_group_id = env.int("SUPPORT_GROUP_ID", default=None)
+    if bool(support_bot_token) != bool(support_group_id):
+        logger.warning(
+            "Support proxy bot is disabled: set BOTH SUPPORT_BOT_TOKEN and SUPPORT_GROUP_ID "
+            "(only one of them is configured)."
+        )
+        support_bot_token = None
+        support_group_id = None
+
     payment_stars_enabled = env.bool(
         "SHOP_PAYMENT_STARS_ENABLED",
         default=DEFAULT_SHOP_PAYMENT_STARS_ENABLED,
@@ -325,6 +342,9 @@ def load_config() -> Config:
             ADMINS=bot_admins,
             DEV_ID=env.int("BOT_DEV_ID"),
             SUPPORT_ID=env.int("BOT_SUPPORT_ID"),
+            SUPPORT_BOT_TOKEN=support_bot_token,
+            SUPPORT_GROUP_ID=support_group_id,
+            SUPPORT_BOT_USERNAME=None,
             DOMAIN=f"https://{bot_domain}",
             PORT=env.int("BOT_PORT", default=DEFAULT_BOT_PORT),
             WEBHOOK_SECRET=env_or_file(env, "WEBHOOK_SECRET", default=None),  # B7
