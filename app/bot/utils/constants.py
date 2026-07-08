@@ -33,6 +33,17 @@ DEFAULT_INBOUND_GROUPS = ("regular",)
 # инбаундах, подписка пустеет. Членства сохраняются — разбан мгновенный. Инбаундов
 # у этой группы нет; в наборе всегда должна оставаться хотя бы одна другая группа.
 BANNED_INBOUND_GROUP = "banned"
+# Спец-группа «безлимит»: имя инбаунд-группы (создаётся в панели), которое также
+# несёт скрытый безлимит-план (Plan.hidden, inbound_groups=[UNLIMITED_INBOUND_GROUP]).
+# Тоггл этой группы админом на экране User Groups = грант плана: 7 устройств,
+# 100ГБ-кап, expiryTime=0 (бессрочно). Месячный сброс трафика делает сама панель
+# (inbound.TrafficReset=monthly на инбаундах этой группы) — см. память
+# panel-client-reset-semantics. НЕ покупается (скрыт из меню тарифов).
+UNLIMITED_INBOUND_GROUP = "unlimited"
+# Дефолты засеиваемого безлимит-плана (редактируемы в Plans Editor после сида):
+# «до 7 устройств» и «до 100ГБ ежемесячного трафика».
+UNLIMITED_PLAN_DEVICES = 7
+UNLIMITED_PLAN_TRAFFIC_GB = 100
 
 NOTIFICATION_CHAT_IDS_KEY = "notification_chat_ids"
 NOTIFICATION_LAST_MESSAGE_IDS_KEY = "notification_last_message_ids"

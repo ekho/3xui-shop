@@ -1115,7 +1115,7 @@ msgid "subscription:ntf:trial_activate_success"
 msgstr ""
 "✅ Пробный период был успешно активирован!\n"
 "\n"
-"<i>Вы получили <b>{duration}</b> к своей подписке.</i>\n"
+"<i>Вы получили <b>{duration}</b> и <b>{traffic}</b> трафика к своей подписке.</i>\n"
 "\n"
 "<b>По кнопке 'Подключиться' бот поможет вам скачать приложение и добавить"
 " вашу конфигурацию</b>\n"
@@ -1716,6 +1716,14 @@ msgstr "У пользователя должна остаться хотя бы 
 #: app/bot/routers/admin_tools/group_handler.py
 msgid "group_mgmt:popup:empty_resolve"
 msgstr "Набор пуст: на сервере пользователя нет инбаундов этих групп. Изменение отклонено."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:unlimited_failed"
+msgstr "Не удалось выдать безлимит. Проверьте, что группа «unlimited» заведена в панели, её инбаунды тегированы, и что скрытый безлимит-план существует. Подробности в логах."
+
+#: app/bot/routers/admin_tools/group_handler.py
+msgid "group_mgmt:popup:unlimited_revoke_failed"
+msgstr "Не удалось снять безлимит и выдать стартовый триал. Проверьте, что на сервере пользователя есть инбаунды группы regular. Подробности в логах."
 
 #: app/bot/routers/admin_tools/group_handler.py
 msgid "group_mgmt:ntf:user_not_found"

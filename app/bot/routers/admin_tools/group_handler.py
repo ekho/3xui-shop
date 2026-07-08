@@ -11,7 +11,7 @@ from app.bot.filters import IsAdmin
 from app.bot.models import ServicesContainer
 from app.bot.routers.misc.keyboard import back_keyboard
 from app.bot.services.inbound_groups import EmptyInboundSetError
-from app.bot.utils.constants import MAIN_MESSAGE_ID_KEY
+from app.bot.utils.constants import MAIN_MESSAGE_ID_KEY, UNLIMITED_INBOUND_GROUP
 from app.bot.utils.navigation import NavAdminTools
 from app.db.models import User
 
@@ -139,6 +139,32 @@ async def callback_toggle_user_group(
         return
 
     current = set(services.inbound_groups.effective_groups(target))
+
+    # Спец-группа `unlimited` — не обычный attach/detach, а смена тарифного состояния:
+    #   • включение -> грант скрытого безлимит-плана (7 устройств, 100ГБ-кап, бессрочно);
+    #   • снятие    -> откат на СТАРТОВЫЙ ТРИАЛ (regular, TRIAL_PERIOD дней, BONUS_DEVICES_COUNT).
+    # Обрабатываем ДО проверки «не до нуля»: итоговый набор задаёт сам grant/revoke
+    # (а не new_groups), поэтому снятие даже единственной группы unlimited корректно.
+    if group == UNLIMITED_INBOUND_GROUP:
+        if group not in current:
+            logger.info(f"Admin {user.tg_id} grants unlimited plan to user {target.tg_id}.")
+            ok = await services.vpn.grant_unlimited(target)
+            fail_key = "group_mgmt:popup:unlimited_failed"
+        else:
+            logger.info(
+                f"Admin {user.tg_id} revokes unlimited (-> starter trial) for user {target.tg_id}."
+            )
+            ok = await services.vpn.revoke_unlimited(target)
+            fail_key = "group_mgmt:popup:unlimited_revoke_failed"
+        if not ok:
+            await services.notification.show_popup(callback=callback, text=_(fail_key))
+            return
+        # grant/revoke сами записали набор групп (и, при гранте, сервер) — перечитываем.
+        refreshed = await User.get(session=session, tg_id=target.tg_id)
+        text, keyboard = await _render_user_groups(services, refreshed)
+        await callback.message.edit_text(text=text, reply_markup=keyboard)
+        return
+
     new_groups = sorted(current - {group} if group in current else current | {group})
     if not services.inbound_groups.access_groups(new_groups):
         # Политика «не до нуля»: минимум одна группа помимо banned — иначе после

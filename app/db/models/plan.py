@@ -1,7 +1,7 @@
 import logging
 from typing import Any, Self
 
-from sqlalchemy import JSON, Integer, select, update
+from sqlalchemy import JSON, Boolean, Integer, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
@@ -22,6 +22,9 @@ class Plan(Base):
         devices (int): Device (simultaneous connections) count — the plan's lookup key.
         traffic_gb (int): Traffic limit in GB, 0 = unlimited.
         prices (dict): {currency_code: {duration_days_as_str: price}}, e.g. {"RUB": {"30": 70.0}}.
+        hidden (bool): скрыт из меню покупки (нельзя купить). Такой план назначается
+            только админом (напр. безлимит через группу unlimited), но остаётся
+            редактируемым в Plans Editor.
     """
 
     __tablename__ = "plans"
@@ -34,6 +37,8 @@ class Plan(Base):
     inbound_groups: Mapped[list[str]] = mapped_column(
         JSON, default=lambda: list(DEFAULT_INBOUND_GROUPS), nullable=False
     )
+    # Скрыт из меню покупки: нельзя купить, назначается только админом (см. UNLIMITED_INBOUND_GROUP).
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     def __repr__(self) -> str:
         return f"<Plan(id={self.id}, devices={self.devices}, traffic_gb={self.traffic_gb})>"

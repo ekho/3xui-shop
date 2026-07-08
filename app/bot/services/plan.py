@@ -5,6 +5,11 @@ import os
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.bot.models import Plan
+from app.bot.utils.constants import (
+    UNLIMITED_INBOUND_GROUP,
+    UNLIMITED_PLAN_DEVICES,
+    UNLIMITED_PLAN_TRAFFIC_GB,
+)
 from app.config import DEFAULT_PLANS_DIR
 from app.db.models import Plan as PlanModel
 from app.db.models import PlanDuration
@@ -36,12 +41,19 @@ class PlanService:
                 db_plans = await PlanModel.get_all(session)
                 db_durations = await PlanDuration.get_all_sorted(session)
 
+        # Досеять скрытый безлимит-план, если его ещё нет (после bootstrap, чтобы не
+        # сделать таблицу непустой раньше времени). Идемпотентно; правки админа не трёт.
+        if await self._ensure_unlimited_plan():
+            async with self.session_factory() as session:
+                db_plans = await PlanModel.get_all(session)
+
         self._plans = [
             Plan.from_dict(
                 {
                     "devices": p.devices,
                     "traffic_gb": p.traffic_gb,
                     "inbound_groups": p.inbound_groups,
+                    "hidden": p.hidden,
                     "prices": p.prices,
                 }
             )
@@ -85,6 +97,35 @@ class PlanService:
                     **kwargs,
                 )
 
+    async def _ensure_unlimited_plan(self) -> bool:
+        """Создать скрытый безлимит-план, если его нет. Идемпотентно; возвращает True,
+        если создали (нужно перечитать). Опознаём по группе UNLIMITED_INBOUND_GROUP —
+        так правки девайсов/трафика админом не приводят к дублю. Если слот devices
+        уже занят обычным тарифом, не создаём (grant_unlimited тогда честно откажет)."""
+        async with self.session_factory() as session:
+            plans = await PlanModel.get_all(session)
+            if any(UNLIMITED_INBOUND_GROUP in (p.inbound_groups or []) for p in plans):
+                return False
+            created = await PlanModel.create(
+                session=session,
+                devices=UNLIMITED_PLAN_DEVICES,
+                traffic_gb=UNLIMITED_PLAN_TRAFFIC_GB,
+                prices={},
+                inbound_groups=[UNLIMITED_INBOUND_GROUP],
+                hidden=True,
+            )
+        if created is None:
+            logger.warning(
+                f"Unlimited plan not seeded: a plan for {UNLIMITED_PLAN_DEVICES} devices "
+                "already exists. Free that device count or edit the plan manually."
+            )
+            return False
+        logger.info(
+            f"Seeded hidden unlimited plan: {UNLIMITED_PLAN_DEVICES} devices / "
+            f"{UNLIMITED_PLAN_TRAFFIC_GB}GB / group '{UNLIMITED_INBOUND_GROUP}'."
+        )
+        return True
+
     def get_plan(self, devices: int) -> Plan | None:
         plan = next((plan for plan in self._plans if plan.devices == devices), None)
 
@@ -95,6 +136,18 @@ class PlanService:
 
     def get_all_plans(self) -> list[Plan]:
         return self._plans
+
+    def get_purchasable_plans(self) -> list[Plan]:
+        """Тарифы для меню покупки — без скрытых (напр. безлимит-план админа)."""
+        return [plan for plan in self._plans if not plan.hidden]
+
+    def get_unlimited_plan(self) -> Plan | None:
+        """Скрытый безлимит-план — опознаётся по группе UNLIMITED_INBOUND_GROUP
+        в наборе (та же группа, что тогглит админ). None, если он не заведён."""
+        return next(
+            (plan for plan in self._plans if UNLIMITED_INBOUND_GROUP in plan.inbound_groups),
+            None,
+        )
 
     def get_durations(self) -> list[int]:
         return self._durations

@@ -13,7 +13,7 @@ from app.bot.utils.constants import (
     ReferrerRewardLevel,
     ReferrerRewardType,
 )
-from app.bot.utils.formatting import format_subscription_period
+from app.bot.utils.formatting import format_subscription_period, format_traffic_gb
 from app.bot.utils.navigation import NavMain, NavReferral
 from app.config import Config
 from app.db.models import Referral, ReferrerReward, User
@@ -164,6 +164,7 @@ async def callback_get_referred_trial(
         await callback.bot.edit_message_text(
             text=_("subscription:ntf:trial_activate_success").format(
                 duration=format_subscription_period(referred_trial_period),
+                traffic=format_traffic_gb(config.shop.TRIAL_TRAFFIC_GB),
             ),
             chat_id=callback.message.chat.id,
             message_id=main_message_id,

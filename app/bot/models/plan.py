@@ -11,6 +11,8 @@ class Plan:
     traffic_gb: int = 0  # G2: лимит трафика в ГБ (0 = безлимит). Опционален для обратной совместимости.
     # Набор групп инбаундов тарифа (профиль = union групп). Старые записи без поля → дефолт.
     inbound_groups: list[str] = field(default_factory=lambda: list(DEFAULT_INBOUND_GROUPS))
+    # Скрыт из меню покупки (нельзя купить); назначается только админом.
+    hidden: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Plan":
@@ -18,6 +20,7 @@ class Plan:
             devices=data["devices"],
             traffic_gb=data.get("traffic_gb", 0),  # старые plans.json без поля → безлимит
             inbound_groups=list(data.get("inbound_groups") or DEFAULT_INBOUND_GROUPS),
+            hidden=bool(data.get("hidden", False)),
             prices={k: {int(m): p for m, p in v.items()} for k, v in data["prices"].items()},
         )
 
@@ -26,6 +29,7 @@ class Plan:
             "devices": self.devices,
             "traffic_gb": self.traffic_gb,
             "inbound_groups": self.inbound_groups,
+            "hidden": self.hidden,
             "prices": {k: {str(m): p for m, p in v.items()} for k, v in self.prices.items()},
         }
 

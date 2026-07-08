@@ -61,6 +61,7 @@ class SubscriptionService:
             user,
             duration=self.config.shop.TRIAL_PERIOD,
             devices=self.config.shop.BONUS_DEVICES_COUNT,
+            traffic_gb=self.config.shop.TRIAL_TRAFFIC_GB,
         )
 
         if trial_success:

@@ -28,6 +28,7 @@ DEFAULT_SHOP_EMAIL = "support@3xui-shop.com"
 DEFAULT_SHOP_CURRENCY = Currency.RUB.code
 DEFAULT_SHOP_TRIAL_ENABLED = True
 DEFAULT_SHOP_TRIAL_PERIOD = 3
+DEFAULT_SHOP_TRIAL_TRAFFIC_GB = 15  # лимит трафика триала в ГБ (0 = безлимит)
 DEFAULT_SHOP_REFERRED_TRIAL_ENABLED = False
 DEFAULT_SHOP_REFERRED_TRIAL_PERIOD = 7
 DEFAULT_SHOP_REFERRER_REWARD_ENABLED = True
@@ -98,6 +99,7 @@ class ShopConfig:
     CURRENCY: str
     TRIAL_ENABLED: bool
     TRIAL_PERIOD: int
+    TRIAL_TRAFFIC_GB: int
     REFERRED_TRIAL_ENABLED: bool
     REFERRED_TRIAL_PERIOD: int
     REFERRER_REWARD_ENABLED: bool
@@ -344,6 +346,11 @@ def load_config() -> Config:
             ).upper(),
             TRIAL_ENABLED=env.bool("SHOP_TRIAL_ENABLED", default=DEFAULT_SHOP_TRIAL_ENABLED),
             TRIAL_PERIOD=env.int("SHOP_TRIAL_PERIOD", default=DEFAULT_SHOP_TRIAL_PERIOD),
+            TRIAL_TRAFFIC_GB=env.int(
+                "SHOP_TRIAL_TRAFFIC_GB",
+                default=DEFAULT_SHOP_TRIAL_TRAFFIC_GB,
+                validate=Range(min=0, error="SHOP_TRIAL_TRAFFIC_GB must be >= 0"),
+            ),
             REFERRED_TRIAL_ENABLED=env.bool(
                 "SHOP_REFERRED_TRIAL_ENABLED", default=DEFAULT_SHOP_REFERRED_TRIAL_ENABLED
             ),

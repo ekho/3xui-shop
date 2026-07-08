@@ -8,7 +8,7 @@ from aiogram.utils.i18n import gettext as _
 from app.bot.models import ServicesContainer
 from app.bot.routers.subscription.keyboard import trial_success_keyboard
 from app.bot.utils.constants import MAIN_MESSAGE_ID_KEY, PREVIOUS_CALLBACK_KEY
-from app.bot.utils.formatting import format_subscription_period
+from app.bot.utils.formatting import format_subscription_period, format_traffic_gb
 from app.bot.utils.navigation import NavMain, NavSubscription
 from app.config import Config
 from app.db.models import User
@@ -52,6 +52,7 @@ async def callback_get_trial(
         await callback.bot.edit_message_text(
             text=_("subscription:ntf:trial_activate_success").format(
                 duration=format_subscription_period(trial_period),
+                traffic=format_traffic_gb(config.shop.TRIAL_TRAFFIC_GB),
             ),
             chat_id=callback.message.chat.id,
             message_id=main_message_id,

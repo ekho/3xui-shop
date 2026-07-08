@@ -411,9 +411,11 @@ def plan_editor_keyboard(plans: list[Plan]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     for plan in plans:
+        # Скрытый (невыкупаемый) тариф помечаем 🔒, чтобы админ не путал его с обычным.
+        prefix = "🔒" if plan.hidden else "📱"
         builder.row(
             InlineKeyboardButton(
-                text=f"📱 {format_device_count(plan.devices)}",
+                text=f"{prefix} {format_device_count(plan.devices)}",
                 callback_data=NavAdminTools.SHOW_PLAN + f"_{plan.devices}",
             )
         )

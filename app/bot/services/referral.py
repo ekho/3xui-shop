@@ -72,6 +72,7 @@ class ReferralService:
                 referral.referred,
                 duration=self.config.shop.REFERRED_TRIAL_PERIOD,
                 devices=self.config.shop.BONUS_DEVICES_COUNT,
+                traffic_gb=self.config.shop.TRIAL_TRAFFIC_GB,
             )
 
             if referred_success:

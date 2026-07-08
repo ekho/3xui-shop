@@ -117,7 +117,7 @@ async def callback_subscription_change(
     callback_data.is_change = True
     await callback.message.edit_text(
         text=_("subscription:message:devices"),
-        reply_markup=devices_keyboard(services.plan.get_all_plans(), callback_data),
+        reply_markup=devices_keyboard(services.plan.get_purchasable_plans(), callback_data),
     )
 
 
@@ -143,7 +143,7 @@ async def callback_subscription_process(
     callback_data.state = NavSubscription.DEVICES
     await callback.message.edit_text(
         text=_("subscription:message:devices"),
-        reply_markup=devices_keyboard(services.plan.get_all_plans(), callback_data),
+        reply_markup=devices_keyboard(services.plan.get_purchasable_plans(), callback_data),
     )
 
 

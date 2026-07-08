@@ -12,7 +12,11 @@ import logging
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.bot.models import ClientData
-from app.bot.utils.constants import BANNED_INBOUND_GROUP
+from app.bot.utils.constants import (
+    BANNED_INBOUND_GROUP,
+    DEFAULT_INBOUND_GROUPS,
+    UNLIMITED_INBOUND_GROUP,
+)
 from app.bot.utils.time import (
     add_days_to_timestamp,
     days_to_timestamp,
@@ -300,11 +304,14 @@ class VPNService:
         flow: str = "xtls-rprx-vision",
         total_gb: int = 0,
         groups: list[str] | None = None,
+        expiry_override: int | None = None,
     ) -> bool:
         """Создать клиента сразу во всех инбаундах его набора групп.
 
         groups=None -> набор юзера из БД или дефолт. Пустой резолв набора
         пробрасывает EmptyInboundSetError (политика fail+алерт).
+        expiry_override -> явный expiryTime вместо срока по duration (0 = бессрочно,
+        для безлимит-плана; иначе days_to_timestamp(duration)).
         """
         logger.info(f"Creating new client {user.tg_id} | {devices} devices {duration} days.")
 
@@ -327,7 +334,7 @@ class VPNService:
             "flow": flow,
             "limitIp": devices,
             "totalGB": total_gb,
-            "expiryTime": days_to_timestamp(duration),
+            "expiryTime": days_to_timestamp(duration) if expiry_override is None else expiry_override,
             # Забаненный остаётся забаненным, что бы ни провижинилось.
             "enable": enable and BANNED_INBOUND_GROUP not in groups,
             "tgId": 0,
@@ -357,6 +364,7 @@ class VPNService:
         enable: bool = True,
         flow: str = "xtls-rprx-vision",
         total_gb: int | None = None,
+        expiry_override: int | None = None,
     ) -> bool:
         logger.info(f"Updating client {user.tg_id} | {devices} devices {duration} days.")
         connection = await self.server_pool_service.get_connection(user)
@@ -383,6 +391,9 @@ class VPNService:
                 expiry_time_to_use = current_time
 
             expiry_time = add_days_to_timestamp(timestamp=expiry_time_to_use, days=duration)
+            # Безлимит-план: явный expiryTime (0 = бессрочно) поверх расчёта по duration.
+            if expiry_override is not None:
+                expiry_time = expiry_override
 
             # update/:email заменяет запись, панель пропагирует её во все инбаунды клиента.
             # Опущенные id/password/auth панель сохраняет от текущей записи (не ротирует),
@@ -563,15 +574,152 @@ class VPNService:
             return ok
         return False
 
-    async def process_bonus_days(self, user: User, duration: int, devices: int) -> bool:
+    async def grant_unlimited(self, user: User) -> bool:
+        """Админ-грант безлимит-плана (скрытый Plan с группой `unlimited`).
+
+        Провижинит клиента лимитами плана: limitIp=plan.devices (7), totalGB=100ГБ,
+        expiryTime=0 (бессрочно), членство — группа `unlimited`. Месячный сброс
+        трафика делает САМА панель (inbound.TrafficReset=monthly на инбаундах группы),
+        поэтому бот здесь ничего не сбрасывает и client.reset не выставляет
+        (см. память panel-client-reset-semantics: client.reset — авто-продление по
+        истечению, требует expiryTime>0 и потому несовместимо с бессрочным сроком).
+
+        Создаёт клиента, если его ещё нет; иначе переводит существующего. Идемпотентно.
+        Бан сохраняется поверх набора. EmptyInboundSetError (группа `unlimited` не
+        заведена/не тегирована в панели) -> отказ с явным логом, флоу не валится.
+        """
+        plan = self.plan_service.get_unlimited_plan()
+        if plan is None:
+            logger.error(
+                f"grant_unlimited {user.tg_id}: безлимит-план не найден — нужен скрытый "
+                f"Plan с группой '{UNLIMITED_INBOUND_GROUP}' в inbound_groups."
+            )
+            return False
+
+        groups = list(plan.inbound_groups)
+        total_gb = gb_to_bytes(plan.traffic_gb)  # 0 -> безлимит-трафик; 100 -> 100ГБ-кап
+
+        try:
+            # Клиент уже на панели (или усыновляется reconcile) -> обновляем лимиты.
+            if await self.reconcile_from_panel(user) or await self.is_client_exists(user):
+                ok = await self.update_client(
+                    user=user,
+                    devices=plan.devices,
+                    duration=0,
+                    replace_devices=True,
+                    replace_duration=True,
+                    total_gb=total_gb,
+                    expiry_override=0,  # бессрочно
+                )
+                if not ok:
+                    return False
+                # Свести членства к набору безлимит-плана; бан остаётся поверх.
+                plan_groups = groups
+                if self.inbound_group_service.is_banned(user):
+                    plan_groups = plan_groups + [BANNED_INBOUND_GROUP]
+                applied = await self.apply_inbound_groups(user, groups=plan_groups)
+                if applied:
+                    logger.info(f"Unlimited plan granted to existing client {user.tg_id}.")
+                return applied
+
+            # Нового клиента создаём сразу бессрочным на группе `unlimited`.
+            created = await self.create_client(
+                user=user,
+                devices=plan.devices,
+                duration=0,
+                total_gb=total_gb,
+                groups=groups,
+                expiry_override=0,  # бессрочно
+            )
+            if created:
+                logger.info(f"Unlimited plan granted to new client {user.tg_id}.")
+            return created
+        except EmptyInboundSetError as exception:
+            logger.critical(f"grant_unlimited for {user.tg_id} failed: {exception}")
+            return False
+
+    async def revoke_unlimited(self, user: User) -> bool:
+        """Снять безлимит и откатить клиента на СТАРТОВЫЙ ТРИАЛ.
+
+        Триал = те же параметры, что даёт gift_trial новому юзеру: BONUS_DEVICES_COUNT
+        устройств, TRIAL_PERIOD дней, лимит трафика SHOP_TRIAL_TRAFFIC_GB (0 = безлимит),
+        дефолтный набор групп (regular). Клиент не удаляется — переводится; группа
+        `unlimited` отцепляется. Идём напрямую через update_client, минуя
+        SubscriptionService.gift_trial: его гейт is_trial_available требует отсутствия
+        сервера у юзера, а у безлимитчика он есть.
+
+        Счётчик трафика сбрасывается (за безлимит юзер мог использовать > лимита триала —
+        иначе триал сразу упёрся бы в кап). Бан сохраняется поверх набора.
+        EmptyInboundSetError (нет regular-инбаундов на сервере) -> отказ с логом.
+        """
+        trial_period = self.config.shop.TRIAL_PERIOD
+        trial_devices = self.config.shop.BONUS_DEVICES_COUNT
+        trial_total_gb = gb_to_bytes(self.config.shop.TRIAL_TRAFFIC_GB)  # 0 -> безлимит
+        groups = list(DEFAULT_INBOUND_GROUPS)
+        if self.inbound_group_service.is_banned(user):
+            groups = groups + [BANNED_INBOUND_GROUP]
+
+        try:
+            # Клиента на панели нет (грант не был провижинен) — просто вернуть дефолтный набор.
+            if not await self.is_client_exists(user):
+                await self._persist_groups(user, groups)
+                logger.info(
+                    f"Unlimited revoked for {user.tg_id} (no panel client): groups reset to default."
+                )
+                return True
+
+            ok = await self.update_client(
+                user=user,
+                devices=trial_devices,
+                duration=trial_period,
+                replace_devices=True,
+                replace_duration=True,
+                total_gb=trial_total_gb,
+            )
+            if not ok:
+                return False
+            # Свести членства к дефолтному набору (отцепить unlimited); бан остаётся поверх.
+            # enforce_enable=True: снятие безлимита — явное действие админа.
+            applied = await self.apply_inbound_groups(user, groups=groups, enforce_enable=True)
+            if not applied:
+                return False
+            # Начать триал с чистого счётчика (клиент мог накопить трафик на безлимите).
+            if not await self.reset_traffic(user):
+                logger.error(f"revoke_unlimited {user.tg_id}: reset_traffic failed after update.")
+                return False
+            # resetTraffic заодно включает клиента — бан переналожить.
+            connection = await self.server_pool_service.get_connection(user)
+            if connection:
+                await self._enforce_ban(self._clients(connection), user)
+            logger.info(
+                f"Unlimited revoked for {user.tg_id}: reset to starter trial "
+                f"({trial_devices} devices, {trial_period} days, "
+                f"{self.config.shop.TRIAL_TRAFFIC_GB}GB, groups {groups})."
+            )
+            return True
+        except EmptyInboundSetError as exception:
+            logger.critical(f"revoke_unlimited for {user.tg_id} failed: {exception}")
+            return False
+
+    async def process_bonus_days(
+        self, user: User, duration: int, devices: int, traffic_gb: int = 0
+    ) -> bool:
+        # traffic_gb: лимит трафика в ГБ для выдачи (0 = безлимит). Триал передаёт
+        # SHOP_TRIAL_TRAFFIC_GB; промокод/реферер-награда — 0 (не капать бонус).
+        # В update-ветке 0 -> None (не трогать текущий лимит платного клиента, M10/P4).
+        update_total_gb = gb_to_bytes(traffic_gb) if traffic_gb else None
         try:
             if await self.is_client_exists(user):
-                updated = await self.update_client(user=user, devices=0, duration=duration)
+                updated = await self.update_client(
+                    user=user, devices=0, duration=duration, total_gb=update_total_gb
+                )
                 if updated:
                     logger.info(f"Updated client {user.tg_id} with additional {duration} days(-s).")
                     return True
             else:
-                created = await self.create_client(user=user, devices=devices, duration=duration)
+                created = await self.create_client(
+                    user=user, devices=devices, duration=duration, total_gb=gb_to_bytes(traffic_gb)
+                )
                 if created:
                     logger.info(f"Created client {user.tg_id} with additional {duration} days(-s)")
                     return True

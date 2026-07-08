@@ -63,6 +63,11 @@ def format_device_count(devices: int) -> str:
     )
 
 
+def format_traffic_gb(traffic_gb: int) -> str:
+    """Лимит трафика в ГБ для показа юзеру: 0 -> ∞ (безлимит)."""
+    return f"{traffic_gb} {_('GB')}" if traffic_gb else UNLIMITED
+
+
 def format_subscription_period(days: int) -> str:
     if days == -1:
         return UNLIMITED
