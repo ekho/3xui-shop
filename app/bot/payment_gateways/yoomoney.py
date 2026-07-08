@@ -1,6 +1,8 @@
 import hashlib
+import hmac
 import logging
 import uuid
+from urllib.parse import quote
 
 import requests
 from aiogram import Bot
@@ -137,6 +139,28 @@ class Yoomoney(PaymentGateway):
         return response.url
 
     def verify_notification(self, data: dict) -> bool:
+        # С 18.05.2026 ЮMoney не присылает sha1_hash — подлинность проверяется по параметру
+        # sign: HMAC-SHA256 (hex, lowercase, тот же секрет) от строки всех параметров
+        # уведомления, кроме самого sign, отсортированных по алфавиту; значения
+        # URL-энкодятся по RFC 3986, пустые остаются как "key=".
+        sign = data.get("sign")
+        if sign:
+            sign_str = "&".join(
+                f"{key}={quote(str(value), safe='')}"
+                for key, value in sorted(data.items())
+                if key != "sign"
+            )
+            computed = hmac.new(
+                self.config.yoomoney.NOTIFICATION_SECRET.encode("utf-8"),
+                sign_str.encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+            is_valid = hmac.compare_digest(computed, str(sign).lower())
+            if not is_valid:
+                logger.warning(f"Invalid sign. Expected {computed}, received {sign}.")
+            return is_valid
+
+        # Легаси-схема уведомлений (до 18.05.2026): SHA-1 от фиксированного набора полей.
         params = [
             data.get("notification_type", ""),
             data.get("operation_id", ""),
