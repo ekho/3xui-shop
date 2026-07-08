@@ -42,10 +42,27 @@ class DBSessionMiddleware(BaseMiddleware):
                         vpn_id=str(uuid.uuid4()),
                         sub_id=generate_sub_id(),
                         first_name=tg_user.first_name,
+                        last_name=tg_user.last_name,
                         username=tg_user.username,
                         language_code=tg_user.language_code,
                     )
                     logger.info(f"New user {user.tg_id} created.")
+                else:
+                    # Имя/username меняются на стороне Telegram — держим свежими:
+                    # из них собирается примечание клиента в панели (client_comment).
+                    changed = {
+                        field: value
+                        for field, value in (
+                            ("first_name", tg_user.first_name),
+                            ("last_name", tg_user.last_name),
+                            ("username", tg_user.username),
+                        )
+                        if getattr(user, field) != value
+                    }
+                    if changed:
+                        await User.update(session=session, tg_id=tg_user.id, **changed)
+                        for field, value in changed.items():
+                            setattr(user, field, value)
 
                 data["user"] = user
                 data["session"] = session

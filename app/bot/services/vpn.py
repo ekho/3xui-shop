@@ -36,6 +36,16 @@ def gb_to_bytes(gb: int) -> int:
     return int(gb) * 1024**3
 
 
+def client_comment(user: User) -> str:
+    """Примечание клиента в панели: «Имя Фамилия / @username», пустые части опускаются.
+
+    Косметика для админа (в UI панели клиент виден только как email=tg_id);
+    first_name гарантирован Telegram, last_name/username опциональны.
+    """
+    name = " ".join(part for part in (user.first_name, user.last_name) if part)
+    return f"{name} / @{user.username}" if user.username else name
+
+
 class VPNService:
     """Работа с клиентами панели через клиент-центричный API v3.4.2 (/panel/api/clients).
 
@@ -338,6 +348,7 @@ class VPNService:
             # Забаненный остаётся забаненным, что бы ни провижинилось.
             "enable": enable and BANNED_INBOUND_GROUP not in groups,
             "tgId": 0,
+            "comment": client_comment(user),
         }
 
         try:
@@ -410,7 +421,9 @@ class VPNService:
                 # Продление/бонус не разбанивает: enable перекрывается баном.
                 "enable": enable and not self.inbound_group_service.is_banned(user),
                 "tgId": int(view.raw.get("tgId") or 0),
-                "comment": view.raw.get("comment") or "",
+                # Ручное примечание админа не перезаписываем; пустое — бэкфиллим
+                # своим форматом (клиенты, заведённые до появления comment).
+                "comment": view.raw.get("comment") or client_comment(user),
             }
             if view.group:
                 updated_client["group"] = view.group  # не затирать метку группы

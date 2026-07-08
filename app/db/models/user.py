@@ -27,6 +27,7 @@ class User(Base):
         sub_id (str): Unique subscription identifier (panel `subId`; tail of the subscription URL).
         server_id (int | None): Foreign key referencing the server.
         first_name (str): First name of the user.
+        last_name (str | None): Last name of the user.
         username (str | None): Telegram username of the user.
         created_at (datetime): Timestamp when the user was created.
         server (Server | None): Associated server object.
@@ -49,6 +50,8 @@ class User(Base):
         ForeignKey("servers.id", ondelete="SET NULL"), nullable=True
     )
     first_name: Mapped[str] = mapped_column(String(length=32), nullable=False)
+    # Telegram допускает до 64 символов; в SQLite длина не форсится, только документируется.
+    last_name: Mapped[str | None] = mapped_column(String(length=64), nullable=True)
     username: Mapped[str | None] = mapped_column(String(length=32), nullable=True)
     language_code: Mapped[str] = mapped_column(
         String(length=5),
