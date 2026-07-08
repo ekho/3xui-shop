@@ -150,7 +150,9 @@ Before starting the installation, make sure you have the installed [**Docker**](
 | BOT_TOKEN | 🔴 | - | Telegram bot token |
 | BOT_ADMINS | ⭕ | - | List of admin IDs (e.g., 123456789,987654321) |
 | BOT_DEV_ID | 🔴 | - | ID of the bot developer |
-| BOT_SUPPORT_ID | 🔴 | - | ID of the support person |
+| BOT_SUPPORT_ID | 🔴 | - | ID of the support person (DM fallback when the support bot is disabled) |
+| SUPPORT_BOT_TOKEN | ⭕ | - | Token of the dedicated support bot (proxy support via forum-group topics); secret, only works together with SUPPORT_GROUP_ID — see DEPLOYMENT.md §5b |
+| SUPPORT_GROUP_ID | ⭕ | - | ID of the support forum supergroup (-100…, Topics enabled, support bot is admin with can_manage_topics) |
 | BOT_DOMAIN | 🔴 | - | Domain of the bot (e.g., 3xui-shop.com) |
 | BOT_PORT | ⭕ | 8080 | Port of the bot |
 | BOT_TIMEZONE | ⭕ | UTC | IANA timezone for calendar jobs (e.g. Europe/Moscow); used by the monthly unlimited traffic reset (1st of month, 00:00) |
