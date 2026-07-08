@@ -23,10 +23,25 @@ logger = logging.getLogger(__name__)
 router = Router(name=__name__)
 
 
+def _can_manage_subscription(services: ServicesContainer, user: User) -> bool:
+    """Управление подпиской (купить/продлить/сменить/промокод) — только для regular:
+    не banned и не unlimited (безлимиту доступен только просмотр)."""
+    return not services.inbound_groups.is_banned(user) and not services.inbound_groups.is_unlimited(
+        user
+    )
+
+
+async def _deny_manage(callback: CallbackQuery, services: ServicesContainer) -> None:
+    await services.notification.show_popup(
+        callback=callback, text=_("subscription:popup:view_only")
+    )
+
+
 async def show_subscription(
     callback: CallbackQuery,
     client_data: ClientData | None,
     callback_data: SubscriptionData,
+    manageable: bool = True,
 ) -> None:
     if client_data:
 
@@ -45,6 +60,7 @@ async def show_subscription(
         reply_markup=subscription_keyboard(
             has_subscription=client_data,
             callback_data=callback_data,
+            manageable=manageable,
         ),
     )
 
@@ -70,7 +86,12 @@ async def callback_subscription(
             return
 
     callback_data = SubscriptionData(state=NavSubscription.PROCESS, user_id=user.tg_id)
-    await show_subscription(callback=callback, client_data=client_data, callback_data=callback_data)
+    await show_subscription(
+        callback=callback,
+        client_data=client_data,
+        callback_data=callback_data,
+        manageable=_can_manage_subscription(services, user),
+    )
 
 
 @router.callback_query(SubscriptionData.filter(F.state == NavSubscription.EXTEND))
@@ -82,6 +103,9 @@ async def callback_subscription_extend(
     services: ServicesContainer,
 ) -> None:
     logger.info(f"User {user.tg_id} started extend subscription.")
+    if not _can_manage_subscription(services, user):
+        await _deny_manage(callback, services)
+        return
     client = await services.vpn.is_client_exists(user)
 
     current_devices = await services.vpn.get_limit_ip(user=user, client=client)
@@ -113,6 +137,9 @@ async def callback_subscription_change(
     services: ServicesContainer,
 ) -> None:
     logger.info(f"User {user.tg_id} started change subscription.")
+    if not _can_manage_subscription(services, user):
+        await _deny_manage(callback, services)
+        return
     callback_data.state = NavSubscription.DEVICES
     callback_data.is_change = True
     await callback.message.edit_text(
@@ -130,6 +157,9 @@ async def callback_subscription_process(
     services: ServicesContainer,
 ) -> None:
     logger.info(f"User {user.tg_id} started subscription process.")
+    if not _can_manage_subscription(services, user):
+        await _deny_manage(callback, services)
+        return
     server = await services.server_pool.get_available_server()
 
     if not server:

@@ -32,8 +32,14 @@ def change_subscription_button() -> InlineKeyboardButton:
 def subscription_keyboard(
     has_subscription: bool,
     callback_data: SubscriptionData,
+    manageable: bool = True,
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+
+    # Просмотр без управления (безлимит-группа): только возврат в меню.
+    if not manageable:
+        builder.row(back_to_main_menu_button())
+        return builder.as_markup()
 
     if not has_subscription:
         builder.button(

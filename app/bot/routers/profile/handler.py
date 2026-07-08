@@ -14,7 +14,7 @@ from app.bot.utils.constants import PREVIOUS_CALLBACK_KEY
 from app.bot.utils.navigation import NavProfile
 from app.db.models import User
 
-from .keyboard import buy_subscription_keyboard, profile_keyboard
+from .keyboard import banned_profile_keyboard, buy_subscription_keyboard, profile_keyboard
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
@@ -68,11 +68,13 @@ async def render_profile(
             )
             return
 
-    reply_markup = (
-        profile_keyboard(user)
-        if client_data and not client_data.has_subscription_expired
-        else buy_subscription_keyboard()
-    )
+    # Забаненный: только возврат в меню (ни ключа, ни подключения, ни покупки).
+    if services.inbound_groups.is_banned(user):
+        reply_markup = banned_profile_keyboard()
+    elif client_data and not client_data.has_subscription_expired:
+        reply_markup = profile_keyboard(user)
+    else:
+        reply_markup = buy_subscription_keyboard()
     await callback.message.edit_text(
         text=await prepare_message(user=user, client_data=client_data),
         reply_markup=reply_markup,

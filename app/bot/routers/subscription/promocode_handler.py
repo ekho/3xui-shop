@@ -24,8 +24,20 @@ class ActivatePromocodeStates(StatesGroup):
 
 
 @router.callback_query(F.data == NavSubscription.PROMOCODE)
-async def callback_promocode(callback: CallbackQuery, user: User, state: FSMContext) -> None:
+async def callback_promocode(
+    callback: CallbackQuery,
+    user: User,
+    state: FSMContext,
+    services: ServicesContainer,
+) -> None:
     logger.info(f"User {user.tg_id} started activating promocode.")
+    # Промокод = управление подпиской (только regular). Для banned/unlimited запрещён:
+    # у безлимита он к тому же превратил бы бессрочный expiryTime=0 в конечную дату.
+    if services.inbound_groups.is_banned(user) or services.inbound_groups.is_unlimited(user):
+        await services.notification.show_popup(
+            callback=callback, text=_("subscription:popup:view_only")
+        )
+        return
     await state.set_state(ActivatePromocodeStates.promocode_input)
     await callback.message.edit_text(
         text=_("promocode:message:main"),

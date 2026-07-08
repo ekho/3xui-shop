@@ -21,6 +21,13 @@ def buy_subscription_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def banned_profile_keyboard() -> InlineKeyboardMarkup:
+    """Профиль забаненного: никаких действий, только возврат в главное меню."""
+    builder = InlineKeyboardBuilder()
+    builder.row(back_to_main_menu_button())
+    return builder.as_markup()
+
+
 def profile_keyboard(user: User | None = None) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 

@@ -16,8 +16,24 @@ def main_menu_keyboard(
     is_referral_available: bool = False,
     is_trial_available: bool = False,
     is_referred_trial_available: bool = False,
+    is_banned: bool = False,
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+
+    # Забаненному доступны только Профиль и Помощь — подписка, рефералка, триал
+    # и админка скрыты.
+    if is_banned:
+        builder.row(
+            InlineKeyboardButton(
+                text=_("main_menu:button:profile"),
+                callback_data=NavProfile.MAIN,
+            ),
+            InlineKeyboardButton(
+                text=_("main_menu:button:support"),
+                callback_data=NavSupport.MAIN,
+            ),
+        )
+        return builder.as_markup()
 
     if is_referred_trial_available:
         builder.row(

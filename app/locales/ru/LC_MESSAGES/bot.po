@@ -1264,6 +1264,10 @@ msgstr ""
 "❌ Ваш тарифный план больше не поддерживается. Вам необходимо изменить "
 "подписку."
 
+#: app/bot/routers/subscription/subscription_handler.py
+msgid "subscription:popup:view_only"
+msgstr "ℹ️ Для вашей группы подписка доступна только для просмотра — управление недоступно."
+
 #: app/bot/routers/subscription/subscription_handler.py:99
 #: app/bot/routers/subscription/subscription_handler.py:161
 msgid "subscription:message:duration"

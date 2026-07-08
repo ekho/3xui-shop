@@ -1251,6 +1251,10 @@ msgstr ""
 msgid "subscription:popup:error_fetching_plan"
 msgstr "❌ Your plan is no longer supported. You need to change your subscription."
 
+#: app/bot/routers/subscription/subscription_handler.py
+msgid "subscription:popup:view_only"
+msgstr "ℹ️ For your group the subscription is view-only — management is not available."
+
 #: app/bot/routers/subscription/subscription_handler.py:99
 #: app/bot/routers/subscription/subscription_handler.py:161
 msgid "subscription:message:duration"

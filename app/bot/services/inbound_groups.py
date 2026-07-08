@@ -10,6 +10,7 @@ from app.bot.utils.constants import (
     DEFAULT_INBOUND_GROUPS,
     INBOUND_GROUP_INCLUDES,
     INBOUND_GROUPS,
+    UNLIMITED_INBOUND_GROUP,
 )
 from app.db.models import Plan, User
 
@@ -87,6 +88,11 @@ class InboundGroupService:
     @staticmethod
     def is_banned(user: User) -> bool:
         return BANNED_INBOUND_GROUP in (user.inbound_groups or [])
+
+    @staticmethod
+    def is_unlimited(user: User) -> bool:
+        """Юзер в безлимит-группе (просмотр подписки без управления)."""
+        return UNLIMITED_INBOUND_GROUP in (user.inbound_groups or [])
 
     # --- фиксированный набор групп ---
     # Группы больше НЕ создаются и не синкаются из панели: набор захардкожен
