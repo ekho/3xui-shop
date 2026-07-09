@@ -206,13 +206,16 @@ async def main() -> None:
 
     # Support-прокси: второй бот в этом же процессе (см. app/support_bot/__init__.py).
     # Собираем ДО сервисов: при включённой фиче ApprovalService шлёт карточки заявок
-    # на регистрацию в группу поддержки от лица support-бота. Polling стартует ниже.
+    # на регистрацию в персональные топики группы поддержки через SupportProxyService.
+    # Polling стартует ниже.
     support_bot_instance: Bot | None = None
     support_dispatcher: Dispatcher | None = None
+    support_service = None
     if config.bot.SUPPORT_BOT_TOKEN and config.bot.SUPPORT_GROUP_ID:
         support_bot_instance, support_dispatcher = support_bot.create(
             config=config, db=db, i18n=i18n
         )
+        support_service = support_dispatcher["support"]  # создан внутри create()
 
     # Initialize services
     services_container = await services.initialize(
@@ -220,12 +223,14 @@ async def main() -> None:
         session=db.session,
         bot=bot,
         i18n=i18n,
-        support_bot=support_bot_instance,
+        support=support_service,
     )
 
-    # Общие сервисы доступны и хендлерам support-бота (кнопки approve/reject в группе).
+    # Общие сервисы доступны и хендлерам support-бота (кнопки approve/reject в группе);
+    # redis — для антиспама карточек при /pending (тот же, что у напоминаний).
     if support_dispatcher is not None:
         support_dispatcher["services"] = services_container
+        support_dispatcher["redis"] = storage.redis
 
     # Sync servers
     await services_container.server_pool.sync_servers()

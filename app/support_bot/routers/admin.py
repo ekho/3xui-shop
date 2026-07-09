@@ -4,12 +4,15 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import BaseFilter, Command
 from aiogram.types import CallbackQuery, Message
+from redis.asyncio.client import Redis
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import ServicesContainer
 from app.bot.services.approval import ApprovalCallback
 from app.bot.utils.constants import ApprovalStatus, SupportTicketStatus
 from app.config import Config
+from app.db.database import Database
 from app.db.models import SupportTicket, User
 from app.support_bot.service import SupportProxyService
 
@@ -122,11 +125,92 @@ async def command_info(
     await support.send_user_card(user=user, session=session, thread_id=ticket.thread_id)
 
 
+# ── Управление заявками на регистрацию командами ─────────────────────────────
+# /approve и /reject решают заявку юзера ЭТОГО топика — независимо от того, есть ли
+# в топике карточка с кнопками (карточек нет у заявок, поданных до включения фичи).
+# /pending — обзор очереди из любого места группы + раскладка карточек по топикам.
+
+
+async def _decide_registration(
+    message: Message,
+    session: AsyncSession,
+    services: ServicesContainer,
+    new_status: ApprovalStatus,
+) -> None:
+    ticket = await _ticket_for(message, session)
+    if not ticket:
+        await message.reply("⚠️ Тикет для этого топика не найден.")
+        return
+
+    target = await User.get(session=session, tg_id=ticket.tg_id)
+    if not target:
+        await message.reply(f"⚠️ Юзер <code>{ticket.tg_id}</code> не найден в БД магазина.")
+        return
+
+    applied = await services.approval.apply_decision(session, target, new_status)
+    if not applied:
+        await message.reply(f"ℹ️ Заявка уже в статусе «{new_status.value}».")
+        return
+
+    verdict = "✅ Одобрено" if new_status == ApprovalStatus.APPROVED else "🚫 Отклонено"
+    await message.reply(verdict)
+    logger.info(
+        f"Registration {new_status.value} for user {target.tg_id} "
+        f"by operator {message.from_user.id} (command)."
+    )
+
+
+@router.message(Command("approve"), _human, _in_topic)
+async def command_approve(
+    message: Message, session: AsyncSession, services: ServicesContainer
+) -> None:
+    await _decide_registration(message, session, services, ApprovalStatus.APPROVED)
+
+
+@router.message(Command("reject"), _human, _in_topic)
+async def command_reject(
+    message: Message, session: AsyncSession, services: ServicesContainer
+) -> None:
+    await _decide_registration(message, session, services, ApprovalStatus.REJECTED)
+
+
+@router.message(Command("pending"), _human)
+async def command_pending(
+    message: Message,
+    session: AsyncSession,
+    services: ServicesContainer,
+    db: Database,
+    redis: Redis,
+) -> None:
+    stmt = select(User).where(User.approval_status == ApprovalStatus.PENDING)
+    pending_users = list((await session.execute(stmt)).scalars().all())
+
+    if not pending_users:
+        await message.reply("✅ Заявок на регистрацию в очереди нет.")
+        return
+
+    # Полное переиспользование логики напоминаний: карточка с кнопками в топик каждого
+    # ожидающего, предыдущее напоминание удаляется (Redis-антиспам).
+    await services.approval.remind_pending(db.session, redis)
+
+    lines = "\n".join(
+        f"• {u.first_name} · @{u.username or '—'} · <code>{u.tg_id}</code>"
+        for u in pending_users
+    )
+    await message.reply(
+        f"⏳ Заявок в очереди: {len(pending_users)}\n{lines}\n\n"
+        "Карточки с кнопками разложены по топикам (обновлены)."
+    )
+    logger.info(
+        f"Operator {message.from_user.id} listed {len(pending_users)} pending users (/pending)."
+    )
+
+
 # ── Кнопки approve/reject на карточках заявок на регистрацию ─────────────────
-# Карточки в General шлёт ApprovalService; решение применяет он же — общий сервис
-# с основным ботом. Хендлер только парсит колбэк и даёт обратную связь оператору.
-# Колбэки не анонимизируются (в отличие от сообщений) — from_user всегда живой оператор;
-# право решать = членство в закрытой группе поддержки.
+# Карточки в топики юзеров шлёт ApprovalService (send_to_topic); решение применяет
+# он же — общий сервис с основным ботом. Хендлер только парсит колбэк и даёт
+# обратную связь оператору. Колбэки не анонимизируются (в отличие от сообщений) —
+# from_user всегда живой оператор; право решать = членство в закрытой группе поддержки.
 
 
 @router.callback_query(ApprovalCallback.filter())

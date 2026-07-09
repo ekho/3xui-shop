@@ -10,8 +10,9 @@
 Апдейты всегда получает long-polling'ом независимо от режима основного бота:
 трафик мал, домен/вебхук не нужны, токены разные — конфликтов нет.
 
-Помимо тикетов в General группы живут карточки заявок на регистрацию
-(шлёт ApprovalService, кнопки approve/reject обрабатывает routers/admin.py).
+Карточки заявок на регистрацию тоже живут в персональных топиках юзеров
+(шлёт ApprovalService через send_to_topic — топик создаётся сразу вместе с
+заявкой; кнопки approve/reject обрабатывает routers/admin.py).
 """
 
 import logging
@@ -104,6 +105,9 @@ async def _on_startup(config: Config, bot: Bot) -> None:
                 BotCommand(command="info", description="Карточка пользователя"),
                 BotCommand(command="ban", description="Заблокировать в поддержке"),
                 BotCommand(command="unban", description="Разблокировать"),
+                BotCommand(command="approve", description="Одобрить регистрацию (в топике)"),
+                BotCommand(command="reject", description="Отклонить регистрацию (в топике)"),
+                BotCommand(command="pending", description="Очередь заявок на регистрацию"),
             ],
             scope=BotCommandScopeChat(chat_id=config.bot.SUPPORT_GROUP_ID),
         )

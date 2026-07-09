@@ -4,7 +4,7 @@ import logging
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
-from aiogram.types import Message
+from aiogram.types import InlineKeyboardMarkup, Message
 from aiogram.utils.i18n import I18n
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -110,6 +110,82 @@ class SupportProxyService:
 
     async def _copy_to_topic(self, message: Message, thread_id: int) -> None:
         await message.copy_to(chat_id=self.group_id, message_thread_id=thread_id)
+
+    async def send_to_topic(
+        self,
+        session: AsyncSession,
+        user: User,
+        text: str,
+        reply_markup: InlineKeyboardMarkup | None = None,
+    ) -> Message | None:
+        """Сообщение от имени бота в персональный топик юзера.
+
+        Тикет и топик создаются при необходимости; удалённый вручную топик
+        пересоздаётся ровно один раз — та же семантика, что у relay_from_user.
+        Используется ApprovalService'ом для карточек заявок на регистрацию.
+        В отличие от relay_from_user статус тикета не проверяется: карточка —
+        служебное сообщение операторам, бан юзера в поддержке её не блокирует.
+        """
+        lock = self._relay_locks.setdefault(user.tg_id, asyncio.Lock())
+        async with lock:
+            return await self._send_to_topic(
+                session=session, user=user, text=text, reply_markup=reply_markup
+            )
+
+    async def _send_to_topic(
+        self,
+        session: AsyncSession,
+        user: User,
+        text: str,
+        reply_markup: InlineKeyboardMarkup | None,
+    ) -> Message | None:
+        ticket = await SupportTicket.get_by_tg_id(session=session, tg_id=user.tg_id)
+
+        if not ticket:
+            ticket = await SupportTicket.create(session=session, tg_id=user.tg_id)
+            if not ticket:
+                return None
+
+        if ticket.thread_id is None:
+            thread_id = await self._create_topic(session=session, user=user)
+            if thread_id is None:
+                return None
+            ticket = await SupportTicket.update(
+                session=session, tg_id=user.tg_id, thread_id=thread_id
+            )
+
+        try:
+            return await self.bot.send_message(
+                chat_id=self.group_id,
+                message_thread_id=ticket.thread_id,
+                text=text,
+                reply_markup=reply_markup,
+            )
+        except TelegramBadRequest as exception:
+            if not self._is_thread_gone(exception):
+                logger.error(f"Failed to send to topic of user {user.tg_id}: {exception}")
+                return None
+        except TelegramAPIError as exception:
+            logger.error(f"Failed to send to topic of user {user.tg_id}: {exception}")
+            return None
+
+        # Топик удалили руками — пересоздаём и ретраим ровно один раз.
+        logger.warning(f"Topic {ticket.thread_id} for user {user.tg_id} is gone; recreating.")
+        thread_id = await self._create_topic(session=session, user=user)
+        if thread_id is None:
+            return None
+        await SupportTicket.update(session=session, tg_id=user.tg_id, thread_id=thread_id)
+
+        try:
+            return await self.bot.send_message(
+                chat_id=self.group_id,
+                message_thread_id=thread_id,
+                text=text,
+                reply_markup=reply_markup,
+            )
+        except TelegramAPIError as exception:
+            logger.error(f"Retry send to topic of user {user.tg_id} failed: {exception}")
+            return None
 
     async def _create_topic(self, session: AsyncSession, user: User) -> int | None:
         try:

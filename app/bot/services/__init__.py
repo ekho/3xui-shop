@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from aiogram import Bot
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -5,6 +9,9 @@ from aiogram.utils.i18n import I18n
 
 from app.bot.models import ServicesContainer
 from app.config import Config
+
+if TYPE_CHECKING:
+    from app.support_bot.service import SupportProxyService
 
 from .approval import ApprovalService
 from .inbound_groups import InboundGroupService
@@ -23,7 +30,7 @@ async def initialize(
     session: async_sessionmaker,
     bot: Bot,
     i18n: I18n,
-    support_bot: Bot | None = None,
+    support: SupportProxyService | None = None,
 ) -> ServicesContainer:
     server_pool = ServerPoolService(config=config, session=session)
     plan = PlanService(session_factory=session)
@@ -43,13 +50,13 @@ async def initialize(
     subscription = SubscriptionService(config=config, session_factory=session, vpn_service=vpn)
     payment_stats = PaymentStatsService(session_factory=session)
     invite_stats = InviteStatsService(session_factory=session, payment_stats_service=payment_stats)
-    # support_bot=None → карточки заявок и напоминания идут в личку админам (фолбэк).
+    # support=None → карточки заявок и напоминания идут в личку админам (фолбэк).
     approval = ApprovalService(
         config=config,
         bot=bot,
         i18n=i18n,
         notification_service=notification,
-        support_bot=support_bot,
+        support=support,
     )
 
     return ServicesContainer(

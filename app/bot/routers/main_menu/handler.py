@@ -119,8 +119,9 @@ async def command_main_menu(
         # M6: уведомляем админов по статусу PENDING с дедупом (не по is_new_user, который сгорает,
         #     если первый апдейт юзера был не /start).
         if user.approval_status == ApprovalStatus.PENDING and user.approval_requested_at is None:
-            # Карточка с кнопками — в группу поддержки или личку админам (решает сервис).
-            await services.approval.announce_new_request(user)
+            # Карточка с кнопками — в топик юзера в группе поддержки или личку админам
+            # (решает сервис).
+            await services.approval.announce_new_request(session=session, user=user)
             await User.update(
                 session, tg_id=user.tg_id, approval_requested_at=datetime.now(timezone.utc)
             )

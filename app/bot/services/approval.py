@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters.callback_data import CallbackData
-from aiogram.types import InlineKeyboardMarkup, Message
+from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.i18n import I18n
 from aiogram.utils.i18n import gettext as _
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -23,6 +23,8 @@ if TYPE_CHECKING:
     # Только для аннотаций: runtime-импорт notification замкнул бы цикл
     # approval → notification → routers → admin_tools.approval_handler → approval
     # (approval_handler импортирует отсюда ApprovalCallback на уровне модуля).
+    from app.support_bot.service import SupportProxyService
+
     from .notification import NotificationService
 
 logger = logging.getLogger(__name__)
@@ -91,8 +93,9 @@ async def _redis_delete(redis: Redis, key: str) -> None:
 class ApprovalService:
     """Заявки на регистрацию: решение, карточки с кнопками, напоминания.
 
-    Один сервис на оба бота. Карточки новых заявок и напоминания уходят в General
-    группы поддержки (от лица support-бота), если фича включена; иначе — в личку
+    Один сервис на оба бота. Карточка новой заявки создаёт персональный топик юзера
+    в группе поддержки (тот же, что для тикетов — SupportProxyService.send_to_topic)
+    и падает туда; напоминания — в тот же топик. Если фича выключена — в личку
     каждому админу через основного бота (историческое поведение). apply_decision —
     единый источник правды для всех поверхностей: кнопки в карточке (оба бота) и
     экран «Ожидающие» в админке.
@@ -106,18 +109,17 @@ class ApprovalService:
         bot: Bot,
         i18n: I18n,
         notification_service: NotificationService,
-        support_bot: Bot | None = None,
+        support: SupportProxyService | None = None,
     ) -> None:
         self.config = config
         self.bot = bot  # основной бот
         self.i18n = i18n
         self.notification = notification_service
-        self.support_bot = support_bot
-        self.group_id: int | None = config.bot.SUPPORT_GROUP_ID
+        self.support = support
 
     @property
     def group_channel_enabled(self) -> bool:
-        return self.support_bot is not None and bool(self.group_id)
+        return self.support is not None
 
     # region: решение по заявке
 
@@ -192,11 +194,12 @@ class ApprovalService:
 
     # region: карточки заявок
 
-    async def announce_new_request(self, user: User) -> None:
+    async def announce_new_request(self, session: AsyncSession, user: User) -> None:
         """Карточка новой заявки с кнопками approve/reject.
 
-        В группу поддержки при включённой фиче; при сбое отправки или выключенной
-        фиче — в личку каждому админу (заявка не должна потеряться)."""
+        В персональный топик юзера в группе поддержки (создаётся сразу) при
+        включённой фиче; при сбое отправки или выключенной фиче — в личку каждому
+        админу (заявка не должна потеряться)."""
         # Апдейт пришёл в локали нового юзера → карточку рендерим на дефолтной локали.
         with self.i18n.use_locale(DEFAULT_LANGUAGE):
             text = _("approval:admin:new_request").format(
@@ -204,21 +207,17 @@ class ApprovalService:
             )
             keyboard = approval_keyboard(user.tg_id)
 
-        if self.group_channel_enabled and await self._send_to_group(text, keyboard):
-            return
-        await self._notify_each_admin(text, keyboard)
-
-    async def _send_to_group(self, text: str, keyboard: InlineKeyboardMarkup) -> Message | None:
-        try:
-            return await self.support_bot.send_message(
-                chat_id=self.group_id, text=text, reply_markup=keyboard
+        if self.group_channel_enabled:
+            sent = await self.support.send_to_topic(
+                session=session, user=user, text=text, reply_markup=keyboard
             )
-        except TelegramAPIError as exception:
+            if sent:
+                return
             logger.error(
-                f"Approval card to support group {self.group_id} failed: {exception}. "
-                "Проверьте, что support-бот в группе и имеет право писать в General."
+                f"Approval card for {user.tg_id} not delivered to support group; "
+                "falling back to admins' PM."
             )
-            return None
+        await self._notify_each_admin(text, keyboard)
 
     async def _notify_each_admin(self, text: str, keyboard: InlineKeyboardMarkup) -> None:
         admin_ids = set(self.config.bot.ADMINS) | {self.config.bot.DEV_ID}
@@ -236,47 +235,56 @@ class ApprovalService:
 
         Антиспам: предыдущее напоминание по юзеру удаляется перед отправкой нового
         (id живёт в Redis; ключи группы и лички независимы)."""
+        # Сессия открыта на весь прогон: отправка в топик может создавать тикет/топик.
         session: AsyncSession
         async with session_factory() as session:
             stmt = select(User).where(User.approval_status == ApprovalStatus.PENDING)
             result = await session.execute(stmt)
             pending_users = result.scalars().all()
 
-        if not pending_users:
-            logger.info("[approval reminder] No pending users to remind about.")
-            return
+            if not pending_users:
+                logger.info("[approval reminder] No pending users to remind about.")
+                return
 
-        destination = "support group" if self.group_channel_enabled else "admins"
-        logger.info(
-            f"[approval reminder] Reminding {destination} about {len(pending_users)} pending users."
-        )
+            destination = "support topics" if self.group_channel_enabled else "admins"
+            logger.info(
+                f"[approval reminder] Reminding {destination} "
+                f"about {len(pending_users)} pending users."
+            )
 
-        # Апдейт фонового таска не привязан к локали конкретного юзера → рендерим на дефолтной.
-        with self.i18n.use_locale(DEFAULT_LANGUAGE):
-            for user in pending_users:
-                text = _("approval:admin:reminder").format(
-                    name=user.first_name, username=user.username or "-", tg_id=user.tg_id
-                )
-                keyboard = approval_keyboard(user.tg_id)
+            # Апдейт фонового таска не привязан к локали юзера → рендерим на дефолтной.
+            with self.i18n.use_locale(DEFAULT_LANGUAGE):
+                for user in pending_users:
+                    text = _("approval:admin:reminder").format(
+                        name=user.first_name, username=user.username or "-", tg_id=user.tg_id
+                    )
+                    keyboard = approval_keyboard(user.tg_id)
 
-                if self.group_channel_enabled and await self._remind_group(
-                    user.tg_id, text, keyboard, redis
-                ):
-                    continue
-                # Группа недоступна (кик/права) или фича выключена — заявка не должна
-                # потеряться: личка админов; её антиспам-ключи независимы от групповых.
-                await self._remind_admins(user.tg_id, text, keyboard, redis)
+                    if self.group_channel_enabled and await self._remind_topic(
+                        session, user, text, keyboard, redis
+                    ):
+                        continue
+                    # Группа недоступна (кик/права) или фича выключена — заявка не должна
+                    # потеряться: личка админов; её антиспам-ключи независимы от групповых.
+                    await self._remind_admins(user.tg_id, text, keyboard, redis)
 
-    async def _remind_group(
-        self, tg_id: int, text: str, keyboard: InlineKeyboardMarkup, redis: Redis | None
+    async def _remind_topic(
+        self,
+        session: AsyncSession,
+        user: User,
+        text: str,
+        keyboard: InlineKeyboardMarkup,
+        redis: Redis | None,
     ) -> bool:
-        key = f"approval:reminder:msg:group:{tg_id}"
+        key = f"approval:reminder:msg:group:{user.tg_id}"
         if redis is not None:
             previous_id = await _redis_get(redis, key)
             if previous_id:
-                await self._delete_from_group(int(previous_id))
+                await self._delete_group_message(int(previous_id))
 
-        notification = await self._send_to_group(text, keyboard)
+        notification = await self.support.send_to_topic(
+            session=session, user=user, text=text, reply_markup=keyboard
+        )
 
         if redis is not None:
             if notification:
@@ -286,9 +294,12 @@ class ApprovalService:
                 await _redis_delete(redis, key)
         return notification is not None
 
-    async def _delete_from_group(self, message_id: int) -> None:
+    async def _delete_group_message(self, message_id: int) -> None:
+        # message_id уникален в рамках чата — thread_id для удаления не нужен.
         try:
-            await self.support_bot.delete_message(chat_id=self.group_id, message_id=message_id)
+            await self.support.bot.delete_message(
+                chat_id=self.support.group_id, message_id=message_id
+            )
         except TelegramAPIError as exception:
             logger.debug(
                 f"[approval reminder] delete group message {message_id} failed: {exception}"
