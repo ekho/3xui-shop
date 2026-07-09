@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.bot.services import (
+        ApprovalService,
         InboundGroupService,
         NotificationService,
         PlanService,
@@ -29,3 +30,4 @@ class ServicesContainer:
     subscription: SubscriptionService
     payment_stats: PaymentStatsService
     invite_stats: InviteStatsService
+    approval: ApprovalService

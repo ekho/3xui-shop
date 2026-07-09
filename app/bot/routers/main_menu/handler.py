@@ -7,13 +7,12 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import CallbackQuery, Message
-from aiogram.utils.i18n import I18n
 from aiogram.utils.i18n import gettext as _
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.filters import IsAdmin
 from app.bot.models import ServicesContainer
-from app.bot.utils.constants import DEFAULT_LANGUAGE, MAIN_MESSAGE_ID_KEY, ApprovalStatus
+from app.bot.utils.constants import MAIN_MESSAGE_ID_KEY, ApprovalStatus
 from app.bot.utils.navigation import NavMain
 from app.config import Config
 from app.db.models import Invite, Referral, User
@@ -69,25 +68,6 @@ async def process_creating_referral(session: AsyncSession, user: User, referrer_
         return False
 
 
-async def notify_admins_new_request(
-    services: ServicesContainer, config: Config, i18n: I18n, user: User
-) -> None:
-    # Импорт внутри функции — избегаем циклической зависимости на уровне модуля.
-    from app.bot.routers.admin_tools.approval_handler import approval_keyboard
-
-    admin_ids = set(config.bot.ADMINS) | {config.bot.DEV_ID}
-    # Апдейт пришёл в локали нового юзера → админам рендерим на дефолтной локали.
-    with i18n.use_locale(DEFAULT_LANGUAGE):
-        text = _("approval:admin:new_request").format(
-            name=user.first_name, username=user.username or "-", tg_id=user.tg_id
-        )
-        keyboard = approval_keyboard(user.tg_id)
-    for admin_id in admin_ids:
-        await services.notification.notify_by_id(
-            chat_id=admin_id, text=text, reply_markup=keyboard
-        )
-
-
 @router.message(Command(NavMain.START))
 async def command_main_menu(
     message: Message,
@@ -98,7 +78,6 @@ async def command_main_menu(
     session: AsyncSession,
     command: CommandObject,
     is_new_user: bool,
-    i18n: I18n,
 ) -> None:
     logger.info(f"User {user.tg_id} opened main menu page.")
     previous_message_id = await state.get_value(MAIN_MESSAGE_ID_KEY)
@@ -140,7 +119,8 @@ async def command_main_menu(
         # M6: уведомляем админов по статусу PENDING с дедупом (не по is_new_user, который сгорает,
         #     если первый апдейт юзера был не /start).
         if user.approval_status == ApprovalStatus.PENDING and user.approval_requested_at is None:
-            await notify_admins_new_request(services, config, i18n, user)
+            # Карточка с кнопками — в группу поддержки или личку админам (решает сервис).
+            await services.approval.announce_new_request(user)
             await User.update(
                 session, tg_id=user.tg_id, approval_requested_at=datetime.now(timezone.utc)
             )
@@ -148,7 +128,7 @@ async def command_main_menu(
             await message.answer(_("approval:message:pending"))
         else:
             # Стоп-лист: отказанному юзеру оставляем только связь с админом напрямую.
-            from app.bot.routers.admin_tools.approval_handler import rejected_contact_keyboard
+            from app.bot.services.approval import rejected_contact_keyboard
 
             await message.answer(
                 _("approval:message:rejected"),

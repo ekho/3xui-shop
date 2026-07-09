@@ -121,9 +121,7 @@ def _start_schedulers(
     if config.shop.APPROVAL_REQUIRED:
         tasks.approval_reminder.start_scheduler(
             session_factory=db.session,
-            config=config,
-            i18n=i18n,
-            notification_service=services.notification,
+            approval_service=services.approval,
             redis=redis,
         )
 
@@ -206,12 +204,28 @@ async def main() -> None:
     )
     I18n.set_current(i18n)
 
+    # Support-прокси: второй бот в этом же процессе (см. app/support_bot/__init__.py).
+    # Собираем ДО сервисов: при включённой фиче ApprovalService шлёт карточки заявок
+    # на регистрацию в группу поддержки от лица support-бота. Polling стартует ниже.
+    support_bot_instance: Bot | None = None
+    support_dispatcher: Dispatcher | None = None
+    if config.bot.SUPPORT_BOT_TOKEN and config.bot.SUPPORT_GROUP_ID:
+        support_bot_instance, support_dispatcher = support_bot.create(
+            config=config, db=db, i18n=i18n
+        )
+
     # Initialize services
     services_container = await services.initialize(
         config=config,
         session=db.session,
         bot=bot,
+        i18n=i18n,
+        support_bot=support_bot_instance,
     )
+
+    # Общие сервисы доступны и хендлерам support-бота (кнопки approve/reject в группе).
+    if support_dispatcher is not None:
+        support_dispatcher["services"] = services_container
 
     # Sync servers
     await services_container.server_pool.sync_servers()
@@ -263,11 +277,10 @@ async def main() -> None:
     # Set up bot commands
     await commands.setup(bot)
 
-    # Support-прокси: второй бот в этом же процессе (см. app/support_bot/__init__.py).
-    # Всегда long-polling — независимо от режима основного бота (разные токены, конфликтов нет).
+    # Support-прокси: всегда long-polling — независимо от режима основного бота
+    # (разные токены, конфликтов нет).
     support_task: asyncio.Task | None = None
-    if config.bot.SUPPORT_BOT_TOKEN and config.bot.SUPPORT_GROUP_ID:
-        support_bot_instance, support_dispatcher = support_bot.create(config=config, db=db, i18n=i18n)
+    if support_dispatcher is not None:
         # handle_signals=False: сигналами управляет основной цикл (start_polling основного
         # бота или _run_app); второй набор signal-хендлеров затёр бы первый.
         support_task = asyncio.create_task(

@@ -1,8 +1,7 @@
 import logging
 
-from aiogram import Bot, F, Router
+from aiogram import F, Router
 from aiogram.types import CallbackQuery
-from aiogram.utils.i18n import I18n
 from aiogram.utils.i18n import gettext as _
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,10 +11,8 @@ from app.bot.models import ServicesContainer
 from app.bot.routers.misc.keyboard import back_keyboard
 from app.bot.utils.constants import ApprovalStatus
 from app.bot.utils.navigation import NavAdminTools
-from app.config import Config
 from app.db.models import User
 
-from .approval_handler import apply_approval_decision
 from .keyboard import pending_user_details_keyboard, pending_users_keyboard
 
 logger = logging.getLogger(__name__)
@@ -110,9 +107,6 @@ async def _decide(
     user: User,
     session: AsyncSession,
     services: ServicesContainer,
-    bot: Bot,
-    i18n: I18n,
-    config: Config,
     new_status: ApprovalStatus,
 ) -> None:
     """Применяет решение админа по ожидающей заявке и обновляет экран.
@@ -144,10 +138,10 @@ async def _decide(
 
     logger.info(f"Admin {user.tg_id} set {new_status.value} for pending user {target.tg_id}.")
 
-    # Единый помощник: он же уведомляет юзера в его локали и снимает Stars-рекуррент при reject.
+    # Единый сервис: он же уведомляет юзера в его локали и снимает Stars-рекуррент при reject.
     # target только что прошёл guard как PENDING (та же сессия, без рефетча), поэтому решение
     # здесь применяется всегда; гонку «уже обработано» ловит guard выше на свежей сессии.
-    await apply_approval_decision(session, bot, i18n, config, target, new_status)
+    await services.approval.apply_decision(session, target, new_status)
 
     if new_status == ApprovalStatus.APPROVED:
         text = _("pending_users:popup:approved").format(name=target.first_name)
@@ -165,11 +159,8 @@ async def callback_pending_approve(
     user: User,
     session: AsyncSession,
     services: ServicesContainer,
-    bot: Bot,
-    i18n: I18n,
-    config: Config,
 ) -> None:
-    await _decide(callback, user, session, services, bot, i18n, config, ApprovalStatus.APPROVED)
+    await _decide(callback, user, session, services, ApprovalStatus.APPROVED)
 
 
 @router.callback_query(F.data.startswith(NavAdminTools.PENDING_REJECT), IsAdmin())
@@ -178,8 +169,5 @@ async def callback_pending_reject(
     user: User,
     session: AsyncSession,
     services: ServicesContainer,
-    bot: Bot,
-    i18n: I18n,
-    config: Config,
 ) -> None:
-    await _decide(callback, user, session, services, bot, i18n, config, ApprovalStatus.REJECTED)
+    await _decide(callback, user, session, services, ApprovalStatus.REJECTED)

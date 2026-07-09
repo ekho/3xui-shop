@@ -3,10 +3,12 @@ import logging
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import BaseFilter, Command
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.utils.constants import SupportTicketStatus
+from app.bot.models import ServicesContainer
+from app.bot.services.approval import ApprovalCallback
+from app.bot.utils.constants import ApprovalStatus, SupportTicketStatus
 from app.config import Config
 from app.db.models import SupportTicket, User
 from app.support_bot.service import SupportProxyService
@@ -20,7 +22,16 @@ class InSupportGroup(BaseFilter):
         return message.chat.id == config.bot.SUPPORT_GROUP_ID
 
 
+class CallbackInSupportGroup(BaseFilter):
+    async def __call__(self, callback: CallbackQuery, config: Config) -> bool:
+        return (
+            callback.message is not None
+            and callback.message.chat.id == config.bot.SUPPORT_GROUP_ID
+        )
+
+
 router.message.filter(InSupportGroup())
+router.callback_query.filter(CallbackInSupportGroup())
 
 # Анонимные админы пишут как GroupAnonymousBot — сопоставить с оператором нельзя,
 # и user-контекста у таких апдейтов нет; им отвечает anonymous_admin_hint.
@@ -109,6 +120,47 @@ async def command_info(
         await message.reply(f"⚠️ Юзер <code>{ticket.tg_id}</code> не найден в БД магазина.")
         return
     await support.send_user_card(user=user, session=session, thread_id=ticket.thread_id)
+
+
+# ── Кнопки approve/reject на карточках заявок на регистрацию ─────────────────
+# Карточки в General шлёт ApprovalService; решение применяет он же — общий сервис
+# с основным ботом. Хендлер только парсит колбэк и даёт обратную связь оператору.
+# Колбэки не анонимизируются (в отличие от сообщений) — from_user всегда живой оператор;
+# право решать = членство в закрытой группе поддержки.
+
+
+@router.callback_query(ApprovalCallback.filter())
+async def on_approval(
+    callback: CallbackQuery,
+    callback_data: ApprovalCallback,
+    session: AsyncSession,
+    services: ServicesContainer,
+) -> None:
+    new_status = (
+        ApprovalStatus.APPROVED if callback_data.action == "approve" else ApprovalStatus.REJECTED
+    )
+    target = await User.get(session=session, tg_id=callback_data.user_id)
+    if target is None:
+        await callback.answer("⚠️ Пользователь не найден в БД магазина.", show_alert=True)
+        return
+
+    applied = await services.approval.apply_decision(session, target, new_status)
+    if not applied:
+        await callback.answer("ℹ️ Заявка уже обработана.", show_alert=True)
+        return
+
+    operator = callback.from_user
+    verdict = "✅ Одобрено" if new_status == ApprovalStatus.APPROVED else "🚫 Отклонено"
+    handle = f"@{operator.username}" if operator.username else str(operator.id)
+    try:
+        await callback.message.edit_text(f"{callback.message.text}\n\n{verdict} — {handle}")
+    except TelegramAPIError:
+        pass  # текст не изменился / сообщение недоступно
+    await callback.answer()
+    logger.info(
+        f"Registration {new_status.value} for user {target.tg_id} "
+        f"by operator {operator.id} (support group)."
+    )
 
 
 # ── Синк статуса с нативными действиями над топиком. Без _human: session в группе
