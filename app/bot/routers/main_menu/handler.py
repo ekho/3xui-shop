@@ -68,6 +68,13 @@ async def process_creating_referral(session: AsyncSession, user: User, referrer_
         return False
 
 
+async def _main_menu_text(bot: Bot, user: User) -> str:
+    # Имя бота — отображаемое из BotFather, через me() (aiogram кеширует ответ):
+    # переименование бота меняет приветствие без правки локалей.
+    me = await bot.me()
+    return _("main_menu:message:main").format(name=user.first_name, bot_name=me.full_name)
+
+
 @router.message(Command(NavMain.START))
 async def command_main_menu(
     message: Message,
@@ -138,7 +145,7 @@ async def command_main_menu(
         return
 
     main_menu = await message.answer(
-        text=_("main_menu:message:main").format(name=user.first_name),
+        text=await _main_menu_text(message.bot, user),
         reply_markup=main_menu_keyboard(
             is_admin,
             is_referral_available=config.shop.REFERRER_REWARD_ENABLED,
@@ -163,7 +170,7 @@ async def callback_main_menu(
     await state.update_data({MAIN_MESSAGE_ID_KEY: callback.message.message_id})
     is_admin = await IsAdmin()(user_id=user.tg_id)
     await callback.message.edit_text(
-        text=_("main_menu:message:main").format(name=user.first_name),
+        text=await _main_menu_text(callback.message.bot, user),
         reply_markup=main_menu_keyboard(
             is_admin,
             is_referral_available=config.shop.REFERRER_REWARD_ENABLED,
@@ -195,7 +202,7 @@ async def redirect_to_main_menu(
 
     try:
         await bot.edit_message_text(
-            text=_("main_menu:message:main").format(name=user.first_name),
+            text=await _main_menu_text(bot, user),
             chat_id=user.tg_id,
             message_id=main_message_id,
             reply_markup=main_menu_keyboard(
