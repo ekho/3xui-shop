@@ -103,6 +103,7 @@ async def _on_startup(config: Config, bot: Bot) -> None:
             commands=[
                 BotCommand(command="close", description="Закрыть тикет"),
                 BotCommand(command="info", description="Карточка пользователя"),
+                BotCommand(command="comp", description="Начислить дни: /comp N"),
                 BotCommand(command="ban", description="Заблокировать в поддержке"),
                 BotCommand(command="unban", description="Разблокировать"),
                 BotCommand(command="approve", description="Одобрить регистрацию (в топике)"),

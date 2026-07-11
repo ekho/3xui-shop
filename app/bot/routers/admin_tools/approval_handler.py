@@ -37,7 +37,9 @@ async def on_approval(
         await callback.answer(_("approval:admin:user_not_found"), show_alert=True)
         return
 
-    applied = await services.approval.apply_decision(session, target, new_status)
+    applied = await services.approval.apply_decision(
+        session, target, new_status, decided_by=callback.from_user.id
+    )
     if not applied:
         await callback.answer(_("approval:admin:already_processed"), show_alert=True)
         return

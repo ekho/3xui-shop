@@ -142,7 +142,7 @@ async def _decide(
     # Единый сервис: он же уведомляет юзера в его локали и снимает Stars-рекуррент при reject.
     # target только что прошёл guard как PENDING (та же сессия, без рефетча), поэтому решение
     # здесь применяется всегда; гонку «уже обработано» ловит guard выше на свежей сессии.
-    await services.approval.apply_decision(session, target, new_status)
+    await services.approval.apply_decision(session, target, new_status, decided_by=user.tg_id)
 
     if new_status == ApprovalStatus.APPROVED:
         text = _("pending_users:popup:approved").format(name=target.first_name)

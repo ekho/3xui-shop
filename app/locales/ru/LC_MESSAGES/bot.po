@@ -228,7 +228,7 @@ msgstr "🔄 Обновить"
 
 #: app/bot/routers/admin_tools/keyboard.py:34
 msgid "admin_tools:button:user_editor"
-msgstr "👤 Редактор пользователей"
+msgstr "👥 Пользователи"
 
 #: app/bot/routers/admin_tools/keyboard.py
 msgid "admin_tools:button:registration_requests"
@@ -1780,3 +1780,247 @@ msgstr "⚠️ Не удалось доставить сообщение. Поп
 #: app/support_bot/service.py
 msgid "support_bot:message:closed_by_operator"
 msgstr "✅ Оператор закрыл обращение. Если проблема осталась — просто напишите новое сообщение."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:select_user"
+msgstr "👥 <b>Пользователи</b>\n\nВыберите пользователя:"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:main"
+msgstr ""
+"👤 <a href='tg://user?id={tg_id}'>{name}</a> · {username}\n"
+"🆔 <code>{tg_id}</code> · 🌐 {language}\n"
+"📅 Регистрация: {created_at}\n"
+"🚪 Источник: {source}\n"
+"📨 Заявка: {approval}\n"
+"🏷 Группы: {groups}\n"
+"🖥 Сервер: {server}\n"
+"🚀 Триал: {trial}{stars}\n"
+"\n"
+"{subscription}\n"
+"\n"
+"💰 Оплачено всего: {payments}{transactions}\n"
+"\n"
+"🤝 Приглашено рефералов: {referrals} · 🎟 Промокодов: {promocodes}"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:source_invite"
+msgstr "инвайт «{name}»"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:source_referral"
+msgstr "приглашён {referrer}"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:approval_approved"
+msgstr "✅ одобрена {date}"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:approval_rejected"
+msgstr "🚫 отклонена {date}"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:approval_pending"
+msgstr "⏳ ожидает с {date}"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:banned_suffix"
+msgstr " — 🚫 ЗАБАНЕН"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:stars_autorenew"
+msgstr "⭐ Stars-автопродление: включено"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:trial_yes"
+msgstr "использован"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:trial_no"
+msgstr "не использован"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:sub_none"
+msgstr "📡 <b>Подписка:</b> клиента в панели нет"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:sub_error"
+msgstr "📡 <b>Подписка:</b> ⚠️ не удалось получить данные панели"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:sub_status_active"
+msgstr "🟢 активна"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:sub_status_expired"
+msgstr "🔴 истекла"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:sub_status_disabled"
+msgstr "⛔️ отключена"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:sub_expired_at"
+msgstr "истёк {date}"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:sub_expiry_active"
+msgstr "{remaining} (до {date})"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:traffic_limit"
+msgstr " (остаток {remaining} из {limit})"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:sub_block"
+msgstr ""
+"📡 <b>Подписка:</b> {status}\n"
+"• Срок: {expiry}\n"
+"• Устройств: {devices}\n"
+"• Трафик: {traffic}"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:extend"
+msgstr "⏳ Начислить дни"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:reset_traffic"
+msgstr "♻️ Сбросить трафик"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:ban"
+msgstr "🚫 Забанить"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:unban"
+msgstr "✅ Разбанить"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:groups"
+msgstr "🏷 Группы"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:message"
+msgstr "✉️ Написать"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:topic"
+msgstr "🧵 Топик поддержки"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:confirm_extend"
+msgstr "✅ Начислить"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:confirm_ban"
+msgstr "🚫 Да, забанить"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:confirm_unban"
+msgstr "✅ Да, разбанить"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:confirm_reset_traffic"
+msgstr "♻️ Да, сбросить"
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:extend_prompt"
+msgstr ""
+"⏳ Начисление дней пользователю {name} (<code>{tg_id}</code>).\n"
+"\n"
+"Отправьте число дней (1–{max_days}):"
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:ntf:invalid_days"
+msgstr "⚠️ Введите целое число от 1 до {max_days}."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:extend_confirm"
+msgstr "Начислить <b>{days}</b> дн. пользователю <code>{tg_id}</code>?"
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:extend_expired"
+msgstr "⚠️ Флоу продления устарел — откройте карточку и попробуйте снова."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:no_server"
+msgstr "⚠️ Нет сервера со свободными местами — клиента не создать."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:extend_failed"
+msgstr "⚠️ Не удалось начислить дни — подробности в логах."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:extend_success"
+msgstr "✅ Начислено {days} дн."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:extend_success_traffic_exhausted"
+msgstr ""
+"✅ Начислено {days} дн. ⚠️ Лимит трафика исчерпан — доступ появится после "
+"сброса счётчика."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:user_not_found"
+msgstr "⚠️ Пользователь не найден в БД магазина."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:unlimited_refused"
+msgstr "⛔️ У пользователя безлимит — дни не применимы (срок бессрочный)."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:banned_refused"
+msgstr "⛔️ Пользователь забанен — сначала снимите бан."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:ban_stale"
+msgstr "⚠️ Состояние уже изменилось — карточка обновлена."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:banned"
+msgstr "🚫 Пользователь забанен: клиент отключён в панели."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:unbanned"
+msgstr "✅ Пользователь разбанен: клиент включён."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:ban_confirm"
+msgstr ""
+"🚫 Забанить {name} (<code>{tg_id}</code>)?\n"
+"\n"
+"Клиент будет отключён во всех инбаундах — подписка сразу перестанет работать."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:unban_confirm"
+msgstr ""
+"✅ Разбанить {name} (<code>{tg_id}</code>)?\n"
+"\n"
+"Клиент будет включён с прежним набором групп."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:reset_traffic_confirm"
+msgstr ""
+"♻️ Сбросить счётчик трафика {name} (<code>{tg_id}</code>)?\n"
+"\n"
+"Использованный трафик обнулится, лимит останется прежним."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:traffic_reset"
+msgstr "✅ Трафик сброшен."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:traffic_reset_failed"
+msgstr "⚠️ Не удалось сбросить трафик."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "compensation:user:granted"
+msgstr "🎁 Вам начислено {days} дн. подписки."
+
+#: app/bot/routers/admin_tools/notification_handler.py
+msgid "notification:message:sent_from_card"
+msgstr "✅ Сообщение отправлено."
+
+#: app/bot/routers/admin_tools/statistics_handler.py
+msgid "statistics:message:groups_header"
+msgstr "🏷 <b>Группы:</b>\n"

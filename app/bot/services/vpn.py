@@ -276,6 +276,7 @@ class VPNService:
                 traffic_up=traffic_up,
                 traffic_down=traffic_down,
                 expiry_time=expiry_time,
+                enabled=view.enable,
             )
             logger.debug(f"Successfully retrieved client data for {user.tg_id}: {client_data}.")
             return client_data

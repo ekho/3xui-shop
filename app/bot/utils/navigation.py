@@ -69,7 +69,20 @@ class NavAdminTools(str, Enum):
     EDIT_SERVER = "edit_server"
     SYNC_SERVERS = "sync_servers"
     STATISTICS = "statistics"
+
+    # Раздел «Пользователи»: список -> карточка -> действия. Пагинация и префиксы
+    # с payload по конвенции: точное совпадение для входов, startswith + _{tg_id}
+    # для действий (см. users_list_keyboard).
     USER_EDITOR = "user_editor"
+    USER_EDITOR_PAGE = "user_editor_page"
+    SHOW_USER = "show_user"
+    EXTEND_USER = "extend_user"
+    CONFIRM_EXTEND_USER = "cnf_extend_user"
+    BAN_USER = "ban_user"
+    CONFIRM_BAN_USER = "cnf_ban_user"
+    RESET_USER_TRAFFIC = "reset_user_traffic"
+    CONFIRM_RESET_USER_TRAFFIC = "cnf_reset_user_traffic"
+    MESSAGE_USER = "msg_user"
 
     REGISTRATION_REQUESTS = "registration_requests"
 
@@ -109,9 +122,7 @@ class NavAdminTools(str, Enum):
     CONFIRM_DELETE_PLAN = "confirm_delete_plan"
     DELETE_PLAN = "delete_plan"
 
-    GROUP_MANAGEMENT = "group_mgmt"
-    USER_GROUPS = "user_groups"
-    USER_GROUPS_PAGE = "user_groups_page"
+    # Редактор групп юзера: вход только из карточки пользователя (SHOW_USER).
     PICK_USER_GROUPS = "pick_user_groups"
     TOGGLE_USER_GROUP = "tgl_usr_grp"
 

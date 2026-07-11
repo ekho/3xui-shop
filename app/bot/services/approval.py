@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import html
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from aiogram import Bot
@@ -129,12 +129,15 @@ class ApprovalService:
         session: AsyncSession,
         target: User,
         new_status: ApprovalStatus,
+        decided_by: int | None = None,
     ) -> bool:
         """Применяет решение по заявке (approve/reject) и уведомляет пользователя.
 
         Инкапсулирует: идемпотентность (повторный тап по «протухшей» кнопке), сброс
-        `approval_requested_at`, отмену Stars-подписки при reject и отправку юзеру
-        granted/denied в ЕГО локали.
+        `approval_requested_at`, аудит решения (decided_at/decided_by), отмену
+        Stars-подписки при reject и отправку юзеру granted/denied в ЕГО локали.
+
+        `decided_by` — tg_id админа/оператора, принявшего решение (для карточки юзера).
 
         Возвращает False, если статус уже был установлен (повторный тап — no-op),
         иначе True.
@@ -153,6 +156,8 @@ class ApprovalService:
             tg_id=target.tg_id,
             approval_status=new_status,
             approval_requested_at=None,
+            approval_decided_at=datetime.now(timezone.utc),
+            approval_decided_by=decided_by,
         )
 
         # B1: reject при активном Stars-рекурренте обязан отменить подписку, иначе Telegram

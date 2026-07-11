@@ -74,6 +74,10 @@ class User(Base):
     )
     # M6: дедуп уведомления админам о заявке (не завязываемся на is_new_user)
     approval_requested_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # Аудит решения по заявке: когда и кем (tg_id админа/оператора) одобрена/отклонена.
+    # У юзеров, решённых до появления колонок, — NULL (карточка показывает «—»).
+    approval_decided_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    approval_decided_by: Mapped[int | None] = mapped_column(nullable=True)
     # G4/Stars-рекуррент: charge_id ПЕРВОГО платежа подписки (B4 — его принимает
     # editUserStarSubscription), флаг активного автопродления, дата следующего списания (B5).
     stars_charge_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

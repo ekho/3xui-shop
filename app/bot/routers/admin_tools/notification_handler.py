@@ -17,6 +17,7 @@ from app.bot.utils.constants import (
     NOTIFICATION_LAST_MESSAGE_IDS_KEY,
     NOTIFICATION_MESSAGE_TEXT_KEY,
     NOTIFICATION_PRE_MESSAGE_TEXT_KEY,
+    NOTIFICATION_RETURN_TO_KEY,
 )
 from app.bot.utils.navigation import NavAdminTools
 from app.bot.utils.validation import is_valid_message_text, is_valid_user_id
@@ -58,6 +59,8 @@ async def callback_send_notification(
     state: FSMContext,
 ) -> None:
     logger.info(f"Admin {user.tg_id} opened send notification.")
+    # Вход в раздел штатным путём — забыть возврат в карточку пользователя.
+    await state.update_data({NOTIFICATION_RETURN_TO_KEY: None})
     await show_notification_main(message=callback.message, state=state)
 
 
@@ -69,6 +72,7 @@ async def callback_send_notification_user(
     state: FSMContext,
 ) -> None:
     logger.info(f"Admin {user.tg_id} opened send notification to user.")
+    await state.update_data({NOTIFICATION_RETURN_TO_KEY: None})
     users = await User.get_all(session=session)
     await callback.message.edit_text(
         text=_("notification:message:send_to_user"),
@@ -181,11 +185,14 @@ async def message_to_user(
     if is_valid_message_text(text):
         await state.update_data({NOTIFICATION_PRE_MESSAGE_TEXT_KEY: text})
         main_message_id = await state.get_value(MAIN_MESSAGE_ID_KEY)
+        return_to = await state.get_value(NOTIFICATION_RETURN_TO_KEY)
         await message.bot.edit_message_text(
             text=_("notification:message:confirm_send_notification").format(text=text),
             chat_id=message.chat.id,
             message_id=main_message_id,
-            reply_markup=confirm_send_notification_keyboard(),
+            reply_markup=confirm_send_notification_keyboard(
+                cancel_target=return_to or NavAdminTools.NOTIFICATION
+            ),
         )
     else:
         await services.notification.notify_by_message(
@@ -223,7 +230,17 @@ async def callback_confirm_send_notification(
     if notification:
         await state.update_data({NOTIFICATION_LAST_MESSAGE_IDS_KEY: [notification.message_id]})
         await state.update_data({NOTIFICATION_MESSAGE_TEXT_KEY: text})
-        await show_notification_main(message=callback.message, state=state)
+        return_to = await state.get_value(NOTIFICATION_RETURN_TO_KEY)
+        if return_to:
+            # Пришли из карточки пользователя — вернуться в неё, а не в раздел.
+            await state.set_state(None)
+            await state.update_data({NOTIFICATION_RETURN_TO_KEY: None})
+            await callback.message.edit_text(
+                text=_("notification:message:sent_from_card"),
+                reply_markup=back_keyboard(return_to),
+            )
+        else:
+            await show_notification_main(message=callback.message, state=state)
         await services.notification.notify_by_message(
             message=callback.message,
             text=_("notification:ntf:sent_success"),

@@ -63,12 +63,6 @@ def admin_tools_keyboard(is_dev: bool) -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(
-            text=_("admin_tools:button:group_management"),
-            callback_data=NavAdminTools.GROUP_MANAGEMENT,
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
             text=_("admin_tools:button:notification"),
             callback_data=NavAdminTools.NOTIFICATION,
         )
@@ -287,7 +281,11 @@ def last_notification_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def confirm_send_notification_keyboard() -> InlineKeyboardMarkup:
+def confirm_send_notification_keyboard(
+    cancel_target: str = NavAdminTools.NOTIFICATION,
+) -> InlineKeyboardMarkup:
+    # cancel_target параметризован: из карточки пользователя отмена возвращает
+    # в карточку, а не в раздел уведомлений.
     builder = InlineKeyboardBuilder()
 
     builder.row(
@@ -296,7 +294,7 @@ def confirm_send_notification_keyboard() -> InlineKeyboardMarkup:
             callback_data=NavAdminTools.CONFIRM_SEND_NOTIFICATION,
         )
     )
-    builder.row(cancel_button(NavAdminTools.NOTIFICATION))
+    builder.row(cancel_button(cancel_target))
     return builder.as_markup()
 
 
@@ -483,22 +481,6 @@ def confirm_delete_plan_keyboard(devices: int) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def group_management_keyboard() -> InlineKeyboardMarkup:
-    """Обзор групп read-only: группы создаются/редактируются в панели 3x-ui,
-    из бота управляется только связка пользователь<->группы."""
-    builder = InlineKeyboardBuilder()
-
-    builder.row(
-        InlineKeyboardButton(
-            text=_("group_mgmt:button:user_groups"),
-            callback_data=NavAdminTools.USER_GROUPS,
-        )
-    )
-    builder.row(back_button(NavAdminTools.MAIN))
-    builder.row(back_to_main_menu_button())
-    return builder.as_markup()
-
-
 def users_list_keyboard(
     users: list[User],
     *,
@@ -552,15 +534,107 @@ def users_list_keyboard(
     return builder.as_markup()
 
 
-def user_groups_users_keyboard(users: list[User], page: int = 0) -> InlineKeyboardMarkup:
-    """Пагинированный выбор пользователя для редактирования его групп."""
+def user_editor_users_keyboard(users: list[User], page: int = 0) -> InlineKeyboardMarkup:
+    """Пагинированный выбор пользователя в разделе «Пользователи»."""
     return users_list_keyboard(
         users,
-        pick_action=NavAdminTools.PICK_USER_GROUPS,
-        page_action=NavAdminTools.USER_GROUPS_PAGE,
-        back_action=NavAdminTools.GROUP_MANAGEMENT,
+        pick_action=NavAdminTools.SHOW_USER,
+        page_action=NavAdminTools.USER_EDITOR_PAGE,
+        back_action=NavAdminTools.MAIN,
         page=page,
     )
+
+
+def user_card_keyboard(
+    tg_id: int,
+    *,
+    is_banned: bool,
+    show_reset_traffic: bool = False,
+    topic_url: str | None = None,
+) -> InlineKeyboardMarkup:
+    """Карточка пользователя: все действия несут _{tg_id} в callback."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
+            text=_("user_editor:button:extend"),
+            callback_data=NavAdminTools.EXTEND_USER + f"_{tg_id}",
+        )
+    )
+    if show_reset_traffic:
+        builder.row(
+            InlineKeyboardButton(
+                text=_("user_editor:button:reset_traffic"),
+                callback_data=NavAdminTools.RESET_USER_TRAFFIC + f"_{tg_id}",
+            )
+        )
+    builder.row(
+        InlineKeyboardButton(
+            text=(
+                _("user_editor:button:unban") if is_banned else _("user_editor:button:ban")
+            ),
+            callback_data=NavAdminTools.BAN_USER + f"_{tg_id}",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=_("user_editor:button:groups"),
+            callback_data=NavAdminTools.PICK_USER_GROUPS + f"_{tg_id}",
+        ),
+        InlineKeyboardButton(
+            text=_("user_editor:button:message"),
+            callback_data=NavAdminTools.MESSAGE_USER + f"_{tg_id}",
+        ),
+    )
+    if topic_url:
+        builder.row(InlineKeyboardButton(text=_("user_editor:button:topic"), url=topic_url))
+
+    builder.row(back_button(NavAdminTools.USER_EDITOR))
+    builder.row(back_to_main_menu_button())
+    return builder.as_markup()
+
+
+def user_extend_confirm_keyboard(tg_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text=_("user_editor:button:confirm_extend"),
+            callback_data=NavAdminTools.CONFIRM_EXTEND_USER + f"_{tg_id}",
+        )
+    )
+    builder.row(cancel_button(NavAdminTools.SHOW_USER + f"_{tg_id}"))
+    return builder.as_markup()
+
+
+def user_ban_confirm_keyboard(tg_id: int, is_banned: bool) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    # Намерение кодируется в callback (want=целевое состояние бана): подтверждение —
+    # не тумблер, иначе двойной тап или протухший экран дал бы «бан → тут же разбан».
+    want_banned = int(not is_banned)
+    builder.row(
+        InlineKeyboardButton(
+            text=(
+                _("user_editor:button:confirm_unban")
+                if is_banned
+                else _("user_editor:button:confirm_ban")
+            ),
+            callback_data=NavAdminTools.CONFIRM_BAN_USER + f"_{tg_id}_{want_banned}",
+        )
+    )
+    builder.row(cancel_button(NavAdminTools.SHOW_USER + f"_{tg_id}"))
+    return builder.as_markup()
+
+
+def user_reset_traffic_confirm_keyboard(tg_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text=_("user_editor:button:confirm_reset_traffic"),
+            callback_data=NavAdminTools.CONFIRM_RESET_USER_TRAFFIC + f"_{tg_id}",
+        )
+    )
+    builder.row(cancel_button(NavAdminTools.SHOW_USER + f"_{tg_id}"))
+    return builder.as_markup()
 
 
 def notification_users_keyboard(users: list[User], page: int = 0) -> InlineKeyboardMarkup:
@@ -588,8 +662,8 @@ def user_groups_keyboard(
             )
         )
 
-    # Назад — к списку выбора пользователя (а не в обзор групп).
-    builder.row(back_button(NavAdminTools.USER_GROUPS))
+    # Назад — в карточку пользователя: редактор групп доступен только из неё.
+    builder.row(back_button(NavAdminTools.SHOW_USER + f"_{tg_id}"))
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
 

@@ -16,6 +16,7 @@ class ClientData:
         traffic_up: int,
         traffic_down: int,
         expiry_time: str,
+        enabled: bool = True,
     ) -> None:
         self._max_devices = max_devices
         self._traffic_total = traffic_total
@@ -24,6 +25,7 @@ class ClientData:
         self._traffic_up = traffic_up
         self._traffic_down = traffic_down
         self._expiry_time = expiry_time
+        self._enabled = enabled
 
     def __str__(self) -> str:
         return (
@@ -69,3 +71,13 @@ class ClientData:
         current_time = time.time() * 1000
         expired = self._expiry_time != -1 and current_time > self._expiry_time
         return expired
+
+    @property
+    def enabled(self) -> bool:
+        """Клиент включён в панели (enable). False = отключён (бан/ручной disable)."""
+        return self._enabled
+
+    @property
+    def has_traffic_exhausted(self) -> bool:
+        """Конечный лимит выбран: панель держит клиента заблокированным до сброса."""
+        return self._traffic_total > 0 and self._traffic_remaining <= 0

@@ -142,11 +142,14 @@ async def callback_unreject_user(
 
     # Возврат в PENDING без approval_requested_at: /start или часовое напоминание
     # заново поставят юзера в очередь на рассмотрение, как для новой заявки.
+    # Аудит прежнего отказа тоже чистим: заявка снова нерешённая.
     await User.update(
         session,
         tg_id=target.tg_id,
         approval_status=ApprovalStatus.PENDING,
         approval_requested_at=None,
+        approval_decided_at=None,
+        approval_decided_by=None,
     )
 
     logger.info(f"Admin {user.tg_id} has unrejected user {target.tg_id}.")

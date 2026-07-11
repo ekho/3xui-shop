@@ -247,6 +247,10 @@ async def main() -> None:
         services=services_container,
     )
 
+    # Карточке юзера в /info support-бота нужен маппинг «шлюз -> валюта» (суммы платежей).
+    if support_dispatcher is not None:
+        support_dispatcher["gateway_factory"] = gateway_factory
+
     # Create the dispatcher
     dispatcher = Dispatcher(
         db=db,

@@ -67,5 +67,32 @@ async def callback_statistics(
         online_servers_count=online_servers_count,
         total_clients=total_clients,
     )
+    text += await _format_groups_overview(services)
 
     await callback.message.edit_text(text=text, reply_markup=statistics_keyboard())
+
+
+async def _format_groups_overview(services: ServicesContainer) -> str:
+    """Обзор групп (переехал из бывшего раздела «Группы»): инбаунды по сегментам
+    тегов с панели + счётчики ссылок на группу у юзеров и тарифов."""
+    inbound_counts: dict[str, int] = {}
+    for connection in services.server_pool.all_connections():
+        known = await services.inbound_groups.known_groups(connection.api)
+        for name in known:
+            inbound_counts.setdefault(name, 0)
+        for inbound in await services.inbound_groups.all_inbounds(connection.api):
+            for name in services.inbound_groups.groups_of(inbound.tag or "", known):
+                inbound_counts[name] = inbound_counts.get(name, 0) + 1
+
+    if not inbound_counts:
+        return ""
+
+    lines = []
+    for name in sorted(inbound_counts):
+        user_refs, plan_refs = await services.inbound_groups.references(name)
+        lines.append(
+            _("group_mgmt:message:group_line").format(
+                name=name, inbounds=inbound_counts[name], users=user_refs, plans=plan_refs
+            )
+        )
+    return "\n\n" + _("statistics:message:groups_header") + "\n".join(lines)

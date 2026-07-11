@@ -215,7 +215,7 @@ class SupportProxyService:
             f"🆔 <code>{user.tg_id}</code> · {username}\n"
             f"🌐 {user.language_code} · 🚀 триал использован: {'да' if user.is_trial_used else 'нет'}\n"
             f"📅 в магазине с: {user.created_at:%Y-%m-%d}\n\n"
-            f"⌨️ /close · /ban · /unban · /info"
+            f"⌨️ /close · /ban · /unban · /info · /comp N"
         )
         try:
             await self.bot.send_message(chat_id=self.group_id, message_thread_id=thread_id, text=card)

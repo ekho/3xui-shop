@@ -58,6 +58,9 @@ NOTIFICATION_CHAT_IDS_KEY = "notification_chat_ids"
 NOTIFICATION_LAST_MESSAGE_IDS_KEY = "notification_last_message_ids"
 NOTIFICATION_MESSAGE_TEXT_KEY = "notification_message_text"
 NOTIFICATION_PRE_MESSAGE_TEXT_KEY = "notification_pre_message_text"
+# Куда вернуться после отправки/отмены уведомления: карточка пользователя кладёт
+# сюда свой callback (SHOW_USER_{tg_id}); пусто -> обычный раздел уведомлений.
+NOTIFICATION_RETURN_TO_KEY = "notification_return_to"
 # endregion
 
 # region: Webhook paths

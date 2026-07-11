@@ -1,7 +1,6 @@
 import logging
 
 from aiogram import F, Router
-from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 from aiogram.utils.i18n import gettext as _
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,88 +12,14 @@ from app.bot.utils.constants import UNLIMITED_INBOUND_GROUP
 from app.bot.utils.navigation import NavAdminTools
 from app.db.models import User
 
-from .keyboard import (
-    group_management_keyboard,
-    user_groups_keyboard,
-    user_groups_users_keyboard,
-)
+from .keyboard import user_groups_keyboard
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
 
 
-# region Groups overview (read-only: группы создаются и редактируются в панели)
-
-
-@router.callback_query(F.data == NavAdminTools.GROUP_MANAGEMENT, IsAdmin())
-async def callback_group_management(
-    callback: CallbackQuery,
-    user: User,
-    state: FSMContext,
-    services: ServicesContainer,
-) -> None:
-    logger.info(f"Admin {user.tg_id} opened group overview.")
-    await state.set_state(None)
-
-    # Синк с панелей: список групп + маппинг инбаундов по сегментам тегов.
-    inbound_counts: dict[str, int] = {}
-    for connection in services.server_pool.all_connections():
-        known = await services.inbound_groups.known_groups(connection.api)
-        for name in known:
-            inbound_counts.setdefault(name, 0)
-        for inbound in await services.inbound_groups.all_inbounds(connection.api):
-            for name in services.inbound_groups.groups_of(inbound.tag or "", known):
-                inbound_counts[name] = inbound_counts.get(name, 0) + 1
-
-    lines = []
-    for name in sorted(inbound_counts):
-        user_refs, plan_refs = await services.inbound_groups.references(name)
-        lines.append(
-            _("group_mgmt:message:group_line").format(
-                name=name, inbounds=inbound_counts[name], users=user_refs, plans=plan_refs
-            )
-        )
-
-    text = _("group_mgmt:message:main")
-    text += "\n".join(lines) if lines else _("group_mgmt:message:empty")
-
-    await callback.message.edit_text(text=text, reply_markup=group_management_keyboard())
-
-
-# endregion
-
-
-# region User groups (связка пользователь<->группы — единственная запись из бота)
-
-
-@router.callback_query(F.data == NavAdminTools.USER_GROUPS, IsAdmin())
-async def callback_user_groups(
-    callback: CallbackQuery,
-    user: User,
-    session: AsyncSession,
-    state: FSMContext,
-) -> None:
-    logger.info(f"Admin {user.tg_id} opened the user-groups picker.")
-    await state.set_state(None)
-    users = await User.get_all(session=session)
-    await callback.message.edit_text(
-        text=_("group_mgmt:message:select_user"),
-        reply_markup=user_groups_users_keyboard(users, page=0),
-    )
-
-
-@router.callback_query(F.data.startswith(NavAdminTools.USER_GROUPS_PAGE), IsAdmin())
-async def callback_user_groups_page(
-    callback: CallbackQuery,
-    user: User,
-    session: AsyncSession,
-) -> None:
-    page = int(callback.data.rsplit("_", 1)[-1])
-    users = await User.get_all(session=session)
-    await callback.message.edit_text(
-        text=_("group_mgmt:message:select_user"),
-        reply_markup=user_groups_users_keyboard(users, page=page),
-    )
+# region User groups (связка пользователь<->группы — единственная запись из бота).
+# Обзор групп переехал в «Статистику»; вход в редактор — из карточки пользователя.
 
 
 async def _render_user_groups(

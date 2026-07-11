@@ -222,7 +222,7 @@ msgstr "🔄 Refresh"
 
 #: app/bot/routers/admin_tools/keyboard.py:34
 msgid "admin_tools:button:user_editor"
-msgstr "👤 User editor"
+msgstr "👥 Users"
 
 #: app/bot/routers/admin_tools/keyboard.py
 msgid "admin_tools:button:registration_requests"
@@ -1764,3 +1764,248 @@ msgstr "⚠️ Your message could not be delivered. Please try again later."
 #: app/support_bot/service.py
 msgid "support_bot:message:closed_by_operator"
 msgstr "✅ The operator has closed this conversation. If the issue persists, just send a new message."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:select_user"
+msgstr "👥 <b>Users</b>\n\nPick a user:"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:main"
+msgstr ""
+"👤 <a href='tg://user?id={tg_id}'>{name}</a> · {username}\n"
+"🆔 <code>{tg_id}</code> · 🌐 {language}\n"
+"📅 Registered: {created_at}\n"
+"🚪 Source: {source}\n"
+"📨 Request: {approval}\n"
+"🏷 Groups: {groups}\n"
+"🖥 Server: {server}\n"
+"🚀 Trial: {trial}{stars}\n"
+"\n"
+"{subscription}\n"
+"\n"
+"💰 Paid total: {payments}{transactions}\n"
+"\n"
+"🤝 Referrals invited: {referrals} · 🎟 Promocodes: {promocodes}"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:source_invite"
+msgstr "invite «{name}»"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:source_referral"
+msgstr "referred by {referrer}"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:approval_approved"
+msgstr "✅ approved {date}"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:approval_rejected"
+msgstr "🚫 rejected {date}"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:approval_pending"
+msgstr "⏳ pending since {date}"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:banned_suffix"
+msgstr " — 🚫 BANNED"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:stars_autorenew"
+msgstr "⭐ Stars auto-renew: on"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:trial_yes"
+msgstr "used"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:trial_no"
+msgstr "not used"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:sub_none"
+msgstr "📡 <b>Subscription:</b> no client on the panel"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:sub_error"
+msgstr "📡 <b>Subscription:</b> ⚠️ failed to fetch panel data"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:sub_status_active"
+msgstr "🟢 active"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:sub_status_expired"
+msgstr "🔴 expired"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:sub_status_disabled"
+msgstr "⛔️ disabled"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:sub_expired_at"
+msgstr "expired {date}"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:sub_expiry_active"
+msgstr "{remaining} (until {date})"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:traffic_limit"
+msgstr " ({remaining} of {limit} left)"
+
+#: app/bot/utils/user_card.py
+msgid "user_editor:card:sub_block"
+msgstr ""
+"📡 <b>Subscription:</b> {status}\n"
+"• Time left: {expiry}\n"
+"• Devices: {devices}\n"
+"• Traffic: {traffic}"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:extend"
+msgstr "⏳ Grant days"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:reset_traffic"
+msgstr "♻️ Reset traffic"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:ban"
+msgstr "🚫 Ban"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:unban"
+msgstr "✅ Unban"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:groups"
+msgstr "🏷 Groups"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:message"
+msgstr "✉️ Message"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:topic"
+msgstr "🧵 Support topic"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:confirm_extend"
+msgstr "✅ Grant"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:confirm_ban"
+msgstr "🚫 Yes, ban"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:confirm_unban"
+msgstr "✅ Yes, unban"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:confirm_reset_traffic"
+msgstr "♻️ Yes, reset"
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:extend_prompt"
+msgstr ""
+"⏳ Granting days to {name} (<code>{tg_id}</code>).\n"
+"\n"
+"Send the number of days (1–{max_days}):"
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:ntf:invalid_days"
+msgstr "⚠️ Enter a whole number from 1 to {max_days}."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:extend_confirm"
+msgstr "Grant <b>{days}</b> day(s) to user <code>{tg_id}</code>?"
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:extend_expired"
+msgstr "⚠️ The extension flow is stale — open the card and try again."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:no_server"
+msgstr "⚠️ No server with free slots — the client cannot be created."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:extend_failed"
+msgstr "⚠️ Failed to grant days — check the bot logs."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:extend_success"
+msgstr "✅ Granted {days} day(s)."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:extend_success_traffic_exhausted"
+msgstr ""
+"✅ Granted {days} day(s). ⚠️ Traffic limit is exhausted — access resumes "
+"after a traffic reset."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:user_not_found"
+msgstr "⚠️ User not found in the shop DB."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:unlimited_refused"
+msgstr "⛔️ The user is on unlimited — days don't apply (no expiry)."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:banned_refused"
+msgstr "⛔️ The user is banned — unban first."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:ban_stale"
+msgstr "⚠️ The state has already changed — the card was refreshed."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:banned"
+msgstr "🚫 User banned: the client is disabled on the panel."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:unbanned"
+msgstr "✅ User unbanned: the client is enabled."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:ban_confirm"
+msgstr ""
+"🚫 Ban {name} (<code>{tg_id}</code>)?\n"
+"\n"
+"The client will be disabled in all inbounds — the subscription stops "
+"working immediately."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:unban_confirm"
+msgstr ""
+"✅ Unban {name} (<code>{tg_id}</code>)?\n"
+"\n"
+"The client will be enabled with its previous group set."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:reset_traffic_confirm"
+msgstr ""
+"♻️ Reset the traffic counter of {name} (<code>{tg_id}</code>)?\n"
+"\n"
+"Used traffic becomes 0; the limit stays unchanged."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:traffic_reset"
+msgstr "✅ Traffic reset."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:traffic_reset_failed"
+msgstr "⚠️ Failed to reset traffic."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "compensation:user:granted"
+msgstr "🎁 You have been granted {days} day(s) of subscription."
+
+#: app/bot/routers/admin_tools/notification_handler.py
+msgid "notification:message:sent_from_card"
+msgstr "✅ Message sent."
+
+#: app/bot/routers/admin_tools/statistics_handler.py
+msgid "statistics:message:groups_header"
+msgstr "🏷 <b>Groups:</b>\n"
