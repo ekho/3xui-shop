@@ -1947,6 +1947,10 @@ msgid "user_editor:popup:no_server"
 msgstr "⚠️ Нет сервера со свободными местами — клиента не создать."
 
 #: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:server_unreachable"
+msgstr "⚠️ Сервер пользователя недоступен — попробуйте позже."
+
+#: app/bot/routers/admin_tools/user_handler.py
 msgid "user_editor:popup:extend_failed"
 msgstr "⚠️ Не удалось начислить дни — подробности в логах."
 
@@ -2003,7 +2007,8 @@ msgid "user_editor:message:reset_traffic_confirm"
 msgstr ""
 "♻️ Сбросить счётчик трафика {name} (<code>{tg_id}</code>)?\n"
 "\n"
-"Использованный трафик обнулится, лимит останется прежним."
+"Использованный трафик обнулится, лимит останется прежним. Панель при этом "
+"включит клиента, если он был выключен вручную."
 
 #: app/bot/routers/admin_tools/user_handler.py
 msgid "user_editor:popup:traffic_reset"

@@ -181,24 +181,26 @@ async def command_comp(
         return
     days = int(args)
 
-    # Гварды (зеркало админ-меню): безлимиту дни превратили бы бессрочный
-    # expiryTime=0 в конечную дату; у забаненного дни тихо сгорали бы.
-    if services.inbound_groups.is_unlimited(target):
-        await message.reply("⛔️ У пользователя безлимит — дни не применимы (бессрочный срок).")
+    # Общий гвард компенсаций (зеркало админ-меню): unlimited/banned по БД,
+    # бессрочный клиент панели, недоступный сервер, отсутствие свободных мест.
+    # Заодно усыновляет клиента панели у юзера без server_id (reconcile).
+    blocker = await services.vpn.compensation_blocker(target)
+    if blocker:
+        replies = {
+            "unlimited": "⛔️ У пользователя безлимит — дни не применимы (бессрочный срок).",
+            "banned": (
+                "⛔️ Пользователь забанен (VPN отключён) — дни сгорят. Сначала снимите бан "
+                "(админ-меню → Пользователи)."
+            ),
+            "perpetual": (
+                "⛔️ Клиент в панели бессрочный (expiryTime=0) — начисление дней сделало бы "
+                "срок конечным. Управляйте таким клиентом в панели."
+            ),
+            "server_unreachable": "⚠️ Сервер пользователя недоступен — попробуйте позже.",
+            "no_server": "⚠️ Нет сервера со свободными местами — клиента не создать.",
+        }
+        await message.reply(replies[blocker])
         return
-    if services.inbound_groups.is_banned(target):
-        await message.reply(
-            "⛔️ Пользователь забанен (VPN отключён) — дни сгорят. Сначала снимите бан "
-            "(админ-меню → Пользователи)."
-        )
-        return
-
-    # Клиента в панели нет — понадобится сервер со свободными местами
-    # (reconcile мог усыновить клиента, заведённого в панели руками).
-    if not target.server_id and not await services.vpn.reconcile_from_panel(target):
-        if await services.server_pool.get_available_server() is None:
-            await message.reply("⚠️ Нет сервера со свободными местами — клиента не создать.")
-            return
 
     try:
         granted = await services.vpn.process_bonus_days(
@@ -281,12 +283,16 @@ async def on_comp_reset(
 
     logger.info(f"Operator {callback.from_user.id} reset traffic of {tg_id} (after /comp).")
     await callback.answer("✅ Трафик сброшен.")
+    # callback.message бывает InaccessibleMessage (кнопке > 48 ч) — у него нет
+    # html_text/edit_text; сброс уже сделан, правка сообщения — best-effort.
+    if not isinstance(callback.message, Message):
+        return
     try:
         await callback.message.edit_text(
             f"{callback.message.html_text}\n♻️ Трафик сброшен.", reply_markup=None
         )
     except TelegramAPIError:
-        pass  # сообщение недоступно/не изменилось — сброс уже сделан
+        pass  # сообщение не изменилось/недоступно — сброс уже сделан
 
 
 # ── Управление заявками на регистрацию командами ─────────────────────────────

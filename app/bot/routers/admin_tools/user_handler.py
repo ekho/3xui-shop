@@ -284,22 +284,35 @@ async def callback_confirm_extend_user(
     if target is None:
         return
 
-    # Повторные гварды на свежих данных: состояние юзера могло смениться, пока
-    # админ вводил число (та же логика, что на входе в флоу).
-    if services.inbound_groups.is_unlimited(target) or services.inbound_groups.is_banned(target):
+    # Гварды на свежих данных панели/БД (unlimited/banned могли смениться, пока
+    # админ вводил число; perpetual/недоступный сервер на входе не проверялись).
+    blocker = await services.vpn.compensation_blocker(target)
+    if blocker in ("unlimited", "banned"):
         await services.notification.show_popup(
             callback=callback, text=_("user_editor:popup:extend_expired")
         )
         return
+    if blocker == "perpetual":
+        await services.notification.show_popup(
+            callback=callback, text=_("user_editor:popup:unlimited_refused")
+        )
+        return
+    if blocker == "server_unreachable":
+        await services.notification.show_popup(
+            callback=callback, text=_("user_editor:popup:server_unreachable")
+        )
+        return
+    if blocker == "no_server":
+        await services.notification.show_popup(
+            callback=callback, text=_("user_editor:popup:no_server")
+        )
+        return
 
-    # Клиента в панели ещё нет — process_bonus_days пойдёт по create-ветке, которой
-    # нужен сервер со свободными местами (reconcile мог усыновить клиента с панели).
-    if not target.server_id and not await services.vpn.reconcile_from_panel(target):
-        if await services.server_pool.get_available_server() is None:
-            await services.notification.show_popup(
-                callback=callback, text=_("user_editor:popup:no_server")
-            )
-            return
+    # Идемпотентность: состояние потребляется ДО похода в панель — апдейты
+    # обрабатываются конкурентно, и двойной тап иначе начислил бы дни дважды.
+    # Второй тап уходит в fallback-хендлер ниже (попап «флоу устарел»).
+    await state.set_state(None)
+    await state.update_data({USER_EDITOR_DAYS_KEY: None})
 
     logger.info(f"Admin {user.tg_id} grants {days} bonus days to user {tg_id}.")
     try:
@@ -317,8 +330,6 @@ async def callback_confirm_extend_user(
             callback=callback, text=_("user_editor:popup:extend_failed")
         )
         return
-
-    await state.set_state(None)
 
     # Юзеру — уведомление в ЕГО локали через основного бота (как ApprovalService).
     locale = (
@@ -342,6 +353,19 @@ async def callback_confirm_extend_user(
     else:
         popup_text = _("user_editor:popup:extend_success").format(days=days)
     await services.notification.show_popup(callback=callback, text=popup_text)
+
+
+@router.callback_query(F.data.startswith(NavAdminTools.CONFIRM_EXTEND_USER), IsAdmin())
+async def callback_confirm_extend_stale(
+    callback: CallbackQuery,
+    user: User,
+    services: ServicesContainer,
+) -> None:
+    # Fallback без state-фильтра (регистрируется ПОСЛЕ основного): тап по confirm
+    # вне флоу продления — двойной тап или протухший экран — получает попап, а не тишину.
+    await services.notification.show_popup(
+        callback=callback, text=_("user_editor:popup:extend_expired")
+    )
 
 
 # endregion
@@ -394,6 +418,12 @@ async def callback_confirm_ban_user(
         f"Admin {user.tg_id} {'bans' if banning else 'unbans'} user {tg_id} "
         f"(groups -> {new_groups})."
     )
+
+    # Решение должно долететь до панели: клиент мог существовать без привязки в БД
+    # (усыновляется reconcile'ом, мутирует target) — иначе бан остался бы на бумаге,
+    # а живой клиент панели продолжил бы работать.
+    if not target.server_id:
+        await services.vpn.reconcile_from_panel(target)
 
     if target.server_id:
         # enforce_enable=True: явное действие админа — единственный путь разбана.
@@ -500,6 +530,13 @@ async def callback_reset_traffic(
     tg_id = _tg_id_from(callback)
     target = await _get_target(callback, session, services, tg_id)
     if target is None:
+        return
+
+    # Отказ сразу на входе (симметрично «Начислить дни»), не только на confirm.
+    if services.inbound_groups.is_banned(target):
+        await services.notification.show_popup(
+            callback=callback, text=_("user_editor:popup:banned_refused")
+        )
         return
 
     await callback.message.edit_text(

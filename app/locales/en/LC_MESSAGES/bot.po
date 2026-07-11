@@ -1931,6 +1931,10 @@ msgid "user_editor:popup:no_server"
 msgstr "⚠️ No server with free slots — the client cannot be created."
 
 #: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:server_unreachable"
+msgstr "⚠️ The user's server is unreachable — try again later."
+
+#: app/bot/routers/admin_tools/user_handler.py
 msgid "user_editor:popup:extend_failed"
 msgstr "⚠️ Failed to grant days — check the bot logs."
 
@@ -1988,7 +1992,8 @@ msgid "user_editor:message:reset_traffic_confirm"
 msgstr ""
 "♻️ Reset the traffic counter of {name} (<code>{tg_id}</code>)?\n"
 "\n"
-"Used traffic becomes 0; the limit stays unchanged."
+"Used traffic becomes 0; the limit stays unchanged. Note: the panel will "
+"re-enable the client if it was disabled manually."
 
 #: app/bot/routers/admin_tools/user_handler.py
 msgid "user_editor:popup:traffic_reset"

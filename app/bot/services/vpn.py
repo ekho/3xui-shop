@@ -715,6 +715,42 @@ class VPNService:
             logger.critical(f"revoke_unlimited for {user.tg_id} failed: {exception}")
             return False
 
+    async def compensation_blocker(self, user: User) -> str | None:
+        """Гвард начисления бонусных дней админом/оператором. Возвращает код причины
+        отказа или None (можно начислять):
+
+        - 'unlimited'/'banned' — по группам в БД (дни превратили бы бессрочный срок в
+          конечный / тихо сгорали бы у выключенного клиента);
+        - 'server_unreachable' — сервер юзера назначен, но соединения нет: create-ветка
+          process_bonus_days иначе тихо пересадила бы юзера на другой сервер пула,
+          создав клиента-дубль;
+        - 'perpetual' — клиент панели бессрочный (expiryTime=0, напр. заведён руками
+          в панели) — max(0, now)+N сделал бы срок конечным;
+        - 'no_server' — клиента нет нигде (reconcile не нашёл) и нет сервера со
+          свободными местами для создания.
+
+        Побочный эффект: у юзера без server_id пытается усыновить клиента с панели
+        (reconcile_from_panel мутирует user in-place) — после None-результата можно
+        сразу звать process_bonus_days по update-ветке.
+        """
+        if self.inbound_group_service.is_unlimited(user):
+            return "unlimited"
+        if self.inbound_group_service.is_banned(user):
+            return "banned"
+        if not user.server_id:
+            await self.reconcile_from_panel(user)
+        if user.server_id:
+            connection = await self.server_pool_service.get_connection(user)
+            if connection is None:
+                return "server_unreachable"
+            view = await self._clients(connection).get(str(user.tg_id))
+            if view is not None and view.expiry_time == 0:
+                return "perpetual"
+            return None
+        if await self.server_pool_service.get_available_server() is None:
+            return "no_server"
+        return None
+
     async def process_bonus_days(
         self, user: User, duration: int, devices: int, traffic_gb: int = 0
     ) -> bool:
