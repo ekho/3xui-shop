@@ -25,6 +25,7 @@ from .keyboard import (
     confirm_send_notification_keyboard,
     last_notification_keyboard,
     notification_keyboard,
+    notification_users_keyboard,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,14 +64,61 @@ async def callback_send_notification(
 async def callback_send_notification_user(
     callback: CallbackQuery,
     user: User,
+    session: AsyncSession,
     state: FSMContext,
 ) -> None:
     logger.info(f"Admin {user.tg_id} opened send notification to user.")
+    users = await User.get_all(session=session)
     await callback.message.edit_text(
         text=_("notification:message:send_to_user"),
-        reply_markup=back_keyboard(NavAdminTools.NOTIFICATION),
+        reply_markup=notification_users_keyboard(users, page=0),
     )
+    # Ручной ввод id / пересланного сообщения остаётся как fallback к списку.
     await state.set_state(NotificationStates.user_id)
+
+
+@router.callback_query(F.data.startswith(NavAdminTools.NOTIFICATION_USER_PAGE), IsAdmin())
+async def callback_notification_user_page(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+) -> None:
+    page = int(callback.data.rsplit("_", 1)[-1])
+    users = await User.get_all(session=session)
+    await callback.message.edit_text(
+        text=_("notification:message:send_to_user"),
+        reply_markup=notification_users_keyboard(users, page=page),
+    )
+
+
+@router.callback_query(F.data.startswith(NavAdminTools.PICK_NOTIFICATION_USER), IsAdmin())
+async def callback_pick_notification_user(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    state: FSMContext,
+    services: ServicesContainer,
+) -> None:
+    tg_id = int(callback.data.rsplit("_", 1)[-1])
+    logger.info(f"Admin {user.tg_id} picked user {tg_id} for notification.")
+
+    target = await User.get(session=session, tg_id=tg_id)
+    if target is None:
+        await services.notification.show_popup(
+            callback=callback, text=_("notification:ntf:user_not_found")
+        )
+        return
+
+    await state.update_data({NOTIFICATION_CHAT_IDS_KEY: [target.tg_id]})
+    await state.set_state(NotificationStates.message_to_user)
+    await callback.message.edit_text(
+        text=_("notification:message:send_message_for_user").format(
+            user_id=target.tg_id,
+            first_name=target.first_name,
+        ),
+        # Назад — к списку выбора получателя, а не в меню уведомлений.
+        reply_markup=back_keyboard(NavAdminTools.SEND_NOTIFICATION_USER),
+    )
 
 
 @router.message(NotificationStates.user_id)

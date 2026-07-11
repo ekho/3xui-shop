@@ -499,10 +499,17 @@ def group_management_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def user_groups_users_keyboard(
-    users: list[User], page: int = 0, limit: int = 8
+def users_list_keyboard(
+    users: list[User],
+    *,
+    pick_action: str,
+    page_action: str,
+    back_action: str,
+    page: int = 0,
+    limit: int = 8,
 ) -> InlineKeyboardMarkup:
-    """Пагинированный выбор пользователя для редактирования его групп."""
+    """Пагинированный выбор пользователя; callback-и собираются из переданных
+    префиксов, поэтому клавиатура общая для групп и уведомлений."""
     builder = InlineKeyboardBuilder()
     total_users = len(users)
     start_idx = page * limit
@@ -518,7 +525,7 @@ def user_groups_users_keyboard(
         builder.row(
             InlineKeyboardButton(
                 text=label,
-                callback_data=NavAdminTools.PICK_USER_GROUPS + f"_{target.tg_id}",
+                callback_data=pick_action + f"_{target.tg_id}",
             )
         )
 
@@ -527,22 +534,44 @@ def user_groups_users_keyboard(
         row.append(
             InlineKeyboardButton(
                 text=_("group_mgmt:button:previous_page"),
-                callback_data=NavAdminTools.USER_GROUPS_PAGE + f"_{page-1}",
+                callback_data=page_action + f"_{page-1}",
             )
         )
     if (page + 1) * limit < total_users:
         row.append(
             InlineKeyboardButton(
                 text=_("group_mgmt:button:next_page"),
-                callback_data=NavAdminTools.USER_GROUPS_PAGE + f"_{page+1}",
+                callback_data=page_action + f"_{page+1}",
             )
         )
     if row:
         builder.row(*row)
 
-    builder.row(back_button(NavAdminTools.GROUP_MANAGEMENT))
+    builder.row(back_button(back_action))
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
+
+
+def user_groups_users_keyboard(users: list[User], page: int = 0) -> InlineKeyboardMarkup:
+    """Пагинированный выбор пользователя для редактирования его групп."""
+    return users_list_keyboard(
+        users,
+        pick_action=NavAdminTools.PICK_USER_GROUPS,
+        page_action=NavAdminTools.USER_GROUPS_PAGE,
+        back_action=NavAdminTools.GROUP_MANAGEMENT,
+        page=page,
+    )
+
+
+def notification_users_keyboard(users: list[User], page: int = 0) -> InlineKeyboardMarkup:
+    """Пагинированный выбор получателя уведомления (тот же список, что в «Группах»)."""
+    return users_list_keyboard(
+        users,
+        pick_action=NavAdminTools.PICK_NOTIFICATION_USER,
+        page_action=NavAdminTools.NOTIFICATION_USER_PAGE,
+        back_action=NavAdminTools.NOTIFICATION,
+        page=page,
+    )
 
 
 def user_groups_keyboard(

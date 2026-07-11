@@ -544,7 +544,7 @@ msgid "notification:message:send_to_user"
 msgstr ""
 "<b>📣 Send notification:</b>\n"
 "\n"
-"<i>Send user id or forward message from user</i>"
+"<i>Select a user from the list or send user id / forward message from user</i>"
 
 #: app/bot/routers/admin_tools/notification_handler.py:98
 msgid "notification:message:send_message_for_user"

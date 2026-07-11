@@ -117,6 +117,8 @@ class NavAdminTools(str, Enum):
 
     NOTIFICATION = "notification"
     SEND_NOTIFICATION_USER = "send_notification_user"
+    NOTIFICATION_USER_PAGE = "notification_user_page"
+    PICK_NOTIFICATION_USER = "pick_notification_user"
     SEND_NOTIFICATION_ALL = "send_notification_all"
     CONFIRM_SEND_NOTIFICATION = "confirm_send_notification"
     LAST_NOTIFICATION = "last_notification"

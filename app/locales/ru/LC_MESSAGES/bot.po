@@ -551,7 +551,8 @@ msgid "notification:message:send_to_user"
 msgstr ""
 "<b>📣 Отправить уведомление:</b> (для пользователя)\n"
 "\n"
-"<i>Отправьте id пользователя или пересланное сообщение от пользователя</i>"
+"<i>Выберите пользователя из списка или отправьте id/пересланное сообщение от "
+"пользователя</i>"
 
 #: app/bot/routers/admin_tools/notification_handler.py:98
 msgid "notification:message:send_message_for_user"
