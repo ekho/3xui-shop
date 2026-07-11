@@ -17,13 +17,18 @@ router = Router(name=__name__)
 
 @router.errors(ExceptionTypeFilter(Exception))
 async def errors_handler(event: ErrorEvent, config: Config, services: ServicesContainer) -> bool:
+    # from_user достаём через event.update.event: жёсткий доступ к .message/.callback_query
+    # падает на апдейте другого типа, и тогда реальная ошибка вообще не попадает в логи.
+    from_user = getattr(event.update.event, "from_user", None)
+    user_id = from_user.id if from_user else "?"
+
     if isinstance(event.exception, TelegramForbiddenError):
-        logger.info(f"User {event.update.message.from_user.id} blocked the bot.")
+        logger.info(f"User {user_id} blocked the bot.")
         return True
 
     if isinstance(event.exception, TelegramBadRequest):
         logger.warning(
-            f"User {event.update.callback_query.from_user.id} bad request for edit/send message."
+            f"User {user_id} bad request for edit/send message: {event.exception}"
         )
         return True
 

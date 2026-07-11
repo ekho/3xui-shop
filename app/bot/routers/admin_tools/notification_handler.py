@@ -1,3 +1,4 @@
+import html
 import logging
 
 from aiogram import F, Router
@@ -114,7 +115,7 @@ async def callback_pick_notification_user(
     await callback.message.edit_text(
         text=_("notification:message:send_message_for_user").format(
             user_id=target.tg_id,
-            first_name=target.first_name,
+            first_name=html.escape(target.first_name),
         ),
         # Назад — к списку выбора получателя, а не в меню уведомлений.
         reply_markup=back_keyboard(NavAdminTools.SEND_NOTIFICATION_USER),
@@ -145,7 +146,7 @@ async def message_user_id(
             await message.bot.edit_message_text(
                 text=_("notification:message:send_message_for_user").format(
                     user_id=user_id,
-                    first_name=user.first_name,
+                    first_name=html.escape(user.first_name),
                 ),
                 chat_id=message.chat.id,
                 message_id=main_message_id,

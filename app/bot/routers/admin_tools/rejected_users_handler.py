@@ -1,3 +1,4 @@
+import html
 import logging
 
 from aiogram import F, Router
@@ -85,7 +86,7 @@ async def callback_rejected_details(
 
     await callback.message.edit_text(
         text=_("rejected_users:message:details").format(
-            name=target.first_name,
+            name=html.escape(target.first_name),
             username=target.username or "-",
             tg_id=target.tg_id,
         ),
@@ -115,7 +116,7 @@ async def callback_confirm_unreject_prompt(
 
     await callback.message.edit_text(
         text=_("rejected_users:message:confirm_unreject").format(
-            name=target.first_name, tg_id=target.tg_id
+            name=html.escape(target.first_name), tg_id=target.tg_id
         ),
         reply_markup=confirm_unreject_user_keyboard(target.tg_id),
     )

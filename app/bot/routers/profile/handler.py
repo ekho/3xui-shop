@@ -1,4 +1,5 @@
 import asyncio
+import html
 import logging
 
 from aiogram import Bot, F, Router
@@ -21,7 +22,7 @@ router = Router(name=__name__)
 
 
 async def prepare_message(user: User, client_data: ClientData | None) -> str:
-    profile = _("profile:message:main").format(name=user.first_name, id=user.tg_id)
+    profile = _("profile:message:main").format(name=html.escape(user.first_name), id=user.tg_id)
 
     if not client_data:
         subscription = _("profile:message:subscription_none")

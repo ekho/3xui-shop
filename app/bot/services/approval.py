@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import logging
 from datetime import timedelta
 from typing import TYPE_CHECKING
@@ -203,7 +204,7 @@ class ApprovalService:
         # Апдейт пришёл в локали нового юзера → карточку рендерим на дефолтной локали.
         with self.i18n.use_locale(DEFAULT_LANGUAGE):
             text = _("approval:admin:new_request").format(
-                name=user.first_name, username=user.username or "-", tg_id=user.tg_id
+                name=html.escape(user.first_name), username=user.username or "-", tg_id=user.tg_id
             )
             keyboard = approval_keyboard(user.tg_id)
 
@@ -256,7 +257,9 @@ class ApprovalService:
             with self.i18n.use_locale(DEFAULT_LANGUAGE):
                 for user in pending_users:
                     text = _("approval:admin:reminder").format(
-                        name=user.first_name, username=user.username or "-", tg_id=user.tg_id
+                        name=html.escape(user.first_name),
+                        username=user.username or "-",
+                        tg_id=user.tg_id,
                     )
                     keyboard = approval_keyboard(user.tg_id)
 

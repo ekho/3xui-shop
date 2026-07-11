@@ -1,3 +1,4 @@
+import html
 import logging
 from datetime import datetime, timezone
 
@@ -72,7 +73,11 @@ async def _main_menu_text(bot: Bot, user: User) -> str:
     # Имя бота — отображаемое из BotFather, через me() (aiogram кеширует ответ):
     # переименование бота меняет приветствие без правки локалей.
     me = await bot.me()
-    return _("main_menu:message:main").format(name=user.first_name, bot_name=me.full_name)
+    # Имя юзера — произвольная строка; без экранирования HTML-мусор в имени
+    # (например «<$/$>») роняет отправку меню parse-ошибкой Telegram.
+    return _("main_menu:message:main").format(
+        name=html.escape(user.first_name), bot_name=html.escape(me.full_name)
+    )
 
 
 @router.message(Command(NavMain.START))
