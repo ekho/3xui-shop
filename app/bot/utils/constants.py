@@ -137,6 +137,7 @@ class ActorType(Enum):
     ADMIN = "admin"  # админ основного бота (BOT_ADMINS / DEV)
     SUPPORT = "support"  # оператор в группе поддержки
     SYSTEM = "system"  # системный джоб (без человека-инициатора)
+    USER = "user"  # непривилегированный юзер (напр. попытка отказа в доступе)
 
 
 class AuditSource(Enum):
@@ -163,6 +164,7 @@ class AuditAction(Enum):
     SUPPORT_BAN = "support.ban"  # блок юзера в поддержке (SupportTicket)
     SUPPORT_UNBAN = "support.unban"
     SUPPORT_CLOSE = "support.close"  # закрытие тикета
+    ACCESS_DENIED = "access.denied"  # не-админ дёрнул админский контрол (сигнал безопасности)
     SYSTEM_UNLIMITED_RESET = "system.unlimited_reset"  # месячный сброс безлимита
     SYSTEM_AUDIT_PRUNE = "system.audit_prune"  # retention-прун самого лога
 

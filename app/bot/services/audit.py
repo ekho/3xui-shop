@@ -52,6 +52,11 @@ class AuditActor:
     def system(cls) -> AuditActor:
         return cls(type=ActorType.SYSTEM, source=AuditSource.JOB)
 
+    @classmethod
+    def denied(cls, tg_user: TelegramUser, source: AuditSource = AuditSource.MAIN_BOT) -> AuditActor:
+        # Непривилегированный юзер — не актор-админ, но именно ОН инициатор отказанной попытки.
+        return cls(type=ActorType.USER, source=source, id=tg_user.id, name=tg_user.full_name)
+
 
 # Человекочитаемая шапка для поста в канал: слаг действия → (эмодзи, подпись).
 _ACTION_META: dict[AuditAction, tuple[str, str]] = {
@@ -65,6 +70,7 @@ _ACTION_META: dict[AuditAction, tuple[str, str]] = {
     AuditAction.SUPPORT_BAN: ("🔇", "Блок в поддержке"),
     AuditAction.SUPPORT_UNBAN: ("🔊", "Разблок в поддержке"),
     AuditAction.SUPPORT_CLOSE: ("📪", "Тикет закрыт"),
+    AuditAction.ACCESS_DENIED: ("⛔️", "Отказ в доступе"),
     AuditAction.SYSTEM_UNLIMITED_RESET: ("🗓", "Месячный сброс безлимита"),
     AuditAction.SYSTEM_AUDIT_PRUNE: ("🧹", "Retention: очистка аудит-лога"),
 }
@@ -242,6 +248,20 @@ class AuditService:
     async def support_close(self, actor: AuditActor, target: User | int) -> None:
         await self.record(AuditAction.SUPPORT_CLOSE, actor, target=target)
 
+    async def access_denied(
+        self, tg_user: TelegramUser, *, source: AuditSource, attempted: str | None
+    ) -> None:
+        # Отказ: не-админ дёрнул админский контрол. Actor — сам нарушитель (тип user),
+        # target нет; что именно пытался — в payload и в примечании канала. Note —
+        # простой текст: _format_channel сам его экранирует (HTML тут нельзя).
+        note = f"⛔️ попытка: {attempted}" if attempted else "⛔️ отказ в доступе"
+        await self.record(
+            AuditAction.ACCESS_DENIED,
+            AuditActor.denied(tg_user, source),
+            payload={"attempted": attempted},
+            channel_note=note,
+        )
+
     async def system_event(
         self,
         action: AuditAction,
@@ -313,6 +333,8 @@ def _entry_detail(action: AuditAction | None, payload: dict | None) -> str | Non
         return "🔒 доступ отключён"
     if action is AuditAction.USER_UNBAN:
         return "🔓 доступ восстановлен"
+    if action is AuditAction.ACCESS_DENIED and payload.get("attempted"):
+        return f"⛔️ {html.escape(str(payload['attempted']))}"
     if action is AuditAction.SYSTEM_UNLIMITED_RESET and payload:
         return f"сброшено {payload.get('reset', '?')}/{payload.get('targets', '?')}"
     return None
