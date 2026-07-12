@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     # (approval_handler импортирует отсюда ApprovalCallback на уровне модуля).
     from app.support_bot.service import SupportProxyService
 
+    from .audit import AuditActor, AuditService
     from .notification import NotificationService
 
 logger = logging.getLogger(__name__)
@@ -112,12 +113,14 @@ class ApprovalService:
         i18n: I18n,
         notification_service: NotificationService,
         support: SupportProxyService | None = None,
+        audit_service: AuditService | None = None,
     ) -> None:
         self.config = config
         self.bot = bot  # основной бот
         self.i18n = i18n
         self.notification = notification_service
         self.support = support
+        self.audit = audit_service
 
     @property
     def group_channel_enabled(self) -> bool:
@@ -131,14 +134,18 @@ class ApprovalService:
         target: User,
         new_status: ApprovalStatus,
         decided_by: int | None = None,
+        actor: AuditActor | None = None,
     ) -> bool:
         """Применяет решение по заявке (approve/reject) и уведомляет пользователя.
 
         Инкапсулирует: идемпотентность (повторный тап по «протухшей» кнопке), сброс
-        `approval_requested_at`, аудит решения (decided_at/decided_by), отмену
-        Stars-подписки при reject и отправку юзеру granted/denied в ЕГО локали.
+        `approval_requested_at`, аудит решения (decided_at/decided_by + глобальный
+        аудит-лог), отмену Stars-подписки при reject и отправку юзеру granted/denied
+        в ЕГО локали.
 
-        `decided_by` — tg_id админа/оператора, принявшего решение (для карточки юзера).
+        `decided_by` — tg_id админа/оператора (для карточки юзера). `actor` — полный
+        контекст инициатора для глобального аудит-лога; если задан, `decided_by`
+        берётся из него. Единая точка approve/reject обоих ботов → аудит пишем здесь.
 
         Возвращает False, если статус уже был установлен (повторный тап — no-op),
         иначе True.
@@ -151,6 +158,9 @@ class ApprovalService:
         if target.approval_status == new_status:
             return False
 
+        if actor is not None and actor.id is not None:
+            decided_by = actor.id
+
         # M6: сбрасываем метку заявки, чтобы повторный запрос (rejected → снова) отправил новое уведомление
         await User.update(
             session,
@@ -160,6 +170,13 @@ class ApprovalService:
             approval_decided_at=datetime.now(timezone.utc),
             approval_decided_by=decided_by,
         )
+
+        # Глобальный аудит-лог: единая точка approve/reject обоих ботов. Пишем только по
+        # факту применения (после idempotency-guard выше). Actor даёт type/source/имя.
+        if self.audit is not None and actor is not None:
+            await self.audit.approval_decision(
+                actor, target, approved=new_status == ApprovalStatus.APPROVED
+            )
 
         # B1: reject при активном Stars-рекурренте обязан отменить подписку, иначе Telegram
         #     продолжит списывать звёзды. Общая логика с баном — utils/stars.py.

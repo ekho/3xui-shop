@@ -23,6 +23,7 @@ DEFAULT_PLANS_DIR = DEFAULT_DATA_DIR / "plans.json"
 DEFAULT_BOT_HOST = "0.0.0.0"
 DEFAULT_BOT_PORT = 8080
 DEFAULT_BOT_TIMEZONE = "UTC"  # часовой пояс для календарных джобов (месячный сброс безлимита)
+DEFAULT_AUDIT_RETENTION_DAYS = 365  # хранить события аудит-лога год; прун-джоб чистит старше
 
 DEFAULT_SHOP_APPROVAL_REQUIRED = True
 DEFAULT_SHOP_EMAIL = "support@3xui-shop.com"
@@ -97,6 +98,8 @@ class BotConfig:
     API_IS_LOCAL: bool  # True для self-hosted telegram-bot-api в режиме --local (файлы на диске сервера)
     USE_WEBHOOK: bool  # True → вебхук (нужен домен + TLS reverse-proxy); False → long-polling (getUpdates, домен/вебхук не нужны)
     TIMEZONE: str  # IANA-имя (напр. Europe/Moscow) для календарных джобов; резолвится pytz
+    AUDIT_CHANNEL_ID: int | None  # приватный канал-зеркало аудит-лога (бот — админ); None → только БД
+    AUDIT_RETENTION_DAYS: int  # хранить события аудит-лога N дней; прун-джоб чистит старше
 
 
 @dataclass
@@ -352,6 +355,10 @@ def load_config() -> Config:
             API_IS_LOCAL=env.bool("TELEGRAM_API_IS_LOCAL", default=False),
             USE_WEBHOOK=env.bool("BOT_USE_WEBHOOK", default=True),
             TIMEZONE=env.str("BOT_TIMEZONE", default=DEFAULT_BOT_TIMEZONE),
+            AUDIT_CHANNEL_ID=env.int("AUDIT_CHANNEL_ID", default=None),
+            AUDIT_RETENTION_DAYS=env.int(
+                "AUDIT_RETENTION_DAYS", default=DEFAULT_AUDIT_RETENTION_DAYS
+            ),
         ),
         shop=ShopConfig(
             APPROVAL_REQUIRED=env.bool(

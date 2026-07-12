@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.support_bot.service import SupportProxyService
 
 from .approval import ApprovalService
+from .audit import AuditService
 from .inbound_groups import InboundGroupService
 from .invite_stats import InviteStatsService
 from .notification import NotificationService
@@ -46,6 +47,9 @@ async def initialize(
         inbound_group_service=inbound_groups,
     )
     notification = NotificationService(config=config, bot=bot)
+    # Аудит пишет через ОСНОВНОЙ бот (пост в приватный канал) и собственную сессию;
+    # общий контейнер отдаёт этот же инстанс и хендлерам support-бота.
+    audit = AuditService(config=config, bot=bot, session_factory=session)
     referral = ReferralService(config=config, session_factory=session, vpn_service=vpn)
     subscription = SubscriptionService(config=config, session_factory=session, vpn_service=vpn)
     payment_stats = PaymentStatsService(session_factory=session)
@@ -57,6 +61,7 @@ async def initialize(
         i18n=i18n,
         notification_service=notification,
         support=support,
+        audit_service=audit,
     )
 
     return ServicesContainer(
@@ -70,4 +75,5 @@ async def initialize(
         payment_stats=payment_stats,
         invite_stats=invite_stats,
         approval=approval,
+        audit=audit,
     )

@@ -117,6 +117,11 @@ def _start_schedulers(
         session_factory=db.session,
         vpn_service=services.vpn,
         timezone_name=config.bot.TIMEZONE,
+        audit_service=services.audit,
+    )
+    tasks.audit_prune.start_scheduler(
+        audit_service=services.audit,
+        timezone_name=config.bot.TIMEZONE,
     )
     if config.shop.APPROVAL_REQUIRED:
         tasks.approval_reminder.start_scheduler(

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.filters import IsAdmin
 from app.bot.models import ServicesContainer
 from app.bot.routers.misc.keyboard import back_keyboard
+from app.bot.services.audit import AuditActor
 from app.bot.utils.constants import ApprovalStatus
 from app.bot.utils.navigation import NavAdminTools
 from app.db.models import User
@@ -142,7 +143,9 @@ async def _decide(
     # Единый сервис: он же уведомляет юзера в его локали и снимает Stars-рекуррент при reject.
     # target только что прошёл guard как PENDING (та же сессия, без рефетча), поэтому решение
     # здесь применяется всегда; гонку «уже обработано» ловит guard выше на свежей сессии.
-    await services.approval.apply_decision(session, target, new_status, decided_by=user.tg_id)
+    await services.approval.apply_decision(
+        session, target, new_status, actor=AuditActor.admin(callback.from_user)
+    )
 
     if new_status == ApprovalStatus.APPROVED:
         text = _("pending_users:popup:approved").format(name=target.first_name)

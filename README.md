@@ -155,7 +155,9 @@ Before starting the installation, make sure you have the installed [**Docker**](
 | SUPPORT_GROUP_ID | ⭕ | - | ID of the support forum supergroup (-100…, Topics enabled, support bot is admin with can_manage_topics) |
 | BOT_DOMAIN | 🔴 | - | Domain of the bot (e.g., 3xui-shop.com) |
 | BOT_PORT | ⭕ | 8080 | Port of the bot |
-| BOT_TIMEZONE | ⭕ | UTC | IANA timezone for calendar jobs (e.g. Europe/Moscow); used by the monthly unlimited traffic reset (1st of month, 00:00) |
+| BOT_TIMEZONE | ⭕ | UTC | IANA timezone for calendar jobs (e.g. Europe/Moscow); used by the monthly unlimited traffic reset (1st of month, 00:00) and the daily audit-log prune (03:30) |
+| AUDIT_CHANNEL_ID | ⭕ | - | Private channel mirroring the audit log (-100…, bot is admin). Empty → audit is written to DB only. Channel receives metadata + hashtags only; message bodies stay in DB — see DEPLOYMENT.md §5c |
+| AUDIT_RETENTION_DAYS | ⭕ | 365 | How long audit-log events are kept; a daily job prunes older entries and records the prune as a system event |
 | | | |
 | SHOP_EMAIL | ⭕ | support@3xui-shop.com | Email for receipts |
 | SHOP_CURRENCY | ⭕ | RUB | Currency for buttons (e.g., RUB, USD, XTR) |

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.filters import IsAdmin
 from app.bot.models import ServicesContainer
 from app.bot.services.approval import ApprovalCallback
+from app.bot.services.audit import AuditActor
 from app.bot.utils.constants import ApprovalStatus
 from app.db.models import User
 
@@ -38,7 +39,7 @@ async def on_approval(
         return
 
     applied = await services.approval.apply_decision(
-        session, target, new_status, decided_by=callback.from_user.id
+        session, target, new_status, actor=AuditActor.admin(callback.from_user)
     )
     if not applied:
         await callback.answer(_("approval:admin:already_processed"), show_alert=True)

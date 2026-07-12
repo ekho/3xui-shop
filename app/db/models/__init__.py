@@ -1,4 +1,5 @@
 from ._base import Base
+from .audit_log import AuditLog
 from .invite import Invite
 from .plan import Plan
 from .plan_duration import PlanDuration

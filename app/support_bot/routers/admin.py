@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import ServicesContainer
 from app.bot.services.approval import ApprovalCallback
+from app.bot.services.audit import AuditActor
 from app.bot.utils.constants import DEFAULT_LANGUAGE, ApprovalStatus, SupportTicketStatus
 from app.bot.utils.user_card import build_user_card
 from app.config import Config
@@ -65,7 +66,10 @@ async def _ticket_for(message: Message, session: AsyncSession) -> SupportTicket 
 
 @router.message(Command("close"), _human, _in_topic)
 async def command_close(
-    message: Message, session: AsyncSession, support: SupportProxyService
+    message: Message,
+    session: AsyncSession,
+    support: SupportProxyService,
+    services: ServicesContainer,
 ) -> None:
     ticket = await _ticket_for(message, session)
     if not ticket:
@@ -85,11 +89,14 @@ async def command_close(
     except TelegramAPIError as exception:
         logger.debug(f"close_forum_topic failed: {exception}")
     await support.notify_user(session, ticket, "support_bot:message:closed_by_operator")
+    await services.audit.support_close(AuditActor.support(message.from_user), ticket.tg_id)
     logger.info(f"Ticket {ticket.tg_id} closed by operator {message.from_user.id}.")
 
 
 @router.message(Command("ban"), _human, _in_topic)
-async def command_ban(message: Message, session: AsyncSession) -> None:
+async def command_ban(
+    message: Message, session: AsyncSession, services: ServicesContainer
+) -> None:
     ticket = await _ticket_for(message, session)
     if not ticket:
         await message.reply("⚠️ Тикет для этого топика не найден.")
@@ -99,11 +106,14 @@ async def command_ban(message: Message, session: AsyncSession) -> None:
         session=session, tg_id=ticket.tg_id, status=SupportTicketStatus.BANNED
     )
     await message.reply("🚫 Пользователь заблокирован в поддержке (/unban — разблокировать).")
+    await services.audit.support_ban(AuditActor.support(message.from_user), ticket.tg_id)
     logger.info(f"Ticket {ticket.tg_id} banned by operator {message.from_user.id}.")
 
 
 @router.message(Command("unban"), _human, _in_topic)
-async def command_unban(message: Message, session: AsyncSession) -> None:
+async def command_unban(
+    message: Message, session: AsyncSession, services: ServicesContainer
+) -> None:
     ticket = await _ticket_for(message, session)
     if not ticket:
         await message.reply("⚠️ Тикет для этого топика не найден.")
@@ -113,6 +123,7 @@ async def command_unban(message: Message, session: AsyncSession) -> None:
         session=session, tg_id=ticket.tg_id, status=SupportTicketStatus.OPEN
     )
     await message.reply("✅ Пользователь разблокирован.")
+    await services.audit.support_unban(AuditActor.support(message.from_user), ticket.tg_id)
     logger.info(f"Ticket {ticket.tg_id} unbanned by operator {message.from_user.id}.")
 
 
@@ -214,6 +225,7 @@ async def command_comp(
         await message.reply("⚠️ Не удалось начислить дни — подробности в логах бота.")
         return
 
+    await services.audit.compensation(AuditActor.support(message.from_user), target, days)
     logger.info(f"Operator {message.from_user.id} granted {days} bonus days to {target.tg_id}.")
 
     # Уведомление юзеру — основным ботом, в его локали.
@@ -281,6 +293,7 @@ async def on_comp_reset(
         await callback.answer("⚠️ Не удалось сбросить трафик.", show_alert=True)
         return
 
+    await services.audit.traffic_reset(AuditActor.support(callback.from_user), target)
     logger.info(f"Operator {callback.from_user.id} reset traffic of {tg_id} (after /comp).")
     await callback.answer("✅ Трафик сброшен.")
     # callback.message бывает InaccessibleMessage (кнопке > 48 ч) — у него нет
@@ -318,7 +331,7 @@ async def _decide_registration(
         return
 
     applied = await services.approval.apply_decision(
-        session, target, new_status, decided_by=message.from_user.id
+        session, target, new_status, actor=AuditActor.support(message.from_user)
     )
     if not applied:
         await message.reply(f"ℹ️ Заявка уже в статусе «{new_status.value}».")
@@ -401,7 +414,7 @@ async def on_approval(
         return
 
     applied = await services.approval.apply_decision(
-        session, target, new_status, decided_by=callback.from_user.id
+        session, target, new_status, actor=AuditActor.support(callback.from_user)
     )
     if not applied:
         await callback.answer("ℹ️ Заявка уже обработана.", show_alert=True)
@@ -484,7 +497,10 @@ async def anonymous_admin_hint(message: Message) -> None:
     ~F.pinned_message,
 )
 async def relay_admin_message(
-    message: Message, session: AsyncSession, support: SupportProxyService
+    message: Message,
+    session: AsyncSession,
+    support: SupportProxyService,
+    services: ServicesContainer,
 ) -> None:
     ticket = await _ticket_for(message, session)
     if not ticket:
@@ -507,3 +523,6 @@ async def relay_admin_message(
         )
 
     await support.relay_from_admin(message=message, ticket=ticket)
+    # Ответ оператора юзеру — сообщение с телом (или подпись/пометка о медиа) в БД.
+    body = message.text or message.caption or "<нетекстовое вложение>"
+    await services.audit.message_sent(AuditActor.support(message.from_user), ticket.tg_id, body)

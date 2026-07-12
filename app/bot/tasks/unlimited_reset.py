@@ -5,8 +5,8 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.util import astimezone
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.bot.services import VPNService
-from app.bot.utils.constants import UNLIMITED_INBOUND_GROUP
+from app.bot.services import AuditService, VPNService
+from app.bot.utils.constants import UNLIMITED_INBOUND_GROUP, AuditAction
 from app.db.models import User
 
 logger = logging.getLogger(__name__)
@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 async def reset_unlimited_traffic(
     session_factory: async_sessionmaker,
     vpn_service: VPNService,
+    audit_service: AuditService | None = None,
 ) -> None:
     """Обнулить использованный трафик всем клиентам группы `unlimited`.
 
@@ -53,11 +54,20 @@ async def reset_unlimited_traffic(
 
     logger.info(f"[unlimited-reset] Done: {reset} reset, {failed} failed.")
 
+    # Системное событие в аудит-лог: джоб меняет трафик юзеров без человека-инициатора.
+    if audit_service is not None:
+        await audit_service.system_event(
+            AuditAction.SYSTEM_UNLIMITED_RESET,
+            payload={"targets": len(targets), "reset": reset, "failed": failed},
+            channel_note=f"безлимит: сброшено {reset}, ошибок {failed} (из {len(targets)})",
+        )
+
 
 def start_scheduler(
     session_factory: async_sessionmaker,
     vpn_service: VPNService,
     timezone_name: str,
+    audit_service: AuditService | None = None,
 ) -> None:
     # Календарный месяц: 1-го числа в 00:00 по timezone_name (BOT_TIMEZONE, дефолт UTC).
     # Резолвим через APScheduler-util (pytz, не зависит от системной tzdata); при
@@ -75,7 +85,7 @@ def start_scheduler(
     scheduler.add_job(
         reset_unlimited_traffic,
         CronTrigger(day=1, hour=0, minute=0),
-        args=[session_factory, vpn_service],
+        args=[session_factory, vpn_service, audit_service],
         # Пропущенный из-за простоя прогон не копим и не теряем: coalesce + грейс 1ч
         # (если бот лежал ровно в полночь 1-го, сброс догонит при старте в пределах часа).
         coalesce=True,

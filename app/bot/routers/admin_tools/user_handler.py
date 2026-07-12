@@ -22,6 +22,7 @@ from app.bot.filters import IsAdmin
 from app.bot.models import ServicesContainer
 from app.bot.payment_gateways import GatewayFactory
 from app.bot.routers.misc.keyboard import back_keyboard
+from app.bot.services.audit import AuditActor
 from app.bot.services.inbound_groups import EmptyInboundSetError
 from app.bot.utils.constants import (
     BANNED_INBOUND_GROUP,
@@ -332,6 +333,8 @@ async def callback_confirm_extend_user(
         )
         return
 
+    await services.audit.compensation(AuditActor.admin(callback.from_user), target, days)
+
     # Юзеру — уведомление в ЕГО локали через основного бота (как ApprovalService).
     locale = (
         target.language_code
@@ -453,6 +456,13 @@ async def callback_confirm_ban_user(
     if banning:
         await cancel_stars_auto_renew(callback.bot, session, target, reason="banned by admin")
 
+    actor = AuditActor.admin(callback.from_user)
+    before = sorted(current)
+    if banning:
+        await services.audit.ban(actor, target, before=before, after=new_groups)
+    else:
+        await services.audit.unban(actor, target, before=before, after=new_groups)
+
     await services.notification.show_popup(
         callback=callback,
         text=_("user_editor:popup:banned") if banning else _("user_editor:popup:unbanned"),
@@ -515,6 +525,8 @@ async def callback_confirm_reset_traffic(
 
     logger.info(f"Admin {user.tg_id} resets traffic of user {tg_id}.")
     ok = await services.vpn.reset_traffic(target)
+    if ok:
+        await services.audit.traffic_reset(AuditActor.admin(callback.from_user), target)
     await services.notification.show_popup(
         callback=callback,
         text=(

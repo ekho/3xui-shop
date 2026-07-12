@@ -131,6 +131,42 @@ class SupportTicketStatus(Enum):
     BANNED = "banned"
 
 
+class ActorType(Enum):
+    """Кто совершил действие в аудит-логе."""
+
+    ADMIN = "admin"  # админ основного бота (BOT_ADMINS / DEV)
+    SUPPORT = "support"  # оператор в группе поддержки
+    SYSTEM = "system"  # системный джоб (без человека-инициатора)
+
+
+class AuditSource(Enum):
+    """Через какую поверхность прошло действие."""
+
+    MAIN_BOT = "main_bot"
+    SUPPORT_BOT = "support_bot"
+    JOB = "job"
+
+
+class AuditAction(Enum):
+    """Таксономия действий. Значение = слаг, попадающий в хэштег канала (#act_...).
+
+    Точки только для мутаций людей и системных джобов; просмотры не логируются.
+    """
+
+    USER_COMPENSATE = "user.compensate"  # начисление бонус-дней (карточка / /comp)
+    USER_BAN = "user.ban"  # VPN-бан (тумблер inbound-групп)
+    USER_UNBAN = "user.unban"
+    USER_TRAFFIC_RESET = "user.traffic_reset"  # сброс счётчика трафика
+    USER_MESSAGE = "user.message"  # прямой DM юзеру (тело — только в БД)
+    APPROVAL_APPROVE = "approval.approve"  # решение по заявке на регистрацию
+    APPROVAL_REJECT = "approval.reject"
+    SUPPORT_BAN = "support.ban"  # блок юзера в поддержке (SupportTicket)
+    SUPPORT_UNBAN = "support.unban"
+    SUPPORT_CLOSE = "support.close"  # закрытие тикета
+    SYSTEM_UNLIMITED_RESET = "system.unlimited_reset"  # месячный сброс безлимита
+    SYSTEM_AUDIT_PRUNE = "system.audit_prune"  # retention-прун самого лога
+
+
 class Currency(Enum):
     RUB = ("RUB", "₽")
     USD = ("USD", "$")

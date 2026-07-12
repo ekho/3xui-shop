@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.filters import IsAdmin
 from app.bot.models import ServicesContainer
+from app.bot.services.audit import AuditActor
 from app.bot.routers.misc.keyboard import back_keyboard, close_notification_keyboard
 from app.bot.utils.constants import (
     MAIN_MESSAGE_ID_KEY,
@@ -236,6 +237,8 @@ async def callback_confirm_send_notification(
     notification = await services.notification.notify_by_id(chat_id=pending_ids[0], text=text)
 
     if notification:
+        # Прямой DM юзеру от админа — логируем факт С ТЕЛОМ (тело живёт только в БД).
+        await services.audit.message_sent(AuditActor.admin(callback.from_user), pending_ids[0], text)
         # Пары чат<->message_id «последнего уведомления» коммитятся ТОЛЬКО здесь,
         # при фактической отправке — вместе, чтобы не разъезжались.
         await state.update_data({NOTIFICATION_CHAT_IDS_KEY: list(pending_ids)})
