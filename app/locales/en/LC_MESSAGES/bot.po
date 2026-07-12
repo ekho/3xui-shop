@@ -1888,6 +1888,22 @@ msgid "user_editor:button:message"
 msgstr "✉️ Message"
 
 #: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:history"
+msgstr "🕓 Action history"
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:history:title"
+msgstr ""
+"🕓 <b>Action history</b>\n"
+"<code>{user_id}</code>\n"
+"\n"
+"{entries}"
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:history:empty"
+msgstr "No recorded actions yet."
+
+#: app/bot/routers/admin_tools/keyboard.py
 msgid "user_editor:button:topic"
 msgstr "🧵 Support topic"
 

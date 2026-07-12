@@ -586,6 +586,12 @@ def user_card_keyboard(
             callback_data=NavAdminTools.MESSAGE_USER + f"_{tg_id}",
         ),
     )
+    builder.row(
+        InlineKeyboardButton(
+            text=_("user_editor:button:history"),
+            callback_data=NavAdminTools.USER_HISTORY + f"_{tg_id}_0",
+        )
+    )
     if topic_url:
         builder.row(InlineKeyboardButton(text=_("user_editor:button:topic"), url=topic_url))
 
@@ -634,6 +640,30 @@ def user_reset_traffic_confirm_keyboard(tg_id: int) -> InlineKeyboardMarkup:
         )
     )
     builder.row(cancel_button(NavAdminTools.SHOW_USER + f"_{tg_id}"))
+    return builder.as_markup()
+
+
+def user_history_keyboard(
+    tg_id: int, page: int, *, has_prev: bool, has_next: bool
+) -> InlineKeyboardMarkup:
+    """Пагинация аудит-истории юзера + возврат в карточку."""
+    builder = InlineKeyboardBuilder()
+    nav: list[InlineKeyboardButton] = []
+    if has_prev:
+        nav.append(
+            InlineKeyboardButton(
+                text="←", callback_data=NavAdminTools.USER_HISTORY + f"_{tg_id}_{page - 1}"
+            )
+        )
+    if has_next:
+        nav.append(
+            InlineKeyboardButton(
+                text="→", callback_data=NavAdminTools.USER_HISTORY + f"_{tg_id}_{page + 1}"
+            )
+        )
+    if nav:
+        builder.row(*nav)
+    builder.row(back_button(NavAdminTools.SHOW_USER + f"_{tg_id}"))
     return builder.as_markup()
 
 

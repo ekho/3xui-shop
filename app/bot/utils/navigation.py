@@ -83,6 +83,7 @@ class NavAdminTools(str, Enum):
     RESET_USER_TRAFFIC = "reset_user_traffic"
     CONFIRM_RESET_USER_TRAFFIC = "cnf_reset_user_traffic"
     MESSAGE_USER = "msg_user"
+    USER_HISTORY = "user_history"  # аудит-история юзера; callback: _{tg_id}_{page}
 
     REGISTRATION_REQUESTS = "registration_requests"
 

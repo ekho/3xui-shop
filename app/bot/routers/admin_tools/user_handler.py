@@ -22,7 +22,7 @@ from app.bot.filters import IsAdmin
 from app.bot.models import ServicesContainer
 from app.bot.payment_gateways import GatewayFactory
 from app.bot.routers.misc.keyboard import back_keyboard
-from app.bot.services.audit import AuditActor
+from app.bot.services.audit import AuditActor, format_audit_entry
 from app.bot.services.inbound_groups import EmptyInboundSetError
 from app.bot.utils.constants import (
     BANNED_INBOUND_GROUP,
@@ -35,13 +35,14 @@ from app.bot.utils.navigation import NavAdminTools
 from app.bot.utils.stars import cancel_stars_auto_renew
 from app.bot.utils.user_card import build_user_card
 from app.config import Config
-from app.db.models import SupportTicket, User
+from app.db.models import AuditLog, SupportTicket, User
 
 from .keyboard import (
     user_ban_confirm_keyboard,
     user_card_keyboard,
     user_editor_users_keyboard,
     user_extend_confirm_keyboard,
+    user_history_keyboard,
     user_reset_traffic_confirm_keyboard,
 )
 from .notification_handler import NotificationStates
@@ -600,6 +601,49 @@ async def callback_message_user(
             first_name=html.escape(target.first_name),
         ),
         reply_markup=back_keyboard(NavAdminTools.SHOW_USER + f"_{tg_id}"),
+    )
+
+
+# endregion
+
+
+# region: история действий над пользователем (аудит-лог)
+
+# Сколько событий на страницу. Тянем на 1 больше — лишнее сигналит «есть следующая».
+_HISTORY_PAGE_SIZE = 7
+
+
+@router.callback_query(F.data.startswith(NavAdminTools.USER_HISTORY), IsAdmin())
+async def callback_user_history(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+) -> None:
+    # callback: user_history_{tg_id}_{page}
+    payload = callback.data[len(NavAdminTools.USER_HISTORY) + 1 :]
+    tg_id_raw, page_raw = payload.rsplit("_", 1)
+    tg_id, page = int(tg_id_raw), int(page_raw)
+
+    entries = await AuditLog.get_page(
+        session=session,
+        target_id=tg_id,
+        limit=_HISTORY_PAGE_SIZE + 1,
+        offset=page * _HISTORY_PAGE_SIZE,
+    )
+    has_next = len(entries) > _HISTORY_PAGE_SIZE
+    entries = entries[:_HISTORY_PAGE_SIZE]
+
+    if not entries:
+        body = _("user_editor:history:empty")
+    else:
+        body = "\n\n".join(format_audit_entry(entry) for entry in entries)
+
+    text = _("user_editor:history:title").format(user_id=tg_id, entries=body)
+    await callback.message.edit_text(
+        text=text,
+        reply_markup=user_history_keyboard(
+            tg_id, page, has_prev=page > 0, has_next=has_next
+        ),
     )
 
 

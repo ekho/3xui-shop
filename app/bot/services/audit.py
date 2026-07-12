@@ -294,3 +294,48 @@ def _hashtags(action: AuditAction, actor_id: int | None, target_id: int | None) 
     if actor_id is not None:
         tags.append(f"#by_{actor_id}")
     return " ".join(tags)
+
+
+_SOURCE_LABEL_BY_VALUE: dict[str, str] = {src.value: label for src, label in _SOURCE_LABEL.items()}
+
+
+def _entry_detail(action: AuditAction | None, payload: dict | None) -> str | None:
+    """Короткая деталь события для строки истории. Для DM показываем превью тела —
+    экран истории только для админа (карточка, IsAdmin), утечки оператору нет."""
+    payload = payload or {}
+    if action is AuditAction.USER_COMPENSATE and payload.get("days") is not None:
+        return f"+{payload['days']} дн."
+    if action is AuditAction.USER_MESSAGE and payload.get("body"):
+        body = " ".join(str(payload["body"]).split())
+        preview = body[:80] + ("…" if len(body) > 80 else "")
+        return f"✉️ «{html.escape(preview)}»"
+    if action is AuditAction.USER_BAN:
+        return "🔒 доступ отключён"
+    if action is AuditAction.USER_UNBAN:
+        return "🔓 доступ восстановлен"
+    if action is AuditAction.SYSTEM_UNLIMITED_RESET and payload:
+        return f"сброшено {payload.get('reset', '?')}/{payload.get('targets', '?')}"
+    return None
+
+
+def format_audit_entry(entry: AuditLog) -> str:
+    """Одна запись аудита -> компактный HTML-блок для истории в карточке юзера."""
+    try:
+        action = AuditAction(entry.action)
+    except ValueError:
+        action = None
+    emoji, label = _ACTION_META.get(action, ("•", entry.action))
+    date = entry.created_at.strftime("%Y-%m-%d %H:%M") if entry.created_at else "—"
+
+    if entry.actor_type == ActorType.SYSTEM.value:
+        actor = "Система"
+    else:
+        name = html.escape(entry.actor_name or "—")
+        src = _SOURCE_LABEL_BY_VALUE.get(entry.source, entry.source)
+        actor = f"{name} · <code>{entry.actor_id}</code> · {src}"
+
+    line = f"{emoji} <b>{html.escape(label)}</b> · <code>{date}</code>\n    👤 {actor}"
+    detail = _entry_detail(action, entry.payload)
+    if detail:
+        line += f"\n    {detail}"
+    return line

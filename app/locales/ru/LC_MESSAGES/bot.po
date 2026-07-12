@@ -1904,6 +1904,22 @@ msgid "user_editor:button:message"
 msgstr "✉️ Написать"
 
 #: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:history"
+msgstr "🕓 История действий"
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:history:title"
+msgstr ""
+"🕓 <b>История действий</b>\n"
+"<code>{user_id}</code>\n"
+"\n"
+"{entries}"
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:history:empty"
+msgstr "Записанных действий пока нет."
+
+#: app/bot/routers/admin_tools/keyboard.py
 msgid "user_editor:button:topic"
 msgstr "🧵 Топик поддержки"
 
