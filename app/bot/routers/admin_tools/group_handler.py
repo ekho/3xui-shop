@@ -8,8 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.filters import IsAdmin
 from app.bot.models import ServicesContainer
 from app.bot.services.inbound_groups import EmptyInboundSetError
-from app.bot.utils.constants import UNLIMITED_INBOUND_GROUP
+from app.bot.utils.constants import BANNED_INBOUND_GROUP, UNLIMITED_INBOUND_GROUP
 from app.bot.utils.navigation import NavAdminTools
+from app.bot.utils.stars import cancel_stars_auto_renew
 from app.db.models import User
 
 from .keyboard import user_groups_keyboard
@@ -131,6 +132,11 @@ async def callback_toggle_user_group(
         await User.update(session=session, tg_id=target.tg_id, inbound_groups=new_groups)
 
     target.inbound_groups = new_groups
+
+    # Бан = стоп-продление: Stars-рекуррент отменяем (та же логика, что в карточке юзера).
+    if group == BANNED_INBOUND_GROUP and BANNED_INBOUND_GROUP in new_groups:
+        await cancel_stars_auto_renew(callback.bot, session, target, reason="banned by admin")
+
     text, keyboard = await _render_user_groups(services, target)
     await callback.message.edit_text(text=text, reply_markup=keyboard)
 

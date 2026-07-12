@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
+from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.i18n import I18n
@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.bot.utils.constants import DEFAULT_LANGUAGE, ApprovalStatus
+from app.bot.utils.stars import cancel_stars_auto_renew
 from app.config import BotConfig, Config
 from app.db.models import User
 
@@ -161,19 +162,9 @@ class ApprovalService:
         )
 
         # B1: reject при активном Stars-рекурренте обязан отменить подписку, иначе Telegram
-        #     продолжит списывать звёзды. Поля появляются на Этапе 5 — getattr для forward-совместимости.
-        if new_status == ApprovalStatus.REJECTED and getattr(target, "is_stars_auto_renew", False):
-            charge_id = getattr(target, "stars_charge_id", None)
-            if charge_id:
-                try:
-                    await self.bot.edit_user_star_subscription(
-                        user_id=target.tg_id,
-                        telegram_payment_charge_id=charge_id,
-                        is_canceled=True,
-                    )
-                except TelegramBadRequest as exception:
-                    logger.warning(f"Cancel stars sub on reject for {target.tg_id}: {exception}")
-                await User.update(session, tg_id=target.tg_id, is_stars_auto_renew=False)
+        #     продолжит списывать звёзды. Общая логика с баном — utils/stars.py.
+        if new_status == ApprovalStatus.REJECTED:
+            await cancel_stars_auto_renew(self.bot, session, target, reason="registration rejected")
 
         # M5: текст юзеру — в ЕГО локали (i18n-middleware ставит локаль инициатора решения)
         locale = (target.language_code if target.language_code else None) or DEFAULT_LANGUAGE

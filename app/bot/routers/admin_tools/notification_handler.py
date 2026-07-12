@@ -16,6 +16,7 @@ from app.bot.utils.constants import (
     NOTIFICATION_CHAT_IDS_KEY,
     NOTIFICATION_LAST_MESSAGE_IDS_KEY,
     NOTIFICATION_MESSAGE_TEXT_KEY,
+    NOTIFICATION_PENDING_CHAT_IDS_KEY,
     NOTIFICATION_PRE_MESSAGE_TEXT_KEY,
     NOTIFICATION_RETURN_TO_KEY,
 )
@@ -114,7 +115,7 @@ async def callback_pick_notification_user(
         )
         return
 
-    await state.update_data({NOTIFICATION_CHAT_IDS_KEY: [target.tg_id]})
+    await state.update_data({NOTIFICATION_PENDING_CHAT_IDS_KEY: [target.tg_id]})
     await state.set_state(NotificationStates.message_to_user)
     await callback.message.edit_text(
         text=_("notification:message:send_message_for_user").format(
@@ -144,7 +145,7 @@ async def message_user_id(
         user = await User.get(session=session, tg_id=user_id)
 
         if user:
-            await state.update_data({NOTIFICATION_CHAT_IDS_KEY: [user_id]})
+            await state.update_data({NOTIFICATION_PENDING_CHAT_IDS_KEY: [user_id]})
             main_message_id = await state.get_value(MAIN_MESSAGE_ID_KEY)
             await state.set_state(NotificationStates.message_to_user)
             await message.bot.edit_message_text(
@@ -178,7 +179,7 @@ async def message_to_user(
     services: ServicesContainer,
 ) -> None:
     text = message.text.strip()
-    user_ids = await state.get_value(NOTIFICATION_CHAT_IDS_KEY)
+    user_ids = await state.get_value(NOTIFICATION_PENDING_CHAT_IDS_KEY)
     user_id = user_ids[0]
     logger.info(f"Admin {user.tg_id} sent message for user {user_id}.")
 
@@ -224,10 +225,20 @@ async def callback_confirm_send_notification(
         )
         return None
 
-    user_id = await state.get_value(NOTIFICATION_CHAT_IDS_KEY)
-    notification = await services.notification.notify_by_id(chat_id=user_id[0], text=text)
+    pending_ids = await state.get_value(NOTIFICATION_PENDING_CHAT_IDS_KEY)
+    if not pending_ids:
+        await services.notification.notify_by_message(
+            message=callback.message,
+            text=_("notification:ntf:failed_to_send_message"),
+            duration=5,
+        )
+        return None
+    notification = await services.notification.notify_by_id(chat_id=pending_ids[0], text=text)
 
     if notification:
+        # Пары чат<->message_id «последнего уведомления» коммитятся ТОЛЬКО здесь,
+        # при фактической отправке — вместе, чтобы не разъезжались.
+        await state.update_data({NOTIFICATION_CHAT_IDS_KEY: list(pending_ids)})
         await state.update_data({NOTIFICATION_LAST_MESSAGE_IDS_KEY: [notification.message_id]})
         await state.update_data({NOTIFICATION_MESSAGE_TEXT_KEY: text})
         return_to = await state.get_value(NOTIFICATION_RETURN_TO_KEY)

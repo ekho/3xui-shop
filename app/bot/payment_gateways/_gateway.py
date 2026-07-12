@@ -133,6 +133,22 @@ class PaymentGateway(ABC):
             ),
         )
 
+        # Забаненный не может создать платёж из UI (гейты 1.18.0), но платёж мог быть
+        # создан ДО бана (pending-инвойс) или прийти Stars-рекуррентом, оформленным до
+        # бана. Деньги уже списаны — провижиним (бан на панели сохранится, дни будут
+        # сгорать у выключенного клиента), а оператору сигналим разрулить руками:
+        # рефанд или разбан.
+        if self.services.inbound_groups.is_banned(user):
+            logger.warning(
+                f"Paid {payment_id}: user {user.tg_id} is BANNED; provisioned days will "
+                "burn while the client is disabled."
+            )
+            await self.services.notification.notify_developer(
+                text=f"{EVENT_PAYMENT_SUCCEEDED_TAG}\n\n⚠️ Оплата {payment_id} от "
+                f"ЗАБАНЕННОГО юзера {user.tg_id}: дни начислены, но клиент остаётся "
+                f"выключен. Нужен рефанд или разбан."
+            )
+
         locale = user.language_code if user else DEFAULT_LANGUAGE
         with self.i18n.use_locale(locale):
             await redirect_to_main_menu(

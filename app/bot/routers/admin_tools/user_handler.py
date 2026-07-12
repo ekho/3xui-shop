@@ -27,10 +27,11 @@ from app.bot.utils.constants import (
     BANNED_INBOUND_GROUP,
     DEFAULT_LANGUAGE,
     MAIN_MESSAGE_ID_KEY,
-    NOTIFICATION_CHAT_IDS_KEY,
+    NOTIFICATION_PENDING_CHAT_IDS_KEY,
     NOTIFICATION_RETURN_TO_KEY,
 )
 from app.bot.utils.navigation import NavAdminTools
+from app.bot.utils.stars import cancel_stars_auto_renew
 from app.bot.utils.user_card import build_user_card
 from app.config import Config
 from app.db.models import SupportTicket, User
@@ -446,6 +447,12 @@ async def callback_confirm_ban_user(
         await User.update(session=session, tg_id=target.tg_id, inbound_groups=new_groups)
 
     target.inbound_groups = new_groups
+
+    # Бан = стоп-продление: активный Stars-рекуррент отменяем, иначе Telegram
+    # продолжит списывать звёзды за выключенный VPN (зеркало reject-а заявки).
+    if banning:
+        await cancel_stars_auto_renew(callback.bot, session, target, reason="banned by admin")
+
     await services.notification.show_popup(
         callback=callback,
         text=_("user_editor:popup:banned") if banning else _("user_editor:popup:unbanned"),
@@ -569,7 +576,7 @@ async def callback_message_user(
     logger.info(f"Admin {user.tg_id} writes a message to user {tg_id} from the card.")
     await state.update_data(
         {
-            NOTIFICATION_CHAT_IDS_KEY: [target.tg_id],
+            NOTIFICATION_PENDING_CHAT_IDS_KEY: [target.tg_id],
             # После отправки/отмены вернуться в карточку, а не в раздел уведомлений.
             NOTIFICATION_RETURN_TO_KEY: NavAdminTools.SHOW_USER + f"_{tg_id}",
         }
