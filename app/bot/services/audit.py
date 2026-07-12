@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from aiogram.types import User as TelegramUser
 
     from app.db.models import User
+    from app.support_bot.service import SupportProxyService
 
 logger = logging.getLogger(__name__)
 
@@ -87,22 +88,34 @@ class AuditService:
 
     БД (`audit_log`) — источник истины: пишем ВСЕГДА и в СОБСТВЕННОЙ сессии, чтобы не
     коммитить незавершённую транзакцию вызывающего и не потерять запись при её откате.
-    Канал — вторичное зеркало для realtime/поиска: пост best-effort, содержит ТОЛЬКО
-    метаданные (актор/действие/target/хэштеги) и НИКОГДА тело сообщения/приватный payload
-    (тела DM живут только в БД под retention).
+    Зеркало — вторичный поток для realtime/поиска: постим в топик General группы
+    поддержки (через SUPPORT-бот, он там админ; основной бот в группе не состоит).
+    Пост best-effort, содержит ТОЛЬКО метаданные (актор/действие/target/хэштеги) и
+    НИКОГДА тело сообщения/приватный payload (тела DM живут только в БД под retention).
+    Удаление сообщения из чата НЕ трогает запись в БД — БД остаётся источником истины.
 
     Ни одна ошибка аудита не поднимается наружу — само действие важнее записи о нём.
     """
 
-    def __init__(self, config: Config, bot: Bot, session_factory: async_sessionmaker) -> None:
+    def __init__(
+        self,
+        config: Config,
+        bot: Bot,
+        session_factory: async_sessionmaker,
+        support: SupportProxyService | None = None,
+    ) -> None:
         self.config = config
         self.bot = bot
         self.session_factory = session_factory
-        self.channel_id = config.bot.AUDIT_CHANNEL_ID
         self.retention_days = config.bot.AUDIT_RETENTION_DAYS
+        # Зеркало пишет SUPPORT-бот в General группы поддержки (thread_id не задаём →
+        # General). Без настроенного support-бота зеркала нет — только БД.
+        self._mirror_bot: Bot | None = support.bot if support is not None else None
+        self._mirror_chat_id: int | None = support.group_id if support is not None else None
         logger.info(
             "Audit Service initialized "
-            f"(channel={'on' if self.channel_id else 'off'}, retention={self.retention_days}d)."
+            f"(mirror={'support-general' if self._mirror_bot else 'off'}, "
+            f"retention={self.retention_days}d)."
         )
 
     # ── низкоуровневая запись ────────────────────────────────────────────────
@@ -134,7 +147,7 @@ class AuditService:
         except Exception as exception:  # noqa: BLE001 — аудит не должен ронять действие
             logger.critical(f"Audit DB write failed for {action.value}: {exception}")
 
-        # 2. Зеркало в канал — best-effort, только метаданные.
+        # 2. Зеркало в General группы поддержки — best-effort, только метаданные.
         await self._broadcast(action, actor, target_id, target_name, channel_note)
 
     async def _broadcast(
@@ -145,15 +158,16 @@ class AuditService:
         target_name: str | None,
         channel_note: str | None,
     ) -> None:
-        if not self.channel_id:
+        if self._mirror_bot is None or self._mirror_chat_id is None:
             return
         try:
-            await self.bot.send_message(
-                chat_id=self.channel_id,
+            # message_thread_id не задаём → сообщение уходит в топик General группы.
+            await self._mirror_bot.send_message(
+                chat_id=self._mirror_chat_id,
                 text=self._format_channel(action, actor, target_id, target_name, channel_note),
             )
-        except Exception as exception:  # noqa: BLE001 — падение канала не трогает БД/действие
-            logger.error(f"Audit channel post failed for {action.value}: {exception}")
+        except Exception as exception:  # noqa: BLE001 — падение зеркала не трогает БД/действие
+            logger.error(f"Audit mirror post failed for {action.value}: {exception}")
 
     @staticmethod
     def _format_channel(

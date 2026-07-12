@@ -47,9 +47,10 @@ async def initialize(
         inbound_group_service=inbound_groups,
     )
     notification = NotificationService(config=config, bot=bot)
-    # Аудит пишет через ОСНОВНОЙ бот (пост в приватный канал) и собственную сессию;
-    # общий контейнер отдаёт этот же инстанс и хендлерам support-бота.
-    audit = AuditService(config=config, bot=bot, session_factory=session)
+    # Аудит: БД пишет через собственную сессию; зеркало метаданных постит SUPPORT-бот
+    # в топик General группы поддержки (основной бот в группе не состоит). Без support —
+    # только БД. Общий контейнер отдаёт этот же инстанс и хендлерам support-бота.
+    audit = AuditService(config=config, bot=bot, session_factory=session, support=support)
     referral = ReferralService(config=config, session_factory=session, vpn_service=vpn)
     subscription = SubscriptionService(config=config, session_factory=session, vpn_service=vpn)
     payment_stats = PaymentStatsService(session_factory=session)

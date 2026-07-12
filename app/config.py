@@ -98,8 +98,9 @@ class BotConfig:
     API_IS_LOCAL: bool  # True для self-hosted telegram-bot-api в режиме --local (файлы на диске сервера)
     USE_WEBHOOK: bool  # True → вебхук (нужен домен + TLS reverse-proxy); False → long-polling (getUpdates, домен/вебхук не нужны)
     TIMEZONE: str  # IANA-имя (напр. Europe/Moscow) для календарных джобов; резолвится pytz
-    AUDIT_CHANNEL_ID: int | None  # приватный канал-зеркало аудит-лога (бот — админ); None → только БД
     AUDIT_RETENTION_DAYS: int  # хранить события аудит-лога N дней; прун-джоб чистит старше
+    # Зеркало аудита пишется в топик General группы поддержки (SUPPORT_GROUP_ID) —
+    # отдельного канала/переменной нет; без support-бота остаётся только БД.
 
 
 @dataclass
@@ -355,7 +356,6 @@ def load_config() -> Config:
             API_IS_LOCAL=env.bool("TELEGRAM_API_IS_LOCAL", default=False),
             USE_WEBHOOK=env.bool("BOT_USE_WEBHOOK", default=True),
             TIMEZONE=env.str("BOT_TIMEZONE", default=DEFAULT_BOT_TIMEZONE),
-            AUDIT_CHANNEL_ID=env.int("AUDIT_CHANNEL_ID", default=None),
             AUDIT_RETENTION_DAYS=env.int(
                 "AUDIT_RETENTION_DAYS", default=DEFAULT_AUDIT_RETENTION_DAYS
             ),
