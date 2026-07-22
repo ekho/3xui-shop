@@ -31,7 +31,7 @@
 - Consumes: `VPNService.change_subscription(user, devices, duration, traffic_gb)` and the existing unlimited-revocation logic.
 - Produces: `VPNService.force_trial(user: User) -> bool`; `change_subscription()` returns `False` if group application or traffic reset fails.
 
-- [ ] **Step 1: Add failing service tests**
+- [x] **Step 1: Add failing service tests**
 
   Add a `ForcedTrialTests(unittest.IsolatedAsyncioTestCase)` that creates a `VPNService` with mocked `is_client_exists`, `update_client`, `apply_inbound_groups`, `reset_traffic`, `_enforce_ban`, and `_persist_groups`. Cover all of these assertions:
 
@@ -62,14 +62,14 @@
   group application or reset returns `False`, and that `change_subscription()` returns
   `False` when its `reset_traffic()` mock returns `False`.
 
-- [ ] **Step 2: Run the new tests and verify failure**
+- [x] **Step 2: Run the new tests and verify failure**
 
   Run: `poetry run python -m unittest tests.test_admin_trial_creation.ForcedTrialTests -v`
 
   Expected: failure because `VPNService.force_trial` does not yet exist and the old
   `change_subscription()` ignores failed post-update work.
 
-- [ ] **Step 3: Extract the forced-trial primitive and complete `change_subscription`**
+- [x] **Step 3: Extract the forced-trial primitive and complete `change_subscription`**
 
   Add a private helper and two public entry points in `VPNService`:
 
@@ -113,13 +113,13 @@
   In `change_subscription()`, return `False` when `apply_inbound_groups()` or
   `reset_traffic()` fails; only enforce the ban and return `True` after both succeed.
 
-- [ ] **Step 4: Run the targeted tests**
+- [x] **Step 4: Run the targeted tests**
 
   Run: `poetry run python -m unittest tests.test_admin_trial_creation -v`
 
   Expected: all existing admin-trial tests and every new forced-trial test pass.
 
-- [ ] **Step 5: Commit the service change**
+- [x] **Step 5: Commit the service change**
 
   ```bash
   git add app/bot/services/vpn.py tests/test_admin_trial_creation.py
@@ -138,7 +138,7 @@
 - Consumes: `AuditActor.admin(callback.from_user)` and a successfully mutated `User`.
 - Produces: `AuditAction.USER_CHANGE_PLAN` and `AuditService.admin_plan_changed(actor, target, mode, duration, devices, traffic_gb)`.
 
-- [ ] **Step 1: Write the failing audit test**
+- [x] **Step 1: Write the failing audit test**
 
   Add this assertion beside `AdminTrialAuditTests`:
 
@@ -162,13 +162,13 @@
       )
   ```
 
-- [ ] **Step 2: Run the test and verify failure**
+- [x] **Step 2: Run the test and verify failure**
 
   Run: `poetry run python -m unittest tests.test_admin_trial_creation.AdminTrialAuditTests -v`
 
   Expected: failure because `USER_CHANGE_PLAN` and `admin_plan_changed()` are absent.
 
-- [ ] **Step 3: Implement the taxonomy, helper, mirror label, and history detail**
+- [x] **Step 3: Implement the taxonomy, helper, mirror label, and history detail**
 
   Add `USER_CHANGE_PLAN = "user.change_plan"` to `AuditAction`, map it to
   `("🔁", "Тариф заменён")` in `_ACTION_META`, and add:
@@ -196,13 +196,13 @@
   Extend `_entry_detail()` so the history renders the mode, duration, device limit,
   and `безлимит` when `traffic_gb == 0`.
 
-- [ ] **Step 4: Run the audit tests**
+- [x] **Step 4: Run the audit tests**
 
   Run: `poetry run python -m unittest tests.test_admin_trial_creation.AdminTrialAuditTests -v`
 
   Expected: all audit assertions pass.
 
-- [ ] **Step 5: Commit the audit change**
+- [x] **Step 5: Commit the audit change**
 
   ```bash
   git add app/bot/utils/constants.py app/bot/services/audit.py tests/test_admin_trial_creation.py
@@ -221,7 +221,7 @@
 - Consumes: `Plan(devices, traffic_gb, hidden, inbound_groups)` and `NavAdminTools` callbacks.
 - Produces: `user_change_plan_keyboard`, `user_change_plan_duration_keyboard`, and `user_change_plan_confirm_keyboard`.
 
-- [ ] **Step 1: Write keyboard tests**
+- [x] **Step 1: Write keyboard tests**
 
   Create a visible regular plan and a hidden unlimited plan, then assert:
 
@@ -240,13 +240,13 @@
   `show_plan_change=True`, and a third test that the confirmation keyboard carries
   exactly `CONFIRM_USER_PLAN_CHANGE` without user, plan, or duration data.
 
-- [ ] **Step 2: Run the keyboard tests and verify failure**
+- [x] **Step 2: Run the keyboard tests and verify failure**
 
   Run: `poetry run python -m unittest tests.test_admin_trial_creation.AdminPlanKeyboardTests -v`
 
   Expected: import or assertion failure because the new callbacks and keyboards are absent.
 
-- [ ] **Step 3: Implement callbacks and keyboards**
+- [x] **Step 3: Implement callbacks and keyboards**
 
   Add these action prefixes to `NavAdminTools`:
 
@@ -273,13 +273,13 @@
   `format_subscription_period()` for durations, and provide `back_button()` routes to
   the preceding screen. The confirmation keyboard must use only the constant callback.
 
-- [ ] **Step 4: Run the keyboard tests**
+- [x] **Step 4: Run the keyboard tests**
 
   Run: `poetry run python -m unittest tests.test_admin_trial_creation.AdminPlanKeyboardTests -v`
 
   Expected: all keyboard and callback-shape tests pass.
 
-- [ ] **Step 5: Commit the keyboard change**
+- [x] **Step 5: Commit the keyboard change**
 
   ```bash
   git add app/bot/utils/navigation.py app/bot/routers/admin_tools/keyboard.py tests/test_admin_trial_creation.py
@@ -299,7 +299,7 @@
 - Consumes: Task 1 `VPNService.force_trial()`, Task 2 `AuditService.admin_plan_changed()`, and Task 3 keyboard/callback helpers.
 - Produces: the administrator FSM flow and localized user notification for a successful forced change.
 
-- [ ] **Step 1: Write handler-level tests**
+- [x] **Step 1: Write handler-level tests**
 
   Add tests with an `FSMContext` fake and `AsyncMock` services that prove:
 
@@ -316,13 +316,13 @@
   Add a test that `_render_card()` passes `show_plan_change=True` only when
   `client_data` exists and `services.inbound_groups.is_unlimited(target)` is false.
 
-- [ ] **Step 2: Run the handler tests and verify failure**
+- [x] **Step 2: Run the handler tests and verify failure**
 
   Run: `poetry run python -m unittest tests.test_admin_trial_creation.AdminPlanHandlerTests -v`
 
   Expected: failure because the states, callbacks, and handlers do not exist.
 
-- [ ] **Step 3: Add state, fresh guards, and confirmation handling**
+- [x] **Step 3: Add state, fresh guards, and confirmation handling**
 
   Add local FSM keys `USER_EDITOR_PLAN_MODE_KEY`, `USER_EDITOR_PLAN_DEVICES_KEY`, and
   `USER_EDITOR_PLAN_DURATION_KEY`; add `choose_plan`, `choose_plan_duration`, and
@@ -359,7 +359,7 @@
   or the selected device count and duration. Register a no-state confirmation fallback
   after the stateful handler so a second tap gets a stale-flow popup.
 
-- [ ] **Step 4: Add and compile translations**
+- [x] **Step 4: Add and compile translations**
 
   Add matching `user_editor:` entries in both `.po` files for the action label,
   selection prompts, confirmation text, Trial label, success/failure/stale popups, and
@@ -372,14 +372,14 @@
 
   Expected: both Russian and English catalogs compile successfully.
 
-- [ ] **Step 5: Run handler and localization tests**
+- [x] **Step 5: Run handler and localization tests**
 
   Run: `poetry run python -m unittest tests.test_admin_trial_creation -v`
 
   Expected: all existing admin-trial tests plus the new keyboard, handler, service,
   and audit coverage pass.
 
-- [ ] **Step 6: Commit the User Editor flow**
+- [x] **Step 6: Commit the User Editor flow**
 
   ```bash
   git add app/bot/routers/admin_tools/user_handler.py app/locales/ru/LC_MESSAGES/bot.po \
@@ -404,7 +404,7 @@
 - Produces: evidence that the feature is localized, syntactically valid, and free of
   whitespace errors.
 
-- [ ] **Step 1: Run all automated checks**
+- [x] **Step 1: Run all automated checks**
 
   ```bash
   poetry run pybabel compile -d app/locales -D bot
@@ -417,7 +417,7 @@
   Expected: catalog compilation succeeds, every test passes, Poetry emits no errors,
   Python byte-compilation succeeds, and `git diff --check` has no output.
 
-- [ ] **Step 2: Review scope before publishing**
+- [x] **Step 2: Review scope before publishing**
 
   ```bash
   git status --short --branch
