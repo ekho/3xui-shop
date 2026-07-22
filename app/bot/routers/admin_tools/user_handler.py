@@ -24,6 +24,7 @@ from app.bot.payment_gateways import GatewayFactory
 from app.bot.routers.misc.keyboard import back_keyboard
 from app.bot.services.audit import AuditActor, format_audit_entry
 from app.bot.services.inbound_groups import EmptyInboundSetError
+from app.bot.services.subscription import AdminTrialStatus
 from app.bot.utils.constants import (
     BANNED_INBOUND_GROUP,
     DEFAULT_LANGUAGE,
@@ -40,6 +41,7 @@ from app.db.models import AuditLog, SupportTicket, User
 from .keyboard import (
     user_ban_confirm_keyboard,
     user_card_keyboard,
+    user_create_trial_confirm_keyboard,
     user_editor_users_keyboard,
     user_extend_confirm_keyboard,
     user_history_keyboard,
@@ -51,18 +53,38 @@ logger = logging.getLogger(__name__)
 router = Router(name=__name__)
 
 MAX_EXTEND_DAYS = 365
+MAX_TELEGRAM_ID = 2**63 - 1
+MAX_CLIENT_NAME_LENGTH = 32
 
 # FSM-данные флоу продления (одноимённый модуль — ключи локальные).
 USER_EDITOR_TARGET_KEY = "user_editor_target"
 USER_EDITOR_DAYS_KEY = "user_editor_days"
+NEW_CLIENT_TG_ID_KEY = "new_client_tg_id"
+NEW_CLIENT_NAME_KEY = "new_client_name"
 
 
 class UserEditorStates(StatesGroup):
     extend_days = State()
+    create_trial_tg_id = State()
+    create_trial_name = State()
+    confirm_create_trial = State()
 
 
 def _tg_id_from(callback: CallbackQuery) -> int:
     return int(callback.data.rsplit("_", 1)[-1])
+
+
+def parse_new_client_tg_id(raw: str) -> int | None:
+    value = raw.strip()
+    if not value.isdigit():
+        return None
+    tg_id = int(value)
+    return tg_id if 1 <= tg_id <= MAX_TELEGRAM_ID else None
+
+
+def normalize_new_client_name(raw: str) -> str | None:
+    value = raw.strip()
+    return value if 1 <= len(value) <= MAX_CLIENT_NAME_LENGTH else None
 
 
 async def _get_target(
@@ -109,6 +131,7 @@ async def _render_card(
         target.tg_id,
         is_banned=services.inbound_groups.is_banned(target),
         show_reset_traffic=bool(client_data and client_data.has_traffic_exhausted),
+        show_subscription_key=bool(target.server and target.server.subscription_url),
         topic_url=topic_url,
     )
     return text, keyboard
@@ -162,6 +185,201 @@ async def callback_user_editor_page(
 # endregion
 
 
+# region: создание клиента с триалом
+
+
+@router.callback_query(F.data == NavAdminTools.CREATE_TRIAL_CLIENT, IsAdmin())
+async def callback_create_trial_client(
+    callback: CallbackQuery,
+    user: User,
+    state: FSMContext,
+) -> None:
+    logger.info(f"Admin {user.tg_id} started creating a trial client.")
+    await state.set_state(UserEditorStates.create_trial_tg_id)
+    await state.update_data({NEW_CLIENT_TG_ID_KEY: None, NEW_CLIENT_NAME_KEY: None})
+    await callback.message.edit_text(
+        text=_("user_editor:message:create_trial_client_tg_id"),
+        reply_markup=back_keyboard(NavAdminTools.USER_EDITOR),
+    )
+
+
+@router.message(UserEditorStates.create_trial_tg_id, IsAdmin())
+async def message_create_trial_client_tg_id(
+    message: Message,
+    state: FSMContext,
+    services: ServicesContainer,
+) -> None:
+    tg_id = parse_new_client_tg_id(message.text or "")
+    if tg_id is None:
+        await services.notification.notify_by_message(
+            message=message,
+            text=_("user_editor:ntf:invalid_client_tg_id"),
+            duration=5,
+        )
+        return
+
+    await state.set_state(UserEditorStates.create_trial_name)
+    await state.update_data({NEW_CLIENT_TG_ID_KEY: tg_id})
+    main_message_id = await state.get_value(MAIN_MESSAGE_ID_KEY)
+    await message.bot.edit_message_text(
+        text=_("user_editor:message:create_trial_client_name").format(tg_id=tg_id),
+        chat_id=message.chat.id,
+        message_id=main_message_id,
+        reply_markup=back_keyboard(NavAdminTools.USER_EDITOR),
+    )
+
+
+@router.message(UserEditorStates.create_trial_name, IsAdmin())
+async def message_create_trial_client_name(
+    message: Message,
+    state: FSMContext,
+    services: ServicesContainer,
+) -> None:
+    name = normalize_new_client_name(message.text or "")
+    if name is None:
+        await services.notification.notify_by_message(
+            message=message,
+            text=_("user_editor:ntf:invalid_client_name").format(max_length=MAX_CLIENT_NAME_LENGTH),
+            duration=5,
+        )
+        return
+
+    tg_id = await state.get_value(NEW_CLIENT_TG_ID_KEY)
+    if not isinstance(tg_id, int):
+        await state.set_state(None)
+        await services.notification.notify_by_message(
+            message=message,
+            text=_("user_editor:popup:create_trial_client_stale"),
+            duration=5,
+        )
+        return
+
+    await state.set_state(UserEditorStates.confirm_create_trial)
+    await state.update_data({NEW_CLIENT_NAME_KEY: name})
+    main_message_id = await state.get_value(MAIN_MESSAGE_ID_KEY)
+    await message.bot.edit_message_text(
+        text=_("user_editor:message:confirm_create_trial_client").format(
+            name=html.escape(name), tg_id=tg_id
+        ),
+        chat_id=message.chat.id,
+        message_id=main_message_id,
+        reply_markup=user_create_trial_confirm_keyboard(),
+    )
+
+
+@router.callback_query(
+    F.data == NavAdminTools.CONFIRM_CREATE_TRIAL_CLIENT,
+    UserEditorStates.confirm_create_trial,
+    IsAdmin(),
+)
+async def callback_confirm_create_trial_client(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    state: FSMContext,
+    services: ServicesContainer,
+    gateway_factory: GatewayFactory,
+    config: Config,
+) -> None:
+    tg_id = await state.get_value(NEW_CLIENT_TG_ID_KEY)
+    name = await state.get_value(NEW_CLIENT_NAME_KEY)
+    if not isinstance(tg_id, int) or not isinstance(name, str):
+        await services.notification.show_popup(
+            callback=callback, text=_("user_editor:popup:create_trial_client_stale")
+        )
+        return
+
+    # Съедаем состояние перед сетевым provisioning: второй тап должен попасть в
+    # fallback, а не создать клиент дважды.
+    await state.set_state(None)
+    await state.update_data({NEW_CLIENT_TG_ID_KEY: None, NEW_CLIENT_NAME_KEY: None})
+
+    try:
+        result = await services.subscription.create_admin_trial(
+            tg_id, name, approved_by=user.tg_id
+        )
+    except Exception as exception:  # noqa: BLE001 — сбой пула/БД виден администратору
+        logger.error(f"Admin {user.tg_id} failed to create trial client {tg_id}: {exception}")
+        result = None
+
+    if result is None or result.status is AdminTrialStatus.PROVISION_FAILED:
+        await services.notification.show_popup(
+            callback=callback, text=_("user_editor:popup:create_trial_client_failed")
+        )
+        return
+    if result.status is AdminTrialStatus.ALREADY_EXISTS:
+        await services.notification.show_popup(
+            callback=callback, text=_("user_editor:popup:create_trial_client_exists")
+        )
+        return
+    if result.status is AdminTrialStatus.TRIAL_DISABLED:
+        await services.notification.show_popup(
+            callback=callback, text=_("user_editor:popup:create_trial_client_trial_disabled")
+        )
+        return
+    if result.status is AdminTrialStatus.NO_SERVER:
+        await services.notification.show_popup(
+            callback=callback, text=_("user_editor:popup:no_server")
+        )
+        return
+
+    target = result.user
+    if target is None:
+        logger.critical(f"Admin trial result {result.status} for {tg_id} has no user.")
+        await services.notification.show_popup(
+            callback=callback, text=_("user_editor:popup:create_trial_client_failed")
+        )
+        return
+
+    if result.status is AdminTrialStatus.PARTIAL_PROVISION:
+        refreshed = await User.get(session=session, tg_id=tg_id)
+        if refreshed:
+            await _show_card(callback, session, services, gateway_factory, config, refreshed)
+        await services.notification.show_popup(
+            callback=callback, text=_("user_editor:popup:create_trial_client_partial")
+        )
+        return
+
+    await services.audit.admin_trial_created(
+        AuditActor.admin(callback.from_user),
+        target,
+        duration=config.shop.TRIAL_PERIOD,
+        devices=config.shop.BONUS_DEVICES_COUNT,
+        traffic_gb=config.shop.TRIAL_TRAFFIC_GB,
+    )
+    try:
+        key = await services.vpn.get_key(target)
+    except Exception as exception:  # noqa: BLE001 — доступ уже создан, ключ можно взять из карточки
+        logger.error(f"Failed to get subscription key for new client {tg_id}: {exception}")
+        key = None
+
+    if key:
+        text = _("user_editor:message:create_trial_client_success").format(
+            name=html.escape(name), tg_id=tg_id, key=html.escape(key)
+        )
+    else:
+        text = _("user_editor:message:create_trial_client_success_without_key").format(
+            name=html.escape(name), tg_id=tg_id
+        )
+    await callback.message.edit_text(
+        text=text,
+        reply_markup=back_keyboard(NavAdminTools.SHOW_USER + f"_{tg_id}"),
+    )
+
+
+@router.callback_query(F.data == NavAdminTools.CONFIRM_CREATE_TRIAL_CLIENT, IsAdmin())
+async def callback_confirm_create_trial_client_stale(
+    callback: CallbackQuery,
+    services: ServicesContainer,
+) -> None:
+    await services.notification.show_popup(
+        callback=callback, text=_("user_editor:popup:create_trial_client_stale")
+    )
+
+
+# endregion
+
+
 # region: карточка
 
 
@@ -183,6 +401,34 @@ async def callback_show_user(
     if target is None:
         return
     await _show_card(callback, session, services, gateway_factory, config, target)
+
+
+@router.callback_query(F.data.startswith(NavAdminTools.SHOW_USER_KEY), IsAdmin())
+async def callback_show_user_key(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    services: ServicesContainer,
+) -> None:
+    tg_id = _tg_id_from(callback)
+    target = await _get_target(callback, session, services, tg_id)
+    if target is None:
+        return
+    try:
+        key = await services.vpn.get_key(target)
+    except Exception as exception:  # noqa: BLE001 — карточка не должна падать из-за URL
+        logger.error(f"Failed to get subscription key for {tg_id}: {exception}")
+        key = None
+    if not key:
+        await services.notification.show_popup(
+            callback=callback, text=_("user_editor:popup:subscription_key_unavailable")
+        )
+        return
+    await callback.message.edit_text(
+        text=_("user_editor:message:subscription_key").format(
+            name=html.escape(target.first_name), tg_id=tg_id, key=html.escape(key)
+        ),
+        reply_markup=back_keyboard(NavAdminTools.SHOW_USER + f"_{tg_id}"),
+    )
 
 
 # endregion

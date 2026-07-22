@@ -75,7 +75,10 @@ class NavAdminTools(str, Enum):
     # для действий (см. users_list_keyboard).
     USER_EDITOR = "user_editor"
     USER_EDITOR_PAGE = "user_editor_page"
+    CREATE_TRIAL_CLIENT = "create_trial_client"
+    CONFIRM_CREATE_TRIAL_CLIENT = "confirm_create_trial_client"
     SHOW_USER = "show_user"
+    SHOW_USER_KEY = "user_key"
     EXTEND_USER = "extend_user"
     CONFIRM_EXTEND_USER = "cnf_extend_user"
     BAN_USER = "ban_user"

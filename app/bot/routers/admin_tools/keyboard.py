@@ -536,13 +536,23 @@ def users_list_keyboard(
 
 def user_editor_users_keyboard(users: list[User], page: int = 0) -> InlineKeyboardMarkup:
     """Пагинированный выбор пользователя в разделе «Пользователи»."""
-    return users_list_keyboard(
+    keyboard = users_list_keyboard(
         users,
         pick_action=NavAdminTools.SHOW_USER,
         page_action=NavAdminTools.USER_EDITOR_PAGE,
         back_action=NavAdminTools.MAIN,
         page=page,
     )
+    keyboard.inline_keyboard.insert(
+        0,
+        [
+            InlineKeyboardButton(
+                text=_("user_editor:button:create_trial_client"),
+                callback_data=NavAdminTools.CREATE_TRIAL_CLIENT,
+            )
+        ],
+    )
+    return keyboard
 
 
 def user_card_keyboard(
@@ -550,6 +560,7 @@ def user_card_keyboard(
     *,
     is_banned: bool,
     show_reset_traffic: bool = False,
+    show_subscription_key: bool = False,
     topic_url: str | None = None,
 ) -> InlineKeyboardMarkup:
     """Карточка пользователя: все действия несут _{tg_id} в callback."""
@@ -566,6 +577,13 @@ def user_card_keyboard(
             InlineKeyboardButton(
                 text=_("user_editor:button:reset_traffic"),
                 callback_data=NavAdminTools.RESET_USER_TRAFFIC + f"_{tg_id}",
+            )
+        )
+    if show_subscription_key:
+        builder.row(
+            InlineKeyboardButton(
+                text=_("user_editor:button:subscription_key"),
+                callback_data=NavAdminTools.SHOW_USER_KEY + f"_{tg_id}",
             )
         )
     builder.row(
@@ -609,6 +627,18 @@ def user_extend_confirm_keyboard(tg_id: int) -> InlineKeyboardMarkup:
         )
     )
     builder.row(cancel_button(NavAdminTools.SHOW_USER + f"_{tg_id}"))
+    return builder.as_markup()
+
+
+def user_create_trial_confirm_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text=_("user_editor:button:confirm_create_trial_client"),
+            callback_data=NavAdminTools.CONFIRM_CREATE_TRIAL_CLIENT,
+        )
+    )
+    builder.row(cancel_button(NavAdminTools.USER_EDITOR))
     return builder.as_markup()
 
 

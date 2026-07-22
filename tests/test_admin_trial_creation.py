@@ -109,3 +109,57 @@ class AdminTrialAuditTests(unittest.IsolatedAsyncioTestCase):
             payload={"duration": 3, "devices": 2, "traffic_gb": 15},
             channel_note="триал: 3 дн.",
         )
+
+
+class AdminTrialInputTests(unittest.TestCase):
+    def test_accepts_signed_64_bit_positive_telegram_id(self) -> None:
+        from app.bot.routers.admin_tools.user_handler import parse_new_client_tg_id
+
+        self.assertEqual(parse_new_client_tg_id("9223372036854775807"), 9223372036854775807)
+
+    def test_rejects_invalid_telegram_ids(self) -> None:
+        from app.bot.routers.admin_tools.user_handler import parse_new_client_tg_id
+
+        for raw in ("", "-1", "0", "9223372036854775808", "4.2"):
+            self.assertIsNone(parse_new_client_tg_id(raw))
+
+    def test_trims_and_bounds_display_name(self) -> None:
+        from app.bot.routers.admin_tools.user_handler import normalize_new_client_name
+
+        self.assertEqual(normalize_new_client_name("  Мария  "), "Мария")
+        self.assertIsNone(normalize_new_client_name("   "))
+        self.assertIsNone(normalize_new_client_name("x" * 33))
+
+
+class AdminTrialKeyboardTests(unittest.TestCase):
+    def test_user_editor_starts_creation_from_a_dedicated_button(self) -> None:
+        from app.bot.routers.admin_tools.keyboard import user_editor_users_keyboard
+        from app.bot.utils.navigation import NavAdminTools
+
+        with (
+            patch("app.bot.routers.admin_tools.keyboard._", lambda text: text),
+            patch("app.bot.routers.misc.keyboard._", lambda text: text),
+        ):
+            callbacks = [
+                button.callback_data
+                for row in user_editor_users_keyboard([]).inline_keyboard
+                for button in row
+            ]
+
+        self.assertIn(NavAdminTools.CREATE_TRIAL_CLIENT, callbacks)
+
+    def test_confirmation_keyboard_uses_a_callback_without_user_payload(self) -> None:
+        from app.bot.routers.admin_tools.keyboard import user_create_trial_confirm_keyboard
+        from app.bot.utils.navigation import NavAdminTools
+
+        with (
+            patch("app.bot.routers.admin_tools.keyboard._", lambda text: text),
+            patch("app.bot.routers.misc.keyboard._", lambda text: text),
+        ):
+            callbacks = [
+                button.callback_data
+                for row in user_create_trial_confirm_keyboard().inline_keyboard
+                for button in row
+            ]
+
+        self.assertIn(NavAdminTools.CONFIRM_CREATE_TRIAL_CLIENT, callbacks)
