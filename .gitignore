@@ -171,4 +171,7 @@ cython_debug/
 # Plans
 plans.json
 
+# Local Git worktrees
+.worktrees/
+
 tmp_test/
