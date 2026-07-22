@@ -6,7 +6,7 @@ from sqlalchemy import JSON
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy import ForeignKey, String, func, select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import Mapped, mapped_column, relationship, selectinload
 
 from app.bot.utils.constants import DEFAULT_LANGUAGE, ApprovalStatus
@@ -155,6 +155,23 @@ class User(Base):
             await session.rollback()
             logger.error(f"Error occurred while creating user {tg_id}: {exception}")
             return None
+
+    @classmethod
+    async def delete(cls, session_factory: async_sessionmaker, tg_id: int) -> bool:
+        """Удалить только что созданного пользователя после неудачного provisioning.
+
+        Вызывается исключительно сервисом создания админского триала до появления
+        любых связанных сущностей. Собственная короткая сессия не вмешивается в
+        сессию обработчика Telegram-апдейта.
+        """
+        async with session_factory() as session:
+            user = await cls.get(session=session, tg_id=tg_id)
+            if user is None:
+                return False
+            await session.delete(user)
+            await session.commit()
+            logger.info(f"User {tg_id} deleted after failed admin-trial provisioning.")
+            return True
 
     @classmethod
     async def update(cls, session: AsyncSession, tg_id: int, **kwargs: Any) -> Self | None:

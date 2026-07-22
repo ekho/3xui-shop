@@ -23,7 +23,7 @@ from app.bot.utils.time import (
     get_current_timestamp,
 )
 from app.config import Config
-from app.db.models import Promocode, User
+from app.db.models import Promocode, Server, User
 
 from .inbound_groups import EmptyInboundSetError
 from .xui_clients import ClientView, XuiClientsApi
@@ -72,6 +72,10 @@ class VPNService:
     @staticmethod
     def _clients(connection: Connection) -> XuiClientsApi:
         return XuiClientsApi(connection.api)
+
+    async def get_available_server(self) -> Server | None:
+        """Вернуть сервер, который выбрала бы обычная выдача подписки."""
+        return await self.server_pool_service.get_available_server()
 
     async def _resolve_inbounds(self, connection: Connection, groups: list[str]) -> list[int]:
         """Инбаунды набора на сервере юзера. Резолвятся access-группы с наследованием

@@ -2045,3 +2045,71 @@ msgstr "✅ Сообщение отправлено."
 #: app/bot/routers/admin_tools/statistics_handler.py
 msgid "statistics:message:groups_header"
 msgstr "🏷 <b>Группы:</b>\n"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:create_trial_client"
+msgstr "➕ Создать клиента"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:subscription_key"
+msgstr "🔑 Ссылка подписки"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:confirm_create_trial_client"
+msgstr "✅ Создать и выдать триал"
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:create_trial_client_tg_id"
+msgstr "➕ <b>Создание клиента с триалом</b>\n\nОтправьте Telegram ID клиента:"
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:ntf:invalid_client_tg_id"
+msgstr "⚠️ Введите положительный целый Telegram ID."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:create_trial_client_name"
+msgstr "Введите имя клиента для отображения в боте и панели:\n\nID: <code>{tg_id}</code>"
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:ntf:invalid_client_name"
+msgstr "⚠️ Введите имя от 1 до {max_length} символов."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:create_trial_client_stale"
+msgstr "⚠️ Флоу создания устарел — начните заново."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:confirm_create_trial_client"
+msgstr "Создать клиента <b>{name}</b> (<code>{tg_id}</code>) и сразу выдать обычный триал?"
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:create_trial_client_failed"
+msgstr "⚠️ Не удалось создать клиента и выдать триал — подробности в логах."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:create_trial_client_exists"
+msgstr "⚠️ Клиент с этим Telegram ID уже есть."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:create_trial_client_trial_disabled"
+msgstr "⛔️ Триал отключён в настройках магазина."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:create_trial_client_partial"
+msgstr "⚠️ Панель могла создать клиента, но не подтвердила операцию. Запись сохранена; повторно триал не выдавайте — проверьте карточку и панель."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:create_trial_client_success"
+msgstr "✅ <b>Клиент создан, триал активирован.</b>\n\n👤 {name} · <code>{tg_id}</code>\n\n<b>Ссылка подписки:</b>\n<code>{key}</code>\n\nПередайте её клиенту вручную."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:create_trial_client_success_without_key"
+msgstr "✅ <b>Клиент создан, триал активирован.</b>\n\n👤 {name} · <code>{tg_id}</code>\n\n⚠️ Ссылка подписки не настроена на сервере. Проверьте сервер и откройте карточку клиента."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:subscription_key_unavailable"
+msgstr "⚠️ Ссылка подписки для клиента недоступна. Проверьте настройки сервера."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:subscription_key"
+msgstr "🔑 <b>Ссылка подписки</b>\n\n👤 {name} · <code>{tg_id}</code>\n\n<code>{key}</code>"

@@ -155,6 +155,7 @@ class AuditAction(Enum):
     """
 
     USER_COMPENSATE = "user.compensate"  # начисление бонус-дней (карточка / /comp)
+    USER_CREATE_TRIAL = "user.create_trial"  # админ создал клиента и выдал триал
     USER_BAN = "user.ban"  # VPN-бан (тумблер inbound-групп)
     USER_UNBAN = "user.unban"
     USER_TRAFFIC_RESET = "user.traffic_reset"  # сброс счётчика трафика
