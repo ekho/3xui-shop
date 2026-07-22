@@ -372,6 +372,16 @@ class AdminPlanKeyboardTests(unittest.TestCase):
 
 
 class AdminPlanHandlerTests(unittest.IsolatedAsyncioTestCase):
+    def test_regular_access_excludes_unlimited_and_keeps_banned_overlay(self) -> None:
+        from app.bot.routers.admin_tools.user_handler import _is_regular_user
+
+        self.assertTrue(_is_regular_user(SimpleNamespace(inbound_groups=["regular"])))
+        self.assertTrue(_is_regular_user(SimpleNamespace(inbound_groups=["regular", "banned"])))
+        self.assertFalse(_is_regular_user(SimpleNamespace(inbound_groups=["unlimited"])))
+        self.assertFalse(
+            _is_regular_user(SimpleNamespace(inbound_groups=["regular", "unlimited"]))
+        )
+
     async def test_confirmed_regular_plan_uses_current_plan_parameters(self) -> None:
         from app.bot.routers.admin_tools import user_handler
 

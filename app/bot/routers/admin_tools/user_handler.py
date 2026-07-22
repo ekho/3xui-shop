@@ -27,10 +27,12 @@ from app.bot.services.inbound_groups import EmptyInboundSetError
 from app.bot.services.subscription import AdminTrialStatus
 from app.bot.utils.constants import (
     BANNED_INBOUND_GROUP,
+    DEFAULT_INBOUND_GROUPS,
     DEFAULT_LANGUAGE,
     MAIN_MESSAGE_ID_KEY,
     NOTIFICATION_PENDING_CHAT_IDS_KEY,
     NOTIFICATION_RETURN_TO_KEY,
+    REGULAR_INBOUND_GROUP,
     UNLIMITED_INBOUND_GROUP,
 )
 from app.bot.utils.formatting import (
@@ -110,6 +112,16 @@ def _is_regular_plan(plan: object | None) -> bool:
     )
 
 
+def _is_regular_user(user: User) -> bool:
+    """Доступ к базовым тарифам есть только у regular-профиля.
+
+    ``banned`` — накладная группа и не мешает выбору тарифа. ``unlimited``
+    управляется отдельным экраном групп и поэтому приоритетнее regular.
+    """
+    groups = getattr(user, "inbound_groups", None) or DEFAULT_INBOUND_GROUPS
+    return REGULAR_INBOUND_GROUP in groups and UNLIMITED_INBOUND_GROUP not in groups
+
+
 def _regular_plans(services: ServicesContainer) -> list:
     return [plan for plan in services.plan.get_purchasable_plans() if _is_regular_plan(plan)]
 
@@ -159,9 +171,7 @@ async def _render_card(
         is_banned=services.inbound_groups.is_banned(target),
         show_reset_traffic=bool(client_data and client_data.has_traffic_exhausted),
         show_subscription_key=bool(target.server and target.server.subscription_url),
-        show_plan_change=bool(
-            client_data and not services.inbound_groups.is_unlimited(target)
-        ),
+        show_plan_change=bool(client_data and _is_regular_user(target)),
         topic_url=topic_url,
     )
     return text, keyboard
@@ -492,6 +502,9 @@ async def callback_change_user_plan(
             callback=callback, text=_("user_editor:popup:change_plan_unlimited")
         )
         return
+    if not _is_regular_user(target):
+        await _show_plan_change_stale(callback, services)
+        return
     if not await services.vpn.is_client_exists(target):
         await services.notification.show_popup(
             callback=callback, text=_("user_editor:popup:change_plan_no_client")
@@ -709,6 +722,9 @@ async def callback_confirm_user_plan_change(
         await services.notification.show_popup(
             callback=callback, text=_("user_editor:popup:change_plan_unlimited")
         )
+        return
+    if not _is_regular_user(target):
+        await _show_plan_change_stale(callback, services)
         return
     if not await services.vpn.is_client_exists(target):
         await services.notification.show_popup(
