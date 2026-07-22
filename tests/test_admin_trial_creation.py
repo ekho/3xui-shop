@@ -183,6 +183,40 @@ class AdminTrialAuditTests(unittest.IsolatedAsyncioTestCase):
             channel_note="триал: 3 дн.",
         )
 
+    async def test_records_forced_trial_change_parameters(self) -> None:
+        service = object.__new__(AuditService)
+        service.record = AsyncMock()
+        actor = AuditActor.system()
+        target = SimpleNamespace(tg_id=42, first_name="Мария")
+
+        await service.admin_plan_changed(
+            actor,
+            target,
+            mode="trial",
+            duration=3,
+            devices=2,
+            traffic_gb=15,
+        )
+
+        service.record.assert_awaited_once_with(
+            AuditAction.USER_CHANGE_PLAN,
+            actor,
+            target=target,
+            payload={"mode": "trial", "duration": 3, "devices": 2, "traffic_gb": 15},
+            channel_note="триал: 3 дн.",
+        )
+
+    def test_formats_plan_change_in_history(self) -> None:
+        from app.bot.services.audit import _entry_detail
+
+        self.assertEqual(
+            _entry_detail(
+                AuditAction.USER_CHANGE_PLAN,
+                {"mode": "plan", "duration": 30, "devices": 2, "traffic_gb": 100},
+            ),
+            "📱 тариф · 30 дн. · 2 устр. · 100 ГБ",
+        )
+
 
 class AdminTrialInputTests(unittest.TestCase):
     def test_accepts_signed_64_bit_positive_telegram_id(self) -> None:

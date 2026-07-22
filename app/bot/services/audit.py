@@ -63,6 +63,7 @@ class AuditActor:
 _ACTION_META: dict[AuditAction, tuple[str, str]] = {
     AuditAction.USER_COMPENSATE: ("🎁", "Компенсация (бонус-дни)"),
     AuditAction.USER_CREATE_TRIAL: ("🆕", "Клиент создан с триалом"),
+    AuditAction.USER_CHANGE_PLAN: ("🔁", "Тариф заменён"),
     AuditAction.USER_BAN: ("🚫", "Бан (VPN отключён)"),
     AuditAction.USER_UNBAN: ("✅", "Разбан (VPN восстановлен)"),
     AuditAction.USER_TRAFFIC_RESET: ("♻️", "Сброс трафика"),
@@ -222,6 +223,30 @@ class AuditService:
             channel_note=f"триал: {duration} дн.",
         )
 
+    async def admin_plan_changed(
+        self,
+        actor: AuditActor,
+        target: User,
+        *,
+        mode: str,
+        duration: int,
+        devices: int,
+        traffic_gb: int,
+    ) -> None:
+        label = "триал" if mode == "trial" else "тариф"
+        await self.record(
+            AuditAction.USER_CHANGE_PLAN,
+            actor,
+            target=target,
+            payload={
+                "mode": mode,
+                "duration": duration,
+                "devices": devices,
+                "traffic_gb": traffic_gb,
+            },
+            channel_note=f"{label}: {duration} дн.",
+        )
+
     async def ban(self, actor: AuditActor, target: User, before: list, after: list) -> None:
         await self.record(
             AuditAction.USER_BAN,
@@ -357,6 +382,14 @@ def _entry_detail(action: AuditAction | None, payload: dict | None) -> str | Non
         return (
             f"🎁 {payload.get('duration', '?')} дн. · {payload.get('devices', '?')} устр."
             f" · {traffic_text}"
+        )
+    if action is AuditAction.USER_CHANGE_PLAN:
+        traffic = payload.get("traffic_gb")
+        traffic_text = "безлимит" if traffic == 0 else f"{traffic or '?'} ГБ"
+        label = "триал" if payload.get("mode") == "trial" else "тариф"
+        return (
+            f"📱 {label} · {payload.get('duration', '?')} дн."
+            f" · {payload.get('devices', '?')} устр. · {traffic_text}"
         )
     if action is AuditAction.USER_MESSAGE and payload.get("body"):
         body = " ".join(str(payload["body"]).split())
