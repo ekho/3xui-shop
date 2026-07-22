@@ -82,7 +82,7 @@ class NavAdminTools(str, Enum):
     CHANGE_USER_PLAN = "change_user_plan"
     PICK_USER_PLAN = "pick_user_plan"
     PICK_USER_TRIAL = "pick_user_trial"
-    PICK_USER_PLAN_DURATION = "pick_user_plan_duration"
+    PICK_USER_PLAN_DURATION = "pick_user_duration"
     CONFIRM_USER_PLAN_CHANGE = "confirm_user_plan_change"
     EXTEND_USER = "extend_user"
     CONFIRM_EXTEND_USER = "cnf_extend_user"

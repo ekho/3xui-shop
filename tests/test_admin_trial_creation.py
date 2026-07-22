@@ -1,5 +1,5 @@
 import unittest
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -295,7 +295,10 @@ class AdminPlanKeyboardTests(unittest.TestCase):
         with (
             patch("app.bot.routers.admin_tools.keyboard._", lambda text: text),
             patch("app.bot.routers.misc.keyboard._", lambda text: text),
-            patch("app.bot.utils.formatting._", lambda singular, plural, count: plural),
+            patch(
+                "app.bot.utils.formatting._",
+                lambda *args: args[1] if len(args) == 3 else args[0],
+            ),
         ):
             keyboard = user_change_plan_keyboard(
                 tg_id=42,
@@ -310,6 +313,10 @@ class AdminPlanKeyboardTests(unittest.TestCase):
         self.assertIn(NavAdminTools.PICK_USER_TRIAL + "_42", callbacks)
         self.assertIn(NavAdminTools.PICK_USER_PLAN + "_42_2", callbacks)
         self.assertNotIn(NavAdminTools.PICK_USER_PLAN + "_42_7", callbacks)
+        self.assertEqual(
+            keyboard.inline_keyboard[0][0].callback_data,
+            NavAdminTools.PICK_USER_TRIAL + "_42",
+        )
 
     def test_card_shows_plan_change_only_when_allowed(self) -> None:
         from app.bot.routers.admin_tools.keyboard import user_card_keyboard
@@ -362,3 +369,195 @@ class AdminPlanKeyboardTests(unittest.TestCase):
         ]
         self.assertIn(NavAdminTools.PICK_USER_PLAN_DURATION + "_42_30", duration_callbacks)
         self.assertIn(NavAdminTools.CONFIRM_USER_PLAN_CHANGE, confirm_callbacks)
+
+
+class AdminPlanHandlerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_confirmed_regular_plan_uses_current_plan_parameters(self) -> None:
+        from app.bot.routers.admin_tools import user_handler
+
+        target = SimpleNamespace(
+            tg_id=42,
+            first_name="Мария",
+            language_code="ru",
+            inbound_groups=["regular"],
+        )
+        plan = SimpleNamespace(
+            devices=2,
+            traffic_gb=100,
+            hidden=False,
+            inbound_groups=["regular"],
+        )
+        values = {
+            user_handler.USER_EDITOR_TARGET_KEY: 42,
+            user_handler.USER_EDITOR_PLAN_MODE_KEY: "plan",
+            user_handler.USER_EDITOR_PLAN_DEVICES_KEY: 2,
+            user_handler.USER_EDITOR_PLAN_DURATION_KEY: 30,
+        }
+        state = SimpleNamespace(
+            get_value=AsyncMock(side_effect=lambda key: values.get(key)),
+            set_state=AsyncMock(),
+            update_data=AsyncMock(),
+        )
+        callback = SimpleNamespace(
+            from_user=SimpleNamespace(id=7, full_name="Admin"),
+            message=SimpleNamespace(edit_text=AsyncMock()),
+        )
+        services = SimpleNamespace(
+            inbound_groups=SimpleNamespace(is_unlimited=lambda user: False),
+            plan=SimpleNamespace(get_plan=lambda devices: plan, get_durations=lambda: [30]),
+            vpn=SimpleNamespace(
+                is_client_exists=AsyncMock(return_value=True),
+                change_subscription=AsyncMock(return_value=True),
+                force_trial=AsyncMock(return_value=True),
+            ),
+            audit=SimpleNamespace(admin_plan_changed=AsyncMock()),
+            notification=SimpleNamespace(
+                show_popup=AsyncMock(),
+                notify_by_id=AsyncMock(),
+            ),
+        )
+        i18n = SimpleNamespace(available_locales={"ru"}, use_locale=lambda locale: nullcontext())
+
+        with (
+            patch("app.bot.routers.admin_tools.user_handler.User.get", new=AsyncMock(return_value=target)),
+            patch("app.bot.routers.admin_tools.user_handler._show_card", new=AsyncMock()),
+            patch("app.bot.routers.admin_tools.user_handler._", lambda text: text),
+            patch(
+                "app.bot.utils.formatting._",
+                lambda *args: args[1] if len(args) == 3 else args[0],
+            ),
+        ):
+            await user_handler.callback_confirm_user_plan_change(
+                callback=callback,
+                user=SimpleNamespace(tg_id=7),
+                session=object(),
+                state=state,
+                services=services,
+                gateway_factory=object(),
+                config=SimpleNamespace(shop=SimpleNamespace()),
+                i18n=i18n,
+            )
+
+        services.vpn.change_subscription.assert_awaited_once_with(target, 2, 30, 100)
+        services.vpn.force_trial.assert_not_awaited()
+        services.audit.admin_plan_changed.assert_awaited_once()
+
+    async def test_confirmed_trial_uses_force_trial_with_configured_parameters(self) -> None:
+        from app.bot.routers.admin_tools import user_handler
+
+        target = SimpleNamespace(
+            tg_id=42,
+            first_name="Мария",
+            language_code="ru",
+            inbound_groups=["regular"],
+        )
+        values = {
+            user_handler.USER_EDITOR_TARGET_KEY: 42,
+            user_handler.USER_EDITOR_PLAN_MODE_KEY: "trial",
+            user_handler.USER_EDITOR_PLAN_DEVICES_KEY: None,
+            user_handler.USER_EDITOR_PLAN_DURATION_KEY: None,
+        }
+        state = SimpleNamespace(
+            get_value=AsyncMock(side_effect=lambda key: values.get(key)),
+            set_state=AsyncMock(),
+            update_data=AsyncMock(),
+        )
+        callback = SimpleNamespace(
+            from_user=SimpleNamespace(id=7, full_name="Admin"),
+            message=SimpleNamespace(edit_text=AsyncMock()),
+        )
+        services = SimpleNamespace(
+            inbound_groups=SimpleNamespace(is_unlimited=lambda user: False),
+            plan=SimpleNamespace(),
+            vpn=SimpleNamespace(
+                is_client_exists=AsyncMock(return_value=True),
+                change_subscription=AsyncMock(return_value=True),
+                force_trial=AsyncMock(return_value=True),
+            ),
+            audit=SimpleNamespace(admin_plan_changed=AsyncMock()),
+            notification=SimpleNamespace(
+                show_popup=AsyncMock(),
+                notify_by_id=AsyncMock(),
+            ),
+        )
+        config = SimpleNamespace(
+            shop=SimpleNamespace(TRIAL_PERIOD=3, BONUS_DEVICES_COUNT=2, TRIAL_TRAFFIC_GB=15)
+        )
+        i18n = SimpleNamespace(available_locales={"ru"}, use_locale=lambda locale: nullcontext())
+
+        with (
+            patch("app.bot.routers.admin_tools.user_handler.User.get", new=AsyncMock(return_value=target)),
+            patch("app.bot.routers.admin_tools.user_handler._show_card", new=AsyncMock()),
+            patch("app.bot.routers.admin_tools.user_handler._", lambda text: text),
+            patch(
+                "app.bot.utils.formatting._",
+                lambda *args: args[1] if len(args) == 3 else args[0],
+            ),
+        ):
+            await user_handler.callback_confirm_user_plan_change(
+                callback=callback,
+                user=SimpleNamespace(tg_id=7),
+                session=object(),
+                state=state,
+                services=services,
+                gateway_factory=object(),
+                config=config,
+                i18n=i18n,
+            )
+
+        services.vpn.force_trial.assert_awaited_once_with(target)
+        services.vpn.change_subscription.assert_not_awaited()
+        self.assertEqual(services.audit.admin_plan_changed.await_args.kwargs["mode"], "trial")
+        self.assertEqual(services.audit.admin_plan_changed.await_args.kwargs["duration"], 3)
+
+    async def test_confirm_refuses_when_target_became_unlimited(self) -> None:
+        from app.bot.routers.admin_tools import user_handler
+
+        target = SimpleNamespace(tg_id=42, inbound_groups=["unlimited"])
+        values = {
+            user_handler.USER_EDITOR_TARGET_KEY: 42,
+            user_handler.USER_EDITOR_PLAN_MODE_KEY: "plan",
+            user_handler.USER_EDITOR_PLAN_DEVICES_KEY: 2,
+            user_handler.USER_EDITOR_PLAN_DURATION_KEY: 30,
+        }
+        state = SimpleNamespace(
+            get_value=AsyncMock(side_effect=lambda key: values.get(key)),
+            set_state=AsyncMock(),
+            update_data=AsyncMock(),
+        )
+        callback = SimpleNamespace(
+            from_user=SimpleNamespace(id=7, full_name="Admin"),
+            message=SimpleNamespace(edit_text=AsyncMock()),
+        )
+        plan = SimpleNamespace(devices=2, traffic_gb=100, hidden=False, inbound_groups=["regular"])
+        services = SimpleNamespace(
+            inbound_groups=SimpleNamespace(is_unlimited=lambda user: True),
+            plan=SimpleNamespace(get_plan=lambda devices: plan, get_durations=lambda: [30]),
+            vpn=SimpleNamespace(
+                is_client_exists=AsyncMock(return_value=True),
+                change_subscription=AsyncMock(return_value=True),
+                force_trial=AsyncMock(return_value=True),
+            ),
+            audit=SimpleNamespace(admin_plan_changed=AsyncMock()),
+            notification=SimpleNamespace(show_popup=AsyncMock(), notify_by_id=AsyncMock()),
+        )
+
+        with (
+            patch("app.bot.routers.admin_tools.user_handler.User.get", new=AsyncMock(return_value=target)),
+            patch("app.bot.routers.admin_tools.user_handler._", lambda text: text),
+        ):
+            await user_handler.callback_confirm_user_plan_change(
+                callback=callback,
+                user=SimpleNamespace(tg_id=7),
+                session=object(),
+                state=state,
+                services=services,
+                gateway_factory=object(),
+                config=SimpleNamespace(shop=SimpleNamespace()),
+                i18n=SimpleNamespace(available_locales=set(), use_locale=lambda locale: nullcontext()),
+            )
+
+        state.set_state.assert_awaited_once_with(None)
+        services.vpn.change_subscription.assert_not_awaited()
+        services.vpn.force_trial.assert_not_awaited()
+        services.audit.admin_plan_changed.assert_not_awaited()

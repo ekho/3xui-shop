@@ -31,6 +31,12 @@ from app.bot.utils.constants import (
     MAIN_MESSAGE_ID_KEY,
     NOTIFICATION_PENDING_CHAT_IDS_KEY,
     NOTIFICATION_RETURN_TO_KEY,
+    UNLIMITED_INBOUND_GROUP,
+)
+from app.bot.utils.formatting import (
+    format_device_count,
+    format_subscription_period,
+    format_traffic_gb,
 )
 from app.bot.utils.navigation import NavAdminTools
 from app.bot.utils.stars import cancel_stars_auto_renew
@@ -41,6 +47,9 @@ from app.db.models import AuditLog, SupportTicket, User
 from .keyboard import (
     user_ban_confirm_keyboard,
     user_card_keyboard,
+    user_change_plan_confirm_keyboard,
+    user_change_plan_duration_keyboard,
+    user_change_plan_keyboard,
     user_create_trial_confirm_keyboard,
     user_editor_users_keyboard,
     user_extend_confirm_keyboard,
@@ -59,12 +68,18 @@ MAX_CLIENT_NAME_LENGTH = 32
 # FSM-данные флоу продления (одноимённый модуль — ключи локальные).
 USER_EDITOR_TARGET_KEY = "user_editor_target"
 USER_EDITOR_DAYS_KEY = "user_editor_days"
+USER_EDITOR_PLAN_MODE_KEY = "user_editor_plan_mode"
+USER_EDITOR_PLAN_DEVICES_KEY = "user_editor_plan_devices"
+USER_EDITOR_PLAN_DURATION_KEY = "user_editor_plan_duration"
 NEW_CLIENT_TG_ID_KEY = "new_client_tg_id"
 NEW_CLIENT_NAME_KEY = "new_client_name"
 
 
 class UserEditorStates(StatesGroup):
     extend_days = State()
+    choose_plan = State()
+    choose_plan_duration = State()
+    confirm_plan_change = State()
     create_trial_tg_id = State()
     create_trial_name = State()
     confirm_create_trial = State()
@@ -85,6 +100,18 @@ def parse_new_client_tg_id(raw: str) -> int | None:
 def normalize_new_client_name(raw: str) -> str | None:
     value = raw.strip()
     return value if 1 <= len(value) <= MAX_CLIENT_NAME_LENGTH else None
+
+
+def _is_regular_plan(plan: object | None) -> bool:
+    return bool(
+        plan
+        and not getattr(plan, "hidden", False)
+        and UNLIMITED_INBOUND_GROUP not in (getattr(plan, "inbound_groups", None) or [])
+    )
+
+
+def _regular_plans(services: ServicesContainer) -> list:
+    return [plan for plan in services.plan.get_purchasable_plans() if _is_regular_plan(plan)]
 
 
 async def _get_target(
@@ -132,6 +159,9 @@ async def _render_card(
         is_banned=services.inbound_groups.is_banned(target),
         show_reset_traffic=bool(client_data and client_data.has_traffic_exhausted),
         show_subscription_key=bool(target.server and target.server.subscription_url),
+        show_plan_change=bool(
+            client_data and not services.inbound_groups.is_unlimited(target)
+        ),
         topic_url=topic_url,
     )
     return text, keyboard
@@ -429,6 +459,326 @@ async def callback_show_user_key(
         ),
         reply_markup=back_keyboard(NavAdminTools.SHOW_USER + f"_{tg_id}"),
     )
+
+
+# endregion
+
+
+# region: принудительная смена тарифа
+
+
+async def _show_plan_change_stale(
+    callback: CallbackQuery, services: ServicesContainer
+) -> None:
+    await services.notification.show_popup(
+        callback=callback, text=_("user_editor:popup:change_plan_stale")
+    )
+
+
+@router.callback_query(F.data.startswith(NavAdminTools.CHANGE_USER_PLAN), IsAdmin())
+async def callback_change_user_plan(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    state: FSMContext,
+    services: ServicesContainer,
+) -> None:
+    tg_id = _tg_id_from(callback)
+    target = await _get_target(callback, session, services, tg_id)
+    if target is None:
+        return
+    if services.inbound_groups.is_unlimited(target):
+        await services.notification.show_popup(
+            callback=callback, text=_("user_editor:popup:change_plan_unlimited")
+        )
+        return
+    if not await services.vpn.is_client_exists(target):
+        await services.notification.show_popup(
+            callback=callback, text=_("user_editor:popup:change_plan_no_client")
+        )
+        return
+
+    plans = _regular_plans(services)
+    if not plans:
+        await services.notification.show_popup(
+            callback=callback, text=_("user_editor:popup:change_plan_no_plans")
+        )
+        return
+
+    logger.info(f"Admin {user.tg_id} started changing plan for user {tg_id}.")
+    await state.set_state(UserEditorStates.choose_plan)
+    await state.update_data(
+        {
+            USER_EDITOR_TARGET_KEY: tg_id,
+            USER_EDITOR_PLAN_MODE_KEY: None,
+            USER_EDITOR_PLAN_DEVICES_KEY: None,
+            USER_EDITOR_PLAN_DURATION_KEY: None,
+        }
+    )
+    await callback.message.edit_text(
+        text=_("user_editor:message:change_plan_select").format(
+            name=html.escape(target.first_name), tg_id=tg_id
+        ),
+        reply_markup=user_change_plan_keyboard(tg_id, plans),
+    )
+
+
+@router.callback_query(
+    F.data.startswith(NavAdminTools.PICK_USER_PLAN),
+    UserEditorStates.choose_plan,
+    IsAdmin(),
+)
+async def callback_pick_user_plan(
+    callback: CallbackQuery,
+    state: FSMContext,
+    services: ServicesContainer,
+) -> None:
+    try:
+        tg_id_raw, devices_raw = callback.data[len(NavAdminTools.PICK_USER_PLAN) + 1 :].rsplit(
+            "_", 1
+        )
+        tg_id, devices = int(tg_id_raw), int(devices_raw)
+    except (AttributeError, ValueError):
+        await _show_plan_change_stale(callback, services)
+        return
+
+    if await state.get_value(USER_EDITOR_TARGET_KEY) != tg_id:
+        await _show_plan_change_stale(callback, services)
+        return
+    plan = services.plan.get_plan(devices)
+    if not _is_regular_plan(plan):
+        await _show_plan_change_stale(callback, services)
+        return
+    durations = services.plan.get_durations()
+    if not durations:
+        await services.notification.show_popup(
+            callback=callback, text=_("user_editor:popup:change_plan_no_durations")
+        )
+        return
+
+    await state.set_state(UserEditorStates.choose_plan_duration)
+    await state.update_data(
+        {
+            USER_EDITOR_PLAN_MODE_KEY: "plan",
+            USER_EDITOR_PLAN_DEVICES_KEY: devices,
+            USER_EDITOR_PLAN_DURATION_KEY: None,
+        }
+    )
+    await callback.message.edit_text(
+        text=_("user_editor:message:change_plan_duration").format(
+            devices=format_device_count(plan.devices),
+            traffic=format_traffic_gb(plan.traffic_gb),
+        ),
+        reply_markup=user_change_plan_duration_keyboard(tg_id, durations),
+    )
+
+
+@router.callback_query(
+    F.data.startswith(NavAdminTools.PICK_USER_TRIAL),
+    UserEditorStates.choose_plan,
+    IsAdmin(),
+)
+async def callback_pick_user_trial(
+    callback: CallbackQuery,
+    state: FSMContext,
+    config: Config,
+    services: ServicesContainer,
+) -> None:
+    try:
+        tg_id = int(callback.data.rsplit("_", 1)[-1])
+    except (AttributeError, ValueError):
+        await _show_plan_change_stale(callback, services)
+        return
+    if await state.get_value(USER_EDITOR_TARGET_KEY) != tg_id:
+        await _show_plan_change_stale(callback, services)
+        return
+
+    await state.set_state(UserEditorStates.confirm_plan_change)
+    await state.update_data(
+        {
+            USER_EDITOR_PLAN_MODE_KEY: "trial",
+            USER_EDITOR_PLAN_DEVICES_KEY: None,
+            USER_EDITOR_PLAN_DURATION_KEY: None,
+        }
+    )
+    await callback.message.edit_text(
+        text=_("user_editor:message:change_plan_confirm_trial").format(
+            tg_id=tg_id,
+            duration=format_subscription_period(config.shop.TRIAL_PERIOD),
+            devices=format_device_count(config.shop.BONUS_DEVICES_COUNT),
+            traffic=format_traffic_gb(config.shop.TRIAL_TRAFFIC_GB),
+        ),
+        reply_markup=user_change_plan_confirm_keyboard(tg_id),
+    )
+
+
+@router.callback_query(
+    F.data.startswith(NavAdminTools.PICK_USER_PLAN_DURATION),
+    UserEditorStates.choose_plan_duration,
+    IsAdmin(),
+)
+async def callback_pick_user_plan_duration(
+    callback: CallbackQuery,
+    state: FSMContext,
+    services: ServicesContainer,
+) -> None:
+    try:
+        tg_id_raw, duration_raw = callback.data[
+            len(NavAdminTools.PICK_USER_PLAN_DURATION) + 1 :
+        ].rsplit("_", 1)
+        tg_id, duration = int(tg_id_raw), int(duration_raw)
+    except (AttributeError, ValueError):
+        await _show_plan_change_stale(callback, services)
+        return
+
+    devices = await state.get_value(USER_EDITOR_PLAN_DEVICES_KEY)
+    if (
+        await state.get_value(USER_EDITOR_TARGET_KEY) != tg_id
+        or not isinstance(devices, int)
+        or duration not in services.plan.get_durations()
+    ):
+        await _show_plan_change_stale(callback, services)
+        return
+    plan = services.plan.get_plan(devices)
+    if not _is_regular_plan(plan):
+        await _show_plan_change_stale(callback, services)
+        return
+
+    await state.set_state(UserEditorStates.confirm_plan_change)
+    await state.update_data({USER_EDITOR_PLAN_DURATION_KEY: duration})
+    await callback.message.edit_text(
+        text=_("user_editor:message:change_plan_confirm").format(
+            tg_id=tg_id,
+            duration=format_subscription_period(duration),
+            devices=format_device_count(plan.devices),
+            traffic=format_traffic_gb(plan.traffic_gb),
+        ),
+        reply_markup=user_change_plan_confirm_keyboard(tg_id),
+    )
+
+
+@router.callback_query(
+    F.data == NavAdminTools.CONFIRM_USER_PLAN_CHANGE,
+    UserEditorStates.confirm_plan_change,
+    IsAdmin(),
+)
+async def callback_confirm_user_plan_change(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    state: FSMContext,
+    services: ServicesContainer,
+    gateway_factory: GatewayFactory,
+    config: Config,
+    i18n: I18n,
+) -> None:
+    tg_id = await state.get_value(USER_EDITOR_TARGET_KEY)
+    mode = await state.get_value(USER_EDITOR_PLAN_MODE_KEY)
+    devices = await state.get_value(USER_EDITOR_PLAN_DEVICES_KEY)
+    duration = await state.get_value(USER_EDITOR_PLAN_DURATION_KEY)
+    if not isinstance(tg_id, int) or mode not in ("plan", "trial"):
+        await _show_plan_change_stale(callback, services)
+        return
+
+    plan = None
+    if mode == "plan":
+        if not isinstance(devices, int) or not isinstance(duration, int):
+            await _show_plan_change_stale(callback, services)
+            return
+        plan = services.plan.get_plan(devices)
+        if not _is_regular_plan(plan) or duration not in services.plan.get_durations():
+            await _show_plan_change_stale(callback, services)
+            return
+
+    # Состояние потребляется перед сетевой мутацией панели: второй тап не должен
+    # назначить новый срок или сбросить трафик повторно.
+    await state.set_state(None)
+    await state.update_data(
+        {
+            USER_EDITOR_TARGET_KEY: None,
+            USER_EDITOR_PLAN_MODE_KEY: None,
+            USER_EDITOR_PLAN_DEVICES_KEY: None,
+            USER_EDITOR_PLAN_DURATION_KEY: None,
+        }
+    )
+
+    target = await _get_target(callback, session, services, tg_id)
+    if target is None:
+        return
+    if services.inbound_groups.is_unlimited(target):
+        await services.notification.show_popup(
+            callback=callback, text=_("user_editor:popup:change_plan_unlimited")
+        )
+        return
+    if not await services.vpn.is_client_exists(target):
+        await services.notification.show_popup(
+            callback=callback, text=_("user_editor:popup:change_plan_no_client")
+        )
+        return
+
+    if mode == "trial":
+        duration = config.shop.TRIAL_PERIOD
+        devices = config.shop.BONUS_DEVICES_COUNT
+        traffic_gb = config.shop.TRIAL_TRAFFIC_GB
+        try:
+            ok = await services.vpn.force_trial(target)
+        except Exception as exception:  # noqa: BLE001 — админ получает явный отказ
+            logger.error(f"Admin {user.tg_id} failed to reset {tg_id} to trial: {exception}")
+            ok = False
+    else:
+        traffic_gb = plan.traffic_gb
+        try:
+            ok = await services.vpn.change_subscription(target, devices, duration, traffic_gb)
+        except Exception as exception:  # noqa: BLE001 — админ получает явный отказ
+            logger.error(f"Admin {user.tg_id} failed to change plan for {tg_id}: {exception}")
+            ok = False
+    if not ok:
+        await services.notification.show_popup(
+            callback=callback, text=_("user_editor:popup:change_plan_failed")
+        )
+        return
+
+    await services.audit.admin_plan_changed(
+        AuditActor.admin(callback.from_user),
+        target,
+        mode=mode,
+        duration=duration,
+        devices=devices,
+        traffic_gb=traffic_gb,
+    )
+
+    locale = (
+        target.language_code
+        if target.language_code in i18n.available_locales
+        else DEFAULT_LANGUAGE
+    )
+    with i18n.use_locale(locale):
+        user_text = (
+            _("user_editor:message:change_plan_user_trial")
+            if mode == "trial"
+            else _("user_editor:message:change_plan_user")
+        ).format(
+            duration=format_subscription_period(duration),
+            devices=format_device_count(devices),
+            traffic=format_traffic_gb(traffic_gb),
+        )
+    try:
+        await services.notification.notify_by_id(chat_id=target.tg_id, text=user_text)
+    except Exception as exception:  # noqa: BLE001 — уведомление не отменяет смену тарифа
+        logger.error(f"Failed to notify user {tg_id} about plan change: {exception}")
+
+    await _show_card(callback, session, services, gateway_factory, config, target)
+    await services.notification.show_popup(
+        callback=callback, text=_("user_editor:popup:change_plan_success")
+    )
+
+
+@router.callback_query(F.data == NavAdminTools.CONFIRM_USER_PLAN_CHANGE, IsAdmin())
+async def callback_confirm_user_plan_change_stale(
+    callback: CallbackQuery,
+    services: ServicesContainer,
+) -> None:
+    await _show_plan_change_stale(callback, services)
 
 
 # endregion

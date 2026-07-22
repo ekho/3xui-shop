@@ -2098,3 +2098,67 @@ msgstr "⚠️ The client's subscription link is unavailable. Check the server s
 #: app/bot/routers/admin_tools/user_handler.py
 msgid "user_editor:message:subscription_key"
 msgstr "🔑 <b>Subscription link</b>\n\n👤 {name} · <code>{tg_id}</code>\n\n<code>{key}</code>"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:change_plan"
+msgstr "🔁 Change plan"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:plan_trial"
+msgstr "🎁 Trial"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:confirm_change_plan"
+msgstr "✅ Apply"
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:change_plan_select"
+msgstr "🔁 <b>Change plan</b> for {name} (<code>{tg_id}</code>).\n\nSelect a plan or trial:"
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:change_plan_duration"
+msgstr "Plan: <b>{devices}</b> · {traffic}\n\nSelect the new subscription period:"
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:change_plan_confirm"
+msgstr "Apply the <b>{devices}</b> · {traffic} plan for <b>{duration}</b> to user <code>{tg_id}</code>?\n\nThe new period starts now and traffic is reset. The subscription link stays the same."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:change_plan_confirm_trial"
+msgstr "Move user <code>{tg_id}</code> to a <b>trial</b>: {devices} · {traffic} for <b>{duration}</b>?\n\nThe new period starts now and traffic is reset. The subscription link stays the same."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:change_plan_user"
+msgstr "🔁 An administrator changed your plan to <b>{devices}</b> · {traffic} for <b>{duration}</b>.\n\nThe new period started and traffic was reset. Your subscription link has not changed."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:change_plan_user_trial"
+msgstr "🎁 An administrator moved you to a trial: <b>{devices}</b> · {traffic} for <b>{duration}</b>.\n\nThe new period started and traffic was reset. Your subscription link has not changed."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:change_plan_stale"
+msgstr "⚠️ The plan-change flow is stale — open the card and try again."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:change_plan_unlimited"
+msgstr "⛔️ Unlimited is assigned only through group management."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:change_plan_no_client"
+msgstr "⚠️ The client was not found on the panel — the plan was not changed."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:change_plan_no_plans"
+msgstr "⚠️ No base plans are available."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:change_plan_no_durations"
+msgstr "⚠️ No plan durations are available."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:change_plan_failed"
+msgstr "⚠️ Failed to change the plan — check the bot logs."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:change_plan_success"
+msgstr "✅ Plan changed."
