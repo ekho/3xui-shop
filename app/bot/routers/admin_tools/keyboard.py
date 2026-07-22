@@ -8,7 +8,8 @@ from app.bot.routers.misc.keyboard import (
     back_to_main_menu_button,
     cancel_button,
 )
-from app.bot.utils.formatting import format_device_count
+from app.bot.utils.constants import UNLIMITED_INBOUND_GROUP
+from app.bot.utils.formatting import format_device_count, format_subscription_period
 from app.bot.utils.navigation import NavAdminTools
 from app.db.models import Server, User
 from app.db.models.invite import Invite
@@ -561,6 +562,7 @@ def user_card_keyboard(
     is_banned: bool,
     show_reset_traffic: bool = False,
     show_subscription_key: bool = False,
+    show_plan_change: bool = False,
     topic_url: str | None = None,
 ) -> InlineKeyboardMarkup:
     """Карточка пользователя: все действия несут _{tg_id} в callback."""
@@ -572,6 +574,13 @@ def user_card_keyboard(
             callback_data=NavAdminTools.EXTEND_USER + f"_{tg_id}",
         )
     )
+    if show_plan_change:
+        builder.row(
+            InlineKeyboardButton(
+                text=_("user_editor:button:change_plan"),
+                callback_data=NavAdminTools.CHANGE_USER_PLAN + f"_{tg_id}",
+            )
+        )
     if show_reset_traffic:
         builder.row(
             InlineKeyboardButton(
@@ -615,6 +624,51 @@ def user_card_keyboard(
 
     builder.row(back_button(NavAdminTools.USER_EDITOR))
     builder.row(back_to_main_menu_button())
+    return builder.as_markup()
+
+
+def user_change_plan_keyboard(tg_id: int, plans: list[Plan]) -> InlineKeyboardMarkup:
+    """Выбор доступного администратору regular-тарифа или принудительного триала."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text=_("user_editor:button:plan_trial"),
+            callback_data=NavAdminTools.PICK_USER_TRIAL + f"_{tg_id}",
+        )
+    )
+    for plan in plans:
+        if plan.hidden or UNLIMITED_INBOUND_GROUP in plan.inbound_groups:
+            continue
+        builder.button(
+            text=format_device_count(plan.devices),
+            callback_data=NavAdminTools.PICK_USER_PLAN + f"_{tg_id}_{plan.devices}",
+        )
+    builder.adjust(2)
+    builder.row(back_button(NavAdminTools.SHOW_USER + f"_{tg_id}"))
+    return builder.as_markup()
+
+
+def user_change_plan_duration_keyboard(tg_id: int, durations: list[int]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for duration in durations:
+        builder.button(
+            text=format_subscription_period(duration),
+            callback_data=NavAdminTools.PICK_USER_PLAN_DURATION + f"_{tg_id}_{duration}",
+        )
+    builder.adjust(2)
+    builder.row(back_button(NavAdminTools.CHANGE_USER_PLAN + f"_{tg_id}"))
+    return builder.as_markup()
+
+
+def user_change_plan_confirm_keyboard(tg_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text=_("user_editor:button:confirm_change_plan"),
+            callback_data=NavAdminTools.CONFIRM_USER_PLAN_CHANGE,
+        )
+    )
+    builder.row(cancel_button(NavAdminTools.SHOW_USER + f"_{tg_id}"))
     return builder.as_markup()
 
 

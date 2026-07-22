@@ -270,3 +270,95 @@ class AdminTrialKeyboardTests(unittest.TestCase):
             ]
 
         self.assertIn(NavAdminTools.CONFIRM_CREATE_TRIAL_CLIENT, callbacks)
+
+
+class AdminPlanKeyboardTests(unittest.TestCase):
+    def test_plan_picker_offers_trial_and_filters_unlimited(self) -> None:
+        from app.bot.models.plan import Plan
+        from app.bot.routers.admin_tools.keyboard import user_change_plan_keyboard
+        from app.bot.utils.navigation import NavAdminTools
+
+        regular_plan = Plan(
+            devices=2,
+            traffic_gb=100,
+            inbound_groups=["regular"],
+            prices={},
+        )
+        hidden_unlimited_plan = Plan(
+            devices=7,
+            traffic_gb=100,
+            inbound_groups=["unlimited"],
+            hidden=True,
+            prices={},
+        )
+
+        with (
+            patch("app.bot.routers.admin_tools.keyboard._", lambda text: text),
+            patch("app.bot.routers.misc.keyboard._", lambda text: text),
+            patch("app.bot.utils.formatting._", lambda singular, plural, count: plural),
+        ):
+            keyboard = user_change_plan_keyboard(
+                tg_id=42,
+                plans=[regular_plan, hidden_unlimited_plan],
+            )
+            callbacks = [
+                button.callback_data
+                for row in keyboard.inline_keyboard
+                for button in row
+            ]
+
+        self.assertIn(NavAdminTools.PICK_USER_TRIAL + "_42", callbacks)
+        self.assertIn(NavAdminTools.PICK_USER_PLAN + "_42_2", callbacks)
+        self.assertNotIn(NavAdminTools.PICK_USER_PLAN + "_42_7", callbacks)
+
+    def test_card_shows_plan_change_only_when_allowed(self) -> None:
+        from app.bot.routers.admin_tools.keyboard import user_card_keyboard
+        from app.bot.utils.navigation import NavAdminTools
+
+        with (
+            patch("app.bot.routers.admin_tools.keyboard._", lambda text: text),
+            patch("app.bot.routers.misc.keyboard._", lambda text: text),
+        ):
+            visible = user_card_keyboard(
+                42,
+                is_banned=False,
+                show_plan_change=True,
+            )
+            hidden = user_card_keyboard(
+                42,
+                is_banned=False,
+                show_plan_change=False,
+            )
+
+        visible_callbacks = [button.callback_data for row in visible.inline_keyboard for button in row]
+        hidden_callbacks = [button.callback_data for row in hidden.inline_keyboard for button in row]
+        self.assertIn(NavAdminTools.CHANGE_USER_PLAN + "_42", visible_callbacks)
+        self.assertNotIn(NavAdminTools.CHANGE_USER_PLAN + "_42", hidden_callbacks)
+
+    def test_duration_and_confirmation_callbacks_keep_plan_data_out_of_confirm(self) -> None:
+        from app.bot.routers.admin_tools.keyboard import (
+            user_change_plan_confirm_keyboard,
+            user_change_plan_duration_keyboard,
+        )
+        from app.bot.utils.navigation import NavAdminTools
+
+        with (
+            patch("app.bot.routers.admin_tools.keyboard._", lambda text: text),
+            patch("app.bot.routers.misc.keyboard._", lambda text: text),
+            patch("app.bot.utils.formatting._", lambda singular, plural, count: plural),
+        ):
+            durations = user_change_plan_duration_keyboard(42, [30])
+            confirm = user_change_plan_confirm_keyboard(42)
+
+        duration_callbacks = [
+            button.callback_data
+            for row in durations.inline_keyboard
+            for button in row
+        ]
+        confirm_callbacks = [
+            button.callback_data
+            for row in confirm.inline_keyboard
+            for button in row
+        ]
+        self.assertIn(NavAdminTools.PICK_USER_PLAN_DURATION + "_42_30", duration_callbacks)
+        self.assertIn(NavAdminTools.CONFIRM_USER_PLAN_CHANGE, confirm_callbacks)
