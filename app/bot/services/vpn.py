@@ -588,8 +588,11 @@ class VPNService:
                 plan_groups = self._plan_groups(devices)
                 if plan_groups is not None and self.inbound_group_service.is_banned(user):
                     plan_groups = plan_groups + [BANNED_INBOUND_GROUP]
-                await self.apply_inbound_groups(user, groups=plan_groups)
-                await self.reset_traffic(user)  # смена тарифа — начать новый лимит с чистого счётчика
+                if not await self.apply_inbound_groups(user, groups=plan_groups):
+                    return False
+                # Смена тарифа — начать новый лимит с чистого счётчика.
+                if not await self.reset_traffic(user):
+                    return False
                 # resetTraffic заодно включает клиента — бан переналожить.
                 connection = await self.server_pool_service.get_connection(user)
                 if connection:
@@ -661,19 +664,20 @@ class VPNService:
             logger.critical(f"grant_unlimited for {user.tg_id} failed: {exception}")
             return False
 
+    async def force_trial(self, user: User) -> bool:
+        """Принудительно перевести существующего клиента на стартовый триал."""
+        return await self._apply_regular_trial(user, allow_missing_client=False)
+
     async def revoke_unlimited(self, user: User) -> bool:
-        """Снять безлимит и откатить клиента на СТАРТОВЫЙ ТРИАЛ.
+        """Снять unlimited и вернуть пользователя на стартовый триал."""
+        return await self._apply_regular_trial(user, allow_missing_client=True)
 
-        Триал = те же параметры, что даёт gift_trial новому юзеру: BONUS_DEVICES_COUNT
-        устройств, TRIAL_PERIOD дней, лимит трафика SHOP_TRIAL_TRAFFIC_GB (0 = безлимит),
-        дефолтный набор групп (regular). Клиент не удаляется — переводится; группа
-        `unlimited` отцепляется. Идём напрямую через update_client, минуя
-        SubscriptionService.gift_trial: его гейт is_trial_available требует отсутствия
-        сервера у юзера, а у безлимитчика он есть.
+    async def _apply_regular_trial(self, user: User, *, allow_missing_client: bool) -> bool:
+        """Применить параметры стартового триала без гейта первого использования.
 
-        Счётчик трафика сбрасывается (за безлимит юзер мог использовать > лимита триала —
-        иначе триал сразу упёрся бы в кап). Бан сохраняется поверх набора.
-        EmptyInboundSetError (нет regular-инбаундов на сервере) -> отказ с логом.
+        Снятие unlimited допускает отсутствие клиента панели: тогда сохраняется
+        regular-набор, который применится при следующем provisioning. Ручная смена
+        тарифа из карточки требует живого клиента и в таком случае честно отказывает.
         """
         trial_period = self.config.shop.TRIAL_PERIOD
         trial_devices = self.config.shop.BONUS_DEVICES_COUNT
@@ -683,8 +687,11 @@ class VPNService:
             groups = groups + [BANNED_INBOUND_GROUP]
 
         try:
-            # Клиента на панели нет (грант не был провижинен) — просто вернуть дефолтный набор.
+            # При снятии unlimited без клиента сохраняем regular-набор; ручной переход
+            # на триал без существующей подписки не создаёт нового клиента.
             if not await self.is_client_exists(user):
+                if not allow_missing_client:
+                    return False
                 await self._persist_groups(user, groups)
                 logger.info(
                     f"Unlimited revoked for {user.tg_id} (no panel client): groups reset to default."
@@ -708,20 +715,20 @@ class VPNService:
                 return False
             # Начать триал с чистого счётчика (клиент мог накопить трафик на безлимите).
             if not await self.reset_traffic(user):
-                logger.error(f"revoke_unlimited {user.tg_id}: reset_traffic failed after update.")
+                logger.error(f"reset to trial {user.tg_id}: reset_traffic failed after update.")
                 return False
             # resetTraffic заодно включает клиента — бан переналожить.
             connection = await self.server_pool_service.get_connection(user)
             if connection:
                 await self._enforce_ban(self._clients(connection), user)
             logger.info(
-                f"Unlimited revoked for {user.tg_id}: reset to starter trial "
+                f"User {user.tg_id}: reset to starter trial "
                 f"({trial_devices} devices, {trial_period} days, "
                 f"{self.config.shop.TRIAL_TRAFFIC_GB}GB, groups {groups})."
             )
             return True
         except EmptyInboundSetError as exception:
-            logger.critical(f"revoke_unlimited for {user.tg_id} failed: {exception}")
+            logger.critical(f"reset to trial for {user.tg_id} failed: {exception}")
             return False
 
     async def compensation_blocker(self, user: User) -> str | None:

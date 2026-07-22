@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 from app.bot.services.audit import AuditActor, AuditService
 from app.bot.services.subscription import AdminTrialStatus, SubscriptionService
+from app.bot.services.vpn import VPNService, gb_to_bytes
 from app.bot.utils.constants import AuditAction
 
 
@@ -91,6 +92,78 @@ class CreateAdminTrialTests(unittest.IsolatedAsyncioTestCase):
         delete.assert_not_awaited()
         self.assertEqual(update_trial_status.await_args.kwargs["tg_id"], 42)
         self.assertTrue(update_trial_status.await_args.kwargs["used"])
+
+
+class ForcedTrialTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self.config = SimpleNamespace(
+            shop=SimpleNamespace(
+                BONUS_DEVICES_COUNT=2,
+                TRIAL_PERIOD=3,
+                TRIAL_TRAFFIC_GB=15,
+            )
+        )
+        self.user = SimpleNamespace(tg_id=42, inbound_groups=["regular", "banned"])
+        self.vpn = object.__new__(VPNService)
+        self.vpn.config = self.config
+        self.vpn.inbound_group_service = SimpleNamespace(
+            is_banned=lambda user: "banned" in (user.inbound_groups or [])
+        )
+        self.vpn.server_pool_service = SimpleNamespace(get_connection=AsyncMock(return_value=None))
+        self.vpn.is_client_exists = AsyncMock(return_value=True)
+        self.vpn.update_client = AsyncMock(return_value=True)
+        self.vpn.apply_inbound_groups = AsyncMock(return_value=True)
+        self.vpn.reset_traffic = AsyncMock(return_value=True)
+        self.vpn._enforce_ban = AsyncMock()
+
+    async def test_force_trial_replaces_limits_and_preserves_ban(self) -> None:
+        self.assertTrue(await self.vpn.force_trial(self.user))
+
+        self.vpn.update_client.assert_awaited_once_with(
+            user=self.user,
+            devices=self.config.shop.BONUS_DEVICES_COUNT,
+            duration=self.config.shop.TRIAL_PERIOD,
+            replace_devices=True,
+            replace_duration=True,
+            total_gb=gb_to_bytes(self.config.shop.TRIAL_TRAFFIC_GB),
+        )
+        self.vpn.apply_inbound_groups.assert_awaited_once_with(
+            self.user,
+            groups=["regular", "banned"],
+            enforce_enable=True,
+        )
+        self.vpn.reset_traffic.assert_awaited_once_with(self.user)
+
+    async def test_force_trial_refuses_without_panel_client(self) -> None:
+        self.vpn.is_client_exists.return_value = False
+
+        self.assertFalse(await self.vpn.force_trial(self.user))
+
+        self.vpn.update_client.assert_not_awaited()
+        self.vpn.apply_inbound_groups.assert_not_awaited()
+
+    async def test_force_trial_fails_when_traffic_reset_fails(self) -> None:
+        self.vpn.reset_traffic.return_value = False
+
+        self.assertFalse(await self.vpn.force_trial(self.user))
+
+        self.vpn._enforce_ban.assert_not_awaited()
+
+    async def test_change_subscription_fails_when_traffic_reset_fails(self) -> None:
+        self.vpn._plan_groups = lambda devices: ["regular"]
+        self.vpn.reset_traffic.return_value = False
+
+        self.assertFalse(await self.vpn.change_subscription(self.user, 2, 30, 100))
+
+        self.vpn._enforce_ban.assert_not_awaited()
+
+    async def test_change_subscription_fails_when_group_apply_fails(self) -> None:
+        self.vpn._plan_groups = lambda devices: ["regular"]
+        self.vpn.apply_inbound_groups.return_value = False
+
+        self.assertFalse(await self.vpn.change_subscription(self.user, 2, 30, 100))
+
+        self.vpn.reset_traffic.assert_not_awaited()
 
 
 class AdminTrialAuditTests(unittest.IsolatedAsyncioTestCase):
