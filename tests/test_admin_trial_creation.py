@@ -3,7 +3,9 @@ from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from app.bot.services.audit import AuditActor, AuditService
 from app.bot.services.subscription import AdminTrialStatus, SubscriptionService
+from app.bot.utils.constants import AuditAction
 
 
 class CreateAdminTrialTests(unittest.IsolatedAsyncioTestCase):
@@ -89,3 +91,21 @@ class CreateAdminTrialTests(unittest.IsolatedAsyncioTestCase):
         delete.assert_not_awaited()
         self.assertEqual(update_trial_status.await_args.kwargs["tg_id"], 42)
         self.assertTrue(update_trial_status.await_args.kwargs["used"])
+
+
+class AdminTrialAuditTests(unittest.IsolatedAsyncioTestCase):
+    async def test_records_trial_parameters_for_successful_admin_creation(self) -> None:
+        service = object.__new__(AuditService)
+        service.record = AsyncMock()
+        actor = AuditActor.system()
+        target = SimpleNamespace(tg_id=42, first_name="Мария")
+
+        await service.admin_trial_created(actor, target, duration=3, devices=2, traffic_gb=15)
+
+        service.record.assert_awaited_once_with(
+            AuditAction.USER_CREATE_TRIAL,
+            actor,
+            target=target,
+            payload={"duration": 3, "devices": 2, "traffic_gb": 15},
+            channel_note="триал: 3 дн.",
+        )
