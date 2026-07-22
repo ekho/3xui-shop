@@ -2030,3 +2030,71 @@ msgstr "✅ Message sent."
 #: app/bot/routers/admin_tools/statistics_handler.py
 msgid "statistics:message:groups_header"
 msgstr "🏷 <b>Groups:</b>\n"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:create_trial_client"
+msgstr "➕ Create client"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:subscription_key"
+msgstr "🔑 Subscription link"
+
+#: app/bot/routers/admin_tools/keyboard.py
+msgid "user_editor:button:confirm_create_trial_client"
+msgstr "✅ Create and grant trial"
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:create_trial_client_tg_id"
+msgstr "➕ <b>Create a trial client</b>\n\nSend the client's Telegram ID:"
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:ntf:invalid_client_tg_id"
+msgstr "⚠️ Enter a positive whole-number Telegram ID."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:create_trial_client_name"
+msgstr "Send the client's display name for the bot and panel:\n\nID: <code>{tg_id}</code>"
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:ntf:invalid_client_name"
+msgstr "⚠️ Enter a name from 1 to {max_length} characters."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:create_trial_client_stale"
+msgstr "⚠️ The creation flow is stale — start again."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:confirm_create_trial_client"
+msgstr "Create client <b>{name}</b> (<code>{tg_id}</code>) and grant the standard trial now?"
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:create_trial_client_failed"
+msgstr "⚠️ Failed to create the client and grant the trial — check the bot logs."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:create_trial_client_exists"
+msgstr "⚠️ A client with this Telegram ID already exists."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:create_trial_client_trial_disabled"
+msgstr "⛔️ Trials are disabled in the shop settings."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:create_trial_client_partial"
+msgstr "⚠️ The panel may have created the client but did not confirm the operation. The record was kept; do not grant another trial — inspect the card and panel."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:create_trial_client_success"
+msgstr "✅ <b>Client created and trial activated.</b>\n\n👤 {name} · <code>{tg_id}</code>\n\n<b>Subscription link:</b>\n<code>{key}</code>\n\nPass it to the client manually."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:create_trial_client_success_without_key"
+msgstr "✅ <b>Client created and trial activated.</b>\n\n👤 {name} · <code>{tg_id}</code>\n\n⚠️ No subscription link is configured on the server. Check the server and open the client card."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:popup:subscription_key_unavailable"
+msgstr "⚠️ The client's subscription link is unavailable. Check the server settings."
+
+#: app/bot/routers/admin_tools/user_handler.py
+msgid "user_editor:message:subscription_key"
+msgstr "🔑 <b>Subscription link</b>\n\n👤 {name} · <code>{tg_id}</code>\n\n<code>{key}</code>"
