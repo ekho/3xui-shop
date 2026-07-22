@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Telegram-бот 3x-ui — диаграммы потоков</title>
+<style>
+  :root { --bg:#0f1115; --card:#171a21; --ink:#e8eaed; --muted:#9aa3af; --line:#2a2f3a; --accent:#4f8cff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; line-height:1.5; }
+  .wrap { max-width:1120px; margin:0 auto; padding:32px 20px 64px; }
+  h1 { font-size:24px; margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 24px; font-size:14px; }
+  .legend { color:var(--muted); font-size:13px; margin:0 0 28px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px 20px 8px; margin:0 0 22px; }
+  .card h2 { font-size:16px; margin:0 0 4px; }
+  .card p.desc { color:var(--muted); font-size:13px; margin:0 0 12px; }
+  .mermaid { overflow-x:auto; }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Telegram-бот для 3x-ui — диаграммы потоков</h1>
+  <p class="sub">Стек: aiogram 3 + py3xui + PostgreSQL. Оплата: крипта / Telegram Stars / карта вручную. Все потоки — MVP.</p>
+  <p class="legend">Ромб — решение/ветвление · прямоугольник — действие/состояние · «3x-ui» — вызовы панели через py3xui.</p>
+
+  <div class="card">
+    <h2>1. Регистрация и подтверждение админом</h2>
+    <p class="desc">Открытая регистрация, но доступ и покупки — только после апрува.</p>
+    <pre class="mermaid">
+flowchart TD
+    S(["/start"]) --> N{"Уже есть аккаунт?"}
+    N -->|"Нет"| C["Создать пользователя<br/>approval_status = pending"]
+    C --> NA["Уведомить админа:<br/>карточка кандидата"]
+    NA --> AD{"Решение админа"}
+    AD -->|"Подтвердить"| AP["approved:<br/>меню + доступ к триалу"]
+    AD -->|"Отклонить"| RJ["rejected:<br/>уведомление"]
+    N -->|"Да"| ST{"Статус?"}
+    ST -->|"pending"| W["«Ожидайте подтверждения»"]
+    ST -->|"approved"| M["Главное меню"]
+    ST -->|"blocked"| B["Доступ закрыт"]
+    AP --> M
+    </pre>
+  </div>
+
+  <div class="card">
+    <h2>2. Оплата → активация (три рельса)</h2>
+    <p class="desc">Заказ → выбор способа оплаты → выдача доступа в 3x-ui. Единый fulfillment для всех рельсов.</p>
+    <pre class="mermaid">
+flowchart TD
+    P["Выбор тарифа<br/>срок + трафик + устройства"] --> O["order = awaiting_payment"]
+    O --> M{"Способ оплаты"}
+
+    M -->|"Крипта"| CR1["createInvoice<br/>CryptoBot / Cryptomus"]
+    CR1 --> CR2["Вебхук: paid<br/>(идемпотентно)"]
+
+    M -->|"Stars"| ST1["sendInvoice XTR"]
+    ST1 --> ST2{"pre_checkout<br/>ответ ≤10 с"}
+    ST2 -->|"ok"| ST3["successful_payment"]
+    ST3 --> ST4{"Первая оплата?"}
+    ST4 -->|"Да"| ST5["Включить<br/>авто-рекуррент Stars"]
+
+    M -->|"Карта вручную"| MC1["Показать реквизиты<br/>+ сумма/комментарий"]
+    MC1 --> MC2["Пользователь: «Я оплатил»"]
+    MC2 --> MC3{"Модерация админа"}
+    MC3 -->|"Отклонить"| MCR["Уведомить: отказ"]
+
+    CR2 --> F
+    ST4 -->|"Нет"| F
+    ST5 --> F
+    MC3 -->|"Подтвердить"| F
+
+    F["Fulfillment:<br/>создать/продлить клиента в 3x-ui (py3xui)<br/>expiry + трафик + устройства"] --> FE{"Успех?"}
+    FE -->|"Да"| D["Выдать sub-URL / VLESS / QR<br/>+ инструкция по подключению"]
+    FE -->|"Нет"| ER["Ретрай + алерт админу<br/>оплата не потеряна"]
+    </pre>
+  </div>
+
+  <div class="card">
+    <h2>3. Продление подписки</h2>
+    <p class="desc">Авто-рекуррент, если первая оплата была в Stars; иначе — напоминания по сроку и трафику.</p>
+    <pre class="mermaid">
+flowchart TD
+    EX["Подписка близка к концу:<br/>по сроку ИЛИ трафику"] --> Q{"Первая оплата в Stars<br/>и рекуррент включён?"}
+    Q -->|"Да"| A1["Авто-списание Stars"]
+    A1 --> A2{"Списание прошло?"}
+    A2 -->|"Да"| EXT["Продлить:<br/>extend срок + сброс трафика"]
+    A2 -->|"Нет"| RM["Напоминания +<br/>переход в ручное продление"]
+    Q -->|"Нет"| RM2["Напоминания:<br/>срок 3д / 1д / день X<br/>трафик 80% / 100%"]
+    RM2 --> U{"Пользователь продлил?"}
+    RM --> U
+    U -->|"Да"| PAY["Оплата: крипта / Stars / карта"]
+    PAY --> EXT
+    U -->|"Нет"| DIS["Grace → disable в 3x-ui"]
+    </pre>
+  </div>
+
+  <div class="card">
+    <h2>4. Жизненный цикл подписки (состояния)</h2>
+    <p class="desc">Единая модель состояний, на которую завязаны крон-задачи и напоминания.</p>
+    <pre class="mermaid">
+stateDiagram-v2
+    [*] --> pending: оплата/триал подтверждены
+    pending --> active: клиент создан в 3x-ui
+    active --> expiring_soon: близок срок ИЛИ трафик
+    expiring_soon --> active: продлено
+    expiring_soon --> expired: срок/трафик исчерпан
+    expired --> active: оплата продления
+    expired --> disabled: после grace
+    disabled --> active: реактивация при оплате
+    disabled --> deleted: через N дней
+    deleted --> [*]
+    </pre>
+  </div>
+
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: 'dark', securityLevel: 'loose', flowchart: { htmlLabels: true, curve: 'basis' } });
+</script>
+</body>
+</html>
