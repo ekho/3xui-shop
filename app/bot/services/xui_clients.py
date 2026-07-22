@@ -19,6 +19,38 @@ def _not_found(exception: ValueError) -> bool:
     return "record not found" in str(exception).lower()
 
 
+# --- Сдвиг limitIp: в панель пишем N+1, читаем обратно N ------------------------------
+# Тариф «N устройств» = N реально одновременных + 1 «на переключение сети». При limitIp
+# ровно N смена Wi-Fi↔LTE роняет клиента: старое соединение рвётся «грязно» (FIN не
+# доходит), его IP ещё висит в online-map ядра (refcount>0), новый IP уже добавлен →
+# ядро видит 2 IP > N → бан покинутого IP и передёргивание клиента. +1 даёт нахлёст на
+# это переходное окно. Сдвиг локализован ЗДЕСЬ (единственная граница записи/чтения с
+# панелью), поэтому вся остальная логика бота оперирует «чистым» N. limitIp<=0 = безлимит
+# IP в 3x-ui — не трогаем. Подробности: память xray-online-stats-api.
+LIMIT_IP_NETWORK_HEADROOM = 1
+
+
+def to_panel_limit_ip(plan_devices: int) -> int:
+    """N (устройства тарифа) -> limitIp панели (N+1). Безлимит (<=0) без изменений."""
+    return plan_devices + LIMIT_IP_NETWORK_HEADROOM if plan_devices > 0 else plan_devices
+
+
+def from_panel_limit_ip(panel_limit_ip: int) -> int:
+    """limitIp панели (N+1) -> N устройств тарифа. Обратная к to_panel_limit_ip.
+    panel<=1 отдаём как есть: у ещё не мигрированного/заведённого вручную клиента с 0
+    или 1 не выдаём ложный безлимит (0) и не уходим в отрицательное."""
+    return panel_limit_ip - LIMIT_IP_NETWORK_HEADROOM if panel_limit_ip > 1 else panel_limit_ip
+
+
+def _with_panel_limit_ip(client: dict[str, Any]) -> dict[str, Any]:
+    """Копия client-payload со сдвинутым в панельное представление limitIp (N -> N+1).
+    Вызывающий (vpn.py) всегда кладёт «чистое» число устройств тарифа; это единственная
+    точка записи, поэтому N не может попасть в панель без нахлёста."""
+    if "limitIp" not in client:
+        return client
+    return {**client, "limitIp": to_panel_limit_ip(int(client.get("limitIp") or 0))}
+
+
 @dataclass
 class ClientView:
     """Клиент, как его видит панель: сырой payload + список инбаундов-членств.
@@ -48,7 +80,8 @@ class ClientView:
 
     @property
     def limit_ip(self) -> int:
-        return int(self.raw.get("limitIp") or 0)
+        # Панель хранит N+1 (нахлёст на смену сети); бот везде видит «чистое» N.
+        return from_panel_limit_ip(int(self.raw.get("limitIp") or 0))
 
     @property
     def sub_id(self) -> str:
@@ -107,13 +140,15 @@ class XuiClientsApi:
 
     async def add(self, client: dict[str, Any], inbound_ids: list[int]) -> None:
         """Создать клиента сразу в наборе инбаундов (панель сама цепляет членства)."""
-        await self._post(f"{_BASE}/add", {"client": client, "inboundIds": inbound_ids})
+        await self._post(
+            f"{_BASE}/add", {"client": _with_panel_limit_ip(client), "inboundIds": inbound_ids}
+        )
 
     async def update(self, email: str, client: dict[str, Any]) -> None:
         """Заменить запись клиента; панель пропагирует изменения во все его инбаунды.
         client должен быть ПОЛНЫМ payload'ом (см. ClientView.raw), а не диффом.
         """
-        await self._post(f"{_BASE}/update/{email}", client)
+        await self._post(f"{_BASE}/update/{email}", _with_panel_limit_ip(client))
 
     async def delete(self, email: str) -> None:
         """Удалить клиента отовсюду (членства, запись, счётчик трафика)."""

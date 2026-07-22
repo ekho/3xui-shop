@@ -445,6 +445,33 @@ class VPNService:
             logger.error(f"Error updating client {user.tg_id}: {exception}")
             return False
 
+    async def set_limit_ip(self, user: User, devices: int) -> bool:
+        """Точечно выставить лимит устройств клиента = devices, НЕ трогая срок/трафик/
+        членства (в панель уйдёт devices+1 через сдвиг xui_clients). Для разового
+        бэкфилла limitIp из БД бота: у части клиентов значение не проставилось прежним
+        багом, источник истины — devices тарифа (см. app/tools/backfill_panel_limit_ip).
+        """
+        connection = await self.server_pool_service.get_connection(user)
+        if not connection:
+            return False
+        clients = self._clients(connection)
+        view = await clients.get(str(user.tg_id))
+        if view is None:
+            logger.warning(f"set_limit_ip: client {user.tg_id} not found.")
+            return False
+        # update/:email ЗАМЕНЯЕТ запись — шлём полный текущий payload, меняя лишь лимит.
+        # limitIp кладём «чистым» N: сдвиг в N+1 сделает граница xui_clients.
+        payload = dict(view.raw)
+        payload["email"] = str(user.tg_id)
+        payload["limitIp"] = devices
+        try:
+            await clients.update(str(user.tg_id), payload)
+            logger.info(f"set_limit_ip {user.tg_id}: limit set from plan devices={devices}.")
+            return True
+        except Exception as exception:
+            logger.error(f"set_limit_ip {user.tg_id} failed: {exception}")
+            return False
+
     async def apply_inbound_groups(
         self, user: User, groups: list[str] | None = None, enforce_enable: bool = False
     ) -> bool:
