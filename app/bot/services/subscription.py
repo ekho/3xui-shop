@@ -12,10 +12,13 @@ if TYPE_CHECKING:
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.bot.utils.constants import DEFAULT_LANGUAGE, ApprovalStatus
+from app.bot.utils.constants import DEFAULT_LANGUAGE, REGULAR_INBOUND_GROUP, ApprovalStatus
 from app.bot.utils.misc import generate_sub_id
 from app.config import Config
 from app.db.models import Referral, User
+
+from .inbound_groups import EmptyInboundSetError
+from .vpn import gb_to_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -131,12 +134,21 @@ class SubscriptionService:
             return False
 
         logger.info(f"Begun giving trial period for user {user.tg_id}.")
-        trial_success = await self.vpn_service.process_bonus_days(
-            user,
-            duration=self.config.shop.TRIAL_PERIOD,
-            devices=self.config.shop.BONUS_DEVICES_COUNT,
-            traffic_gb=self.config.shop.TRIAL_TRAFFIC_GB,
+        groups = self.vpn_service.inbound_group_service.transition_access_profile(
+            user.inbound_groups,
+            REGULAR_INBOUND_GROUP,
         )
+        try:
+            trial_success = await self.vpn_service.create_client(
+                user=user,
+                duration=self.config.shop.TRIAL_PERIOD,
+                devices=self.config.shop.BONUS_DEVICES_COUNT,
+                total_gb=gb_to_bytes(self.config.shop.TRIAL_TRAFFIC_GB),
+                groups=groups,
+            )
+        except EmptyInboundSetError as exception:
+            logger.critical(f"Trial provisioning for {user.tg_id} failed: {exception}")
+            trial_success = False
 
         if trial_success:
             logger.info(
