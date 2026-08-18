@@ -57,7 +57,7 @@ async def reconcile_inbound_groups(
 
         clients = XuiClientsApi(connection.api)
         try:
-            # Набор групп фиксирован (banned/regular/unlimited); из панели не синкается.
+            # Набор групп фиксирован (banned/regular/unlimited/euru); из панели не синкается.
             known = sorted(await inbound_group_service.known_groups(connection.api))
             group_map = await inbound_group_service.resolve(connection.api, known)
             managed = await inbound_group_service.managed_inbound_ids(connection.api)

@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from app.bot.models import ClientData
 from app.bot.utils.constants import (
     BANNED_INBOUND_GROUP,
-    DEFAULT_INBOUND_GROUPS,
+    REGULAR_INBOUND_GROUP,
     UNLIMITED_INBOUND_GROUP,
 )
 from app.bot.utils.time import (
@@ -112,6 +112,7 @@ class VPNService:
             logger.error(f"Failed to enforce ban for {user.tg_id}: {exception}")
 
     async def _persist_groups(self, user: User, groups: list[str]) -> None:
+        groups = self.inbound_group_service.canonical_groups(groups)
         async with self.session() as session:
             await User.update(session=session, tg_id=user.tg_id, inbound_groups=list(groups))
         user.inbound_groups = list(groups)
@@ -341,7 +342,10 @@ class VPNService:
         if not connection:
             return False
 
-        groups = list(groups or self.inbound_group_service.effective_groups(user))
+        source_groups = (
+            groups if groups is not None else self.inbound_group_service.effective_groups(user)
+        )
+        groups = self.inbound_group_service.canonical_groups(source_groups)
         inbound_ids = await self._resolve_inbounds(connection, groups)
 
         # Per-protocol секреты (пароль SS и т.п.) панель генерирует сама для каждого
@@ -490,7 +494,10 @@ class VPNService:
         if not connection:
             return False
 
-        groups = list(groups or self.inbound_group_service.effective_groups(user))
+        source_groups = (
+            groups if groups is not None else self.inbound_group_service.effective_groups(user)
+        )
+        groups = self.inbound_group_service.canonical_groups(source_groups)
         desired = set(await self._resolve_inbounds(connection, groups))
 
         clients = self._clients(connection)
@@ -541,11 +548,16 @@ class VPNService:
             logger.error(f"reset_traffic failed for {user.tg_id}: {exception}")
             return False
 
-    def _plan_groups(self, devices: int) -> list[str] | None:
+    def _plan_groups(self, user: User, devices: int) -> list[str] | None:
         """Набор групп купленного тарифа (по devices — ключ тарифа). None, если тариф
         не найден (напр. тариф удалили после покупки) — тогда берётся набор юзера."""
         plan = self.plan_service.get_plan(devices)
-        return list(plan.inbound_groups) if plan else None
+        if plan is None:
+            return None
+        groups = list(plan.inbound_groups)
+        if self.inbound_group_service.is_banned(user):
+            groups.append(BANNED_INBOUND_GROUP)
+        return self.inbound_group_service.canonical_groups(groups)
 
     async def create_subscription(
         self, user: User, devices: int, duration: int, traffic_gb: int = 0
@@ -565,7 +577,7 @@ class VPNService:
             devices=devices,
             duration=duration,
             total_gb=gb_to_bytes(traffic_gb),
-            groups=self._plan_groups(devices),
+            groups=self._plan_groups(user, devices),
         )
 
     async def extend_subscription(
@@ -582,10 +594,9 @@ class VPNService:
             return False
         # Набор групп мог смениться (правка тарифа) — сходимся к актуальному.
         # Бан при этом сохраняется: тариф задаёт access-группы, banned остаётся в наборе.
-        plan_groups = self._plan_groups(devices)
-        if plan_groups is not None and self.inbound_group_service.is_banned(user):
-            plan_groups = plan_groups + [BANNED_INBOUND_GROUP]
-        await self.apply_inbound_groups(user, groups=plan_groups)
+        plan_groups = self._plan_groups(user, devices)
+        if not await self.apply_inbound_groups(user, groups=plan_groups):
+            return False
         # m7: продление сбрасывает использованный трафик. extend не считать успешным без сброса
         # (иначе после исчерпания лимита юзер продлил, а счётчик остался > лимита → доступа нет).
         if not await self.reset_traffic(user):
@@ -612,9 +623,7 @@ class VPNService:
             if ok:
                 # Смена тарифа = возможно другой набор инбаундов (например, regular -> premium).
                 # Бан сохраняется поверх набора нового тарифа.
-                plan_groups = self._plan_groups(devices)
-                if plan_groups is not None and self.inbound_group_service.is_banned(user):
-                    plan_groups = plan_groups + [BANNED_INBOUND_GROUP]
+                plan_groups = self._plan_groups(user, devices)
                 if not await self.apply_inbound_groups(user, groups=plan_groups):
                     return False
                 # Смена тарифа — начать новый лимит с чистого счётчика.
@@ -650,6 +659,9 @@ class VPNService:
             return False
 
         groups = list(plan.inbound_groups)
+        if self.inbound_group_service.is_banned(user):
+            groups.append(BANNED_INBOUND_GROUP)
+        groups = self.inbound_group_service.canonical_groups(groups)
         total_gb = gb_to_bytes(plan.traffic_gb)  # 0 -> безлимит-трафик; 100 -> 100ГБ-кап
 
         try:
@@ -667,10 +679,7 @@ class VPNService:
                 if not ok:
                     return False
                 # Свести членства к набору безлимит-плана; бан остаётся поверх.
-                plan_groups = groups
-                if self.inbound_group_service.is_banned(user):
-                    plan_groups = plan_groups + [BANNED_INBOUND_GROUP]
-                applied = await self.apply_inbound_groups(user, groups=plan_groups)
+                applied = await self.apply_inbound_groups(user, groups=groups)
                 if applied:
                     logger.info(f"Unlimited plan granted to existing client {user.tg_id}.")
                 return applied
@@ -693,27 +702,63 @@ class VPNService:
 
     async def force_trial(self, user: User) -> bool:
         """Принудительно перевести существующего клиента на стартовый триал."""
-        return await self._apply_regular_trial(user, allow_missing_client=False)
+        return await self._apply_starter_trial(
+            user,
+            REGULAR_INBOUND_GROUP,
+            allow_missing_client=False,
+        )
 
     async def revoke_unlimited(self, user: User) -> bool:
         """Снять unlimited и вернуть пользователя на стартовый триал."""
-        return await self._apply_regular_trial(user, allow_missing_client=True)
+        return await self._apply_starter_trial(
+            user,
+            REGULAR_INBOUND_GROUP,
+            allow_missing_client=True,
+        )
 
-    async def _apply_regular_trial(self, user: User, *, allow_missing_client: bool) -> bool:
+    async def select_access_profile(self, user: User, selected: str) -> bool:
+        """Выбрать единственный профиль доступа, сохранив banned-overlay."""
+        if selected == UNLIMITED_INBOUND_GROUP:
+            return await self.grant_unlimited(user)
+        if self.inbound_group_service.is_unlimited(user):
+            return await self._apply_starter_trial(
+                user,
+                selected,
+                allow_missing_client=True,
+            )
+        groups = self.inbound_group_service.transition_access_profile(
+            user.inbound_groups,
+            selected,
+        )
+        if not await self.is_client_exists(user):
+            await self._persist_groups(user, groups)
+            return True
+        return await self.apply_inbound_groups(user, groups=groups)
+
+    async def _apply_starter_trial(
+        self,
+        user: User,
+        selected_profile: str,
+        *,
+        allow_missing_client: bool,
+    ) -> bool:
         """Применить параметры стартового триала без гейта первого использования.
 
         Снятие unlimited допускает отсутствие клиента панели: тогда сохраняется
-        regular-набор, который применится при следующем provisioning. Ручная смена
-        тарифа из карточки требует живого клиента и в таком случае честно отказывает.
+        выбранный профиль, который применится при следующем provisioning. Ручная
+        смена тарифа из карточки требует живого клиента и честно отказывает.
         """
         trial_period = self.config.shop.TRIAL_PERIOD
         trial_devices = self.config.shop.BONUS_DEVICES_COUNT
         trial_total_gb = gb_to_bytes(self.config.shop.TRIAL_TRAFFIC_GB)  # 0 -> безлимит
-        groups = list(DEFAULT_INBOUND_GROUPS)
-        if self.inbound_group_service.is_banned(user):
-            groups = groups + [BANNED_INBOUND_GROUP]
+        groups = self.inbound_group_service.transition_access_profile(
+            user.inbound_groups,
+            selected_profile,
+        )
 
         try:
+            if user.server_id and await self.server_pool_service.get_connection(user) is None:
+                return False
             # При снятии unlimited без клиента сохраняем regular-набор; ручной переход
             # на триал без существующей подписки не создаёт нового клиента.
             if not await self.is_client_exists(user):
@@ -721,7 +766,7 @@ class VPNService:
                     return False
                 await self._persist_groups(user, groups)
                 logger.info(
-                    f"Unlimited revoked for {user.tg_id} (no panel client): groups reset to default."
+                    f"Unlimited revoked for {user.tg_id} (no panel client): groups set to {groups}."
                 )
                 return True
 
@@ -735,7 +780,7 @@ class VPNService:
             )
             if not ok:
                 return False
-            # Свести членства к дефолтному набору (отцепить unlimited); бан остаётся поверх.
+            # Свести членства к выбранному профилю (отцепить unlimited); бан остаётся поверх.
             # enforce_enable=True: снятие безлимита — явное действие админа.
             applied = await self.apply_inbound_groups(user, groups=groups, enforce_enable=True)
             if not applied:

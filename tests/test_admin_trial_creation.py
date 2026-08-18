@@ -1,9 +1,10 @@
 import unittest
 from contextlib import asynccontextmanager, nullcontext
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from app.bot.services.audit import AuditActor, AuditService
+from app.bot.services.inbound_groups import InboundGroupService
 from app.bot.services.subscription import AdminTrialStatus, SubscriptionService
 from app.bot.services.vpn import VPNService, gb_to_bytes
 from app.bot.utils.constants import AuditAction
@@ -103,20 +104,29 @@ class ForcedTrialTests(unittest.IsolatedAsyncioTestCase):
                 TRIAL_TRAFFIC_GB=15,
             )
         )
-        self.user = SimpleNamespace(tg_id=42, inbound_groups=["regular", "banned"])
+        self.user = SimpleNamespace(
+            tg_id=42,
+            server_id=1,
+            inbound_groups=["euru", "banned"],
+        )
         self.vpn = object.__new__(VPNService)
         self.vpn.config = self.config
         self.vpn.inbound_group_service = SimpleNamespace(
-            is_banned=lambda user: "banned" in (user.inbound_groups or [])
+            is_banned=lambda user: "banned" in (user.inbound_groups or []),
+            canonical_groups=InboundGroupService.canonical_groups,
+            transition_access_profile=InboundGroupService.transition_access_profile,
         )
-        self.vpn.server_pool_service = SimpleNamespace(get_connection=AsyncMock(return_value=None))
+        self.vpn.server_pool_service = SimpleNamespace(
+            get_connection=AsyncMock(return_value=SimpleNamespace(api=object()))
+        )
         self.vpn.is_client_exists = AsyncMock(return_value=True)
         self.vpn.update_client = AsyncMock(return_value=True)
         self.vpn.apply_inbound_groups = AsyncMock(return_value=True)
         self.vpn.reset_traffic = AsyncMock(return_value=True)
         self.vpn._enforce_ban = AsyncMock()
+        self.vpn._clients = Mock(return_value=SimpleNamespace())
 
-    async def test_force_trial_replaces_limits_and_preserves_ban(self) -> None:
+    async def test_force_trial_replaces_euru_with_regular_and_preserves_ban(self) -> None:
         self.assertTrue(await self.vpn.force_trial(self.user))
 
         self.vpn.update_client.assert_awaited_once_with(
@@ -129,7 +139,7 @@ class ForcedTrialTests(unittest.IsolatedAsyncioTestCase):
         )
         self.vpn.apply_inbound_groups.assert_awaited_once_with(
             self.user,
-            groups=["regular", "banned"],
+            groups=["banned", "regular"],
             enforce_enable=True,
         )
         self.vpn.reset_traffic.assert_awaited_once_with(self.user)
@@ -150,7 +160,7 @@ class ForcedTrialTests(unittest.IsolatedAsyncioTestCase):
         self.vpn._enforce_ban.assert_not_awaited()
 
     async def test_change_subscription_fails_when_traffic_reset_fails(self) -> None:
-        self.vpn._plan_groups = lambda devices: ["regular"]
+        self.vpn._plan_groups = lambda user, devices: ["regular", "banned"]
         self.vpn.reset_traffic.return_value = False
 
         self.assertFalse(await self.vpn.change_subscription(self.user, 2, 30, 100))
@@ -158,7 +168,7 @@ class ForcedTrialTests(unittest.IsolatedAsyncioTestCase):
         self.vpn._enforce_ban.assert_not_awaited()
 
     async def test_change_subscription_fails_when_group_apply_fails(self) -> None:
-        self.vpn._plan_groups = lambda devices: ["regular"]
+        self.vpn._plan_groups = lambda user, devices: ["regular", "banned"]
         self.vpn.apply_inbound_groups.return_value = False
 
         self.assertFalse(await self.vpn.change_subscription(self.user, 2, 30, 100))
@@ -372,24 +382,94 @@ class AdminPlanKeyboardTests(unittest.TestCase):
 
 
 class AdminPlanHandlerTests(unittest.IsolatedAsyncioTestCase):
-    def test_regular_access_excludes_unlimited_and_keeps_banned_overlay(self) -> None:
+    def test_plan_access_accepts_canonical_regular_or_euru_and_rejects_unlimited(self) -> None:
         from app.bot.routers.admin_tools.user_handler import _is_regular_user
 
         self.assertTrue(_is_regular_user(SimpleNamespace(inbound_groups=["regular"])))
         self.assertTrue(_is_regular_user(SimpleNamespace(inbound_groups=["regular", "banned"])))
+        self.assertTrue(_is_regular_user(SimpleNamespace(inbound_groups=["euru"])))
+        self.assertTrue(_is_regular_user(SimpleNamespace(inbound_groups=["euru", "banned"])))
         self.assertFalse(_is_regular_user(SimpleNamespace(inbound_groups=["unlimited"])))
         self.assertFalse(
-            _is_regular_user(SimpleNamespace(inbound_groups=["regular", "unlimited"]))
+            _is_regular_user(SimpleNamespace(inbound_groups=["euru", "unlimited"]))
         )
 
-    async def test_confirmed_regular_plan_uses_current_plan_parameters(self) -> None:
+    def test_regular_plan_classification_requires_visible_regular_profile(self) -> None:
+        from app.bot.routers.admin_tools.user_handler import _is_regular_plan
+
+        self.assertTrue(
+            _is_regular_plan(
+                SimpleNamespace(hidden=False, inbound_groups=["regular"]),
+            )
+        )
+        self.assertFalse(
+            _is_regular_plan(
+                SimpleNamespace(hidden=True, inbound_groups=["regular"]),
+            )
+        )
+        self.assertFalse(
+            _is_regular_plan(
+                SimpleNamespace(hidden=False, inbound_groups=["euru"]),
+            )
+        )
+        self.assertFalse(
+            _is_regular_plan(
+                SimpleNamespace(hidden=False, inbound_groups=["unlimited"]),
+            )
+        )
+
+    async def test_euru_user_can_enter_regular_trial_and_paid_plan_picker(self) -> None:
+        from app.bot.routers.admin_tools import user_handler
+
+        target = SimpleNamespace(tg_id=42, first_name="Мария", inbound_groups=["euru"])
+        plan = SimpleNamespace(
+            devices=2,
+            traffic_gb=100,
+            hidden=False,
+            inbound_groups=["regular"],
+        )
+        state = SimpleNamespace(set_state=AsyncMock(), update_data=AsyncMock())
+        callback = SimpleNamespace(
+            data=user_handler.NavAdminTools.CHANGE_USER_PLAN + "_42",
+            message=SimpleNamespace(edit_text=AsyncMock()),
+        )
+        services = SimpleNamespace(
+            inbound_groups=SimpleNamespace(is_unlimited=lambda user: False),
+            plan=SimpleNamespace(get_purchasable_plans=lambda: [plan]),
+            vpn=SimpleNamespace(is_client_exists=AsyncMock(return_value=True)),
+            notification=SimpleNamespace(show_popup=AsyncMock()),
+        )
+
+        with (
+            patch(
+                "app.bot.routers.admin_tools.user_handler.User.get",
+                new=AsyncMock(return_value=target),
+            ),
+            patch("app.bot.routers.admin_tools.user_handler._", lambda text: text),
+            patch("app.bot.routers.admin_tools.keyboard._", lambda text: text),
+            patch("app.bot.routers.misc.keyboard._", lambda text: text),
+            patch("app.bot.routers.admin_tools.keyboard.format_device_count", str),
+        ):
+            await user_handler.callback_change_user_plan(
+                callback=callback,
+                user=SimpleNamespace(tg_id=7),
+                session=object(),
+                state=state,
+                services=services,
+            )
+
+        state.set_state.assert_awaited_once_with(user_handler.UserEditorStates.choose_plan)
+        callback.message.edit_text.assert_awaited_once()
+        services.notification.show_popup.assert_not_awaited()
+
+    async def test_euru_user_confirming_regular_plan_uses_current_plan_parameters(self) -> None:
         from app.bot.routers.admin_tools import user_handler
 
         target = SimpleNamespace(
             tg_id=42,
             first_name="Мария",
             language_code="ru",
-            inbound_groups=["regular"],
+            inbound_groups=["euru"],
         )
         plan = SimpleNamespace(
             devices=2,
@@ -452,14 +532,16 @@ class AdminPlanHandlerTests(unittest.IsolatedAsyncioTestCase):
         services.vpn.force_trial.assert_not_awaited()
         services.audit.admin_plan_changed.assert_awaited_once()
 
-    async def test_confirmed_trial_uses_force_trial_with_configured_parameters(self) -> None:
+    async def test_euru_user_confirming_trial_uses_force_trial_with_configured_parameters(
+        self,
+    ) -> None:
         from app.bot.routers.admin_tools import user_handler
 
         target = SimpleNamespace(
             tg_id=42,
             first_name="Мария",
             language_code="ru",
-            inbound_groups=["regular"],
+            inbound_groups=["euru"],
         )
         values = {
             user_handler.USER_EDITOR_TARGET_KEY: 42,

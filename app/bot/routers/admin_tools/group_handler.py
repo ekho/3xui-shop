@@ -8,7 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.filters import IsAdmin
 from app.bot.models import ServicesContainer
 from app.bot.services.inbound_groups import EmptyInboundSetError
-from app.bot.utils.constants import BANNED_INBOUND_GROUP, UNLIMITED_INBOUND_GROUP
+from app.bot.utils.constants import (
+    ACCESS_INBOUND_GROUPS,
+    BANNED_INBOUND_GROUP,
+    UNLIMITED_INBOUND_GROUP,
+)
 from app.bot.utils.navigation import NavAdminTools
 from app.bot.utils.stars import cancel_stars_auto_renew
 from app.db.models import User
@@ -74,29 +78,56 @@ async def callback_toggle_user_group(
 
     current = set(services.inbound_groups.effective_groups(target))
 
-    # Спец-группа `unlimited` — не обычный attach/detach, а смена тарифного состояния:
-    #   • включение -> грант скрытого безлимит-плана (7 устройств, 100ГБ-кап, бессрочно);
-    #   • снятие    -> откат на СТАРТОВЫЙ ТРИАЛ (regular, TRIAL_PERIOD дней, BONUS_DEVICES_COUNT).
-    # Обрабатываем ДО проверки «не до нуля»: итоговый набор задаёт сам grant/revoke
-    # (а не new_groups), поэтому снятие даже единственной группы unlimited корректно.
-    if group == UNLIMITED_INBOUND_GROUP:
-        if group not in current:
-            logger.info(f"Admin {user.tg_id} grants unlimited plan to user {target.tg_id}.")
-            ok = await services.vpn.grant_unlimited(target)
-            fail_key = "group_mgmt:popup:unlimited_failed"
-        else:
-            logger.info(
-                f"Admin {user.tg_id} revokes unlimited (-> starter trial) for user {target.tg_id}."
-            )
-            ok = await services.vpn.revoke_unlimited(target)
-            fail_key = "group_mgmt:popup:unlimited_revoke_failed"
+    if group == UNLIMITED_INBOUND_GROUP and group in current:
+        logger.info(
+            f"Admin {user.tg_id} revokes unlimited (-> starter trial) for user {target.tg_id}."
+        )
+        ok = await services.vpn.revoke_unlimited(target)
         if not ok:
-            await services.notification.show_popup(callback=callback, text=_(fail_key))
+            await services.notification.show_popup(
+                callback=callback,
+                text=_("group_mgmt:popup:unlimited_revoke_failed"),
+            )
             return
-        # grant/revoke сами записали набор групп (и, при гранте, сервер) — перечитываем.
         refreshed = await User.get(session=session, tg_id=target.tg_id)
         text, keyboard = await _render_user_groups(services, refreshed)
         await callback.message.edit_text(text=text, reply_markup=keyboard)
+        return
+
+    if group in ACCESS_INBOUND_GROUPS:
+        if group in current:
+            await services.notification.show_popup(
+                callback=callback,
+                text=_("group_mgmt:popup:empty_set_refused"),
+            )
+            return
+        logger.info(f"Admin {user.tg_id} selects profile {group} for user {target.tg_id}.")
+        try:
+            selected = await services.vpn.select_access_profile(target, group)
+        except EmptyInboundSetError:
+            await services.notification.show_popup(
+                callback=callback,
+                text=_("group_mgmt:popup:empty_resolve"),
+            )
+            return
+        if not selected:
+            fail_key = (
+                "group_mgmt:popup:unlimited_failed"
+                if group == UNLIMITED_INBOUND_GROUP
+                else "group_mgmt:popup:api_error"
+            )
+            await services.notification.show_popup(callback=callback, text=_(fail_key))
+            return
+        refreshed = await User.get(session=session, tg_id=target.tg_id)
+        text, keyboard = await _render_user_groups(services, refreshed)
+        await callback.message.edit_text(text=text, reply_markup=keyboard)
+        return
+
+    if group != BANNED_INBOUND_GROUP:
+        await services.notification.show_popup(
+            callback=callback,
+            text=_("group_mgmt:popup:api_error"),
+        )
         return
 
     new_groups = sorted(current - {group} if group in current else current | {group})
