@@ -23,12 +23,12 @@ from app.bot.models import ServicesContainer
 from app.bot.payment_gateways import GatewayFactory
 from app.bot.routers.misc.keyboard import back_keyboard
 from app.bot.services.audit import AuditActor, format_audit_entry
-from app.bot.services.inbound_groups import EmptyInboundSetError
+from app.bot.services.inbound_groups import EmptyInboundSetError, InboundGroupService
 from app.bot.services.subscription import AdminTrialStatus
 from app.bot.utils.constants import (
     BANNED_INBOUND_GROUP,
-    DEFAULT_INBOUND_GROUPS,
     DEFAULT_LANGUAGE,
+    EURU_INBOUND_GROUP,
     MAIN_MESSAGE_ID_KEY,
     NOTIFICATION_PENDING_CHAT_IDS_KEY,
     NOTIFICATION_RETURN_TO_KEY,
@@ -105,21 +105,24 @@ def normalize_new_client_name(raw: str) -> str | None:
 
 
 def _is_regular_plan(plan: object | None) -> bool:
+    groups = InboundGroupService.canonical_groups(
+        getattr(plan, "inbound_groups", None) if plan else None
+    )
     return bool(
         plan
         and not getattr(plan, "hidden", False)
-        and UNLIMITED_INBOUND_GROUP not in (getattr(plan, "inbound_groups", None) or [])
+        and REGULAR_INBOUND_GROUP in groups
     )
 
 
 def _is_regular_user(user: User) -> bool:
-    """Доступ к базовым тарифам есть только у regular-профиля.
+    """Доступ к базовым тарифам есть у regular- и euru-профилей.
 
-    ``banned`` — накладная группа и не мешает выбору тарифа. ``unlimited``
-    управляется отдельным экраном групп и поэтому приоритетнее regular.
+    ``banned`` — накладная группа и не мешает выбору тарифа. Профиль
+    канонизируется, поэтому malformed-набор с ``unlimited`` остаётся безлимитным.
     """
-    groups = getattr(user, "inbound_groups", None) or DEFAULT_INBOUND_GROUPS
-    return REGULAR_INBOUND_GROUP in groups and UNLIMITED_INBOUND_GROUP not in groups
+    groups = InboundGroupService.canonical_groups(getattr(user, "inbound_groups", None))
+    return REGULAR_INBOUND_GROUP in groups or EURU_INBOUND_GROUP in groups
 
 
 def _regular_plans(services: ServicesContainer) -> list:
