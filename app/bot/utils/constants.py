@@ -41,15 +41,19 @@ BANNED_INBOUND_GROUP = "banned"
 # (inbound.TrafficReset=monthly на инбаундах этой группы) — см. память
 # panel-client-reset-semantics. НЕ покупается (скрыт из меню тарифов).
 UNLIMITED_INBOUND_GROUP = "unlimited"
+EURU_INBOUND_GROUP = "euru"
 # Дефолты засеиваемого безлимит-плана (редактируемы в Plans Editor после сида):
 # «до 7 устройств» и «до 100ГБ ежемесячного трафика».
 UNLIMITED_PLAN_DEVICES = 7
 UNLIMITED_PLAN_TRAFFIC_GB = 100
-# Фиксированный набор групп бота: НОВЫЕ группы не создаются, эти три неизменны.
-# banned — бан (инбаундов нет), regular — базовый доступ, unlimited — свои инбаунды
-# ПЛЮС все инбаунды regular (см. INBOUND_GROUP_INCLUDES). Список групп из панели
-# больше НЕ синкается — он захардкожен здесь.
-INBOUND_GROUPS = (BANNED_INBOUND_GROUP, REGULAR_INBOUND_GROUP, UNLIMITED_INBOUND_GROUP)
+# Фиксированный набор групп бота: НОВЫЕ группы не создаются. banned — бан
+# (инбаундов нет), остальные группы — взаимоисключающие профили доступа.
+ACCESS_INBOUND_GROUPS: tuple[str, ...] = (
+    REGULAR_INBOUND_GROUP,
+    UNLIMITED_INBOUND_GROUP,
+    EURU_INBOUND_GROUP,
+)
+INBOUND_GROUPS = (BANNED_INBOUND_GROUP, *ACCESS_INBOUND_GROUPS)
 # Наследование доступа: группа → чьи ещё инбаунды в неё входят. unlimited ⊇ regular
 # (безлимитчик получает и unlimited-, и все regular-инбаунды).
 INBOUND_GROUP_INCLUDES = {UNLIMITED_INBOUND_GROUP: (REGULAR_INBOUND_GROUP,)}

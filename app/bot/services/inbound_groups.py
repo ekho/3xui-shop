@@ -6,10 +6,13 @@ from py3xui import AsyncApi, Inbound
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.bot.utils.constants import (
+    ACCESS_INBOUND_GROUPS,
     BANNED_INBOUND_GROUP,
     DEFAULT_INBOUND_GROUPS,
+    EURU_INBOUND_GROUP,
     INBOUND_GROUP_INCLUDES,
     INBOUND_GROUPS,
+    REGULAR_INBOUND_GROUP,
     UNLIMITED_INBOUND_GROUP,
 )
 from app.db.models import Plan, User
@@ -36,7 +39,7 @@ class EmptyInboundSetError(Exception):
 
 class InboundGroupService:
     """Группы инбаундов. Набор групп ФИКСИРОВАН (INBOUND_GROUPS = banned/regular/
-    unlimited); новые группы не создаются и из панели не синкаются:
+    unlimited/euru); новые группы не создаются и из панели не синкаются:
 
     - принадлежность инбаунда группе задаётся тегом инбаунда в панели: инбаунд
       входит в группу, если её имя встречается сегментом тега (через дефис),
@@ -44,7 +47,7 @@ class InboundGroupService:
     - доступ наследуется: unlimited ⊇ regular (см. expand_access_groups), т.е.
       безлимитчик получает и unlimited-, и все regular-инбаунды;
     - бот группами НЕ управляет (не создаёт, не переименовывает, не ретегает) —
-      админ управляет только связкой пользователь<->группы (regular/unlimited/banned).
+      админ управляет только связкой пользователь<->группы.
 
     Инбаунды, в теге которых нет ни одной из фиксированных групп, для бота невидимы —
     их членства reconciler не трогает.
@@ -64,9 +67,42 @@ class InboundGroupService:
         return {segment for segment in tag.split("-") if segment in known}
 
     @staticmethod
+    def canonical_groups(groups: list[str] | None) -> list[str]:
+        """Один профиль доступа с сохранением независимого banned-overlay."""
+        current = set(groups or DEFAULT_INBOUND_GROUPS)
+        profile = next(
+            (
+                group
+                for group in (
+                    UNLIMITED_INBOUND_GROUP,
+                    EURU_INBOUND_GROUP,
+                    REGULAR_INBOUND_GROUP,
+                )
+                if group in current
+            ),
+            REGULAR_INBOUND_GROUP,
+        )
+        canonical = {profile}
+        if BANNED_INBOUND_GROUP in current:
+            canonical.add(BANNED_INBOUND_GROUP)
+        return sorted(canonical)
+
+    @staticmethod
+    def transition_access_profile(groups: list[str] | None, selected: str) -> list[str]:
+        """Заменить профиль доступа, сохранив независимый banned-overlay."""
+        if selected not in ACCESS_INBOUND_GROUPS:
+            message = f"Unknown access inbound group: {selected}"
+            raise ValueError(message)
+        current = set(groups or ())
+        transitioned = {selected}
+        if BANNED_INBOUND_GROUP in current:
+            transitioned.add(BANNED_INBOUND_GROUP)
+        return sorted(transitioned)
+
+    @staticmethod
     def effective_groups(user: User) -> list[str]:
-        """Набор групп юзера; None/пусто -> дефолт."""
-        return list(user.inbound_groups or DEFAULT_INBOUND_GROUPS)
+        """Канонический набор групп юзера; None/пусто -> дефолт."""
+        return InboundGroupService.canonical_groups(user.inbound_groups)
 
     @staticmethod
     def access_groups(groups: list[str]) -> list[str]:
@@ -96,11 +132,11 @@ class InboundGroupService:
 
     # --- фиксированный набор групп ---
     # Группы больше НЕ создаются и не синкаются из панели: набор захардкожен
-    # (INBOUND_GROUPS = banned/regular/unlimited). api/server_pool в сигнатурах
+    # (INBOUND_GROUPS = banned/regular/unlimited/euru). api/server_pool в сигнатурах
     # сохранены для совместимости с вызывающими, но не используются.
 
     async def known_groups(self, api: AsyncApi) -> set[str]:
-        """Фиксированный набор групп бота (banned/regular/unlimited)."""
+        """Фиксированный набор групп бота (banned/regular/unlimited/euru)."""
         return set(INBOUND_GROUPS)
 
     async def known_groups_union(self, server_pool) -> set[str]:
