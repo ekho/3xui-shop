@@ -2,10 +2,11 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from py3xui import AsyncApi
+from py3xui import AsyncApi, Inbound
 
 from app.bot.services.inbound_groups import InboundGroupService
 from app.bot.utils import constants
+from app.bot.utils.py3xui_compat import apply_py3xui_patches
 from app.db.models import User
 
 
@@ -105,6 +106,26 @@ class InboundGroupProfileTests(unittest.TestCase):
                     InboundGroupService.canonical_groups(groups),
                     expected,
                 )
+
+
+class Py3xuiCompatibilityTests(unittest.TestCase):
+    def test_compat_patch_accepts_null_stream_settings(self) -> None:
+        apply_py3xui_patches()
+
+        inbound = Inbound.model_validate(
+            {
+                "id": 11,
+                "tag": "euru-n2-in-8443",
+                "enable": True,
+                "port": 8443,
+                "protocol": "vless",
+                "settings": {"clients": []},
+                "streamSettings": None,
+                "sniffing": {"enabled": False},
+            }
+        )
+
+        self.assertIsNone(inbound.stream_settings)
 
 
 class InboundGroupResolutionTests(unittest.IsolatedAsyncioTestCase):
