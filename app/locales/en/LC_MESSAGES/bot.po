@@ -856,6 +856,10 @@ msgstr "🍏 IOS"
 msgid "download:message:platform_android"
 msgstr "🤖 Android"
 
+#: app/bot/routers/download/handler.py
+msgid "download:message:platform_macos"
+msgstr "💻 macOS"
+
 #: app/bot/routers/download/handler.py:96
 msgid "download:message:platform_windows"
 msgstr "💻 Windows"
@@ -865,9 +869,14 @@ msgid "download:message:connect_to_vpn"
 msgstr ""
 "<b>{platform}:</b>\n"
 "\n"
-"First, you need to download the app on your device. After installation, "
+"Use the <b>Happ</b> app to connect.\n"
+"First, download it on your device. After installation, "
 "you can use the `🔌 Connect` button <i>(the key will be automatically "
 "connected in the app)</i> or copy your key and paste it manually."
+
+#: app/bot/routers/download/handler.py
+msgid "download:message:ios_icloud_region"
+msgstr "⚠️ <b>iCloud region</b>\nHapp is periodically blocked in Russia's iCloud region. To keep updating the app, we recommend switching your iCloud region to another country.\n👉 <a href=\"https://t-j.ru/apple-region/\">How to change the region on iPhone</a>"
 
 #: app/bot/routers/download/keyboard.py:23
 msgid "download:button:ios"
@@ -877,9 +886,25 @@ msgstr "🍏 IOS"
 msgid "download:button:android"
 msgstr "🤖 Android"
 
+#: app/bot/routers/download/keyboard.py
+msgid "download:button:macos"
+msgstr "💻 macOS"
+
 #: app/bot/routers/download/keyboard.py:31
 msgid "download:button:windows"
 msgstr "💻 Windows"
+
+#: app/bot/routers/download/keyboard.py
+msgid "download:button:other_platforms"
+msgstr "Other platforms"
+
+#: app/bot/routers/download/keyboard.py
+msgid "download:button:app_store_russia"
+msgstr "App Store — Russia"
+
+#: app/bot/routers/download/keyboard.py
+msgid "download:button:app_store_other_countries"
+msgstr "App Store — other countries"
 
 #: app/bot/routers/download/keyboard.py:61
 msgid "download:button:download"

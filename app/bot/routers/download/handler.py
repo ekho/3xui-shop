@@ -95,11 +95,17 @@ async def callback_platform(
             platform = _("download:message:platform_ios")
         case NavDownload.PLATFORM_ANDROID:
             platform = _("download:message:platform_android")
+        case NavDownload.PLATFORM_MACOS:
+            platform = _("download:message:platform_macos")
         case _:
             platform = _("download:message:platform_windows")
 
+    text = _("download:message:connect_to_vpn").format(platform=platform)
+    if callback.data == NavDownload.PLATFORM_IOS:
+        text += "\n\n" + _("download:message:ios_icloud_region")
+
     await callback.message.edit_text(
-        text=_("download:message:connect_to_vpn").format(platform=platform),
+        text=text,
         reply_markup=download_keyboard(platform=callback.data, key=key, url=config.bot.DOMAIN),
     )
 

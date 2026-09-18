@@ -7,7 +7,11 @@ from app.bot.utils.constants import (
     APP_ANDROID_LINK,
     APP_ANDROID_SCHEME,
     APP_IOS_LINK,
+    APP_IOS_OTHER_COUNTRIES_LINK,
     APP_IOS_SCHEME,
+    APP_MACOS_LINK,
+    APP_MACOS_SCHEME,
+    APP_OTHER_PLATFORMS_LINK,
     APP_WINDOWS_LINK,
     APP_WINDOWS_SCHEME,
     CONNECTION_WEBHOOK,
@@ -27,10 +31,22 @@ def platforms_keyboard(previous_callback: str = None) -> InlineKeyboardMarkup:
             text=_("download:button:android"),
             callback_data=NavDownload.PLATFORM_ANDROID,
         ),
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=_("download:button:macos"),
+            callback_data=NavDownload.PLATFORM_MACOS,
+        ),
         InlineKeyboardButton(
             text=_("download:button:windows"),
             callback_data=NavDownload.PLATFORM_WINDOWS,
         ),
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=_("download:button:other_platforms"),
+            url=APP_OTHER_PLATFORMS_LINK,
+        )
     )
 
     if previous_callback == NavMain.MAIN_MENU:
@@ -48,17 +64,25 @@ def download_keyboard(platform: NavDownload, url: str, key: str) -> InlineKeyboa
     match platform:
         case NavDownload.PLATFORM_IOS:
             scheme = APP_IOS_SCHEME
-            download = APP_IOS_LINK
+            builder.button(text=_("download:button:app_store_russia"), url=APP_IOS_LINK)
+            builder.button(
+                text=_("download:button:app_store_other_countries"),
+                url=APP_IOS_OTHER_COUNTRIES_LINK,
+            )
         case NavDownload.PLATFORM_ANDROID:
             scheme = APP_ANDROID_SCHEME
             download = APP_ANDROID_LINK
+        case NavDownload.PLATFORM_MACOS:
+            scheme = APP_MACOS_SCHEME
+            download = APP_MACOS_LINK
         case _:
             scheme = APP_WINDOWS_SCHEME
             download = APP_WINDOWS_LINK
 
     connect = f"{url}{CONNECTION_WEBHOOK}?scheme={scheme}&key={key}"
 
-    builder.button(text=_("download:button:download"), url=download)
+    if platform != NavDownload.PLATFORM_IOS:
+        builder.button(text=_("download:button:download"), url=download)
 
     builder.button(
         text=_("download:button:connect"),

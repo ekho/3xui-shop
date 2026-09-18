@@ -1,12 +1,16 @@
 # region: Download
 APP_IOS_LINK = "https://apps.apple.com/ru/app/happ-lite/id6799917773"
+APP_IOS_OTHER_COUNTRIES_LINK = "https://apps.apple.com/us/app/happ-proxy-utility/id6504287215"
 APP_ANDROID_LINK = "https://play.google.com/store/apps/details?id=com.happproxy"
+APP_MACOS_LINK = "https://github.com/Happ-proxy/happ-desktop/releases/latest/download/Happ.macOS.universal.dmg"
 APP_WINDOWS_LINK = (
-    "https://github.com/Happ-proxy/happ-desktop/releases/latest/download/setup-Happ.x86.exe"
+    "https://github.com/Happ-proxy/happ-desktop/releases/latest/download/setup-Happ.x64.exe"
 )
+APP_OTHER_PLATFORMS_LINK = "https://github.com/Happ-proxy/happ-desktop/"
 
 APP_IOS_SCHEME = "happ://add/"
 APP_ANDROID_SCHEME = "happ://add/"
+APP_MACOS_SCHEME = "happ://add/"
 APP_WINDOWS_SCHEME = "happ://add/"
 
 # endregion
