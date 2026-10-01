@@ -218,10 +218,20 @@ timeout — test pause дольше public15s deadline, product code не мен
 Владелец предоставил отдельный test bot и operator ID, подтвердил отсутствие
 другого обработчика и начал личный чат. Настоящие approve/reject/edit и пересмотр
 поддержкой, approve новой заявки и завершение выдачи после остановки бота проверены.
-Остаются поддерживаемый Happ для ручного import/connect, внешний SMTP/test mailbox
+На Mac обнаружен Happ **5.9.0**; в приложении активно существующее VPN-соединение.
+Ручной import/connect ещё не выполнялся. Выданная тестовая подписка использует
+HTTPS localhost с собственным сертификатом и VLESS/TLS localhost:24443; этот
+VLESS-порт пока не опубликован на host. Backend health и Docker Xray connection
+повторно проверены, test bot остановлен.
+Перед проверкой Happ владелец должен разрешить временное переключение VPN и
+доверие только к тестовому сертификату. После разрешения маршрут публикуется
+только на loopback; после проверки временное доверие и маршрут удаляются,
+исходное соединение восстанавливается. Отключение TLS verification не применяется.
+Остаются ручной import/connect в Happ, внешний SMTP/test mailbox
 и целевая машина для benchmark. DNS/сертификаты и
 опубликованные policies/support нужны при внешнем тестовом запуске; локальные
-terms/privacy пока fixtures. Happ version: pending. Production panel/version и
+terms/privacy пока fixtures. Владелец предоставляет SMTP/test mailbox и целевой
+test server до соответствующих проверок; ресурсы запрошены. Production panel/version и
 performance не оценены.
 
 Native3.7.0 duplicate guard: **не подтверждён**, config false. Приёмка С01 в целом
