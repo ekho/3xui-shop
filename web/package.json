@@ -1,0 +1,9 @@
+{
+  "name":"cabinet-web",
+  "version":"0.1.0",
+  "private":true,
+  "type":"module",
+  "scripts":{"api:generate":"openapi-typescript ../docs/api/openapi.yaml -o src/api/schema.gen.ts","typecheck":"tsc --noEmit","build":"tsc --noEmit && vite build","test:e2e":"playwright test","preview":"vite preview --host 127.0.0.1"},
+  "dependencies":{"react":"19.3.0","react-dom":"19.3.0"},
+  "devDependencies":{"@playwright/test":"1.63.0","@types/node":"24.19.0","@types/react":"19.3.0","@types/react-dom":"19.3.0","openapi-typescript":"7.13.0","typescript":"5.9.3","vite":"8.3.2"}
+}
