@@ -118,6 +118,8 @@ func New(svc *s01.Service, cfg s01.Config) *echo.Echo {
 	e.GET("/api/v1/subscription", a.GetSubscription)
 	e.GET("/api/v1/subscription/key", a.GetSubscriptionKey)
 	e.POST("/internal/v1/trial-operations/:id/reconcile", a.ReconcileTrialOperation)
+	e.POST("/internal/v1/telegram/jobs/claim", a.ClaimTelegramJobs)
+	e.POST("/internal/v1/telegram/jobs/:id/result", a.CompleteTelegramJob)
 	return e
 }
 func invalid() error { return &s01.Error{Status: 400, Code: "INVALID_INPUT"} }
@@ -364,4 +366,30 @@ func (a *API) ReconcileTrialOperation(c *echo.Context) error {
 		return e
 	}
 	return c.JSON(202, out)
+}
+
+func (a *API) ClaimTelegramJobs(c *echo.Context) error {
+	in, e := decode[wire.ClaimInput](a, c, "ClaimInput")
+	if e != nil {
+		return e
+	}
+	out, e := a.svc.ClaimTelegramJobs(c.Request().Context(), in)
+	if e != nil {
+		return e
+	}
+	return c.JSON(200, out)
+}
+func (a *API) CompleteTelegramJob(c *echo.Context) error {
+	id, e := resourceID(c)
+	if e != nil {
+		return e
+	}
+	in, e := decode[wire.TelegramResultInput](a, c, "TelegramResultInput")
+	if e != nil {
+		return e
+	}
+	if e = a.svc.CompleteTelegramJob(c.Request().Context(), id, in); e != nil {
+		return e
+	}
+	return c.JSON(200, wire.CompleteResult{})
 }

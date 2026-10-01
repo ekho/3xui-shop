@@ -2,6 +2,7 @@ from aiogram import Dispatcher
 from aiohttp.web import Application
 
 from app.bot.utils.constants import CONNECTION_WEBHOOK
+from .admin_tools import web_trial_handler
 
 from . import (
     admin_tools,
@@ -19,6 +20,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
     app.router.add_get(CONNECTION_WEBHOOK, download.handler.redirect_to_connection)
     dispatcher.include_routers(
         misc.error_handler.router,
+        web_trial_handler.router,
         misc.notification_handler.router,
         main_menu.handler.router,
         profile.handler.router,

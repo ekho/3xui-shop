@@ -270,3 +270,18 @@ func TestSubscriptionPrivacy(t *testing.T) {
 		}
 	}
 }
+
+func TestTelegramLease(t *testing.T) {
+	h, _, cfg := httpFixture(t)
+	if rr := request(h, "POST", "/internal/v1/telegram/jobs/claim", `{"limit":1}`, ""); rr.Code != 401 {
+		t.Fatal("unauthorized claim", rr.Code)
+	}
+	r := httptest.NewRequest("POST", "/internal/v1/telegram/jobs/claim", strings.NewReader(`{"limit":1}`))
+	r.Header.Set("Authorization", "Bearer "+cfg.AdapterToken)
+	r.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, r)
+	if rr.Code != 200 || strings.TrimSpace(rr.Body.String()) != `{"jobs":[]}` {
+		t.Fatal("empty claim shape", rr.Code)
+	}
+}

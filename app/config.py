@@ -99,6 +99,9 @@ class BotConfig:
     USE_WEBHOOK: bool  # True → вебхук (нужен домен + TLS reverse-proxy); False → long-polling (getUpdates, домен/вебхук не нужны)
     TIMEZONE: str  # IANA-имя (напр. Europe/Moscow) для календарных джобов; резолвится pytz
     AUDIT_RETENTION_DAYS: int  # хранить события аудит-лога N дней; прун-джоб чистит старше
+    WEB_TRIAL_API_URL: str | None = None
+    WEB_TRIAL_API_TOKEN: str | None = None
+    WEB_TRIAL_API_CA_FILE: str | None = None
     # Зеркало аудита пишется в топик General группы поддержки (SUPPORT_GROUP_ID) —
     # отдельного канала/переменной нет; без support-бота остаётся только БД.
 
@@ -340,9 +343,14 @@ def load_config() -> Config:
         )
         referrer_reward_enabled = False
 
+    trial_url, trial_token, trial_ca = web_trial_settings(env)
+
     return Config(
         bot=BotConfig(
             TOKEN=env_or_file(env, "BOT_TOKEN", required=True),
+            WEB_TRIAL_API_URL=trial_url,
+            WEB_TRIAL_API_TOKEN=trial_token,
+            WEB_TRIAL_API_CA_FILE=trial_ca,
             ADMINS=bot_admins,
             DEV_ID=env.int("BOT_DEV_ID"),
             SUPPORT_ID=env.int("BOT_SUPPORT_ID"),
@@ -478,3 +486,25 @@ def load_config() -> Config:
             ),
         ),
     )
+
+def web_trial_settings(env: Env):
+    url = env.str("WEB_TRIAL_API_URL", default=None)
+    path = env.str("WEB_TRIAL_API_TOKEN_FILE", default=None)
+    ca = env.str("WEB_TRIAL_API_CA_FILE", default=None)
+    if env.str("WEB_TRIAL_API_TOKEN", default=None):
+        raise ValueError("Use WEB_TRIAL_API_TOKEN_FILE only")
+    if not url and not path and not ca:
+        return None, None, None
+    if not url or not path:
+        raise ValueError("Web trial adapter requires both URL and token file")
+    from urllib.parse import urlsplit
+    parsed = urlsplit(url)
+    if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in ("", "/"):
+        raise ValueError("WEB_TRIAL_API_URL must be an HTTPS origin")
+    try:
+        token = Path(path).read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeError):
+        raise ValueError("Cannot read web trial API token file") from None
+    if not token:
+        raise ValueError("Empty web trial API token file")
+    return url, token, ca

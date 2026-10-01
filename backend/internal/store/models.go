@@ -106,6 +106,7 @@ type TelegramDelivery struct {
 	MessageID      pgtype.Int8
 	CompletedAt    pgtype.Timestamptz
 	FailureCode    pgtype.Text
+	ResultHash     []byte
 }
 
 type TrialGrant struct {
