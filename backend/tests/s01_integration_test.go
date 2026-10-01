@@ -13,6 +13,7 @@ import (
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/oapi-codegen/runtime/types"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
@@ -32,10 +33,11 @@ import (
 )
 
 type panel struct {
-	mu              sync.Mutex
-	clients         map[string]map[string]any
-	adds, forbidden int
-	loseReply       bool
+	mu               sync.Mutex
+	clients          map[string]map[string]any
+	adds, forbidden  int
+	loseReply        bool
+	blocked, release chan struct{}
 }
 
 func (p *panel) serve(w http.ResponseWriter, r *http.Request) {
@@ -52,6 +54,15 @@ func (p *panel) serve(w http.ResponseWriter, r *http.Request) {
 		if c == nil {
 			json.NewEncoder(w).Encode(map[string]any{"success": false, "msg": "record not found", "obj": nil})
 			return
+		}
+		if p.blocked != nil {
+			close(p.blocked)
+			p.blocked = nil
+			select {
+			case <-r.Context().Done():
+				return
+			case <-p.release:
+			}
 		}
 		reply(true, map[string]any{"client": c, "inboundIds": []int{1}, "usedTraffic": 0})
 	case r.Method == "POST" && r.URL.Path == "/panel/api/clients/add":
@@ -444,5 +455,133 @@ func TestS01HTTPContractPaths(t *testing.T) {
 	}
 	if count != 15 {
 		t.Fatal("canonical operation count", count)
+	}
+}
+
+func TestS01BackupRestore(t *testing.T) {
+	f := open(t)
+	ctx := context.Background()
+	c, _, r := f.signup(t, "restore@example.test")
+	f.python(t, r.RequestId)
+	var op uuid.UUID
+	f.env.Pool.QueryRow(ctx, `SELECT operation_id FROM trial_requests WHERE id=$1`, r.RequestId).Scan(&op)
+	blocked := make(chan struct{})
+	f.panel.mu.Lock()
+	f.panel.blocked = blocked
+	f.panel.release = make(chan struct{})
+	f.panel.mu.Unlock()
+	running, cancel := context.WithCancel(ctx)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- f.svc.Provision(running, op) }()
+	select {
+	case <-blocked:
+	case <-time.After(15 * time.Second):
+		t.Fatal("panel read barrier")
+	}
+	var state, grant string
+	var before []byte
+	f.env.Pool.QueryRow(ctx, `SELECT o.status,g.status,o.target FROM trial_operations o JOIN trial_grants g ON g.operation_id=o.id WHERE o.id=$1`, op).Scan(&state, &grant, &before)
+	if state != "provisioning" || grant != "reserved" || len(before) == 0 {
+		t.Fatal("backup point must retain running operation and reserved grant")
+	}
+	cfg := f.env.Pool.Config().ConnConfig
+	if cfg.Host != "127.0.0.1" || cfg.Port != 55491 {
+		t.Fatal("restore fixture requires local controlled Compose PostgreSQL")
+	}
+	lookup := exec.Command("docker", "compose", "-f", filepath.Join(f.root, "deploy/s01/compose.test.yml"), "ps", "-q", "postgres")
+	id, err := lookup.Output()
+	container := strings.TrimSpace(string(id))
+	if err != nil || !regexp.MustCompile(`^[0-9a-f]{12,64}$`).MatchString(container) {
+		t.Fatal("controlled PostgreSQL container prerequisite")
+	}
+	dump := filepath.Join(t.TempDir(), "backup.dump")
+	file, err := os.OpenFile(dump, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("docker", "exec", container, "pg_dump", "-U", "s01_test", "-Fc", "--no-owner", "--no-privileges", cfg.Database)
+	command.Stdout = file
+	err = command.Run()
+	file.Close()
+	if err != nil {
+		t.Fatal("controlled pg_dump failed")
+	}
+	// Stop the original worker; the dump already captured the uncertain external write.
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("worker cancellation")
+	}
+	name := "s01_restore_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	if _, err = f.env.Pool.Exec(ctx, `CREATE DATABASE `+name); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { f.env.Pool.Exec(context.Background(), `DROP DATABASE `+name+` WITH (FORCE)`) })
+	file, err = os.Open(dump)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command = exec.Command("docker", "exec", "-i", container, "pg_restore", "-U", "s01_test", "--no-owner", "--no-privileges", "-d", name)
+	command.Stdin = file
+	err = command.Run()
+	file.Close()
+	if err != nil {
+		t.Fatal("controlled pg_restore failed")
+	}
+	pc := f.env.Pool.Config().Copy()
+	pc.ConnConfig.Database = name
+	restored, err := pgxpool.NewWithConfig(ctx, pc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(restored.Close)
+	queue, err := river.NewClient(riverpgxv5.New(restored), &river.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := s01.NewService(restored, f.env.Redis, queue, f.cfg)
+	workers := river.NewWorkers()
+	river.AddWorker(workers, &s01.ProvisionWorker{Service: svc})
+	worker, err := river.NewClient(riverpgxv5.New(restored), &river.Config{Workers: workers, Queues: map[string]river.QueueConfig{"provision": {MaxWorkers: 1}}, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = worker.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		stop, end := context.WithTimeout(context.Background(), 5*time.Second)
+		defer end()
+		worker.Stop(stop)
+	})
+	wait(t, func() bool {
+		var s string
+		restored.QueryRow(ctx, `SELECT status FROM trial_operations WHERE id=$1`, op).Scan(&s)
+		return s == "applied"
+	})
+	var after []byte
+	var n int
+	restored.QueryRow(ctx, `SELECT target FROM trial_operations WHERE id=$1`, op).Scan(&after)
+	restored.QueryRow(ctx, `SELECT count(*) FROM trial_grants WHERE status='granted'`).Scan(&n)
+	if !bytes.Equal(before, after) || n != 1 {
+		t.Fatal("restored operation regenerated identity/expiry or grant")
+	}
+	f.panel.mu.Lock()
+	adds, forbidden := f.panel.adds, f.panel.forbidden
+	f.panel.mu.Unlock()
+	if adds != 1 || forbidden != 0 {
+		t.Fatal("restore changed external client")
+	}
+	server := httptest.NewTLSServer(httpapi.New(svc, f.cfg))
+	defer server.Close()
+	client := *server.Client()
+	client.Jar = c.Jar
+	copy := *f
+	copy.public = server
+	status, _, response := copy.send(t, &client, "GET", "/api/v1/subscription/key", nil, "", "", false)
+	if status != 200 || response.Header.Get("Cache-Control") != "no-store" {
+		t.Fatal("restored owner access", status)
 	}
 }

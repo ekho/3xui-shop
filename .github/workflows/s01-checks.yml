@@ -54,6 +54,11 @@ jobs:
           poetry run python -m unittest discover -s tests -v
           npm --prefix web run test:e2e
           cd web && S01_E2E_MODE=real npm run test:e2e
+      - name: Container readiness (local images only)
+        run: |
+          docker compose --env-file deploy/s01/.env.example -f deploy/s01/compose.acceptance.yml config --quiet
+          docker compose --env-file deploy/s01/.env.example -f deploy/s01/compose.acceptance.yml build
+          python deploy/s01/smoke.py
       - name: Cleanup
         if: always()
         run: docker compose -f deploy/s01/compose.test.yml down -v

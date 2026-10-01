@@ -1,0 +1,128 @@
+# External-resource acceptance is separate from the credential-free local fixture DBs.
+name: cabinet-s01-acceptance
+x-backend: &backend
+  image: cabinet-s01-backend:local
+  build: {context: ../../backend}
+  user: '${S01_RUNTIME_UID:-10001}:${S01_RUNTIME_GID:-10001}'
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  environment: &backend-env
+    CABINET_ORIGIN: '${CABINET_ORIGIN:?required}'
+    TERMS_VERSION: '${TERMS_VERSION:?required}'
+    PRIVACY_VERSION: '${PRIVACY_VERSION:?required}'
+    DATABASE_URL_FILE: /run/secrets/database_url
+    REDIS_URL_FILE: /run/secrets/redis_url
+    MAIL_KEY_FILE: /run/secrets/mail_key
+    CODE_KEY_FILE: /run/secrets/code_key
+    BOT_ADAPTER_TOKEN_FILE: /run/secrets/adapter_token
+    BOT_OPERATOR_IDS: '${BOT_OPERATOR_IDS:?required}'
+    SMTP_ADDRESS: '${SMTP_ADDRESS:?required}'
+    SMTP_USER: '${SMTP_USER:?required}'
+    SMTP_FROM: '${SMTP_FROM:?required}'
+    SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+    SMTP_CA_FILE: /run/secrets/smtp_ca
+    PANEL_ID: dedicated-acceptance
+    PANEL_URL: '${PANEL_URL:?required}'
+    PANEL_TOKEN_FILE: /run/secrets/panel_token
+    PANEL_CA_FILE: /run/secrets/panel_ca
+    SUBSCRIPTION_BASE_URL: '${SUBSCRIPTION_BASE_URL:?required}'
+    PANEL_DUPLICATE_GUARD_VERIFIED: '${PANEL_DUPLICATE_GUARD_VERIFIED:-false}'
+    TRIAL_ENABLED: '${TRIAL_ENABLED:-false}'
+    TRIAL_PERIOD: '${TRIAL_PERIOD:-3}'
+    TRIAL_TRAFFIC_GB: '${TRIAL_TRAFFIC_GB:-15}'
+    BONUS_DEVICES_COUNT: '${BONUS_DEVICES_COUNT:-1}'
+  secrets: [database_url, redis_url, mail_key, code_key, adapter_token, smtp_password, smtp_ca, panel_token, panel_ca]
+services:
+  postgres:
+    image: postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f
+    environment: {POSTGRES_USER: cabinet_s01, POSTGRES_DB: cabinet_s01, POSTGRES_PASSWORD_FILE: /run/secrets/pg_password}
+    secrets: [pg_password]
+    volumes: [pg:/var/lib/postgresql/data]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U cabinet_s01 -d cabinet_s01']
+      interval: 2s
+      timeout: 2s
+      retries: 20
+  redis:
+    image: redis@sha256:6f81e8915c60b065a524e6967e0ad1c639ba6efa84d669f823683ea04d9150ee
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 2s
+      retries: 20
+  migrate:
+    <<: *backend
+    command: [migrate]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+  backend:
+    <<: *backend
+    environment:
+      <<: *backend-env
+      LISTEN_ADDRESS: 0.0.0.0:8080
+      TRUSTED_PROXY_CIDRS: '${S01_GATEWAY_IP:-172.31.98.14}/32'
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+  gateway:
+    image: cabinet-s01-web:local
+    build:
+      context: ../../web
+      args:
+        VITE_TERMS_VERSION: '${TERMS_VERSION:?required}'
+        VITE_PRIVACY_VERSION: '${PRIVACY_VERSION:?required}'
+        VITE_TERMS_URL: '${TERMS_URL:?required}'
+        VITE_PRIVACY_URL: '${PRIVACY_URL:?required}'
+        VITE_SUPPORT_URL: '${SUPPORT_URL:?required}'
+    user: '${S01_RUNTIME_UID:-10001}:${S01_RUNTIME_GID:-10001}'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment: {CABINET_HOST: '${CABINET_HOST:?required}'}
+    command: [caddy, run, --config, /etc/caddy/Caddyfile, --adapter, caddyfile]
+    ports: ['127.0.0.1:58443:8443']
+    volumes: ['./Caddyfile:/etc/caddy/Caddyfile:ro']
+    secrets: [public_cert, public_key, adapter_cert, adapter_key]
+    tmpfs: ['/data:uid=${S01_RUNTIME_UID:-10001},gid=${S01_RUNTIME_GID:-10001},mode=0700', '/config:uid=${S01_RUNTIME_UID:-10001},gid=${S01_RUNTIME_GID:-10001},mode=0700']
+    networks:
+      default: {ipv4_address: '${S01_GATEWAY_IP:-172.31.98.14}'}
+    depends_on: [backend]
+  bot:
+    image: cabinet-s01-bot:local
+    build: {context: ../.., dockerfile: deploy/s01/Dockerfile.bot}
+    user: '${S01_RUNTIME_UID:-10001}:${S01_RUNTIME_GID:-10001}'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ['/tmp:mode=1777']
+    environment:
+      BOT_TOKEN_FILE: /run/secrets/bot_token
+      BOT_OPERATOR_IDS: '${BOT_OPERATOR_IDS:?required}'
+      WEB_TRIAL_API_URL: https://gateway:9443
+      WEB_TRIAL_API_TOKEN_FILE: /run/secrets/adapter_token
+      WEB_TRIAL_API_CA_FILE: /run/secrets/adapter_ca
+    secrets: [bot_token, adapter_token, adapter_ca]
+    depends_on: [gateway]
+volumes: {pg: {}}
+networks:
+  default:
+    ipam:
+      config: [{subnet: '${S01_NETWORK_SUBNET:-172.31.98.0/28}'}]
+secrets:
+  pg_password: {file: '${PG_PASSWORD_FILE:?required}'}
+  database_url: {file: '${DATABASE_URL_FILE:?required}'}
+  redis_url: {file: '${REDIS_URL_FILE:?required}'}
+  mail_key: {file: '${MAIL_KEY_FILE:?required}'}
+  code_key: {file: '${CODE_KEY_FILE:?required}'}
+  adapter_token: {file: '${BOT_ADAPTER_TOKEN_FILE:?required}'}
+  smtp_password: {file: '${SMTP_PASSWORD_FILE:?required}'}
+  smtp_ca: {file: '${SMTP_CA_FILE:?required}'}
+  panel_token: {file: '${PANEL_TOKEN_FILE:?required}'}
+  panel_ca: {file: '${PANEL_CA_FILE:?required}'}
+  public_cert: {file: '${PUBLIC_CERT_FILE:?required}'}
+  public_key: {file: '${PUBLIC_KEY_FILE:?required}'}
+  adapter_cert: {file: '${ADAPTER_CERT_FILE:?required}'}
+  adapter_key: {file: '${ADAPTER_KEY_FILE:?required}'}
+  adapter_ca: {file: '${WEB_TRIAL_API_CA_FILE:?required}'}
+  bot_token: {file: '${BOT_TOKEN_FILE:?required}'}

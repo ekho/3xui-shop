@@ -14,7 +14,7 @@ test.describe('S01',()=>{
  test('registration keyboard and equal confirmation',async({page})=>{
   let body:unknown;await page.route('**/api/v1/auth/register',async r=>{body=r.request().postDataJSON();await r.fulfill({status:202,json:{challenge_id:trial.request_id,resend_after:60}})});
   await page.goto('/register');await expect(page.getByRole('main')).toBeVisible();if(process.env.S01_SCREENSHOT_DIR)await page.screenshot({path:process.env.S01_SCREENSHOT_DIR+'/desktop.png'});await expect(page.getByLabel('Email',{exact:true})).toBeVisible();await page.getByLabel('Email',{exact:true}).fill('client@example.test');
-  await page.getByRole('checkbox',{name:/условия/}).check();await page.getByRole('checkbox',{name:/данных/}).check();await page.getByRole('button',{name:'Продолжить'}).focus();await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');await expect(page.getByRole('checkbox',{name:/условия/})).toBeFocused();await page.keyboard.press('Space');await page.keyboard.press('Tab');await page.keyboard.press('Tab');await expect(page.getByRole('checkbox',{name:/данных/})).toBeFocused();await page.keyboard.press('Space');await page.keyboard.press('Tab');await page.keyboard.press('Tab');await expect(page.getByRole('button',{name:'Продолжить'})).toBeFocused();await page.keyboard.press('Enter');
   await expect(page.getByText('Если адрес доступен, письмо отправлено.')).toBeVisible();expect(body).toEqual({email:'client@example.test',locale:'ru',accepted_terms_version:'1',accepted_privacy_version:'1'});
  });
  test('fragment cleared before requests; explicit Unicode password submit',async({page})=>{
