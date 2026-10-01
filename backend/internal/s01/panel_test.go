@@ -4,10 +4,39 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/json"
+	"github.com/google/uuid"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
+
+func TestPanelClientRecordV350(t *testing.T) {
+	id := uuid.New()
+	client := map[string]any{"id": 7, "uuid": id.String(), "email": "acct_fixture", "subId": "fixture", "expiryTime": int64(1800000000000), "limitIp": 2, "totalGB": 1024, "enable": true}
+	response := map[string]any{"success": true, "obj": map[string]any{"client": client, "inboundIds": []int{1}, "usedTraffic": 0}}
+	h := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { json.NewEncoder(w).Encode(response) }))
+	defer h.Close()
+	roots := x509.NewCertPool()
+	roots.AddCert(h.Certificate())
+	p := NewPanelClient(Config{PanelURL: h.URL, PanelToken: "fixture", PanelRootCAs: roots})
+	defer p.Close()
+	v, err := p.GetClient(context.Background(), "acct_fixture")
+	if err != nil || v == nil || v.VPNID != id {
+		t.Fatal("native numeric id / UUID readback", err)
+	}
+	delete(client, "uuid")
+	if _, err := p.GetClient(context.Background(), "acct_fixture"); err == nil {
+		t.Fatal("database id treated as VPN identity")
+	}
+	for _, msg := range []string{"record not found", " (record not found)", "unavailable (record not found)", ""} {
+		response = map[string]any{"success": false, "msg": msg, "obj": nil}
+		v, err = p.GetClient(context.Background(), "acct_fixture")
+		known := msg == "record not found" || msg == " (record not found)"
+		if known && (err != nil || v != nil) || !known && err == nil {
+			t.Fatal("absence must match an explicit supported response")
+		}
+	}
+}
 
 func TestPanelBoundary(t *testing.T) {
 	var loginCalls, addCalls int

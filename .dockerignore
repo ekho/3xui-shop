@@ -5,6 +5,7 @@
 
 # Секреты и env — НИКОГДА в образ
 secrets/
+.superpowers/
 .env
 .env.*
 

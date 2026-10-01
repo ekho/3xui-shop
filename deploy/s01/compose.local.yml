@@ -1,0 +1,90 @@
+# Overlay for the owner's isolated Docker acceptance environment.
+x-panel-env: &panel-env
+  PANEL_URL: https://gateway:9444
+  PANEL_TOKEN_FILE: ''
+  PANEL_USERNAME: local-operator
+  PANEL_PASSWORD_FILE: /run/secrets/panel_password
+  SMTP_ADDRESS: mailpit:1025
+  SMTP_USER: local-service
+services:
+  backend:
+    environment: *panel-env
+    secrets: [panel_password]
+  migrate:
+    environment: *panel-env
+    secrets: [panel_password]
+  reconcile:
+    environment: *panel-env
+    secrets: [panel_password]
+  bot:
+    profiles: [telegram]
+  gateway:
+    volumes:
+      - ./Caddyfile.local:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile:/etc/caddy/base.Caddyfile:ro
+      - '${S01_LOCAL_STATE:?required}/terms:/srv/terms:ro'
+      - '${S01_LOCAL_STATE:?required}/privacy:/srv/privacy:ro'
+    ports:
+      - '127.0.0.1:59444:9444'
+      - '127.0.0.1:59445:9445'
+      - '127.0.0.1:59446:9446'
+    depends_on: [panel, mailpit]
+  panel:
+    image: ghcr.io/mhsanaei/3x-ui@sha256:344f7a68a91e59d592fc355d67e32d8c2041b1c2082a7eaa3c413dc3a5cab7db
+    user: '${S01_RUNTIME_UID:-10001}:${S01_RUNTIME_GID:-10001}'
+    entrypoint: [/bin/sh, -c]
+    command: ['cp -R /app/bin /tmp/bin && exec /app/x-ui']
+    environment: {XUI_ENABLE_FAIL2BAN: 'false', XUI_INIT_WEB_BASE_PATH: /, XUI_BIN_FOLDER: /tmp/bin, XUI_LOG_FOLDER: /tmp/log}
+    read_only: true
+    # The native panel writes its Xray config beside the copied executable.
+    tmpfs: ['/tmp:exec,mode=1777']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes: ['${S01_LOCAL_STATE:?required}/panel-db:/etc/x-ui']
+    secrets: [public_cert, public_key]
+  mailpit:
+    image: axllent/mailpit@sha256:98b916bd3c8d61f7633a52d3ea2f58d00620cb01ca57ab59edde68c347a95365
+    user: '${S01_RUNTIME_UID:-10001}:${S01_RUNTIME_GID:-10001}'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ['/tmp:mode=1777']
+    environment:
+      MP_DATABASE: /tmp/mailpit.db
+      MP_SMTP_TLS_CERT: /run/secrets/public_cert
+      MP_SMTP_TLS_KEY: /run/secrets/public_key
+      MP_SMTP_REQUIRE_TLS: 'true'
+      MP_SMTP_AUTH_FILE: /run/secrets/smtp_auth
+      MP_SMTP_ALLOWED_RECIPIENTS: '@example.test$$'
+      MP_SMTP_DISABLE_RDNS: 'true'
+    secrets: [public_cert, public_key, smtp_auth]
+  origin:
+    image: cabinet-s01-bot:local
+    entrypoint: [python, -c]
+    command:
+      - |
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200); self.end_headers(); self.wfile.write(b's01-local-vpn-ok')
+            def log_message(self, *args): pass
+        HTTPServer(('0.0.0.0',8000), Handler).serve_forever()
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  vpn-client:
+    image: ghcr.io/mhsanaei/3x-ui@sha256:344f7a68a91e59d592fc355d67e32d8c2041b1c2082a7eaa3c413dc3a5cab7db
+    profiles: [vpn]
+    user: '${S01_RUNTIME_UID:-10001}:${S01_RUNTIME_GID:-10001}'
+    entrypoint: [/bin/sh, -c]
+    command: ['exec /app/bin/xray-linux-* run -config /run/secrets/vpn_config.json']
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes: ['${S01_LOCAL_STATE:?required}/vpn.json:/run/secrets/vpn_config.json:ro']
+    secrets: [public_cert]
+    ports: ['127.0.0.1:59448:1080']
+    depends_on: [origin, panel]
+secrets:
+  panel_password: {file: '${PANEL_PASSWORD_FILE:?required}'}
+  smtp_auth: {file: '${SMTP_AUTH_FILE:?required}'}

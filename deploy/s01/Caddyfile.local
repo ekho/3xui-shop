@@ -1,0 +1,17 @@
+import /etc/caddy/base.Caddyfile
+https://localhost:9444 {
+ tls /run/secrets/public_cert /run/secrets/public_key
+ reverse_proxy panel:2053
+}
+https://gateway:9444 {
+ tls /run/secrets/public_cert /run/secrets/public_key
+ reverse_proxy panel:2053
+}
+https://localhost:9445 {
+ tls /run/secrets/public_cert /run/secrets/public_key
+ reverse_proxy panel:2096
+}
+https://localhost:9446 {
+ tls /run/secrets/public_cert /run/secrets/public_key
+ reverse_proxy mailpit:8025
+}

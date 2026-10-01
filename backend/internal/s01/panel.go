@@ -181,7 +181,7 @@ func (p *PanelClient) GetClient(ctx context.Context, key string) (*PanelClientVi
 		return nil, e
 	}
 	if !*out.Success {
-		if out.Msg == "record not found" && (len(out.Obj) == 0 || string(out.Obj) == "null") {
+		if (out.Msg == "record not found" || out.Msg == " (record not found)") && (len(out.Obj) == 0 || string(out.Obj) == "null") {
 			return nil, nil
 		}
 		return nil, errPanel
@@ -195,7 +195,8 @@ func (p *PanelClient) GetClient(ctx context.Context, key string) (*PanelClientVi
 		return nil, errPanel
 	}
 	v := &PanelClientView{Raw: obj.Client, InboundIDs: *obj.InboundIDs, UsedTraffic: obj.UsedTraffic}
-	for name, dest := range map[string]any{"email": &v.PanelKey, "id": &v.VPNID, "subId": &v.SubID, "expiryTime": &v.ExpiryTimeMS, "limitIp": &v.LimitIP, "totalGB": &v.TrafficLimitBytes, "enable": &v.Enabled} {
+	// Native readback uses uuid; numeric id is the panel's database primary key.
+	for name, dest := range map[string]any{"email": &v.PanelKey, "uuid": &v.VPNID, "subId": &v.SubID, "expiryTime": &v.ExpiryTimeMS, "limitIp": &v.LimitIP, "totalGB": &v.TrafficLimitBytes, "enable": &v.Enabled} {
 		raw, ok := obj.Client[name]
 		if !ok || string(raw) == "null" || json.Unmarshal(raw, dest) != nil {
 			return nil, errPanel

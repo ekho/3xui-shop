@@ -59,7 +59,76 @@ queue; почтовая job остаётся без попыток, HTTP listene
 запускается, внешние SMTP/панель не вызываются. Затем удаляется только smoke
 project. Базы `compose.test.yml` и будущего acceptance project сохраняются.
 
-## Ресурсы для реальной приёмки — предоставляет владелец
+## Локальный Docker-стенд с настоящей панелью
+
+Из корня feature-worktree, с Docker, OpenSSL, Python и установленным web Playwright:
+
+```sh
+python3 deploy/s01/local.py up
+python3 deploy/s01/local.py check
+node deploy/s01/browser.mjs
+```
+
+`up` собирает backend/web/adapter и поднимает только проект `cabinet-s01-local`:
+PG/Redis, 3X-UI **3.5.0**, Mailpit **1.31.1**, HTTPS gateway и тестовый origin.
+Images панели/почты закреплены digest в `compose.local.yml`. Сначала trial выключен;
+native API preflight проверяет absence, дубли и attach на удаляемых probe-клиентах.
+Панель использует собственную новую SQLite; initial credentials заменяются на
+сгенерированные. Нет production mounts, системного trust/hosts/VPN-переключения.
+
+| Доступ на этом компьютере | Адрес |
+| --- | --- |
+| Кабинет | `https://localhost:58443` |
+| Панель | `https://localhost:59444`, login `local-operator` |
+| Mailpit UI | `https://localhost:59446` |
+| Подписки | `https://localhost:59445/sub/` |
+
+Self-signed CA доверяется только тестовым клиентам; Chromium доверяет SPKI этого
+сертификата, без общего TLS bypass. Для ручного браузера нужен локальный certificate
+exception. Все private state/секреты лежат в ignored
+`.superpowers/sdd/2026-10-01-s01-web-trial/local-docker` (dir0700/files0600).
+Пароль панели — файл `panel-password`; не копировать содержимое в чат/лог.
+Порты привязаны к loopback; subnet `172.31.99.0/28` должен быть свободен.
+Панель копирует Xray в свой executable tmpfs: её native config пишется рядом
+с бинарником, root/capabilities не нужны. SMTP принимает только `@example.test`
+через TLS/auth, исходящей доставки/relay нет. Terms/privacy — явно тестовые fixtures.
+
+`check` проверяет email/password/API, решение через поставляемый Python adapter,
+readback UUID/subId/expiry/N+1/bytes, HTTPS-подписку и VLESS/TLS **Xray26.7.11**.
+HTTP proxy Xray направляет запрос только к Docker origin. Host подписки заменяется
+на Docker DNS той же панели; UUID/flow/port берутся из выданной подписки.
+Это не проверка ручного импорта в Happ. Telegram transport не вызывается.
+
+Затем `check` делает настоящий PG dump в момент reserved grant + running River job:
+клиент уже существует в панели, фиксация applied задержана test trigger. Он убивает
+только свой backend, восстанавливает dump в новую собственную БД и запускает
+только `reconcile`. В restored fixture сдвигается `attempted_at` на4min; штатный
+River rescue выполняет сверку. Target/UUID/subId/expiry/limits и один client/grant
+сохраняются; прежняя owner session и VPN проверяются после возврата backend.
+После проверки `database-url` указывает на восстановленную БД. Dumps mode0600,
+не публиковать. Проверка создаёт test accounts и может повторяться.
+`check` также останавливает gateway: новый ingress недоступен, PG/панель/существующий
+VPN сохранены; затем возвращает gateway. `browser.mjs` отдельно проходит мобильный
+кабинет375px, включая no-store/logout.
+
+На 3.5.0 одинаковый panel_key с тем же subId принят без изменения UUID;
+UUID в разных inbounds принят. Поэтому `PANEL_DUPLICATE_GUARD_VERIFIED=false`
+сохраняется: uncertain-create не повторяется, поддержка сверяет исходную operation.
+Native attach сохранил credentials/expiry/limits и добавил только membership.
+
+Остановить только этот стенд, сохранив volumes/private state:
+
+```sh
+python3 deploy/s01/local.py down
+```
+
+Test bot выключен профилем `telegram`. Для настоящего апрува владелец предоставляет
+отдельный bot token file и operator ID, начинает личный чат. Нужно согласовать
+`BOT_OPERATOR_IDS` в backend и bot, заменить dummy token path в private config;
+после этого запустить профиль `telegram` на этом же собственном проекте.
+Dummy token не должен использоваться для Telegram-запросов.
+
+## Дополнительные ресурсы для внешней приёмки — предоставляет владелец
 
 | Ресурс | Условие готовности |
 | --- | --- |
@@ -108,10 +177,12 @@ legacy SQLite/payment jobs. Проверка main-bot startup/shutdown отде�
 Записать только версии/форматы/результаты, без учётных данных и клиентских ключей.
 На disposable test client проверить GET `panel/api/inbounds/list`, GET
 `panel/api/clients/get/{panel_key}`, POST `panel/api/clients/add`, POST
-`panel/api/clients/{panel_key}/attach`. Required readback — `client.id/email/subId`,
+`panel/api/clients/{panel_key}/attach`. Required readback — `client.uuid/email/subId`,
 `expiryTime`, `limitIp`, `totalGB`, `enable`, `inboundIds`; usage может отсутствовать.
-Backend считает absence только точный `success:false,msg:"record not found",obj:null`
-(или отсутствующий obj). Empty object/200 без полей/timeout не считаются absence.
+Backend считает absence только `success:false,obj:null` (или отсутствующий obj)
+с точным msg `record not found` либо ` (record not found)` — второй формат подтверждён
+на 3X-UI 3.5.0. Чтение возвращает числовой `client.id` и отдельный VPN UUID
+`client.uuid`; при создании VPN UUID передаётся в `client.id`. Empty object/200 без полей/timeout не считаются absence.
 Несовпадение формата или версии — compatibility blocker, включать trial нельзя.
 
 Проверить enabled tags с отдельным hyphen-сегментом regular и возможность

@@ -52,7 +52,7 @@ func (p *panel) serve(w http.ResponseWriter, r *http.Request) {
 		key := strings.TrimPrefix(r.URL.Path, "/panel/api/clients/get/")
 		c := p.clients[key]
 		if c == nil {
-			json.NewEncoder(w).Encode(map[string]any{"success": false, "msg": "record not found", "obj": nil})
+			json.NewEncoder(w).Encode(map[string]any{"success": false, "msg": " (record not found)", "obj": nil})
 			return
 		}
 		if p.blocked != nil {
@@ -64,7 +64,12 @@ func (p *panel) serve(w http.ResponseWriter, r *http.Request) {
 			case <-p.release:
 			}
 		}
-		reply(true, map[string]any{"client": c, "inboundIds": []int{1}, "usedTraffic": 0})
+		record := make(map[string]any, len(c)+1)
+		for key, value := range c {
+			record[key] = value
+		}
+		record["uuid"], record["id"] = c["id"], 1
+		reply(true, map[string]any{"client": record, "inboundIds": []int{1}, "usedTraffic": 0})
 	case r.Method == "POST" && r.URL.Path == "/panel/api/clients/add":
 		var b struct {
 			Client     map[string]any `json:"client"`

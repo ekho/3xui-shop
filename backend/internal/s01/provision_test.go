@@ -78,10 +78,15 @@ func (p *fakePanel) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if p.client == nil {
-			reply(map[string]any{"success": false, "msg": "record not found", "obj": nil})
+			reply(map[string]any{"success": false, "msg": " (record not found)", "obj": nil})
 			return
 		}
-		reply(map[string]any{"success": true, "obj": map[string]any{"client": p.client, "inboundIds": p.ids, "usedTraffic": int64(1234)}})
+		record := make(map[string]any, len(p.client)+1)
+		for key, value := range p.client {
+			record[key] = value
+		}
+		record["uuid"], record["id"] = p.client["id"], 1
+		reply(map[string]any{"success": true, "obj": map[string]any{"client": record, "inboundIds": p.ids, "usedTraffic": int64(1234)}})
 	case r.Method == "POST" && r.URL.Path == "/panel/api/clients/add":
 		p.adds++
 		var body struct {
