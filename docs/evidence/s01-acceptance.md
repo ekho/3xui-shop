@@ -2,15 +2,19 @@
 
 Дата локальных проверок: 2026-10-01. Ветка: `feature/web-trial-s01`.
 Base: `74c124906462f5b75a323aa9b80944dd08df2037`.
-Проверенная ревизия кода и запуска: `0ce85feea5aff8165773121e0e5b9eadab438e06`.
+Проверенная ревизия кода: `7306973725d31aa359492318f7cbba887a6a9c54`.
+До Docker-приёмки полный набор Tasks1–7 был проверен на `0ce85fe`; backend
+после native API исправления повторно прошёл полный Go race suite и vet.
+Docker API/VPN/restore/rollback и мобильный browser проверены на текущих исходниках.
 Полная спецификация: [S01](../superpowers/specs/2026-10-01-s01-web-trial-design.md).
 
 **Implementation:** Tasks1–7 локально реализованы и проверены; локальная подготовка
 Task8 проверена. Независимое ревью выполнено; четыре Important исправлены
 с проверками RED→GREEN и полным зелёным набором. Два Minor отложены ниже.
 **Delivery:** локальные commits, без push/PR/merge/remote CI/deploy.
-**Acceptance:** OPEN — владелец предоставит test panel/SMTP/bot/operator позже.
-Фактический VPN и restore на реальной панели не проверялись.
+**Acceptance:** OPEN — локальные Mailpit/3X-UI/Xray/VPN/PG restore проверены.
+Настоящий Telegram callback, ручной импорт в Happ, внешняя доставка email и
+замер на целевой машине остаются открыты. Локальный стенд запущен и сохранён.
 
 ## Проверенные локальные команды
 
@@ -28,6 +32,11 @@ URL-file prerequisites и setup: [runbook](../runbooks/s01-test-rollout.md).
 | `TestS01BackupRestore` | PASS, actual local pg_dump/restore с running River job, HTTPS panel fixture |
 | Docker builds (backend/web/bot) | PASS, local ARM64 images, no publish |
 | Compose config / container smoke / bounded rollback | PASS, disposable local project, real TLS validation; restore runtime обрабатывает provision, оставляет mail без попыток, не открывает HTTP |
+| Native panel parser `TestPanelClientRecordV350` | RED→GREEN: numeric id + uuid и точный native not-found; unknown/empty error не absence |
+| `python3 deploy/s01/local.py up` | PASS: собственная 3X-UI3.5.0/Mailpit1.31.1/PG/Redis/HTTPS, native preflight до включения trial |
+| Docker API/VPN/restore (`local.py check`) | PASS: настоящее TLS/auth письмо, adapter decision, native panel readback, VLESS/TLS Xray26.7.11 и PG restore исходной операции |
+| `local.py rollback()` | PASS: gateway остановлен; новые запросы закрыты, PG/панель/действующий VPN сохранены; gateway возвращён |
+| `node deploy/s01/browser.mjs` | PASS: мобильный375px browser, actual Mailpit/API/panel, fragment очищен, no-store, HttpOnly/Secure, logout; Telegram transport не вызывается |
 | Independent whole-branch review | Проверен диапазон `74c1249..a6ca9d0`; Critical0, Important4 исправлены автором с RED→GREEN, Minor2 отложены. Повторного ревью не проводилось |
 
 Tool versions: Go1.27.1, Node24.11.1, Python3.13, Poetry2.5.1, Chromium153
@@ -41,7 +50,7 @@ Tool versions: Go1.27.1, Node24.11.1, Python3.13, Poetry2.5.1, Chromium153
 
 | AC | Автоматическое доказательство | Статус / остаётся |
 | --- | --- | --- |
-| 1 no-Telegram → trial → VPN | Real API browser + Python actor + concrete panel HTTP fixture | Local PASS; реальный Happ connection pending |
+| 1 no-Telegram → trial → VPN | Native Docker panel/SMTP/Xray data plane + mobile browser | Docker PASS; настоящий Telegram и ручной Happ import pending |
 | 2 bot down before decision | `TestS01FlowAndFailures`, durable card exists before consumer start | Local PASS; real delivery pending |
 | 3 bot down after approve | Worker starts after Python consumer exits, grant applied without bot | Local PASS; real bot stop pending |
 | 4 scanner/duplicate/parallel verify | registration tests; browser fragment cleared, no automatic POST | Local PASS |
@@ -52,14 +61,14 @@ Tool versions: Go1.27.1, Node24.11.1, Python3.13, Poetry2.5.1, Chromium153
 | 9 concurrent decisions/lost reply | PG decision tests, repeated real consumer callback, internal-only winning409 | Local PASS |
 | 10 reject final/account unchanged | trial tests + mock browser reject/support | Local PASS |
 | 11 support reconsider/old card/used guard | trial/FSM tests reason+stable confirmation key | Local PASS; actual operator interaction pending |
-| 12 panel down/no regular/bad config | provision/panel/config tests | Local PASS; real preflight pending |
-| 13 interrupted panel add/restart | lost reply1create, apply rollback/reconcile, physical PG session loss | Local PASS; real panel restore pending |
-| 14 partial/foreign/no hop | concrete panel partial attach/preserved protocol fields/mismatch tests | Local PASS; real API compatibility pending |
+| 12 panel down/no regular/bad config | provision/panel/config tests | Local + native panel preflight PASS; production version не проверена |
+| 13 interrupted panel add/restart | lost reply1create, apply rollback/reconcile, physical PG session loss | Local + native panel running-job restore PASS |
+| 14 partial/foreign/no hop | concrete panel partial attach/preserved protocol fields/mismatch tests | Local + 3.5.0 get/add/attach/not-found PASS; несовпадения/foreign guards проверены fixtures |
 | 15 immutable config/bytes/N+1 | snapshot/zero/overflow/expiry provisioning tests | Local PASS |
 | 16 duplicated card/edit fail | lease/ack tests + Python claim/complete replay; delayed decision, deleted-card replacement, unchanged-card ack, lost replacement reply | Local PASS; real Telegram edit pending |
-| 17 legacy/unknown groups | SQL cohort separate, no legacy apply call, fixture rejects other writes/groups | Local PASS; panel isolation attestation pending |
+| 17 legacy/unknown groups | SQL cohort separate, no legacy apply call, fixture rejects other writes/groups | Local PASS; Docker panel собственная, legacy jobs отсутствуют |
 | 18 logout/TTL/keyboard/ru/en/error | session tests +10 browser tests; inspected375/1280 screens | Local PASS |
-| 19 PG restore retains operation | real local dump after external add before applied, running River job; штатный rescue, same target/grant/session | Local PASS with fake panel; real panel restore pending |
+| 19 PG restore retains operation | real local dump after external add before applied, running River job; штатный rescue, same target/grant/session | Native panel + real PG dump/restore PASS; original target/grant/session/VPN сохранены |
 
 ## Исправления независимого ревью
 
@@ -80,11 +89,13 @@ Tool versions: Go1.27.1, Node24.11.1, Python3.13, Poetry2.5.1, Chromium153
 | Решение | Основание | Цена ошибки |
 | --- | --- | --- |
 | Продолжение означает реализацию и локальные commits; публикация отдельно | Подготовка плана завершена, пользователь поручил продолжать | Обратимые локальные изменения |
-| Реальная приёмка остаётся открытой без production substitute | Пользователь предоставит ресурсы позже | Пока нельзя закрыть С01 |
+| Локальные Docker-ресурсы разрешены; полная приёмка остаётся открытой | Новое указание пользователя заменяет ожидание panel/SMTP; Telegram/Happ пока не предоставлены | Нельзя считать локальный SMTP внешней доставкой или Xray импортом в Happ |
 | DecisionResult сохраняет card и delivery_state | Полная спецификация важнее сокращённой сигнатуры плана | Дополнительные внутренние поля |
 | Implicit-owner key endpoint без готовой операции возвращает409; чужой resource path404, account_id query400 | В принятом API нет параметра владельца/ресурса для примера404 из плана | Клиент должен обрабатывать409 |
 | compose.acceptance.yml отделён от compose.test.yml | Обязательные внешние secrets не блокируют fixture tests | Дополнительный manifest и дублирование image pins |
-| Реальные SMTP/Telegram/panel version/uniqueness/Happ/VPN/restore/target performance пока не оценены | Владелец отложил ресурсы; fixtures не доказывают эти свойства | Несовместимость выяснится при реальной приёмке |
+| Native3.5.0 API/VPN/restore проверены; Telegram/Happ/external SMTP/target performance не оценены | Локальная Docker-приёмка выполнима без production; callback требует настоящего бота | Для оставшихся внешних свойств доказательств нет |
+| Native readback VPN UUID — client.uuid; absence имеет два точных поддержанных msg | Исходники и запущенная3.5.0: numeric client.id, msg=" (record not found)"; write input остаётся id=UUID | Другие неподтверждённые форматы fail-closed |
+| Duplicate guard остаётся false | Native3.5.0 принимает UUID в разных inbounds и повтор key/subId без смены UUID; общего запрета дубля нет | Uncertain create не повторяется; нужна сверка прежней операции |
 | Production, shared legacy panel, publication и remote CI не оценены | За пределами локального мандата | Нет доказательства поведения в этих средах |
 | Payments/import/MiniApp/web-admin/password recovery не входят в С01 | Явно отложенные сценарии | Эти пути недоступны в С01 |
 | River rescueAfter=3min вместо default1h | Больше worker timeout125s, совпадает с operation lease; штатный механизм River | При увеличении worker timeout порог тоже нужно пересмотреть; иначе возможен повтор активной задачи, физическая блокировка защищает выдачу |
@@ -96,12 +107,57 @@ Tool versions: Go1.27.1, Node24.11.1, Python3.13, Poetry2.5.1, Chromium153
 - Текст регистрации ru/en утверждает отправку письма после202 enqueue,
   когда SMTP delivery ещё не подтверждена. Требуется формулировка о принятии запроса.
 
+## Native Docker-приёмка
+
+Использован только проект `cabinet-s01-local`, собственные volumes/network/state,
+без production .env/данных/системного VPN. Панель: **3X-UI3.5.0**, image source
+revision `4e928a1ce0945a6e956aa63365034ec24d2b1387`; Xray **26.7.11**;
+SMTP: **Mailpit1.31.1**. Native digests закреплены в compose.local.yml.
+Повторные проверки не меняли старые bot/legacy аккаунты. Secret/dump files ignored,
+0700/0600; private state исключён из Docker build context. TLS verification
+сохранён; Chromium доверяет только SPKI собственного сертификата.
+
+На настоящем API найдены и исправлены два расхождения с прежними fixtures:
+readback UUID находится в `client.uuid`, numeric `id` не является VPN ID;
+absence msg — ` (record not found)`. Исправлен общий parser и оба GET fixtures.
+Подтверждены UUID/subId/expiry/N+1/15GiB/regular membership; attach сохраняет поля.
+
+Duplicate probes удалены: повтор key с тем же subId принят без смены UUID;
+UUID в другом inbound тоже принят. Это наблюдение об указанной версии, не
+гарантия уникальности. Guard false сохранён; unknown/timeout не считается absence.
+Пробы не являются поведением продуктового provision worker: тот не вызывает delete.
+
+VPN-клиент получает UUID/flow/port из настоящей выданной subscription; заменён
+только host на Docker DNS той же панели. Проверен запрос через VLESS/TLS к
+своему origin, без third-party трафика или переключения host VPN. Ручной Happ
+import не проверен. Mailpit получил настоящее SMTP письмо через TLS/auth, но
+принимает только тестовые `@example.test`, внешнюю доставку не доказывает.
+
+Restore использовал dump с reserved Grant + provisioning Operation + running River
+job после создания клиента. Собственный backend убит, dump восстановлен в новую
+пустую БД с теми же encryption keys. Искусственный pause trigger удалён;
+`attempted_at` сдвинут на4min только в restored fixture. Только reconcile worker
+через штатный River rescue подтвердил прежний target: клиентский DB id, VPN UUID,
+subId, expiry/limits не изменились, client/Grant один. После запуска HTTP backend
+прежняя owner session получила key, VPN работает. Bounded rollback остановил
+только gateway и сохранил PG/панель/VPN.
+
+Setup-ошибки исправлены в driver/config: native updateUser path, `.json` для
+Xray config и executable tmpfs для native runtime; ожидание health после restart.
+Браузер использует fetch в actual Chromium для того же TLS trust; повторённый
+`no-store` от API+gateway нормализован как список директив. Эти ошибки harness
+не заявляются RED продуктового кода. Единственный продуктовый RED — native parser.
+
 ## Внешние prerequisites и владелец
 
-Владелец проекта предоставляет выделенную panel/client-centric version и
-credentials, SMTP/test mailbox, отдельный bot и operator, DNS/HTTPS certs,
-опубликованные policies/support, secret-file paths и их readable UID/GID.
-До этого приёмка не закрывается. Test panel version: pending. Happ version:
-pending. Реальная duplicate uniqueness guarantee: pending (config false).
-CI workflow только проверяет, не публикует images и не вызывает deploy;
-существующий main/tag Docker Publish workflow не менялся.
+Владелец предоставляет **отдельный test bot token file и operator ID** для
+настоящего личного апрува, поддерживаемый Happ для ручного import/connect,
+внешний SMTP/test mailbox и целевую машину для benchmark. DNS/сертификаты и
+опубликованные policies/support нужны при внешнем тестовом запуске; локальные
+terms/privacy пока fixtures. Настоящие Telegram delivery/edit/reconsider остаются
+pending. Happ version: pending. Production panel/version и performance не оценены.
+
+Native3.5.0 duplicate guard: **не подтверждён**, config false. Приёмка С01 в целом
+OPEN. Независимое ревью было одно, указан старый диапазон; новых повторных
+whole-branch reviews после Docker-findings не проводилось. CI workflow только
+проверяет; main/tag Docker Publish не менялся. Нет push/PR/merge/remote CI/release.
