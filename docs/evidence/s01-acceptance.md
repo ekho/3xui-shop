@@ -2,10 +2,11 @@
 
 Дата локальных проверок: 2026-10-01. Ветка: `feature/web-trial-s01`.
 Base: `74c124906462f5b75a323aa9b80944dd08df2037`.
-Проверенная ревизия кода: `7306973725d31aa359492318f7cbba887a6a9c54`.
+Проверенная ревизия кода: `333c96bb11789707cc406b9f2bb55f6e60015aaa`.
 До Docker-приёмки полный набор Tasks1–7 был проверен на `0ce85fe`; backend
-после native API исправления повторно прошёл полный Go race suite и vet.
-Docker API/VPN/restore/rollback и мобильный browser проверены на текущих исходниках.
+после исправления native API3.7.0 повторно прошёл полный Go race suite и vet.
+Docker API/VPN/restore/rollback и мобильный browser повторно проверены на3.7.0.
+Предыдущая приёмка3.5.0 на `7306973` сохранена как историческое доказательство.
 Полная спецификация: [S01](../superpowers/specs/2026-10-01-s01-web-trial-design.md).
 
 **Implementation:** Tasks1–7 локально реализованы и проверены; локальная подготовка
@@ -32,16 +33,18 @@ URL-file prerequisites и setup: [runbook](../runbooks/s01-test-rollout.md).
 | `TestS01BackupRestore` | PASS, actual local pg_dump/restore с running River job, HTTPS panel fixture |
 | Docker builds (backend/web/bot) | PASS, local ARM64 images, no publish |
 | Compose config / container smoke / bounded rollback | PASS, disposable local project, real TLS validation; restore runtime обрабатывает provision, оставляет mail без попыток, не открывает HTTP |
-| Native panel parser `TestPanelClientRecordV350` | RED→GREEN: numeric id + uuid и точный native not-found; unknown/empty error не absence |
-| `python3 deploy/s01/local.py up` | PASS: собственная 3X-UI3.5.0/Mailpit1.31.1/PG/Redis/HTTPS, native preflight до включения trial |
-| Docker API/VPN/restore (`local.py check`) | PASS: настоящее TLS/auth письмо, adapter decision, native panel readback, VLESS/TLS Xray26.7.11 и PG restore исходной операции |
+| Native panel parser `TestPanelClientRecordNative` | RED→GREEN: numeric id + uuid на3.5.0; новый точный native not-found3.7.0 и en-US; unknown/empty error не absence |
+| `python3 deploy/s01/local.py up` | PASS: собственная 3X-UI3.7.0/Mailpit1.31.1/PG/Redis/HTTPS, native preflight до включения trial; exact origin/32 TCP8000 finalRule |
+| Docker API/VPN/restore (`local.py check`) | PASS: настоящее TLS/auth письмо, adapter decision, native panel readback, VLESS/TLS Xray26.7.28 и PG restore исходной операции |
 | `local.py rollback()` | PASS: gateway остановлен; новые запросы закрыты, PG/панель/действующий VPN сохранены; gateway возвращён |
 | `node deploy/s01/browser.mjs` | PASS: мобильный375px browser, actual Mailpit/API/panel, fragment очищен, no-store, HttpOnly/Secure, logout; Telegram transport не вызывается |
 | Independent whole-branch review | Проверен диапазон `74c1249..a6ca9d0`; Critical0, Important4 исправлены автором с RED→GREEN, Minor2 отложены. Повторного ревью не проводилось |
 
 Tool versions: Go1.27.1, Node24.11.1, Python3.13, Poetry2.5.1, Chromium153
 (Playwright1.63.0); React19.3.0, Vite8.3.2, TS5.9.3. Official container digests
-закреплены в Dockerfiles/Compose. Измерение Argon2id на local Apple M3 Pro:
+закреплены в Dockerfiles/Compose. Для повторной native3.7.0 проверки host runtime
+обновлён до Node26.10.0/Python3.14.7; bot image остаётся Python3.13.
+Измерение Argon2id на local Apple M3 Pro:
 `BenchmarkPasswordHash`50.2ms/op,19,926,727B/op,32allocs/op. Hash parameters
 19456KiB/2/1, максимум два параллельных вычисления. Замер на целевой test машине
 остаётся pending; это измерение не гарантирует её latency.
@@ -63,7 +66,7 @@ Tool versions: Go1.27.1, Node24.11.1, Python3.13, Poetry2.5.1, Chromium153
 | 11 support reconsider/old card/used guard | trial/FSM tests reason+stable confirmation key | Local PASS; actual operator interaction pending |
 | 12 panel down/no regular/bad config | provision/panel/config tests | Local + native panel preflight PASS; production version не проверена |
 | 13 interrupted panel add/restart | lost reply1create, apply rollback/reconcile, physical PG session loss | Local + native panel running-job restore PASS |
-| 14 partial/foreign/no hop | concrete panel partial attach/preserved protocol fields/mismatch tests | Local + 3.5.0 get/add/attach/not-found PASS; несовпадения/foreign guards проверены fixtures |
+| 14 partial/foreign/no hop | concrete panel partial attach/preserved protocol fields/mismatch tests | Local + 3.7.0 get/add/attach/not-found PASS; несовпадения/foreign guards проверены fixtures |
 | 15 immutable config/bytes/N+1 | snapshot/zero/overflow/expiry provisioning tests | Local PASS |
 | 16 duplicated card/edit fail | lease/ack tests + Python claim/complete replay; delayed decision, deleted-card replacement, unchanged-card ack, lost replacement reply | Local PASS; real Telegram edit pending |
 | 17 legacy/unknown groups | SQL cohort separate, no legacy apply call, fixture rejects other writes/groups | Local PASS; Docker panel собственная, legacy jobs отсутствуют |
@@ -93,9 +96,9 @@ Tool versions: Go1.27.1, Node24.11.1, Python3.13, Poetry2.5.1, Chromium153
 | DecisionResult сохраняет card и delivery_state | Полная спецификация важнее сокращённой сигнатуры плана | Дополнительные внутренние поля |
 | Implicit-owner key endpoint без готовой операции возвращает409; чужой resource path404, account_id query400 | В принятом API нет параметра владельца/ресурса для примера404 из плана | Клиент должен обрабатывать409 |
 | compose.acceptance.yml отделён от compose.test.yml | Обязательные внешние secrets не блокируют fixture tests | Дополнительный manifest и дублирование image pins |
-| Native3.5.0 API/VPN/restore проверены; Telegram/Happ/external SMTP/target performance не оценены | Локальная Docker-приёмка выполнима без production; callback требует настоящего бота | Для оставшихся внешних свойств доказательств нет |
-| Native readback VPN UUID — client.uuid; absence имеет два точных поддержанных msg | Исходники и запущенная3.5.0: numeric client.id, msg=" (record not found)"; write input остаётся id=UUID | Другие неподтверждённые форматы fail-closed |
-| Duplicate guard остаётся false | Native3.5.0 принимает UUID в разных inbounds и повтор key/subId без смены UUID; общего запрета дубля нет | Uncertain create не повторяется; нужна сверка прежней операции |
+| Native3.7.0 API/VPN/restore повторно проверены; Telegram/Happ/external SMTP/target performance не оценены | Версия задана владельцем как совпадающая с production; проверялась только собственная Docker-панель | Для оставшихся внешних свойств доказательств нет |
+| Native readback VPN UUID — client.uuid; absence имеет три точных поддержанных msg | Numeric client.id, native3.5.0 msg=" (record not found)", native3.7.0 msg="Obtain (record not found)", старый compatibility fixture="record not found"; en-US, write input id=UUID | Другие неподтверждённые форматы fail-closed |
+| Duplicate guard остаётся false | Native3.7.0 повторно принимает UUID в разных inbounds и повтор key/subId без смены UUID; общего запрета дубля нет | Uncertain create не повторяется; нужна сверка прежней операции |
 | Production, shared legacy panel, publication и remote CI не оценены | За пределами локального мандата | Нет доказательства поведения в этих средах |
 | Payments/import/MiniApp/web-admin/password recovery не входят в С01 | Явно отложенные сценарии | Эти пути недоступны в С01 |
 | River rescueAfter=3min вместо default1h | Больше worker timeout125s, совпадает с operation lease; штатный механизм River | При увеличении worker timeout порог тоже нужно пересмотреть; иначе возможен повтор активной задачи, физическая блокировка защищает выдачу |
@@ -110,16 +113,20 @@ Tool versions: Go1.27.1, Node24.11.1, Python3.13, Poetry2.5.1, Chromium153
 ## Native Docker-приёмка
 
 Использован только проект `cabinet-s01-local`, собственные volumes/network/state,
-без production .env/данных/системного VPN. Панель: **3X-UI3.5.0**, image source
-revision `4e928a1ce0945a6e956aa63365034ec24d2b1387`; Xray **26.7.11**;
+без production .env/данных/системного VPN. Панель: **3X-UI3.7.0**, image source
+revision `f727d04f6522bb94a8fb52e8352fdcafb51c11e1`; Xray **26.7.28** (`5ca6f4b`);
 SMTP: **Mailpit1.31.1**. Native digests закреплены в compose.local.yml.
+Перед обновлением собственной3.5.0 сохранены private SQLite/PG backups; текущая
+проверка использует обновлённую собственную панель. Production не проверялся.
 Повторные проверки не меняли старые bot/legacy аккаунты. Secret/dump files ignored,
 0700/0600; private state исключён из Docker build context. TLS verification
 сохранён; Chromium доверяет только SPKI собственного сертификата.
 
 На настоящем API найдены и исправлены два расхождения с прежними fixtures:
 readback UUID находится в `client.uuid`, numeric `id` не является VPN ID;
-absence msg — ` (record not found)`. Исправлен общий parser и оба GET fixtures.
+absence3.5.0 msg — ` (record not found)`. На3.7.0 точный msg изменился на
+`Obtain (record not found)`. Исправлен общий parser и оба GET fixtures,
+запросы используют `Accept-Language: en-US`.
 Подтверждены UUID/subId/expiry/N+1/15GiB/regular membership; attach сохраняет поля.
 
 Duplicate probes удалены: повтор key с тем же subId принят без смены UUID;
@@ -132,6 +139,13 @@ VPN-клиент получает UUID/flow/port из настоящей выд�
 своему origin, без third-party трафика или переключения host VPN. Ручной Happ
 import не проверен. Mailpit получил настоящее SMTP письмо через TLS/auth, но
 принимает только тестовые `@example.test`, внешнюю доставку не доказывает.
+Xray26.7.28 по умолчанию блокирует частные IP на финальном исходящем этапе:
+native лог подтвердил блокировку собственного Docker origin. Driver задаёт
+единственное разрешение `finalRules` для текущего origin `/32`, TCP8000;
+остальные native ограничения сохранены. Реальный вызов driver проверен при
+отсутствующем правиле и повторно: первый записывает правило, второй не обновляет
+настройки; VPN работает. Это настройка test fixture, не изменение backend или
+production. Источник: [Xray finalRules](https://xtls.github.io/en/config/outbounds/freedom.html#finalrules).
 
 Restore использовал dump с reserved Grant + provisioning Operation + running River
 job после создания клиента. Собственный backend убит, dump восстановлен в новую
@@ -146,7 +160,8 @@ Setup-ошибки исправлены в driver/config: native updateUser path
 Xray config и executable tmpfs для native runtime; ожидание health после restart.
 Браузер использует fetch в actual Chromium для того же TLS trust; повторённый
 `no-store` от API+gateway нормализован как список директив. Эти ошибки harness
-не заявляются RED продуктового кода. Единственный продуктовый RED — native parser.
+не заявляются RED продуктового кода. Продуктовые RED относятся к native parser;
+блокировка Docker origin — отдельное исправление test fixture.
 
 ## Внешние prerequisites и владелец
 
@@ -157,7 +172,7 @@ Xray config и executable tmpfs для native runtime; ожидание health �
 terms/privacy пока fixtures. Настоящие Telegram delivery/edit/reconsider остаются
 pending. Happ version: pending. Production panel/version и performance не оценены.
 
-Native3.5.0 duplicate guard: **не подтверждён**, config false. Приёмка С01 в целом
+Native3.7.0 duplicate guard: **не подтверждён**, config false. Приёмка С01 в целом
 OPEN. Независимое ревью было одно, указан старый диапазон; новых повторных
 whole-branch reviews после Docker-findings не проводилось. CI workflow только
 проверяет; main/tag Docker Publish не менялся. Нет push/PR/merge/remote CI/release.
