@@ -33,16 +33,17 @@ import (
 )
 
 type panel struct {
-	mu               sync.Mutex
-	clients          map[string]map[string]any
-	adds, forbidden  int
-	loseReply        bool
-	blocked, release chan struct{}
+	mu                        sync.Mutex
+	clients                   map[string]map[string]any
+	adds, forbidden, requests int
+	loseReply                 bool
+	blocked, release          chan struct{}
 }
 
 func (p *panel) serve(w http.ResponseWriter, r *http.Request) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.requests++
 	w.Header().Set("Content-Type", "application/json")
 	reply := func(ok bool, obj any) { json.NewEncoder(w).Encode(map[string]any{"success": ok, "obj": obj}) }
 	switch {

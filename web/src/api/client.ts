@@ -22,9 +22,10 @@ async function request<T>(path:string,method='GET',body?:unknown,signal?:AbortSi
  const headers:Record<string,string>={};if(body!==undefined)headers['Content-Type']='application/json';if(sessionWrite&&csrf)headers['X-CSRF-Token']=csrf;if(key)headers['Idempotency-Key']=key;
  let response:Response;
  try{response=await fetch('/api/v1/'+path,{method,body:body===undefined?undefined:JSON.stringify(body),headers,credentials:'same-origin',cache:'no-store',signal:signal?AbortSignal.any([signal,AbortSignal.timeout(15000)]):AbortSignal.timeout(15000)});}catch(error){if(signal?.aborted)throw error;throw new ApiError(503,'SERVICE_UNAVAILABLE','');}
+ signal?.throwIfAborted();
  if(!response.ok){if(response.status===401)csrf=undefined;let failure:unknown;try{failure=await response.json();}catch{failure={};}const raw=failure as Partial<components['schemas']['APIError']>;const id=raw.error?.request_id??'';const delay=Number(response.headers.get('Retry-After'));throw new ApiError(response.status,raw.error?.code??'SERVICE_UNAVAILABLE',/^[0-9a-f-]{36}$/i.test(id)?id:'',Number.isFinite(delay)&&delay>0?Math.min(86400,Math.ceil(delay)):0);}
  if(response.status===204)return undefined as T;
- try{return await response.json() as T;}catch{throw new ApiError(503,'SERVICE_UNAVAILABLE','');}
+ try{const out=await response.json() as T;signal?.throwIfAborted();return out;}catch{if(signal?.aborted)throw signal.reason;throw new ApiError(503,'SERVICE_UNAVAILABLE','');}
 }
 export const registerAccount=(input:RegisterInput)=>request<RegistrationAccepted>('auth/register','POST',input);
 export const verifyEmail=(input:VerifyInput)=>request<VerifyResult>('auth/verify-email','POST',input);
@@ -52,3 +53,11 @@ export async function getSessionContext(signal?:AbortSignal){const out=await req
 export const getAccountSecurity=(signal?:AbortSignal)=>request<AccountSecurity>('me/security','GET',undefined,signal);
 export const changePassword=(input:PasswordChangeInput)=>request<void>('me/password-change','POST',input,undefined,true);
 export const revokeOtherSessions=(input:CurrentPasswordInput)=>request<void>('me/sessions/revoke-others','POST',input,undefined,true);
+
+export type EmailChangeInput=components['schemas']['EmailChangeInput'];
+export type EmailChangeAccepted=components['schemas']['EmailChangeAccepted'];
+export type EmailChangeConfirmInput=components['schemas']['EmailChangeConfirmInput'];
+export type EmailChangeResult=components['schemas']['EmailChangeResult'];
+export const requestEmailChange=(input:EmailChangeInput)=>request<EmailChangeAccepted>('me/email-change','POST',input,undefined,true);
+export const confirmEmailChange=(input:EmailChangeConfirmInput)=>request<EmailChangeResult>('auth/email-change/confirm','POST',input);
+export const cancelEmailChange=()=>request<void>('me/email-change/cancel','POST',undefined,undefined,true);
