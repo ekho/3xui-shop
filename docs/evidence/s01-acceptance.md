@@ -14,8 +14,11 @@ Task8 проверена. Независимое ревью выполнено; 
 с проверками RED→GREEN и полным зелёным набором. Два Minor отложены ниже.
 **Delivery:** локальные commits, без push/PR/merge/remote CI/deploy.
 **Acceptance:** OPEN — локальные Mailpit/3X-UI/Xray/VPN/PG restore проверены.
-Настоящий Telegram callback, ручной импорт в Happ, внешняя доставка email и
-замер на целевой машине остаются открыты. Локальный стенд запущен и сохранён.
+Настоящие Telegram approve/reject и обновления карточек проверены на отдельном
+тестовом боте, пересмотр поддержкой сохранил причину и создал связанную заявку.
+Остановка бота после commit, ручной импорт в Happ, внешняя доставка email и замер
+на целевой машине остаются открыты.
+Локальный стенд запущен и сохранён.
 
 ## Проверенные локальные команды
 
@@ -38,6 +41,7 @@ URL-file prerequisites и setup: [runbook](../runbooks/s01-test-rollout.md).
 | Docker API/VPN/restore (`local.py check`) | PASS: настоящее TLS/auth письмо, adapter decision, native panel readback, VLESS/TLS Xray26.7.28 и PG restore исходной операции |
 | `local.py rollback()` | PASS: gateway остановлен; новые запросы закрыты, PG/панель/действующий VPN сохранены; gateway возвращён |
 | `node deploy/s01/browser.mjs` | PASS: мобильный375px browser, actual Mailpit/API/panel, fragment очищен, no-store, HttpOnly/Secure, logout; Telegram transport не вызывается |
+| Dedicated test bot + настоящий оператор | PASS: доставка, approve/reject, actual actor, send/edit одной карточки, support reason/confirmation и связанная новая заявка; реальный bot-stop после approve ещё не подтверждён |
 | Independent whole-branch review | Проверен диапазон `74c1249..a6ca9d0`; Critical0, Important4 исправлены автором с RED→GREEN, Minor2 отложены. Повторного ревью не проводилось |
 
 Tool versions: Go1.27.1, Node24.11.1, Python3.13, Poetry2.5.1, Chromium153
@@ -53,22 +57,22 @@ Tool versions: Go1.27.1, Node24.11.1, Python3.13, Poetry2.5.1, Chromium153
 
 | AC | Автоматическое доказательство | Статус / остаётся |
 | --- | --- | --- |
-| 1 no-Telegram → trial → VPN | Native Docker panel/SMTP/Xray data plane + mobile browser | Docker PASS; настоящий Telegram и ручной Happ import pending |
-| 2 bot down before decision | `TestS01FlowAndFailures`, durable card exists before consumer start | Local PASS; real delivery pending |
+| 1 no-Telegram → trial → VPN | Native Docker panel/SMTP/Xray data plane + mobile browser; genuine operator approve, native readback/VPN | Docker + real Telegram PASS; внешний mailbox и ручной Happ import pending |
+| 2 bot down before decision | `TestS01FlowAndFailures`; регистрация/письмо/login/request при остановленном test bot, доставка после запуска | Local + real Telegram PASS |
 | 3 bot down after approve | Worker starts after Python consumer exits, grant applied without bot | Local PASS; real bot stop pending |
 | 4 scanner/duplicate/parallel verify | registration tests; browser fragment cleared, no automatic POST | Local PASS |
 | 5 token/code TTL/reuse/brute force | registration tests with controlled clock | Local PASS |
 | 6 Origin/CSRF/owner/key privacy | HTTP boundaries, key tests, real browser private ingress404/no-store/logout | Local PASS |
 | 7 request/idempotency duplicates | trial atomicity tests + stable browser retry key | Local PASS |
-| 8 forged actor/anonymous/old callback | handler tests, actual parsed aiogram Update through HTTPS client | Local PASS; real operator identity pending |
+| 8 forged actor/anonymous/old callback | handler tests, actual parsed aiogram Update through HTTPS client; настоящий callback от allowlisted оператора | Local PASS; positive real operator identity PASS, negative cases автоматизированы |
 | 9 concurrent decisions/lost reply | PG decision tests, repeated real consumer callback, internal-only winning409 | Local PASS |
-| 10 reject final/account unchanged | trial tests + mock browser reject/support | Local PASS |
-| 11 support reconsider/old card/used guard | trial/FSM tests reason+stable confirmation key | Local PASS; actual operator interaction pending |
+| 10 reject final/account unchanged | trial tests + mock browser reject/support; genuine reject, отсутствие Operation/Grant, login и public retry409 | Local + real Telegram PASS |
+| 11 support reconsider/old card/used guard | trial/FSM tests reason+stable confirmation key; реальные «Пересмотреть» → причина → «Подтвердить», один связанный request и неизменный отказ | Local + real support confirmation PASS; used guard/old buttons автоматизированы |
 | 12 panel down/no regular/bad config | provision/panel/config tests | Local + native panel preflight PASS; production version не проверена |
 | 13 interrupted panel add/restart | lost reply1create, apply rollback/reconcile, physical PG session loss | Local + native panel running-job restore PASS |
 | 14 partial/foreign/no hop | concrete panel partial attach/preserved protocol fields/mismatch tests | Local + 3.7.0 get/add/attach/not-found PASS; несовпадения/foreign guards проверены fixtures |
 | 15 immutable config/bytes/N+1 | snapshot/zero/overflow/expiry provisioning tests | Local PASS |
-| 16 duplicated card/edit fail | lease/ack tests + Python claim/complete replay; delayed decision, deleted-card replacement, unchanged-card ack, lost replacement reply | Local PASS; real Telegram edit pending |
+| 16 duplicated card/edit fail | lease/ack tests + Python claim/complete replay; delayed decision, deleted-card replacement, unchanged-card ack, lost replacement reply; реальные approve/reject edits одной карточки | Local PASS; normal real Telegram send/edit PASS, failure cases автоматизированы |
 | 17 legacy/unknown groups | SQL cohort separate, no legacy apply call, fixture rejects other writes/groups | Local PASS; Docker panel собственная, legacy jobs отсутствуют |
 | 18 logout/TTL/keyboard/ru/en/error | session tests +10 browser tests; inspected375/1280 screens | Local PASS |
 | 19 PG restore retains operation | real local dump after external add before applied, running River job; штатный rescue, same target/grant/session | Native panel + real PG dump/restore PASS; original target/grant/session/VPN сохранены |
@@ -163,14 +167,44 @@ Xray config и executable tmpfs для native runtime; ожидание health �
 не заявляются RED продуктового кода. Продуктовые RED относятся к native parser;
 блокировка Docker origin — отдельное исправление test fixture.
 
+## Настоящий Telegram — 2026-10-01
+
+Владелец подтвердил отдельный тестовый бот без другого обработчика и выполнил
+`/start`. Read-only preflight подтвердил private chat разрешённого оператора и
+пустой webhook. Из предоставленного `.env` прочитаны только BOT_TOKEN и
+ADMIN_TG_ID; token передан через private mode0600 file, root `.env` не монтируется.
+Backend и dedicated adapter получили одинаковый allowlist. Используется только
+собственный Docker project `cabinet-s01-local`, без legacy/payment обработчиков.
+
+Регистрация/SMTP verification/password/login/request прошли при остановленном
+test bot. После запуска карточка доставлена. Настоящий approve записал actor из
+Telegram callback, одну Operation и один Grant. Три доставки/обновления карточки
+подтверждены Telegram и сохраняют один message ID. Native3.7.0 readback подтвердил
+исходные UUID/subId/expiry/limits/membership, VLESS/TLS запрос к собственному
+origin прошёл. Credential, email, operator ID и subscription URL не публикуются.
+
+Другой test account получил настоящий reject: Operation/Grant отсутствуют,
+карточка обновлена, login сохранён. Public self retry вернул
+409/TRIAL_RECONSIDERATION_REQUIRED. Реальные «Пересмотреть» → причина →
+«Подтвердить» записали actual operator и причину, создали одну pending-заявку
+с previous_request_id; исходный отказ не изменён. Новая заявка ожидает решения.
+
+Real bot-stop ещё не доказан: первый watcher запущен после завершения выдачи,
+последующие bounded ожидания действий оператора закончились по таймауту.
+Временные scoped apply-delay triggers удалены; это ограничение acceptance
+harness, не RED продуктового кода. Настоящий callback не подменяется fixture.
+Test bot работает, backend HTTPS доступен. Полная приёмка остаётся OPEN.
+
 ## Внешние prerequisites и владелец
 
-Владелец предоставляет **отдельный test bot token file и operator ID** для
-настоящего личного апрува, поддерживаемый Happ для ручного import/connect,
-внешний SMTP/test mailbox и целевую машину для benchmark. DNS/сертификаты и
+Владелец предоставил отдельный test bot и operator ID, подтвердил отсутствие
+другого обработчика и начал личный чат. Настоящие approve/reject/edit и пересмотр
+поддержкой проверены. Остановка бота после commit пока pending.
+Остаются поддерживаемый Happ для ручного import/connect, внешний SMTP/test mailbox
+и целевая машина для benchmark. DNS/сертификаты и
 опубликованные policies/support нужны при внешнем тестовом запуске; локальные
-terms/privacy пока fixtures. Настоящие Telegram delivery/edit/reconsider остаются
-pending. Happ version: pending. Production panel/version и performance не оценены.
+terms/privacy пока fixtures. Happ version: pending. Production panel/version и
+performance не оценены.
 
 Native3.7.0 duplicate guard: **не подтверждён**, config false. Приёмка С01 в целом
 OPEN. Независимое ревью было одно, указан старый диапазон; новых повторных

@@ -129,7 +129,7 @@ Native attach сохранил credentials/expiry/limits и добавил то�
 python3 deploy/s01/local.py down
 ```
 
-Test bot выключен профилем `telegram`. Для настоящего апрува владелец предоставляет
+По умолчанию test bot выключен профилем `telegram`. Для настоящего апрува владелец предоставляет
 отдельный bot token file и operator ID, начинает личный чат. Нужно согласовать
 `BOT_OPERATOR_IDS` в backend и bot, заменить dummy token path в private config;
 после этого запустить профиль `telegram` на этом же собственном проекте.
