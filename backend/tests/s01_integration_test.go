@@ -52,7 +52,7 @@ func (p *panel) serve(w http.ResponseWriter, r *http.Request) {
 		key := strings.TrimPrefix(r.URL.Path, "/panel/api/clients/get/")
 		c := p.clients[key]
 		if c == nil {
-			json.NewEncoder(w).Encode(map[string]any{"success": false, "msg": " (record not found)", "obj": nil})
+			json.NewEncoder(w).Encode(map[string]any{"success": false, "msg": "Obtain (record not found)", "obj": nil})
 			return
 		}
 		if p.blocked != nil {

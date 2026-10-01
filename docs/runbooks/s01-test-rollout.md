@@ -70,8 +70,11 @@ node deploy/s01/browser.mjs
 ```
 
 `up` собирает backend/web/adapter и поднимает только проект `cabinet-s01-local`:
-PG/Redis, 3X-UI **3.5.0**, Mailpit **1.31.1**, HTTPS gateway и тестовый origin.
-Images панели/почты закреплены digest в `compose.local.yml`. Сначала trial выключен;
+PG/Redis, 3X-UI **3.7.0**, Mailpit **1.31.1**, HTTPS gateway и тестовый origin.
+Images панели/почты закреплены digest в `compose.local.yml`; panel и VPN-client
+используют один multi-platform image3.7.0, index digest
+`sha256:3b3131f1876e6bf35063a9ec4dd1c594e4525180bfc2e1c477dcc8a3c9550ca1`.
+Версия соответствует production по сообщению владельца; production здесь не проверяется. Сначала trial выключен;
 native API preflight проверяет absence, дубли и attach на удаляемых probe-клиентах.
 Панель использует собственную новую SQLite; initial credentials заменяются на
 сгенерированные. Нет production mounts, системного trust/hosts/VPN-переключения.
@@ -94,9 +97,13 @@ exception. Все private state/секреты лежат в ignored
 через TLS/auth, исходящей доставки/relay нет. Terms/privacy — явно тестовые fixtures.
 
 `check` проверяет email/password/API, решение через поставляемый Python adapter,
-readback UUID/subId/expiry/N+1/bytes, HTTPS-подписку и VLESS/TLS **Xray26.7.11**.
+readback UUID/subId/expiry/N+1/bytes, HTTPS-подписку и VLESS/TLS **Xray26.7.28**.
 HTTP proxy Xray направляет запрос только к Docker origin. Host подписки заменяется
 на Docker DNS той же панели; UUID/flow/port берутся из выданной подписки.
+Для этого локального теста `up` задаёт в Freedom `finalRules` разрешение только
+на текущий IP собственного origin `/32`, TCP8000. Xray26.7.28 блокирует частные
+адреса по умолчанию даже после разрешения домена; остальные адреса/порты
+сохраняют штатные ограничения. Источник: [Xray finalRules](https://xtls.github.io/en/config/outbounds/freedom.html#finalrules).
 Это не проверка ручного импорта в Happ. Telegram transport не вызывается.
 
 Затем `check` делает настоящий PG dump в момент reserved grant + running River job:
@@ -111,7 +118,7 @@ River rescue выполняет сверку. Target/UUID/subId/expiry/limits и
 VPN сохранены; затем возвращает gateway. `browser.mjs` отдельно проходит мобильный
 кабинет375px, включая no-store/logout.
 
-На 3.5.0 одинаковый panel_key с тем же subId принят без изменения UUID;
+На 3.7.0 одинаковый panel_key с тем же subId принят без изменения UUID;
 UUID в разных inbounds принят. Поэтому `PANEL_DUPLICATE_GUARD_VERIFIED=false`
 сохраняется: uncertain-create не повторяется, поддержка сверяет исходную operation.
 Native attach сохранил credentials/expiry/limits и добавил только membership.
@@ -180,8 +187,9 @@ legacy SQLite/payment jobs. Проверка main-bot startup/shutdown отде�
 `panel/api/clients/{panel_key}/attach`. Required readback — `client.uuid/email/subId`,
 `expiryTime`, `limitIp`, `totalGB`, `enable`, `inboundIds`; usage может отсутствовать.
 Backend считает absence только `success:false,obj:null` (или отсутствующий obj)
-с точным msg `record not found` либо ` (record not found)` — второй формат подтверждён
-на 3X-UI 3.5.0. Чтение возвращает числовой `client.id` и отдельный VPN UUID
+с точным msg `record not found` (compatibility fixture), ` (record not found)` (native3.5.0)
+либо `Obtain (record not found)` — подтверждён на3.7.0. Backend запрашивает
+`Accept-Language: en-US`; другие сообщения не считаются absence. Чтение возвращает числовой `client.id` и отдельный VPN UUID
 `client.uuid`; при создании VPN UUID передаётся в `client.id`. Empty object/200 без полей/timeout не считаются absence.
 Несовпадение формата или версии — compatibility blocker, включать trial нельзя.
 

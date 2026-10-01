@@ -81,6 +81,7 @@ func (p *PanelClient) call(ctx context.Context, method, path string, body any) (
 		return out, errPanel
 	}
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept-Language", "en-US")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -181,7 +182,7 @@ func (p *PanelClient) GetClient(ctx context.Context, key string) (*PanelClientVi
 		return nil, e
 	}
 	if !*out.Success {
-		if (out.Msg == "record not found" || out.Msg == " (record not found)") && (len(out.Obj) == 0 || string(out.Obj) == "null") {
+		if (out.Msg == "record not found" || out.Msg == " (record not found)" || out.Msg == "Obtain (record not found)") && (len(out.Obj) == 0 || string(out.Obj) == "null") {
 			return nil, nil
 		}
 		return nil, errPanel

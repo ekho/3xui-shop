@@ -1,6 +1,7 @@
 """Own Docker acceptance stack. Secrets stay in private files; Telegram is opt-in."""
 import base64
 import http.cookiejar
+from ipaddress import IPv4Address
 import json
 import os
 from pathlib import Path
@@ -12,7 +13,7 @@ import sys
 import time
 import urllib.request
 from urllib.error import HTTPError
-from urllib.parse import urlsplit, parse_qs
+from urllib.parse import urlsplit, parse_qs, urlencode
 from uuid import UUID, uuid4
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -87,7 +88,7 @@ def session():
 
 def request(opener, url, body=None, headers=None):
     data=None if body is None else json.dumps(body).encode()
-    req=urllib.request.Request(url,data=data,headers={'Content-Type':'application/json',**(headers or {})})
+    req=urllib.request.Request(url,data=data,headers={'Content-Type':'application/json','Accept-Language':'en-US',**(headers or {})})
     with opener.open(req,timeout=15) as response:
         return response.status, response.headers, response.read()
 
@@ -111,6 +112,24 @@ def login_panel():
     panel_call(opener,'login',{'username':'local-operator','password':password},csrf)
     return opener, csrf
 
+def allow_test_origin(opener, csrf):
+    cid=compose('ps','-q','origin').decode().strip()
+    address=command(['docker','inspect','--format',
+                     '{{(index .NetworkSettings.Networks "cabinet-s01-local_default").IPAddress}}',cid]).decode().strip()
+    rule=[{'action':'allow','network':'tcp','ip':[str(IPv4Address(address))+'/32'],'port':'8000'}]
+    config=json.loads(panel_call(opener,'panel/api/xray/',{},csrf))['xraySetting']
+    direct=next(o for o in config['outbounds'] if o.get('tag')=='direct' and o.get('protocol')=='freedom')
+    settings=direct.setdefault('settings',{})
+    if settings.get('finalRules')==rule:
+        return
+    # Only the owned test origin bypasses Xray's native private-IP fallback.
+    settings['finalRules']=rule
+    req=urllib.request.Request('https://localhost:59444/panel/api/xray/update',
+        data=urlencode({'xraySetting':json.dumps(config),'outboundTestUrl':'http://origin:8000/'}).encode(),
+        headers={'Content-Type':'application/x-www-form-urlencoded','X-CSRF-Token':csrf,'Accept-Language':'en-US'})
+    with opener.open(req,timeout=15) as response:
+        assert response.status==200 and json.loads(response.read()).get('success') is True, 'test origin rule rejected'
+
 def up():
     prepare()
     write('public.env',ENV.read_text().replace('TRIAL_ENABLED=true','TRIAL_ENABLED=false'))
@@ -128,6 +147,7 @@ def up():
                 raise RuntimeError('panel HTTPS not ready') from None
             time.sleep(.2)
     opener, csrf=login_panel()
+    allow_test_origin(opener,csrf)
     inbounds=panel_call(opener,'panel/api/inbounds/list')
     if not any(row.get('tag')=='local-regular-vless' for row in inbounds):
         panel_call(opener,'panel/api/inbounds/add',{
@@ -139,13 +159,13 @@ def up():
     _,_,raw=request(opener,'https://localhost:59444/panel/api/clients/get/acct_'+secrets.token_hex(16))
     absent=json.loads(raw)
     write('panel-absence.json',json.dumps(absent))
-    assert absent.get('success') is False and absent.get('msg') == ' (record not found)' and absent.get('obj') is None, 'unsupported absence response'
+    assert absent.get('success') is False and absent.get('msg') == 'Obtain (record not found)' and absent.get('obj') is None, 'unsupported absence response'
     preflight()
     data=ENV.read_text().replace('TRIAL_ENABLED=false','TRIAL_ENABLED=true')
     write('public.env',data)
     compose('up','--no-build','-d','backend')
     wait_until(ready)
-    print('PASS: local 3X-UI3.5.0, TLS Mailpit, cabinet HTTPS; Telegram profile disabled')
+    print('PASS: local 3X-UI3.7.0, TLS Mailpit, cabinet HTTPS; Telegram profile disabled')
 
 def api(opener, path, body=None, csrf=None, key=None):
     headers={'Origin':ORIGIN}

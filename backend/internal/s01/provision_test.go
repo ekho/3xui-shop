@@ -78,7 +78,7 @@ func (p *fakePanel) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if p.client == nil {
-			reply(map[string]any{"success": false, "msg": " (record not found)", "obj": nil})
+			reply(map[string]any{"success": false, "msg": "Obtain (record not found)", "obj": nil})
 			return
 		}
 		record := make(map[string]any, len(p.client)+1)

@@ -30,7 +30,7 @@ services:
       - '127.0.0.1:59446:9446'
     depends_on: [panel, mailpit]
   panel:
-    image: ghcr.io/mhsanaei/3x-ui@sha256:344f7a68a91e59d592fc355d67e32d8c2041b1c2082a7eaa3c413dc3a5cab7db
+    image: ghcr.io/mhsanaei/3x-ui:3.7.0@sha256:3b3131f1876e6bf35063a9ec4dd1c594e4525180bfc2e1c477dcc8a3c9550ca1
     user: '${S01_RUNTIME_UID:-10001}:${S01_RUNTIME_GID:-10001}'
     entrypoint: [/bin/sh, -c]
     command: ['cp -R /app/bin /tmp/bin && exec /app/x-ui']
@@ -73,7 +73,7 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
   vpn-client:
-    image: ghcr.io/mhsanaei/3x-ui@sha256:344f7a68a91e59d592fc355d67e32d8c2041b1c2082a7eaa3c413dc3a5cab7db
+    image: ghcr.io/mhsanaei/3x-ui:3.7.0@sha256:3b3131f1876e6bf35063a9ec4dd1c594e4525180bfc2e1c477dcc8a3c9550ca1
     profiles: [vpn]
     user: '${S01_RUNTIME_UID:-10001}:${S01_RUNTIME_GID:-10001}'
     entrypoint: [/bin/sh, -c]
