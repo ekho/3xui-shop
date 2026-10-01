@@ -17,8 +17,9 @@ Task8 проверена. Независимое ревью выполнено; 
 Настоящие Telegram approve/reject и обновления карточек проверены на отдельном
 тестовом боте, пересмотр поддержкой сохранил причину и создал связанную заявку.
 Backend завершил выдачу после остановки бота; key и настоящий VPN доступны.
-Ручной импорт в Happ, внешняя доставка email и замер на целевой машине остаются
-открыты.
+Ручной импорт в Happ подтверждён. Подключение через Happ не проверялось:
+владелец запретил переключать действующее соединение. Внешняя доставка email
+и замер на целевой машине остаются открыты.
 Локальный стенд запущен и сохранён.
 
 ## Проверенные локальные команды
@@ -58,7 +59,7 @@ Tool versions: Go1.27.1, Node24.11.1, Python3.13, Poetry2.5.1, Chromium153
 
 | AC | Автоматическое доказательство | Статус / остаётся |
 | --- | --- | --- |
-| 1 no-Telegram → trial → VPN | Native Docker panel/SMTP/Xray data plane + mobile browser; genuine operator approve, native readback/VPN | Docker + real Telegram PASS; внешний mailbox и ручной Happ import pending |
+| 1 no-Telegram → trial → VPN | Native Docker panel/SMTP/Xray data plane + mobile browser; genuine operator approve, native readback/VPN; manual import в Happ5.9.0 | Docker + real Telegram + Happ import PASS; внешний mailbox pending; подключение через Happ не проверялось по ограничению владельца |
 | 2 bot down before decision | `TestS01FlowAndFailures`; регистрация/письмо/login/request при остановленном test bot, доставка после запуска | Local + real Telegram PASS |
 | 3 bot down after approve | Worker starts after Python consumer exits; настоящий approve, наблюдённые callback.created_at < Docker FinishedAt < granted_at, key/native readback/VPN при остановленном боте | Local + real bot-stop PASS |
 | 4 scanner/duplicate/parallel verify | registration tests; browser fragment cleared, no automatic POST | Local PASS |
@@ -218,20 +219,30 @@ timeout — test pause дольше public15s deadline, product code не мен
 Владелец предоставил отдельный test bot и operator ID, подтвердил отсутствие
 другого обработчика и начал личный чат. Настоящие approve/reject/edit и пересмотр
 поддержкой, approve новой заявки и завершение выдачи после остановки бота проверены.
-На Mac обнаружен Happ **5.9.0**; в приложении активно существующее VPN-соединение.
-Ручной import/connect ещё не выполнялся. Выданная тестовая подписка использует
-HTTPS localhost с собственным сертификатом и VLESS/TLS localhost:24443; этот
-VLESS-порт пока не опубликован на host. Backend health и Docker Xray connection
-повторно проверены, test bot остановлен.
-Перед проверкой Happ владелец должен разрешить временное переключение VPN и
-доверие только к тестовому сертификату. После разрешения маршрут публикуется
-только на loopback; после проверки временное доверие и маршрут удаляются,
-исходное соединение восстанавливается. Отключение TLS verification не применяется.
-Остаются ручной import/connect в Happ, внешний SMTP/test mailbox
-и целевая машина для benchmark. DNS/сертификаты и
+Владелец выполнил login/copy/manual import в Happ **5.9.0** и подтвердил успех.
+В приложении наблюдалась localhost-подписка с одним S01 VLESS-сервером,
+лимитом15GB и сроком до04.10.2026. На время импорта тестовый сертификат был
+добавлен в пользовательскую keychain с политикой SSL; verification для localhost
+и panel прошла. VLESS-порт был доступен только на127.0.0.1; native TLS handshake,
+backend health и отдельный Docker Xray connection проверены.
+Последующее указание владельца запрещает переключать Happ на тестовое соединение.
+Тестовый сервер не выбирался, запрос через Happ к тестовому origin не отправлялся.
+До получения этого запрета прежнее соединение кратко отключалось в рамках ранее
+разрешённого теста; после запрета наблюдался прежний выбранный сервер и статус
+«ПОДКЛЮЧЕН». Проверка подключения через Happ прекращена. Отдельное Docker VPN
+доказательство сохраняется и не доказывает работу туннеля в Happ.
+Временная localhost-подписка удалена; прежний сервер остался выбранным и подключённым.
+Удалены только добавленные пользовательские сертификат/SSL trust и временная
+публикация порта24443; отсутствие доверия и закрытый порт проверены. Backend
+и панель доступны, собственный Docker VPN возобновлён и проверен запросом
+к собственному origin. Исходный Compose восстановлен; продуктовый код не менялся.
+Отключение TLS verification не применяется. Test bot остановлен.
+Остаются фактическое подключение через Happ (в текущих условиях не выполняется),
+внешний SMTP/test mailbox и целевая машина для benchmark. Владелец подтвердил,
+что внешние SMTP/test mailbox и целевая машина пока недоступны. DNS/сертификаты и
 опубликованные policies/support нужны при внешнем тестовом запуске; локальные
 terms/privacy пока fixtures. Владелец предоставляет SMTP/test mailbox и целевой
-test server до соответствующих проверок; ресурсы запрошены. Production panel/version и
+test server до соответствующих проверок. Production panel/version и
 performance не оценены.
 
 Native3.7.0 duplicate guard: **не подтверждён**, config false. Приёмка С01 в целом
