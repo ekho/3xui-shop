@@ -1,10 +1,10 @@
 name: S01 checks
 on:
   pull_request:
-    paths: ['backend/**', 'web/**', 'docs/api/**', 'app/**', 'tests/**', 'pyproject.toml', 'poetry.lock', 'deploy/s01/**', '.github/workflows/s01-checks.yml']
+    paths: ['backend/**', 'web/**', 'docs/api/**', 'app/**', 'tests/**', 'pyproject.toml', 'poetry.lock', 'deploy/s01/**', 'deploy/s02/**', '.github/workflows/s01-checks.yml']
   push:
     branches: ['feature/**']
-    paths: ['backend/**', 'web/**', 'docs/api/**', 'app/**', 'tests/**', 'pyproject.toml', 'poetry.lock', 'deploy/s01/**', '.github/workflows/s01-checks.yml']
+    paths: ['backend/**', 'web/**', 'docs/api/**', 'app/**', 'tests/**', 'pyproject.toml', 'poetry.lock', 'deploy/s01/**', 'deploy/s02/**', '.github/workflows/s01-checks.yml']
 permissions:
   contents: read
 concurrency:
@@ -50,10 +50,9 @@ jobs:
           npm --prefix web run build -- --mode test
       - name: Behavior and connected consumers
         run: |
-          make -C backend test-integration
+          S01_RUN_BROWSER=1 make -C backend test-integration
           poetry run python -m unittest discover -s tests -v
           npm --prefix web run test:e2e
-          cd web && S01_E2E_MODE=real npm run test:e2e
       - name: Container readiness (local images only)
         run: |
           docker compose --env-file deploy/s01/.env.example -f deploy/s01/compose.acceptance.yml config --quiet
