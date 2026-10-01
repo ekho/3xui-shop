@@ -115,6 +115,9 @@ func New(svc *s01.Service, cfg s01.Config) *echo.Echo {
 	e.GET("/api/v1/trial-requests/current", a.GetCurrentTrialRequest)
 	e.POST("/internal/v1/trial-requests/:id/decision", a.DecideTrialRequest)
 	e.POST("/internal/v1/trial-requests/:id/reconsider", a.ReconsiderTrialRequest)
+	e.GET("/api/v1/subscription", a.GetSubscription)
+	e.GET("/api/v1/subscription/key", a.GetSubscriptionKey)
+	e.POST("/internal/v1/trial-operations/:id/reconcile", a.ReconcileTrialOperation)
 	return e
 }
 func invalid() error { return &s01.Error{Status: 400, Code: "INVALID_INPUT"} }
@@ -319,4 +322,46 @@ func (a *API) ReconsiderTrialRequest(c *echo.Context) error {
 		return err
 	}
 	return c.JSON(201, out)
+}
+
+func (a *API) GetSubscription(c *echo.Context) error {
+	account, e := a.auth(c, false)
+	if e != nil {
+		return e
+	}
+	out, e := a.svc.Subscription(c.Request().Context(), account.Account.AccountId)
+	if e != nil {
+		return e
+	}
+	return c.JSON(200, out)
+}
+func (a *API) GetSubscriptionKey(c *echo.Context) error {
+	account, e := a.auth(c, false)
+	if e != nil {
+		return e
+	}
+	out, e := a.svc.SubscriptionKey(c.Request().Context(), account.Account.AccountId)
+	if e != nil {
+		return e
+	}
+	return c.JSON(200, out)
+}
+func (a *API) ReconcileTrialOperation(c *echo.Context) error {
+	id, e := resourceID(c)
+	if e != nil {
+		return e
+	}
+	key, e := idempotencyKey(c)
+	if e != nil {
+		return e
+	}
+	in, e := decode[wire.ReconcileInput](a, c, "ReconcileInput")
+	if e != nil {
+		return e
+	}
+	out, e := a.svc.ReconcileTrialOperation(c.Request().Context(), id, key, in)
+	if e != nil {
+		return e
+	}
+	return c.JSON(202, out)
 }

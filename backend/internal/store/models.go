@@ -118,16 +118,25 @@ type TrialGrant struct {
 }
 
 type TrialOperation struct {
-	ID           uuid.UUID
-	AccountID    uuid.UUID
-	RequestID    uuid.UUID
-	Status       string
-	TrialEnabled bool
-	PeriodDays   int64
-	TrafficGb    int64
-	Devices      int64
-	PanelID      string
-	CreatedAt    pgtype.Timestamptz
+	ID               uuid.UUID
+	AccountID        uuid.UUID
+	RequestID        uuid.UUID
+	Status           string
+	TrialEnabled     bool
+	PeriodDays       int64
+	TrafficGb        int64
+	Devices          int64
+	PanelID          string
+	CreatedAt        pgtype.Timestamptz
+	FirstStartedAt   pgtype.Timestamptz
+	Target           []byte
+	WriteStarted     bool
+	Attempts         int32
+	LeaseHash        []byte
+	LeaseExpiresAt   pgtype.Timestamptz
+	WorkerPid        pgtype.Int4
+	TrafficUsedBytes pgtype.Int8
+	ObservedAt       pgtype.Timestamptz
 }
 
 type TrialRequest struct {

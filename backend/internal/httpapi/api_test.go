@@ -239,3 +239,34 @@ func TestInternalOperatorBoundary(t *testing.T) {
 		t.Fatal("internal state leaked")
 	}
 }
+
+func TestSubscriptionPrivacy(t *testing.T) {
+	h, e, cfg := httpFixture(t)
+	verifiedHTTP(t, h, e, cfg)
+	login := request(h, "POST", "/api/v1/auth/login", `{"email":"login@example.test","password":"my long safe password ✨"}`, cfg.CabinetOrigin)
+	if login.Code != 200 {
+		t.Fatal(login.Code)
+	}
+	cookie := login.Result().Cookies()[0]
+	for _, tc := range []struct {
+		path          string
+		authenticated bool
+		status        int
+	}{{"/api/v1/subscription/key", false, 401}, {"/api/v1/subscription/key", true, 409}, {"/api/v1/subscription/key?account_id=" + uuid.NewString(), true, 400}, {"/api/v1/subscription/" + uuid.NewString() + "/key", true, 404}, {"/api/v1/subscription", true, 200}} {
+		r := httptest.NewRequest("GET", tc.path, nil)
+		if tc.authenticated {
+			r.AddCookie(cookie)
+		}
+		out := httptest.NewRecorder()
+		h.ServeHTTP(out, r)
+		if out.Code != tc.status || out.Header().Get("Cache-Control") != "no-store" {
+			t.Fatal("key owner/cache boundary", out.Code)
+		}
+		if tc.status >= 400 && strings.Contains(out.Body.String(), "subscription_url") {
+			t.Fatal("key in failure")
+		}
+		if tc.status == 409 && !strings.Contains(out.Body.String(), "OPERATION_NOT_READY") {
+			t.Fatal("key error contract")
+		}
+	}
+}

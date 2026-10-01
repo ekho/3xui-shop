@@ -64,8 +64,12 @@ func TestTrialDecisionAtomicity(t *testing.T) {
 	}
 	var jobs int
 	e.Pool.QueryRow(ctx, `SELECT count(*) FROM river_job WHERE kind='s01_provision'`).Scan(&jobs)
-	var queueName string;e.Pool.QueryRow(ctx,`SELECT queue FROM river_job WHERE kind='s01_provision' LIMIT 1`).Scan(&queueName);if queueName!="provision"{t.Fatal("mail worker could consume unimplemented provision job")}
- if jobs != 1 {
+	var queueName string
+	e.Pool.QueryRow(ctx, `SELECT queue FROM river_job WHERE kind='s01_provision' LIMIT 1`).Scan(&queueName)
+	if queueName != "provision" {
+		t.Fatal("mail worker could consume unimplemented provision job")
+	}
+	if jobs != 1 {
 		t.Fatal("duplicate provision job")
 	}
 	cb := decision(101, "approve")

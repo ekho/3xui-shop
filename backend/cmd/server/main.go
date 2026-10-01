@@ -63,7 +63,8 @@ func run() error {
 	svc := s01.NewService(pool, limiter, queue, cfg)
 	workers := river.NewWorkers()
 	river.AddWorker(workers, &s01.MailWorker{Service: svc})
-	worker, err := river.NewClient(riverpgxv5.New(pool), &river.Config{Workers: workers, Queues: map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: 2}}, Logger: slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))})
+	river.AddWorker(workers, &s01.ProvisionWorker{Service: svc})
+	worker, err := river.NewClient(riverpgxv5.New(pool), &river.Config{Workers: workers, Queues: map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: 2}, "provision": {MaxWorkers: 2}}, Logger: slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))})
 	if err != nil {
 		return err
 	}

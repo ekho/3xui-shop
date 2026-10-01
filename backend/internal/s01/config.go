@@ -12,6 +12,10 @@ import (
 )
 
 type Config struct {
+	PanelURL, PanelToken, PanelUsername, PanelPassword, SubscriptionBaseURL string
+	PanelDuplicateGuardVerified                                             bool
+	PanelRootCAs                                                            *x509.CertPool
+
 	Operators         []int64
 	AdapterToken      string
 	PanelID           string
@@ -61,11 +65,42 @@ func LoadConfig() (Config, error) {
 		c.TrustedProxyCIDRs = strings.Split(value, ",")
 	}
 	c.PanelID = os.Getenv("PANEL_ID")
+	c.PanelURL = os.Getenv("PANEL_URL")
+	c.SubscriptionBaseURL = os.Getenv("SUBSCRIPTION_BASE_URL")
+	c.PanelUsername = os.Getenv("PANEL_USERNAME")
 	var err error
 	if value := os.Getenv("TRIAL_ENABLED"); value != "" {
 		c.TrialEnabled, err = strconv.ParseBool(value)
 		if err != nil {
 			return c, errors.New("invalid TRIAL_ENABLED")
+		}
+	}
+	if value := os.Getenv("PANEL_DUPLICATE_GUARD_VERIFIED"); value != "" {
+		c.PanelDuplicateGuardVerified, err = strconv.ParseBool(value)
+		if err != nil {
+			return c, errors.New("invalid PANEL_DUPLICATE_GUARD_VERIFIED")
+		}
+	}
+	if os.Getenv("PANEL_TOKEN_FILE") != "" {
+		c.PanelToken, err = SecretFile("PANEL_TOKEN")
+		if err != nil {
+			return c, err
+		}
+	}
+	if c.PanelUsername != "" {
+		c.PanelPassword, err = SecretFile("PANEL_PASSWORD")
+		if err != nil {
+			return c, err
+		}
+	}
+	if path := os.Getenv("PANEL_CA_FILE"); path != "" {
+		pem, e := os.ReadFile(path)
+		if e != nil {
+			return c, errors.New("unreadable PANEL_CA_FILE")
+		}
+		c.PanelRootCAs = x509.NewCertPool()
+		if !c.PanelRootCAs.AppendCertsFromPEM(pem) {
+			return c, errors.New("invalid PANEL_CA_FILE")
 		}
 	}
 	for name, dest := range map[string]*int64{"TRIAL_PERIOD": &c.TrialPeriodDays, "TRIAL_TRAFFIC_GB": &c.TrialTrafficGB, "BONUS_DEVICES_COUNT": &c.TrialDevices} {
@@ -136,6 +171,21 @@ func LoadConfig() (Config, error) {
 	return c, c.Validate()
 }
 func (c Config) Validate() error {
+	if c.TrialEnabled || c.PanelURL != "" {
+		for _, raw := range []string{c.PanelURL, c.SubscriptionBaseURL} {
+			u, e := url.Parse(raw)
+			if e != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+				return errors.New("panel and subscription URLs must be HTTPS")
+			}
+		}
+		if c.PanelToken == "" && (c.PanelUsername == "" || c.PanelPassword == "") {
+			return errors.New("panel credentials required")
+		}
+		if c.PanelToken != "" && (c.PanelUsername != "" || c.PanelPassword != "") {
+			return errors.New("choose one panel credential mode")
+		}
+	}
+
 	for _, cidr := range c.TrustedProxyCIDRs {
 		if _, _, err := net.ParseCIDR(cidr); err != nil {
 			return errors.New("invalid trusted proxy CIDR")
