@@ -1,0 +1,25 @@
+name: cabinet-s01-test
+services:
+  postgres:
+    image: postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f
+    environment:
+      POSTGRES_USER: s01_test
+      POSTGRES_DB: s01_test
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports: ['127.0.0.1:55491:5432']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U s01_test -d s01_test']
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    volumes: [s01_test_pg:/var/lib/postgresql/data]
+  redis:
+    image: redis@sha256:6f81e8915c60b065a524e6967e0ad1c639ba6efa84d669f823683ea04d9150ee
+    ports: ['127.0.0.1:56391:6379']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 2s
+      retries: 20
+volumes:
+  s01_test_pg:

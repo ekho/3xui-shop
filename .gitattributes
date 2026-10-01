@@ -1,0 +1,3 @@
+# gofmt and Make recipes use tabs by definition.
+backend/**/*.go whitespace=-tab-in-indent
+backend/Makefile whitespace=-tab-in-indent

@@ -1,0 +1,7 @@
+package: wire
+generate:
+  models: true
+  embedded-spec: true
+output: internal/wire/models.gen.go
+output-options:
+  skip-prune: true
