@@ -49,7 +49,7 @@ def run():
             elif name=='S01_RUNTIME_GID':line=name+'='+str(os.getgid())
             lines.append(line)
         envfile=folder/'public.env';envfile.write_text('\n'.join(lines)+'\n');envfile.chmod(0o600)
-        compose=['docker','compose','--project-name','cabinet-s01-smoke','--env-file',str(envfile),'-f',str(COMPOSE)]
+        compose=['docker','compose','--project-name','cabinet-s01-smoke','--profile','restore','--env-file',str(envfile),'-f',str(COMPOSE)]
         try:
             command(compose+['config','--quiet'])
             command(compose+['up','--pull','never','--no-build','-d','backend','gateway'])
@@ -92,9 +92,32 @@ with urllib.request.urlopen(request,context=ctx,timeout=5) as r:assert r.status=
             command(compose+['stop','gateway'])
             running=command(compose+['ps','--services','--status','running']).decode().splitlines()
             assert 'backend' in running and 'postgres' in running and 'redis' in running and 'gateway' not in running
-            print('PASS: local HTTPS, public/private routing, secret-file access, repeated migrations, bounded rollback')
+            command(compose+['stop','backend'])
+            def sql(query):
+                return command(compose+['exec','-T','postgres','psql','-U','cabinet_s01','-d','cabinet_s01','-At','-v','ON_ERROR_STOP=1','-c',query]).decode().strip()
+            # A nonexistent operation finishes without touching a panel; mail must stay untouched.
+            sql("INSERT INTO river_job(kind,args,queue,state) VALUES ('s01_provision','{\"operation_id\":\"11111111-1111-4111-8111-111111111111\"}','provision','available'),('s01_mail','{\"delivery_id\":\"22222222-2222-4222-8222-222222222222\"}','default','available')")
+            sql("UPDATE river_job SET state='running',attempt=1,attempted_at=now()-interval '4 minutes' WHERE kind='s01_provision'")
+            command(compose+['up','--pull','never','--no-build','-d','reconcile'])
+            deadline=time.monotonic()+30
+            while sql("SELECT state FROM river_job WHERE kind='s01_provision'")!='completed':
+                assert 'reconcile' in command(compose+['ps','--services','--status','running']).decode().splitlines(), 'restore runtime stopped'
+                assert time.monotonic()<deadline, 'restore runtime did not process provision queue'
+                time.sleep(.2)
+            assert sql("SELECT state||':'||attempt FROM river_job WHERE kind='s01_mail'")=='available:0', 'restore runtime processed mail'
+            no_http="""import socket
+try:
+    connection=socket.create_connection(('reconcile',8080),timeout=2)
+except ConnectionRefusedError:
+    pass
+else:
+    connection.close()
+    raise AssertionError('restore runtime opened HTTP')
+"""
+            command(compose+['run','--rm','--no-deps','--entrypoint','python','bot','-c',no_http])
+            print('PASS: local HTTPS, public/private routing, secret-file access, repeated migrations, bounded rollback, provision-only restore runtime')
         except Exception:
-            details=command(compose+['logs','--no-color','--tail','25','backend','gateway']).decode(errors='replace')
+            details=command(compose+['logs','--no-color','--tail','25','migrate','backend','gateway','reconcile']).decode(errors='replace')
             for value in REDACTIONS:details=details.replace(value,'[redacted]')
             print(details)
             raise

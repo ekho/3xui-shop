@@ -18,6 +18,9 @@ import (
 	"time"
 )
 
+// Keep rescue beyond the worker's 125-second budget, aligned with the operation lease.
+const ProvisionRescueAfter = 3 * time.Minute
+
 // The dedicated connection holds a session lock across bounded panel calls.
 // The watchdog cancels HTTP on ownership loss; apply uses that same connection.
 func watchOwner(ctx context.Context, c *pgxpool.Conn, cancel context.CancelFunc) (func(), *atomic.Bool) {

@@ -25,8 +25,8 @@ func main() {
 	}
 }
 func run() error {
-	if len(os.Args) != 2 || (os.Args[1] != "serve" && os.Args[1] != "migrate") {
-		slog.Error("usage: server serve|migrate")
+	if len(os.Args) != 2 || (os.Args[1] != "serve" && os.Args[1] != "migrate" && os.Args[1] != "reconcile") {
+		slog.Error("usage: server serve|migrate|reconcile")
 		return errors.New("invalid command")
 	}
 	cfg, err := s01.LoadConfig()
@@ -62,9 +62,13 @@ func run() error {
 	}
 	svc := s01.NewService(pool, limiter, queue, cfg)
 	workers := river.NewWorkers()
-	river.AddWorker(workers, &s01.MailWorker{Service: svc})
 	river.AddWorker(workers, &s01.ProvisionWorker{Service: svc})
-	worker, err := river.NewClient(riverpgxv5.New(pool), &river.Config{Workers: workers, Queues: map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: 2}, "provision": {MaxWorkers: 2}}, Logger: slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))})
+	queues := map[string]river.QueueConfig{"provision": {MaxWorkers: 2}}
+	if os.Args[1] == "serve" {
+		river.AddWorker(workers, &s01.MailWorker{Service: svc})
+		queues[river.QueueDefault] = river.QueueConfig{MaxWorkers: 2}
+	}
+	worker, err := river.NewClient(riverpgxv5.New(pool), &river.Config{Workers: workers, Queues: queues, RescueStuckJobsAfter: s01.ProvisionRescueAfter, Logger: slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))})
 	if err != nil {
 		return err
 	}
@@ -76,6 +80,10 @@ func run() error {
 		defer done()
 		worker.Stop(stop)
 	}()
+	if os.Args[1] == "reconcile" {
+		<-ctx.Done()
+		return nil
+	}
 	address := os.Getenv("LISTEN_ADDRESS")
 	if address == "" {
 		address = "127.0.0.1:8080"

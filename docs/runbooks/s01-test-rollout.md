@@ -53,7 +53,9 @@ python3 deploy/s01/smoke.py
 
 Smoke создаёт отдельный `cabinet-s01-smoke`, временные ключи/сертификаты и свою
 PG volume, проверяет HTTPS, закрытый public `/internal`, private HTTPS, доступ
-к secret files, повторные миграции и остановку ingress. Telegram poller не
+к secret files, повторные миграции и остановку ingress. Режим `reconcile`
+в поставляемом образе восстанавливает зависшую River job только в provision
+queue; почтовая job остаётся без попыток, HTTP listener отсутствует. Telegram poller не
 запускается, внешние SMTP/панель не вызываются. Затем удаляется только smoke
 project. Базы `compose.test.yml` и будущего acceptance project сохраняются.
 
@@ -139,9 +141,11 @@ support reconsider с причиной и старую карточку. Ост�
 
 Автоматическая репетиция: `go -C backend test ./tests -run '^TestS01BackupRestore$' -count=1`.
 Она делает настоящий pg_dump/pg_restore после external add и до DB applied,
-с running operation, immutable target, reserved grant, River job и session.
+с running operation, immutable target, reserved grant, **running River job** и session.
 Восстановление в отдельную БД запускает только provision queue; ключи/expiry
 сохраняются, внешний клиент создаётся один раз, owner key fetch работает.
+Тест сдвигает только `attempted_at` восстановленной job на четыре минуты назад,
+чтобы проверить штатный River rescue без реального ожидания порога.
 Панель этого автоматического теста — HTTPS fixture. Повторить на реальной
 выделенной панели до закрытия AC19.
 
@@ -149,8 +153,22 @@ support reconsider с причиной и старую карточку. Ост�
 нет живого provisioning owner; сохранить согласованный PG dump, файлы внешних
 ключей и соответствующую версию приложения. Восстановить в **новую пустую БД**,
 не поверх действующей. Старая БД/worker не должны продолжать выдачу в ту же панель.
-Сохранить panel ownership и те же keys. Сначала открыть только reconcile worker,
-сверить reservation, UUID/subId/expiry/bytes/N+1 и один Grant; потом owner access.
+Сохранить panel ownership и те же keys. После восстановления переключить
+`DATABASE_URL_FILE` на новую БД. При остановленных bot/gateway/backend запустить
+поставляемый режим восстановления:
+
+```sh
+docker compose --profile restore --env-file /secure/s01/public.env -f deploy/s01/compose.acceptance.yml up --no-build -d reconcile
+```
+
+Он не открывает HTTP и не обрабатывает mail queue. Running job становится
+доступной для rescue после трёх минут от `attempted_at`; River проверяет её
+раз в 30 секунд, затем действует обычная задержка повтора. Этот порог превышает
+таймаут worker 125 секунд. Бюджет повторов и исходная operation сохраняются.
+Не менять state/attempted_at руками на реальном стенде. Jobs с исчерпанными
+попытками требуют разбора поддержки, а не новой выдачи.
+Сверить reservation, UUID/subId/expiry/bytes/N+1 и один Grant. Остановить `reconcile`
+перед возвращением обычных backend/gateway/bot и проверить owner access.
 Никакого отката PostgreSQL старым snapshot или автоматического создания новой
 operation при потерянном ответе.
 

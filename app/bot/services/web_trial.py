@@ -186,7 +186,13 @@ class WebTrialAdapter:
                     target = j["payload"]["target_message_id"]
                     try:
                         if target:
-                            message = await asyncio.wait_for(bot.edit_message_text(text=text, chat_id=j["chat_id"], message_id=target, reply_markup=keyboard, request_timeout=10), 10)
+                            try:
+                                message = await asyncio.wait_for(bot.edit_message_text(text=text, chat_id=j["chat_id"], message_id=target, reply_markup=keyboard, request_timeout=10), 10)
+                            except TelegramBadRequest as error:
+                                if error.message.removeprefix("Bad Request: ").startswith("message is not modified"):
+                                    message = True
+                                else:
+                                    message = await asyncio.wait_for(bot.send_message(chat_id=j["chat_id"], text=text, reply_markup=keyboard, request_timeout=10), 10)
                         else:
                             message = await asyncio.wait_for(bot.send_message(chat_id=j["chat_id"], text=text, reply_markup=keyboard, request_timeout=10), 10)
                         if message is True and target:

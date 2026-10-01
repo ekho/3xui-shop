@@ -10,7 +10,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from app.bot.filters import IsAdmin
-from app.bot.services.web_trial import WebTrialAdapter, WebTrialAPIError, render_card, valid_uuid
+from app.bot.services.web_trial import WebTrialAdapter, WebTrialAPIError, valid_uuid
 
 router = Router(name=__name__)
 
@@ -54,15 +54,12 @@ async def callback_web_trial(callback: CallbackQuery, state: FSMContext, web_tri
     action, identifier = parts[1:]
     if action in ("a", "r"):
         try:
-            out = await web_trial.decide(identifier, callback.from_user.id, "approve" if action == "a" else "reject", callback.id)
-            if not isinstance(out.get("card"), dict) or out.get("request", {}).get("status") not in ("approved", "rejected"):
-                raise WebTrialAPIError(400, "INVALID_RESPONSE")
-            text, keyboard = render_card(out["card"])
+            await web_trial.decide(identifier, callback.from_user.id, "approve" if action == "a" else "reject", callback.id)
         except WebTrialAPIError as error:
             await api_failure(callback, error)
             return
         await telegram(callback.answer("Решение принято backend."))
-        await telegram(callback.message.edit_text(text, reply_markup=keyboard))
+        # The durable delivery loop is the sole writer of approval-card state.
         return
     if action in ("s", "c"):
         await state.clear()

@@ -472,8 +472,9 @@ func TestS01BackupRestore(t *testing.T) {
 	f.panel.mu.Unlock()
 	running, cancel := context.WithCancel(ctx)
 	defer cancel()
-	done := make(chan error, 1)
-	go func() { done <- f.svc.Provision(running, op) }()
+	if err := f.workers.Start(running); err != nil {
+		t.Fatal(err)
+	}
 	select {
 	case <-blocked:
 	case <-time.After(15 * time.Second):
@@ -484,6 +485,10 @@ func TestS01BackupRestore(t *testing.T) {
 	f.env.Pool.QueryRow(ctx, `SELECT o.status,g.status,o.target FROM trial_operations o JOIN trial_grants g ON g.operation_id=o.id WHERE o.id=$1`, op).Scan(&state, &grant, &before)
 	if state != "provisioning" || grant != "reserved" || len(before) == 0 {
 		t.Fatal("backup point must retain running operation and reserved grant")
+	}
+	var jobState string
+	if err := f.env.Pool.QueryRow(ctx, `SELECT state FROM river_job WHERE kind='s01_provision' AND args->>'operation_id'=$1`, op.String()).Scan(&jobState); err != nil || jobState != "running" {
+		t.Fatal("backup point must include a running River job", jobState, err)
 	}
 	cfg := f.env.Pool.Config().ConnConfig
 	if cfg.Host != "127.0.0.1" || cfg.Port != 55491 {
@@ -509,11 +514,11 @@ func TestS01BackupRestore(t *testing.T) {
 	}
 	// Stop the original worker; the dump already captured the uncertain external write.
 	cancel()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("worker cancellation")
+	stop, stopDone := context.WithTimeout(ctx, 5*time.Second)
+	if err := f.workers.StopAndCancel(stop); err != nil {
+		t.Fatal("worker cancellation", err)
 	}
+	stopDone()
 	name := "s01_restore_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 	if _, err = f.env.Pool.Exec(ctx, `CREATE DATABASE `+name); err != nil {
 		t.Fatal(err)
@@ -537,6 +542,13 @@ func TestS01BackupRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(restored.Close)
+	if err = restored.QueryRow(ctx, `SELECT state FROM river_job WHERE kind='s01_provision' AND args->>'operation_id'=$1`, op.String()).Scan(&jobState); err != nil || jobState != "running" {
+		t.Fatal("dump did not preserve running River job", jobState, err)
+	}
+	// Advance only the recovery clock, keeping running state and all provisioning intent intact.
+	if _, err = restored.Exec(ctx, `UPDATE river_job SET attempted_at=now()-interval '4 minutes' WHERE kind='s01_provision' AND state='running'`); err != nil {
+		t.Fatal(err)
+	}
 	queue, err := river.NewClient(riverpgxv5.New(restored), &river.Config{})
 	if err != nil {
 		t.Fatal(err)
@@ -544,7 +556,7 @@ func TestS01BackupRestore(t *testing.T) {
 	svc := s01.NewService(restored, f.env.Redis, queue, f.cfg)
 	workers := river.NewWorkers()
 	river.AddWorker(workers, &s01.ProvisionWorker{Service: svc})
-	worker, err := river.NewClient(riverpgxv5.New(restored), &river.Config{Workers: workers, Queues: map[string]river.QueueConfig{"provision": {MaxWorkers: 1}}, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	worker, err := river.NewClient(riverpgxv5.New(restored), &river.Config{Workers: workers, Queues: map[string]river.QueueConfig{"provision": {MaxWorkers: 1}}, RescueStuckJobsAfter: s01.ProvisionRescueAfter, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -556,11 +568,18 @@ func TestS01BackupRestore(t *testing.T) {
 		defer end()
 		worker.Stop(stop)
 	})
-	wait(t, func() bool {
+	deadline := time.Now().Add(30 * time.Second)
+	for {
 		var s string
 		restored.QueryRow(ctx, `SELECT status FROM trial_operations WHERE id=$1`, op).Scan(&s)
-		return s == "applied"
-	})
+		if s == "applied" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("restored running job was not reconciled", s)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
 	var after []byte
 	var n int
 	restored.QueryRow(ctx, `SELECT target FROM trial_operations WHERE id=$1`, op).Scan(&after)

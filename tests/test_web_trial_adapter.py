@@ -59,7 +59,7 @@ class WebTrialAdapterTests(unittest.IsolatedAsyncioTestCase):
         await self.adapter.complete(j,{"kind":"sent","chat_id":101,"message_id":11})
         self.assertEqual(self.calls[-1][1]["lease_token"],j["lease_token"])
 
-    async def test_delivery_run_and_edit_failure(self):
+    async def test_delivery_replaces_deleted_review_card(self):
         self.claims=[self.job]
         message=SimpleNamespace(chat=SimpleNamespace(id=101),message_id=11)
         bot=SimpleNamespace(send_message=AsyncMock(return_value=message),edit_message_text=AsyncMock())
@@ -72,19 +72,47 @@ class WebTrialAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(sent);self.assertEqual(sent[0]["result"],{"kind":"sent","chat_id":101,"message_id":11})
         bot.send_message.assert_awaited()
         # A separate adapter instance models the next bot process / fresh lease.
-        self.calls.clear();self.job["payload"]["target_message_id"]=11;self.claims=[self.job]
+        self.calls.clear();self.job["payload"].update(target_message_id=11,status="needs_review",operation_id=self.operation);self.claims=[self.job]
         self.adapter=WebTrialAdapter(self.adapter.url,"fixture-token",{101,202},self.cert)
         self.addAsyncCleanup(self.adapter.close)
         bot.send_message.reset_mock()
-        bot.edit_message_text.side_effect=TelegramBadRequest(EditMessageText(text="fixture",chat_id=101,message_id=11),"controlled edit error")
+        bot.send_message.return_value=SimpleNamespace(chat=SimpleNamespace(id=101),message_id=22)
+        bot.edit_message_text.side_effect=TelegramBadRequest(EditMessageText(text="fixture",chat_id=101,message_id=11),"Bad Request: message to edit not found")
         self.adapter.start(bot)
         for _ in range(100):
             if any(path.endswith("/result") for path,_,_ in self.calls):break
             await asyncio.sleep(.01)
         await self.adapter.close()
-        failed=[body for path,body,_ in self.calls if path.endswith("/result")]
-        self.assertTrue(failed);self.assertEqual(failed[0]["result"],{"kind":"delivery_failed","code":"edit_failed"})
+        sent=[body for path,body,_ in self.calls if path.endswith("/result")]
+        self.assertTrue(sent);self.assertEqual(sent[0]["result"],{"kind":"sent","chat_id":101,"message_id":22})
+        bot.send_message.assert_awaited_once()
+        self.assertTrue(bot.send_message.await_args.kwargs["reply_markup"].inline_keyboard[0][0].callback_data.startswith("wt1:c:"))
+
+    async def test_unchanged_card_acks_without_replacement(self):
+        self.job["payload"]["target_message_id"]=11;self.claims=[self.job]
+        bot=SimpleNamespace(send_message=AsyncMock(),edit_message_text=AsyncMock(side_effect=TelegramBadRequest(EditMessageText(text="fixture",chat_id=101,message_id=11),"Bad Request: message is not modified: specified content is identical")))
+        self.adapter.start(bot)
+        for _ in range(100):
+            if any(path.endswith("/result") for path,_,_ in self.calls):break
+            await asyncio.sleep(.01)
+        await self.adapter.close()
+        sent=[body for path,body,_ in self.calls if path.endswith("/result")]
+        self.assertEqual(sent[0]["result"],{"kind":"sent","chat_id":101,"message_id":11})
         bot.send_message.assert_not_awaited()
+
+    async def test_replacement_timeout_leaves_lease_unacknowledged(self):
+        self.job["payload"]["target_message_id"]=11;self.claims=[self.job]
+        attempted=asyncio.Event()
+        async def lost_reply(**kwargs):
+            attempted.set()
+            raise TimeoutError()
+        bot=SimpleNamespace(send_message=AsyncMock(side_effect=lost_reply),edit_message_text=AsyncMock(side_effect=TelegramBadRequest(EditMessageText(text="fixture",chat_id=101,message_id=11),"Bad Request: message to edit not found")))
+        self.adapter.start(bot)
+        await asyncio.wait_for(attempted.wait(),2)
+        await asyncio.sleep(0)
+        await self.adapter.close()
+        self.assertFalse(any(path.endswith("/result") for path,_,_ in self.calls))
+        bot.send_message.assert_awaited_once()
 
     async def test_support_paths_and_key(self):
         key=str(uuid4());identifier=self.job["payload"]["request_id"]

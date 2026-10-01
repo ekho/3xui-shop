@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 class IsDev(BaseFilter):
-    developer_id: int
+    developer_id: int | None = None
 
     async def __call__(
         self,

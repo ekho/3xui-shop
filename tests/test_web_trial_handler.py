@@ -21,7 +21,29 @@ class WebTrialHandlerTests(unittest.IsolatedAsyncioTestCase):
         with patch("app.bot.services.approval.ApprovalService.apply_decision",new_callable=AsyncMock) as legacy:
             await handler.callback_web_trial(self.callback,self.state,self.adapter)
             self.adapter.decide.assert_awaited_once_with(self.id,101,"approve","real-callback");legacy.assert_not_awaited()
-        self.callback.answer.assert_awaited_once();self.callback.message.edit_text.assert_awaited_once()
+        self.callback.answer.assert_awaited_once();self.callback.message.edit_text.assert_not_awaited()
+    async def test_delayed_decision_preserves_review_card(self):
+        import asyncio
+        from app.bot.services.web_trial import render_card
+        entered, release = asyncio.Event(), asyncio.Event()
+        response = self.adapter.decide.return_value
+        async def delayed(*args):
+            entered.set()
+            await release.wait()
+            return response
+        self.adapter.decide.side_effect = delayed
+        displayed = {}
+        async def edit(text, reply_markup=None):
+            displayed.update(text=text, keyboard=reply_markup)
+        self.callback.message.edit_text.side_effect = edit
+        decision = asyncio.create_task(handler.callback_web_trial(self.callback,self.state,self.adapter))
+        await entered.wait()
+        text, keyboard = render_card(dict(response["card"],status="needs_review"))
+        await self.callback.message.edit_text(text,reply_markup=keyboard)
+        release.set()
+        await decision
+        self.assertIn("Нужна проверка", displayed["text"])
+        self.assertTrue(displayed["keyboard"].inline_keyboard[0][0].callback_data.startswith("wt1:c:"))
     async def test_actor_and_namespace_boundaries(self):
         for actor,is_bot,chat,namespace in [(999,False,"private","wt1:a:"),(101,True,"private","wt1:a:"),(101,False,"group","wt1:a:"),(101,False,"private","approval:")]:
             self.callback.from_user=SimpleNamespace(id=actor,is_bot=is_bot);self.callback.message.chat.type=chat;self.callback.data=namespace+self.id
@@ -56,6 +78,35 @@ class WebTrialHandlerTests(unittest.IsolatedAsyncioTestCase):
 if __name__ == "__main__":unittest.main()
 
 class WebTrialLifecycleTests(unittest.IsolatedAsyncioTestCase):
+    async def test_acceptance_entrypoint_fresh_process(self):
+        import subprocess
+        import sys
+        code = '''
+import asyncio, os, tempfile
+from pathlib import Path
+from types import SimpleNamespace as NS
+from unittest.mock import AsyncMock, patch
+from deploy.s01 import bot_adapter as entry
+from app.bot.routers.admin_tools import web_trial_handler as handler
+async def check():
+    identifier="11111111-1111-4111-8111-111111111111"
+    adapter=NS(disabled=False, decide=AsyncMock(return_value={"request":{"status":"approved"},"card":{"request_id":identifier,"operation_id":identifier,"target_message_id":None,"email":"fixture@example.test","comment":"","created_at":"2026-10-01T00:00:00Z","status":"approved"}}), start=lambda bot:None, close=AsyncMock())
+    bot=NS(delete_webhook=AsyncMock(),session=NS(close=AsyncMock()))
+    async def polling(*args,**kwargs):
+        for actor in (101,999):
+            callback=NS(data="wt1:a:"+identifier,id="fixture",from_user=NS(id=actor,is_bot=False),message=NS(chat=NS(id=actor,type="private"),edit_text=AsyncMock()),answer=AsyncMock())
+            await handler.callback_web_trial(callback,None,adapter)
+        adapter.decide.assert_awaited_once_with(identifier,101,"approve","fixture")
+    dispatcher=NS(include_router=lambda router:None,errors=lambda:lambda f:f,start_polling=polling)
+    with tempfile.TemporaryDirectory() as folder:
+        token=Path(folder)/"token";token.write_text("fixture")
+        with patch.dict(os.environ,{"BOT_OPERATOR_IDS":"101","WEB_TRIAL_API_URL":"https://fixture.example.test","WEB_TRIAL_API_TOKEN_FILE":str(token),"WEB_TRIAL_API_CA_FILE":str(token),"BOT_TOKEN_FILE":str(token)}),patch.object(entry,"Bot",return_value=bot),patch.object(entry,"Dispatcher",return_value=dispatcher),patch.object(entry,"WebTrialAdapter",return_value=adapter):
+            await entry.run()
+asyncio.run(check())
+'''
+        result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     async def test_lifecycle_both_bot_modes(self):
         from app import __main__ as main
         import asyncio
