@@ -88,7 +88,9 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    environment: {CABINET_HOST: '${CABINET_HOST:?required}'}
+    environment:
+      CABINET_HOST: '${CABINET_HOST:?required}'
+      CABINET_MAINTENANCE: '${CABINET_MAINTENANCE:-false}'
     command: [caddy, run, --config, /etc/caddy/Caddyfile, --adapter, caddyfile]
     ports: ['127.0.0.1:58443:8443']
     volumes: ['./Caddyfile:/etc/caddy/Caddyfile:ro']

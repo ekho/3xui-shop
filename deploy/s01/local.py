@@ -204,14 +204,29 @@ def ready():
         raise
     except OSError:return False
 
-def mail_token(email):
+def maintenance_ready():
+    try:
+        request(session(),ORIGIN+'/healthz')
+        raise AssertionError('cabinet ingress remains open')
+    except HTTPError as error:
+        assert error.code==503, 'maintenance must close cabinet ingress'
+        return True
+    except OSError:return False
+
+def internal_ready():
+    try:return json.loads(compose('exec','-T','gateway','wget','-qO-','http://backend:8080/healthz'))=={'ok':True}
+    except (RuntimeError,ValueError):return False
+
+def mail_token(email, purpose='/verify-email'):
     assert email.endswith('@example.test'), 'test recipient required'
     _,_,raw=request(session(),'https://localhost:59446/api/v1/messages')
     for row in json.loads(raw)['messages']:
         if any(recipient['Address']==email for recipient in row['To']):
             _,_,raw=request(session(),'https://localhost:59446/api/v1/message/'+row['ID'])
-            match=re.search(r'#token=([A-Za-z0-9_-]{43})',json.loads(raw)['Text'])
-            return match[1] if match else None
+            text=json.loads(raw)['Text']
+            if purpose in text:
+                match=re.search(r'#token=([A-Za-z0-9_-]{43})',text)
+                if match:return match[1]
 
 def signup():
     wait_until(ready)
@@ -226,7 +241,7 @@ def signup():
     assert status==200
     status,_,trial=api(opener,'/api/v1/trial-requests',{'comment':'Isolated Docker acceptance'},login['csrf_token'],str(uuid4()))
     assert status==201
-    return opener,trial
+    return opener,trial,{'email':email,'password':password}
 
 def approve(trial):
     return actor('/internal/v1/trial-requests/'+trial['request_id']+'/decision',
@@ -325,7 +340,19 @@ def vpn_connected():
     except OSError:return False
 
 def restore():
-    opener,trial=signup()
+    opener,trial,credentials=signup()
+    _,_,owner=api(opener,'/api/v1/me')
+    csrf=owner['csrf_token']
+    # Actual cooldown and delivered proofs, kept only in process memory.
+    target='restore-target-'+uuid4().hex+'@example.test'
+    print('Checking restore: waiting for the real recipient cooldown',flush=True)
+    time.sleep(61)
+    assert api(opener,'/api/v1/me/email-change',{'current_password':credentials['password'],'new_email':target},csrf)[0]==202
+    pair=[wait_until(lambda:mail_token(email,'/confirm-email-change')) for email in (credentials['email'],target)]
+    assert api(opener,'/api/v1/auth/email-change/confirm',{'token':pair[0]})[2]['completed'] is False
+    time.sleep(61)
+    assert api(opener,'/api/v1/auth/password-reset',{'email':credentials['email'],'locale':'en'})[0]==202
+    reset=wait_until(lambda:mail_token(credentials['email'],'/reset-password'))
     original=database()
     # Controlled fault pauses only our test DB after the external readback.
     sql("""CREATE FUNCTION local_pause_apply() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -336,8 +363,15 @@ def restore():
     before=snapshot(operation)
     assert before['status']=='provisioning' and before['grant']=='reserved' and before['job']=='running' and before['grants']==1
     panel_before=panel_readback(before['target'])
+    # Close only cabinet ingress; native panel/SMTP routes are needed for reconcile.
+    data=re.sub(r'^CABINET_MAINTENANCE=.*\n?', '', ENV.read_text(), flags=re.M)
+    write('public.env',data+'CABINET_MAINTENANCE=true\n')
+    compose('up','--no-build','--pull','never','--no-deps','--force-recreate','-d','gateway')
+    wait_until(maintenance_ready)
     dump=compose('exec','-T','postgres','pg_dump','-U','cabinet_s01','-Fc','-d',original)
     (STATE/'restore.dump').write_bytes(dump);(STATE/'restore.dump').chmod(0o600)
+    # The dump contains a cookie revoked afterwards; restore must not revive it.
+    sql("DELETE FROM sessions WHERE account_id=(SELECT account_id FROM trial_operations WHERE id=:'op');",operation=operation)
     # Kill the sole writer: the committed River job remains running in the dump.
     compose('kill','-s','SIGKILL','backend')
     sql("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=current_database() AND wait_event='PgSleep' AND pid<>pg_backend_pid();")
@@ -352,6 +386,14 @@ def restore():
     url=(STATE/'database-url').read_text().strip()
     write('database-url',url.replace('/'+original+'?', '/'+restored+'?'))
     compose('run','--rm','--no-deps','-T','migrate')
+    maintenance=(ROOT/'backend/db/maintenance/post_restore_auth.sql').read_text()
+    first=sql(maintenance)
+    assert len(first.splitlines())==3 and all(n.isdigit() for n in first.splitlines()), 'maintenance must return counts only'
+    assert sql(maintenance)=='0\n0\n0', 'maintenance not idempotent'
+    assert sql("SELECT count(*) FROM sessions;")== '0'
+    assert sql("SELECT count(*) FROM credential_challenges WHERE NOT revoked AND used_at IS NULL;")== '0'
+    assert sql("SELECT count(*) FROM mail_deliveries WHERE kind='credential' AND ciphertext IS NOT NULL;")== '0'
+    print('PASS: closed ingress, restored sessions/proofs revoked, proof payload cleared; repeated SQL returns zero counts',flush=True)
     compose('up','--no-build','--pull','never','-d','reconcile')
     wait_until(lambda:snapshot(operation)['status']=='applied',timeout=60)
     after=snapshot(operation)
@@ -363,10 +405,27 @@ def restore():
         assert sum(c['email']==before['target']['panel_key'] for c in clients)==(1 if inbound['id'] in before['target']['inbound_ids'] else 0)
     compose('stop','reconcile')
     compose('up','--no-build','--pull','never','-d','backend')
+    wait_until(internal_ready)
+    write('public.env',ENV.read_text().replace('CABINET_MAINTENANCE=true','CABINET_MAINTENANCE=false'))
+    compose('up','--no-build','--pull','never','--no-deps','--force-recreate','-d','gateway')
     wait_until(ready)
-    wait_until(lambda:active(opener))  # The same owner session survives the dump.
+    try:
+        api(opener,'/api/v1/me')
+        raise AssertionError('restored cookie accepted')
+    except HTTPError as error:
+        assert error.code==401, 'old session must require login'
+    for path,body in [('/api/v1/auth/password-reset/complete',{'token':reset,'new_password':'Unused local password '+secrets.token_urlsafe(20)}),
+                      *[('/api/v1/auth/email-change/confirm',{'token':token}) for token in pair]]:
+        try:
+            api(opener,path,body)
+            raise AssertionError('restored proof accepted')
+        except HTTPError as error:
+            assert error.code==400 and json.loads(error.read())['error']['code']=='INVALID_VERIFICATION', 'old proof must fail closed'
+    status,_,login=api(opener,'/api/v1/auth/login',credentials)
+    assert status==200 and login['account']['account_id']==owner['account']['account_id'], 'restored login ownership'
+    wait_until(lambda:active(opener))
     vpn(opener)
-    print('PASS: pg_dump/restore with real panel client + reserved grant + running River job; same target, one client/grant, owner session and VPN preserved')
+    print('PASS: pg_dump/restore with real panel client, reserved grant and running River job; old cookies/proofs invalid, new owner login, same target/client/grant/VPN')
 
 def rollback():
     query="SELECT json_build_object('accounts',(SELECT count(*) FROM accounts),'operations',(SELECT count(*) FROM trial_operations),'grants',(SELECT count(*) FROM trial_grants));"
@@ -382,7 +441,7 @@ def rollback():
     print('PASS: bounded ingress rollback; PG data, panel and existing VPN retained')
 
 def check():
-    opener,trial=signup()
+    opener,trial,_=signup()
     operation=approve(trial)['operation_id']
     subscription=wait_until(lambda:active(opener))
     assert subscription['devices']==1 and subscription['traffic_limit_bytes']==15*1024**3
@@ -393,10 +452,11 @@ def check():
     rollback()
 
 def main():
-    if len(sys.argv)!=2 or sys.argv[1] not in ('up','check','down'):
-        raise SystemExit('usage: local.py up|check|down')
+    if len(sys.argv)!=2 or sys.argv[1] not in ('up','check','restore','down'):
+        raise SystemExit('usage: local.py up|check|restore|down')
     if sys.argv[1]=='up':up()
     elif sys.argv[1]=='check':check()
+    elif sys.argv[1]=='restore':restore()
     else:compose('--profile','vpn','--profile','telegram','down')
 
 if __name__=='__main__':

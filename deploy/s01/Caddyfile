@@ -14,6 +14,10 @@
 https://{$CABINET_HOST}:8443 {
  tls /run/secrets/public_cert /run/secrets/public_key
  import headers
+ @maintenance expression `{env.CABINET_MAINTENANCE} == "true"`
+ handle @maintenance {
+  respond "Service maintenance" 503
+ }
  handle /internal/* {
   respond 404
  }

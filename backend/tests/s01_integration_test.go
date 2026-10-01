@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"example.com/cabinet/backend/db"
 	"example.com/cabinet/backend/internal/httpapi"
 	"example.com/cabinet/backend/internal/s01"
 	"example.com/cabinet/backend/internal/testkit"
@@ -548,6 +549,16 @@ func TestS01BackupRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(restored.Close)
+	if err = db.Migrate(ctx, restored); err != nil {
+		t.Fatal("restored additive migration")
+	}
+	maintenance, err := os.ReadFile(filepath.Join(f.root, "backend/db/maintenance/post_restore_auth.sql"))
+	if err != nil {
+		t.Fatal("restore maintenance source")
+	}
+	if _, err = restored.Exec(ctx, string(maintenance)); err != nil {
+		t.Fatal("restore session/proof invalidation")
+	}
 	if err = restored.QueryRow(ctx, `SELECT state FROM river_job WHERE kind='s01_provision' AND args->>'operation_id'=$1`, op.String()).Scan(&jobState); err != nil || jobState != "running" {
 		t.Fatal("dump did not preserve running River job", jobState, err)
 	}
@@ -614,6 +625,14 @@ func TestS01BackupRestore(t *testing.T) {
 	copy := *f
 	copy.public = server
 	status, _, response := copy.send(t, &client, "GET", "/api/v1/subscription/key", nil, "", "", false)
+	if status != 401 {
+		t.Fatal("restored cookie must require new login", status)
+	}
+	status, _, _ = copy.send(t, &client, "POST", "/api/v1/auth/login", wire.LoginInput{Email: "restore@example.test", Password: "fixture password with Unicode ✨"}, "", "", false)
+	if status != 200 {
+		t.Fatal("restored backup credentials login", status)
+	}
+	status, _, response = copy.send(t, &client, "GET", "/api/v1/subscription/key", nil, "", "", false)
 	if status != 200 || response.Header.Get("Cache-Control") != "no-store" {
 		t.Fatal("restored owner access", status)
 	}

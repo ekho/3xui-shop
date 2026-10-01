@@ -218,11 +218,17 @@ support reconsider с причиной и старую карточку. Ост�
 
 ## Backup/restore при неоднозначной выдаче
 
+С02 вводит новое правило: восстановленные browser sessions и незавершённые
+credential proofs отзываются до reconcile/serve/ingress. Историческая приёмка
+С01 проверяла сохранённую owner session; теперь проверяется новый login того
+же владельца и прежний VPN. Порядок и SQL — в [runbook С02](s02-account-security.md).
+
 Автоматическая репетиция: `go -C backend test ./tests -run '^TestS01BackupRestore$' -count=1`.
 Она делает настоящий pg_dump/pg_restore после external add и до DB applied,
 с running operation, immutable target, reserved grant, **running River job** и session.
 Восстановление в отдельную БД запускает только provision queue; ключи/expiry
-сохраняются, внешний клиент создаётся один раз, owner key fetch работает.
+сохраняются, внешний клиент создаётся один раз, owner key fetch работает после
+нового login и обязательной restore-очистки С02.
 Тест сдвигает только `attempted_at` восстановленной job на четыре минуты назад,
 чтобы проверить штатный River rescue без реального ожидания порога.
 Панель этого автоматического теста — HTTPS fixture. Повторить на реальной
@@ -233,7 +239,9 @@ support reconsider с причиной и старую карточку. Ост�
 ключей и соответствующую версию приложения. Восстановить в **новую пустую БД**,
 не поверх действующей. Старая БД/worker не должны продолжать выдачу в ту же панель.
 Сохранить panel ownership и те же keys. После восстановления переключить
-`DATABASE_URL_FILE` на новую БД. При остановленных bot/gateway/backend запустить
+`DATABASE_URL_FILE` на новую БД. При закрытом ingress и остановленных bot/backend
+и mail workers выполнить additive migrate и `post_restore_auth.sql` по runbook
+С02. Ошибка любого шага оставляет ingress закрытым. После очистки запустить
 поставляемый режим восстановления:
 
 ```sh
@@ -247,7 +255,9 @@ docker compose --profile restore --env-file /secure/s01/public.env -f deploy/s01
 Не менять state/attempted_at руками на реальном стенде. Jobs с исчерпанными
 попытками требуют разбора поддержки, а не новой выдачи.
 Сверить reservation, UUID/subId/expiry/bytes/N+1 и один Grant. Остановить `reconcile`
-перед возвращением обычных backend/gateway/bot и проверить owner access.
+перед возвращением обычных backend/gateway/bot и проверить owner access новым
+login; восстановленная старая cookie должна401, незавершённые credential proofs
+— INVALID_VERIFICATION.
 Никакого отката PostgreSQL старым snapshot или автоматического создания новой
 operation при потерянном ответе.
 
