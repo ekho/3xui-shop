@@ -48,3 +48,12 @@ type RegistrationChallenge struct {
 	FailedGuesses  int32
 	Revoked        bool
 }
+
+type Session struct {
+	IDHash            []byte
+	AccountID         uuid.UUID
+	CsrfToken         string
+	CreatedAt         pgtype.Timestamptz
+	LastSeen          pgtype.Timestamptz
+	AbsoluteExpiresAt pgtype.Timestamptz
+}

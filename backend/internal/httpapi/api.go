@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"example.com/cabinet/backend/internal/s01"
@@ -12,6 +13,8 @@ import (
 	"github.com/labstack/echo/v5"
 	"io"
 	"mime"
+	"net"
+	"net/http"
 	"strconv"
 	"time"
 	"unicode/utf8"
@@ -26,6 +29,17 @@ type API struct {
 func New(svc *s01.Service, cfg s01.Config) *echo.Echo {
 	e := echo.New()
 	e.IPExtractor = echo.ExtractIPDirect()
+	if len(cfg.TrustedProxyCIDRs) > 0 {
+		opts := []echo.TrustOption{echo.TrustLoopback(false), echo.TrustPrivateNet(false), echo.TrustLinkLocal(false)}
+		for _, cidr := range cfg.TrustedProxyCIDRs {
+			_, network, err := net.ParseCIDR(cidr)
+			if err != nil {
+				panic("invalid trusted proxy CIDR")
+			}
+			opts = append(opts, echo.TrustIPRange(network))
+		}
+		e.IPExtractor = echo.ExtractIPFromXFFHeader(opts...)
+	}
 	contract, err := wire.GetSwagger()
 	if err != nil {
 		panic("invalid compiled API contract")
@@ -42,9 +56,9 @@ func New(svc *s01.Service, cfg s01.Config) *echo.Echo {
 				c.Response().Header().Set("Retry-After", strconv.Itoa(domain.RetryAfter))
 			}
 		}
-		var httpError *echo.HTTPError
+		var httpError echo.HTTPStatusCoder
 		if errors.As(err, &httpError) {
-			status = httpError.Code
+			status = httpError.StatusCode()
 			code = "INVALID_INPUT"
 		}
 		body := map[string]any{"code": code, "message": code, "request_id": uuid.NewString()}
@@ -85,6 +99,9 @@ func New(svc *s01.Service, cfg s01.Config) *echo.Echo {
 	e.POST("/api/v1/auth/register", a.RegisterAccount)
 	e.POST("/api/v1/auth/verify-email", a.VerifyEmail)
 	e.POST("/api/v1/auth/resend-verification", a.ResendVerification)
+	e.POST("/api/v1/auth/login", a.LoginAccount)
+	e.POST("/api/v1/auth/logout", a.LogoutAccount)
+	e.GET("/api/v1/me", a.GetAccount)
 	return e
 }
 func invalid() error { return &s01.Error{Status: 400, Code: "INVALID_INPUT"} }
@@ -147,4 +164,63 @@ func (a *API) ResendVerification(c *echo.Context) error {
 		return err
 	}
 	return c.JSON(202, out)
+}
+
+func (a *API) LoginAccount(c *echo.Context) error {
+	in, err := decode[wire.LoginInput](a, c, "LoginInput")
+	if err != nil {
+		return err
+	}
+	out, raw, err := a.svc.Login(c.Request().Context(), in, c.RealIP())
+	if err != nil {
+		return err
+	}
+	c.SetCookie(&http.Cookie{Name: "__Host-session", Value: raw, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, Path: "/", MaxAge: 30 * 24 * 3600})
+	return c.JSON(200, out)
+}
+func (a *API) auth(c *echo.Context, write bool) (wire.AccountResult, error) {
+	cookie, err := c.Cookie("__Host-session")
+	if err != nil {
+		return wire.AccountResult{}, &s01.Error{Status: 401, Code: "INVALID_CREDENTIALS"}
+	}
+	out, err := a.svc.Authenticate(c.Request().Context(), cookie.Value)
+	if err != nil {
+		return out, err
+	}
+	if write && subtle.ConstantTimeCompare([]byte(c.Request().Header.Get("X-CSRF-Token")), []byte(out.CsrfToken)) != 1 {
+		return out, &s01.Error{Status: 403, Code: "INVALID_CREDENTIALS"}
+	}
+	return out, nil
+}
+func (a *API) GetAccount(c *echo.Context) error {
+	out, err := a.auth(c, false)
+	if err != nil {
+		return err
+	}
+	return c.JSON(200, out)
+}
+func (a *API) LogoutAccount(c *echo.Context) error {
+	body, err := io.ReadAll(io.LimitReader(c.Request().Body, 1))
+	if err != nil || len(body) != 0 {
+		return invalid()
+	}
+	cookie, err := c.Cookie("__Host-session")
+	raw := ""
+	if err == nil {
+		raw = cookie.Value
+	}
+	if raw != "" {
+		_, err = a.auth(c, true)
+		var domain *s01.Error
+		if err != nil && (!errors.As(err, &domain) || domain.Status != 401) {
+			return err
+		}
+		if err == nil {
+			if err = a.svc.Logout(c.Request().Context(), raw); err != nil {
+				return err
+			}
+		}
+	}
+	c.SetCookie(&http.Cookie{Name: "__Host-session", Value: "", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, Path: "/", MaxAge: -1})
+	return c.NoContent(204)
 }

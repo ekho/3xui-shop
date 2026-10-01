@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"example.com/cabinet/backend/internal/s01"
 	"example.com/cabinet/backend/internal/testkit"
+	"example.com/cabinet/backend/internal/wire"
+	"fmt"
 	"github.com/google/uuid"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
@@ -71,5 +73,92 @@ func TestRegistrationHTTP(t *testing.T) {
 	env.Pool.Close()
 	if rr := request(h, "GET", "/healthz", "", ""); rr.Code != 503 {
 		t.Fatal("PG outage must disable health")
+	}
+}
+
+func verifiedHTTP(t *testing.T, h http.Handler, e *testkit.Env, cfg s01.Config) {
+	t.Helper()
+	rr := request(h, "POST", "/api/v1/auth/register", `{"email":"login@example.test","locale":"ru","accepted_terms_version":"1","accepted_privacy_version":"1"}`, cfg.CabinetOrigin)
+	if rr.Code != 202 {
+		t.Fatal("registration", rr.Code)
+	}
+	var registered wire.RegistrationAccepted
+	json.Unmarshal(rr.Body.Bytes(), &registered)
+	_, token, _ := testkit.MailSecrets(t, e.Pool, cfg.MailKey, registered.ChallengeId)
+	body, _ := json.Marshal(map[string]string{"token": token, "new_password": "my long safe password ✨"})
+	if rr = request(h, "POST", "/api/v1/auth/verify-email", string(body), cfg.CabinetOrigin); rr.Code != 200 {
+		t.Fatal("verification", rr.Code)
+	}
+}
+func TestSessionBoundary(t *testing.T) {
+	h, e, cfg := httpFixture(t)
+	verifiedHTTP(t, h, e, cfg)
+	rr := request(h, "POST", "/api/v1/auth/login", `{"email":"login@example.test","password":"my long safe password ✨"}`, cfg.CabinetOrigin)
+	if rr.Code != 200 {
+		t.Fatalf("login want200 got %d", rr.Code)
+	}
+	var login wire.LoginResult
+	json.Unmarshal(rr.Body.Bytes(), &login)
+	cookies := rr.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatal("one cookie expected")
+	}
+	cookie := cookies[0]
+	if cookie.Name != "__Host-session" || !cookie.Secure || !cookie.HttpOnly || cookie.Path != "/" || cookie.Domain != "" || cookie.SameSite != http.SameSiteLaxMode {
+		t.Fatal("cookie boundary")
+	}
+	send := func(method, path, origin, csrf string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, nil)
+		req.AddCookie(cookie)
+		req.Header.Set("Origin", origin)
+		req.Header.Set("X-CSRF-Token", csrf)
+		out := httptest.NewRecorder()
+		h.ServeHTTP(out, req)
+		return out
+	}
+	if rr = send("GET", "/api/v1/me", "", ""); rr.Code != 200 {
+		t.Fatal("session read", rr.Code)
+	}
+	if rr = send("POST", "/api/v1/auth/logout", "https://attacker.example.test", login.CsrfToken); rr.Code != 403 {
+		t.Fatal("foreign Origin logout", rr.Code)
+	}
+	if rr = send("POST", "/api/v1/auth/logout", cfg.CabinetOrigin, ""); rr.Code != 403 {
+		t.Fatal("missing CSRF logout", rr.Code)
+	}
+	if rr = send("POST", "/api/v1/auth/logout", cfg.CabinetOrigin, login.CsrfToken); rr.Code != 204 {
+		t.Fatal("logout", rr.Code)
+	}
+	if rr = send("GET", "/api/v1/me", "", ""); rr.Code != 401 {
+		t.Fatal("revoked cookie accepted", rr.Code)
+	}
+	if rr = send("POST", "/api/v1/auth/logout", cfg.CabinetOrigin, ""); rr.Code != 204 {
+		t.Fatal("logout retry", rr.Code)
+	}
+}
+
+func TestUnknownRouteError(t *testing.T) {
+	h, _, _ := httpFixture(t)
+	if rr := request(h, "GET", "/api/v1/not-a-route", "", ""); rr.Code != 404 {
+		t.Fatalf("unknown route want404 got%d", rr.Code)
+	}
+}
+func TestLoginRateLimit(t *testing.T) {
+	h, _, cfg := httpFixture(t)
+	for i := range 31 {
+		body := fmt.Sprintf(`{"email":"unknown%d@example.test","password":"wrong long password"}`, i)
+		req := httptest.NewRequest("POST", "/api/v1/auth/login", strings.NewReader(body))
+		req.RemoteAddr = "192.0.2.1:1234"
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Origin", cfg.CabinetOrigin)
+		req.Header.Set("X-Forwarded-For", fmt.Sprintf("203.0.113.%d", i))
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+		want := 401
+		if i == 30 {
+			want = 429
+		}
+		if rr.Code != want {
+			t.Fatalf("forged XFF request%d want%d got%d", i+1, want, rr.Code)
+		}
 	}
 }

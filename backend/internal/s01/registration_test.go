@@ -102,7 +102,7 @@ func TestRegistrationOwnership(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	if ok != 1 || count(t, e, "accounts") != 1 {
+	if ok != 1 || count(t, e, "accounts") != 1 || count(t, e, "sessions") != 0 {
 		t.Fatalf("exactly one verified account: successes=%d", ok)
 	}
 	var email, pw, sub, key string

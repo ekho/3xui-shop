@@ -4,12 +4,14 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"errors"
+	"net"
 	"net/url"
 	"os"
 	"strings"
 )
 
 type Config struct {
+	TrustedProxyCIDRs                                                                                                 []string
 	CabinetOrigin, DatabaseURL, RedisURL, TermsVersion, PrivacyVersion, SMTPAddress, SMTPUser, SMTPPassword, SMTPFrom string
 	MailKey, CodeKey                                                                                                  []byte
 	RateNamespace                                                                                                     string
@@ -36,6 +38,9 @@ func SecretFile(name string) (string, error) {
 }
 func LoadConfig() (Config, error) {
 	c := Config{CabinetOrigin: os.Getenv("CABINET_ORIGIN"), TermsVersion: os.Getenv("TERMS_VERSION"), PrivacyVersion: os.Getenv("PRIVACY_VERSION"), SMTPAddress: os.Getenv("SMTP_ADDRESS"), SMTPUser: os.Getenv("SMTP_USER"), SMTPFrom: os.Getenv("SMTP_FROM"), RateNamespace: "s01"}
+	if value := os.Getenv("TRUSTED_PROXY_CIDRS"); value != "" {
+		c.TrustedProxyCIDRs = strings.Split(value, ",")
+	}
 	var err error
 	for name, dest := range map[string]*string{"DATABASE_URL": &c.DatabaseURL, "REDIS_URL": &c.RedisURL} {
 		if *dest, err = SecretFile(name); err != nil {
@@ -71,6 +76,11 @@ func LoadConfig() (Config, error) {
 	return c, c.Validate()
 }
 func (c Config) Validate() error {
+	for _, cidr := range c.TrustedProxyCIDRs {
+		if _, _, err := net.ParseCIDR(cidr); err != nil {
+			return errors.New("invalid trusted proxy CIDR")
+		}
+	}
 	u, e := url.Parse(c.CabinetOrigin)
 	if e != nil || u.Scheme != "https" || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
 		return errors.New("CABINET_ORIGIN must be HTTPS origin")
