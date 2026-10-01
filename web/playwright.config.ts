@@ -1,2 +1,3 @@
-import { defineConfig } from '@playwright/test';
-export default defineConfig({testDir:'./tests',timeout:20000,expect:{timeout:2000},workers:1,fullyParallel:false,reporter:'line',use:{baseURL:'http://127.0.0.1:4173',trace:'off',screenshot:'off'},webServer:{command:'npm run build -- --mode test && npm run preview',url:'http://127.0.0.1:4173',reuseExistingServer:false,timeout:60000}});
+import {defineConfig} from '@playwright/test';
+const real=process.env.S01_E2E_MODE==='real';
+export default defineConfig({testDir:'./tests',testMatch:real?'real.spec.ts':'s01.spec.ts',timeout:30000,expect:{timeout:10000},workers:1,fullyParallel:false,reporter:real?'./tests/safe-reporter.ts':'line',use:{baseURL:real?process.env.S01_TEST_ORIGIN:'http://127.0.0.1:4173',ignoreHTTPSErrors:real,trace:'off',screenshot:'off'},webServer:real?undefined:{command:'npm run build -- --mode test && npm run preview',url:'http://127.0.0.1:4173',reuseExistingServer:false,timeout:60000}});
