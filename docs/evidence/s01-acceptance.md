@@ -16,8 +16,9 @@ Task8 проверена. Независимое ревью выполнено; 
 **Acceptance:** OPEN — локальные Mailpit/3X-UI/Xray/VPN/PG restore проверены.
 Настоящие Telegram approve/reject и обновления карточек проверены на отдельном
 тестовом боте, пересмотр поддержкой сохранил причину и создал связанную заявку.
-Остановка бота после commit, ручной импорт в Happ, внешняя доставка email и замер
-на целевой машине остаются открыты.
+Backend завершил выдачу после остановки бота; key и настоящий VPN доступны.
+Ручной импорт в Happ, внешняя доставка email и замер на целевой машине остаются
+открыты.
 Локальный стенд запущен и сохранён.
 
 ## Проверенные локальные команды
@@ -41,7 +42,7 @@ URL-file prerequisites и setup: [runbook](../runbooks/s01-test-rollout.md).
 | Docker API/VPN/restore (`local.py check`) | PASS: настоящее TLS/auth письмо, adapter decision, native panel readback, VLESS/TLS Xray26.7.28 и PG restore исходной операции |
 | `local.py rollback()` | PASS: gateway остановлен; новые запросы закрыты, PG/панель/действующий VPN сохранены; gateway возвращён |
 | `node deploy/s01/browser.mjs` | PASS: мобильный375px browser, actual Mailpit/API/panel, fragment очищен, no-store, HttpOnly/Secure, logout; Telegram transport не вызывается |
-| Dedicated test bot + настоящий оператор | PASS: доставка, approve/reject, actual actor, send/edit одной карточки, support reason/confirmation и связанная новая заявка; реальный bot-stop после approve ещё не подтверждён |
+| Dedicated test bot + настоящий оператор | PASS: доставка, approve/reject, actual actor, send/edit одной карточки, support reason/confirmation, approve связанной заявки, bot-stop до завершения выдачи, key/native readback/VPN и доставка после возобновления |
 | Independent whole-branch review | Проверен диапазон `74c1249..a6ca9d0`; Critical0, Important4 исправлены автором с RED→GREEN, Minor2 отложены. Повторного ревью не проводилось |
 
 Tool versions: Go1.27.1, Node24.11.1, Python3.13, Poetry2.5.1, Chromium153
@@ -59,7 +60,7 @@ Tool versions: Go1.27.1, Node24.11.1, Python3.13, Poetry2.5.1, Chromium153
 | --- | --- | --- |
 | 1 no-Telegram → trial → VPN | Native Docker panel/SMTP/Xray data plane + mobile browser; genuine operator approve, native readback/VPN | Docker + real Telegram PASS; внешний mailbox и ручной Happ import pending |
 | 2 bot down before decision | `TestS01FlowAndFailures`; регистрация/письмо/login/request при остановленном test bot, доставка после запуска | Local + real Telegram PASS |
-| 3 bot down after approve | Worker starts after Python consumer exits, grant applied without bot | Local PASS; real bot stop pending |
+| 3 bot down after approve | Worker starts after Python consumer exits; настоящий approve, наблюдённые callback.created_at < Docker FinishedAt < granted_at, key/native readback/VPN при остановленном боте | Local + real bot-stop PASS |
 | 4 scanner/duplicate/parallel verify | registration tests; browser fragment cleared, no automatic POST | Local PASS |
 | 5 token/code TTL/reuse/brute force | registration tests with controlled clock | Local PASS |
 | 6 Origin/CSRF/owner/key privacy | HTTP boundaries, key tests, real browser private ingress404/no-store/logout | Local PASS |
@@ -67,7 +68,7 @@ Tool versions: Go1.27.1, Node24.11.1, Python3.13, Poetry2.5.1, Chromium153
 | 8 forged actor/anonymous/old callback | handler tests, actual parsed aiogram Update through HTTPS client; настоящий callback от allowlisted оператора | Local PASS; positive real operator identity PASS, negative cases автоматизированы |
 | 9 concurrent decisions/lost reply | PG decision tests, repeated real consumer callback, internal-only winning409 | Local PASS |
 | 10 reject final/account unchanged | trial tests + mock browser reject/support; genuine reject, отсутствие Operation/Grant, login и public retry409 | Local + real Telegram PASS |
-| 11 support reconsider/old card/used guard | trial/FSM tests reason+stable confirmation key; реальные «Пересмотреть» → причина → «Подтвердить», один связанный request и неизменный отказ | Local + real support confirmation PASS; used guard/old buttons автоматизированы |
+| 11 support reconsider/old card/used guard | trial/FSM tests reason+stable confirmation key; реальные «Пересмотреть» → причина → «Подтвердить» → approve, один связанный request/Grant и неизменный отказ | Local + real support path PASS; used guard/old buttons автоматизированы |
 | 12 panel down/no regular/bad config | provision/panel/config tests | Local + native panel preflight PASS; production version не проверена |
 | 13 interrupted panel add/restart | lost reply1create, apply rollback/reconcile, physical PG session loss | Local + native panel running-job restore PASS |
 | 14 partial/foreign/no hop | concrete panel partial attach/preserved protocol fields/mismatch tests | Local + 3.7.0 get/add/attach/not-found PASS; несовпадения/foreign guards проверены fixtures |
@@ -187,19 +188,36 @@ origin прошёл. Credential, email, operator ID и subscription URL не п�
 карточка обновлена, login сохранён. Public self retry вернул
 409/TRIAL_RECONSIDERATION_REQUIRED. Реальные «Пересмотреть» → причина →
 «Подтвердить» записали actual operator и причину, создали одну pending-заявку
-с previous_request_id; исходный отказ не изменён. Новая заявка ожидает решения.
+с previous_request_id; исходный отказ не изменён. Следующий настоящий approve
+выдал один Grant; native readback/VPN и обновление той же карточки проверены.
 
-Real bot-stop ещё не доказан: первый watcher запущен после завершения выдачи,
-последующие bounded ожидания действий оператора закончились по таймауту.
-Временные scoped apply-delay triggers удалены; это ограничение acceptance
-harness, не RED продуктового кода. Настоящий callback не подменяется fixture.
-Test bot работает, backend HTTPS доступен. Полная приёмка остаётся OPEN.
+Для real bot-stop создан отдельный control account; observer запущен до доставки
+карточки. После настоящего approve бот остановлен до apply. Перед повторным
+запуском проверено callback.created_at < Docker State.FinishedAt < granted_at;
+actor соответствует allowlist, Operation/Grant по одному, owner key доступен.
+Native readback и VLESS/TLS к своему origin прошли при остановленном боте.
+После возобновления доставлены накопленные terminal updates той же карточки.
+
+Успех не заявляется по одному observer: его read/login попал в timeout во время
+искусственной20s apply-паузы. Отдельная проверка после apply подтвердила итог и
+порядок времён. Scoped3s account FOR UPDATE воспроизвёл ожидание session INSERT
+и успешный login после освобождения; session FK ссылается на accounts. Причина
+timeout — test pause дольше public15s deadline, product code не менялся.
+Первый observer начал слишком поздно; два ожидания оператора закончились по
+таймауту. В финальном запуске бюджет ожидания увеличен до2h. Это setup/harness
+диагностика, не RED продуктового кода; настоящий callback не подменён fixture.
+
+Все временные apply-delay triggers удалены. Test bot после проверки остановлен;
+локальная конфигурация возвращена к fixture operator101 и dummy token path,
+чтобы `local.py check` сохранял исходные условия. Копия test token удалена,
+предоставленный владельцем `.env` не изменён. Backend HTTPS, owner key и VPN
+сохранены. Полная приёмка остаётся OPEN.
 
 ## Внешние prerequisites и владелец
 
 Владелец предоставил отдельный test bot и operator ID, подтвердил отсутствие
 другого обработчика и начал личный чат. Настоящие approve/reject/edit и пересмотр
-поддержкой проверены. Остановка бота после commit пока pending.
+поддержкой, approve новой заявки и завершение выдачи после остановки бота проверены.
 Остаются поддерживаемый Happ для ручного import/connect, внешний SMTP/test mailbox
 и целевая машина для benchmark. DNS/сертификаты и
 опубликованные policies/support нужны при внешнем тестовом запуске; локальные
