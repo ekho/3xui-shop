@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 	"unicode/utf8"
 )
@@ -85,6 +86,14 @@ func New(svc *s01.Service, cfg s01.Config) *echo.Echo {
 			ctx, cancel := context.WithTimeout(c.Request().Context(), 15*time.Second)
 			defer cancel()
 			c.SetRequest(c.Request().WithContext(ctx))
+			if strings.HasPrefix(c.Path(), "/internal/") {
+				if cfg.AdapterToken == "" || subtle.ConstantTimeCompare([]byte(c.Request().Header.Get("Authorization")), []byte("Bearer "+cfg.AdapterToken)) != 1 {
+					return &s01.Error{Status: 401, Code: "INVALID_CREDENTIALS"}
+				}
+				if c.Request().Header.Get("Origin") != "" {
+					return &s01.Error{Status: 403, Code: "INVALID_CREDENTIALS"}
+				}
+			}
 			return next(c)
 		}
 	})
@@ -102,6 +111,10 @@ func New(svc *s01.Service, cfg s01.Config) *echo.Echo {
 	e.POST("/api/v1/auth/login", a.LoginAccount)
 	e.POST("/api/v1/auth/logout", a.LogoutAccount)
 	e.GET("/api/v1/me", a.GetAccount)
+	e.POST("/api/v1/trial-requests", a.CreateTrialRequest)
+	e.GET("/api/v1/trial-requests/current", a.GetCurrentTrialRequest)
+	e.POST("/internal/v1/trial-requests/:id/decision", a.DecideTrialRequest)
+	e.POST("/internal/v1/trial-requests/:id/reconsider", a.ReconsiderTrialRequest)
 	return e
 }
 func invalid() error { return &s01.Error{Status: 400, Code: "INVALID_INPUT"} }
@@ -223,4 +236,87 @@ func (a *API) LogoutAccount(c *echo.Context) error {
 	}
 	c.SetCookie(&http.Cookie{Name: "__Host-session", Value: "", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, Path: "/", MaxAge: -1})
 	return c.NoContent(204)
+}
+
+func idempotencyKey(c *echo.Context) (uuid.UUID, error) {
+	id, err := uuid.Parse(c.Request().Header.Get("Idempotency-Key"))
+	if err != nil || id == uuid.Nil {
+		return uuid.Nil, invalid()
+	}
+	return id, nil
+}
+func resourceID(c *echo.Context) (uuid.UUID, error) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil || id == uuid.Nil {
+		return uuid.Nil, invalid()
+	}
+	return id, nil
+}
+func (a *API) CreateTrialRequest(c *echo.Context) error {
+	account, err := a.auth(c, true)
+	if err != nil {
+		return err
+	}
+	key, err := idempotencyKey(c)
+	if err != nil {
+		return err
+	}
+	in, err := decode[wire.TrialRequestInput](a, c, "TrialRequestInput")
+	if err != nil {
+		return err
+	}
+	out, created, err := a.svc.CreateTrialRequest(c.Request().Context(), account.Account.AccountId, key, in)
+	if err != nil {
+		return err
+	}
+	status := 200
+	if created {
+		status = 201
+	}
+	return c.JSON(status, out)
+}
+func (a *API) GetCurrentTrialRequest(c *echo.Context) error {
+	account, err := a.auth(c, false)
+	if err != nil {
+		return err
+	}
+	out, err := a.svc.CurrentTrialRequest(c.Request().Context(), account.Account.AccountId)
+	if err != nil {
+		return err
+	}
+	return c.JSON(200, out)
+}
+func (a *API) DecideTrialRequest(c *echo.Context) error {
+	id, err := resourceID(c)
+	if err != nil {
+		return err
+	}
+	in, err := decode[wire.DecisionInput](a, c, "DecisionInput")
+	if err != nil {
+		return err
+	}
+	out, err := a.svc.DecideTrialRequest(c.Request().Context(), id, in)
+	if err != nil {
+		return err
+	}
+	return c.JSON(200, out)
+}
+func (a *API) ReconsiderTrialRequest(c *echo.Context) error {
+	id, err := resourceID(c)
+	if err != nil {
+		return err
+	}
+	key, err := idempotencyKey(c)
+	if err != nil {
+		return err
+	}
+	in, err := decode[wire.ReconsiderInput](a, c, "ReconsiderInput")
+	if err != nil {
+		return err
+	}
+	out, err := a.svc.ReconsiderTrialRequest(c.Request().Context(), id, key, in)
+	if err != nil {
+		return err
+	}
+	return c.JSON(201, out)
 }

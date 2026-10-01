@@ -10,19 +10,50 @@ import (
 )
 
 type Account struct {
-	ID             uuid.UUID
-	EmailKey       string
-	Locale         string
-	PasswordHash   string
-	VerifiedAt     pgtype.Timestamptz
-	Restricted     bool
-	VpnID          uuid.UUID
-	SubID          string
-	PanelKey       string
-	TermsVersion   string
-	PrivacyVersion string
-	TelegramID     pgtype.Int8
-	LegacyUserID   pgtype.Int8
+	ID              uuid.UUID
+	EmailKey        string
+	Locale          string
+	PasswordHash    string
+	VerifiedAt      pgtype.Timestamptz
+	Restricted      bool
+	VpnID           uuid.UUID
+	SubID           string
+	PanelKey        string
+	TermsVersion    string
+	PrivacyVersion  string
+	TelegramID      pgtype.Int8
+	LegacyUserID    pgtype.Int8
+	AssignedPanelID pgtype.Text
+	HadSubscription bool
+}
+
+type AuditEvent struct {
+	ID           uuid.UUID
+	CreatedAt    pgtype.Timestamptz
+	Action       string
+	AccountID    uuid.UUID
+	RequestID    *uuid.UUID
+	OperationID  *uuid.UUID
+	OperatorTgID pgtype.Int8
+	Reason       pgtype.Text
+}
+
+type DecisionCallback struct {
+	ID           string
+	RequestID    uuid.UUID
+	OperatorTgID int64
+	BodyHash     []byte
+	Result       []byte
+	CreatedAt    pgtype.Timestamptz
+}
+
+type IdempotencyRecord struct {
+	Principal string
+	Operation string
+	Key       uuid.UUID
+	BodyHash  []byte
+	Result    []byte
+	CreatedAt pgtype.Timestamptz
 }
 
 type MailDelivery struct {
@@ -56,4 +87,59 @@ type Session struct {
 	CreatedAt         pgtype.Timestamptz
 	LastSeen          pgtype.Timestamptz
 	AbsoluteExpiresAt pgtype.Timestamptz
+}
+
+type TelegramDelivery struct {
+	ID             uuid.UUID
+	Sequence       pgtype.Int8
+	RequestID      uuid.UUID
+	OperationID    *uuid.UUID
+	ChatID         int64
+	Kind           string
+	Payload        []byte
+	State          string
+	CreatedAt      pgtype.Timestamptz
+	AvailableAt    pgtype.Timestamptz
+	LeaseHash      []byte
+	LeaseExpiresAt pgtype.Timestamptz
+	Attempts       int32
+	MessageID      pgtype.Int8
+	CompletedAt    pgtype.Timestamptz
+	FailureCode    pgtype.Text
+}
+
+type TrialGrant struct {
+	AccountID   uuid.UUID
+	RequestID   uuid.UUID
+	OperationID uuid.UUID
+	Status      string
+	CreatedAt   pgtype.Timestamptz
+	GrantedAt   pgtype.Timestamptz
+}
+
+type TrialOperation struct {
+	ID           uuid.UUID
+	AccountID    uuid.UUID
+	RequestID    uuid.UUID
+	Status       string
+	TrialEnabled bool
+	PeriodDays   int64
+	TrafficGb    int64
+	Devices      int64
+	PanelID      string
+	CreatedAt    pgtype.Timestamptz
+}
+
+type TrialRequest struct {
+	ID                uuid.UUID
+	Sequence          pgtype.Int8
+	AccountID         uuid.UUID
+	Status            string
+	Comment           string
+	CreatedAt         pgtype.Timestamptz
+	DecidedAt         pgtype.Timestamptz
+	OperatorTgID      pgtype.Int8
+	Reason            pgtype.Text
+	OperationID       *uuid.UUID
+	PreviousRequestID *uuid.UUID
 }

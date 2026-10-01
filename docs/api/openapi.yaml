@@ -2481,11 +2481,24 @@
             "type": "string",
             "format": "uuid",
             "nullable": true
+          },
+          "card": {
+            "$ref": "#/components/schemas/TelegramPayload"
+          },
+          "delivery_state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "sent",
+              "failed"
+            ]
           }
         },
         "required": [
           "request",
-          "operation_id"
+          "operation_id",
+          "card",
+          "delivery_state"
         ]
       },
       "ReconsiderInput": {

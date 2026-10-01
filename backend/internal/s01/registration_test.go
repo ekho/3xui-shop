@@ -30,6 +30,13 @@ func fixture(t *testing.T) (*Service, *testkit.Env) {
 		t.Fatal(err)
 	}
 	cfg := Config{CabinetOrigin: "https://cabinet.example.test", MailKey: bytes.Repeat([]byte{1}, 32), CodeKey: bytes.Repeat([]byte{2}, 32), TermsVersion: "1", PrivacyVersion: "1", RateNamespace: uuid.NewString()}
+	cfg.Operators = []int64{101, 202}
+	cfg.AdapterToken = strings.Repeat("x", 43)
+	cfg.PanelID = "dedicated-test"
+	cfg.TrialEnabled = true
+	cfg.TrialPeriodDays = 3
+	cfg.TrialTrafficGB = 15
+	cfg.TrialDevices = 1
 	s := NewService(e.Pool, e.Redis, q, cfg)
 	s.now = e.Clock
 	return s, e
@@ -288,6 +295,9 @@ func BenchmarkPasswordHash(b *testing.B) {
 }
 
 func TestRegistrationConfig(t *testing.T) {
+	for _, name := range []string{"BOT_OPERATOR_IDS", "BOT_ADAPTER_TOKEN", "BOT_ADAPTER_TOKEN_FILE", "TRIAL_ENABLED", "TRIAL_PERIOD", "TRIAL_TRAFFIC_GB", "BONUS_DEVICES_COUNT", "PANEL_ID"} {
+		t.Setenv(name, "")
+	}
 	dir := t.TempDir()
 	for key, val := range map[string]string{"DATABASE_URL": "postgres://fixture", "REDIS_URL": "redis://fixture", "MAIL_KEY": base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32)), "CODE_KEY": base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{2}, 32))} {
 		p := filepath.Join(dir, key)

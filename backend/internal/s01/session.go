@@ -123,7 +123,11 @@ func (s *Service) Authenticate(ctx context.Context, raw string) (wire.AccountRes
 	if account.Restricted {
 		return out, failure(403, "ACCOUNT_RESTRICTED")
 	}
-	return wire.AccountResult{Account: publicAccount(account), CsrfToken: session.CsrfToken, Capabilities: wire.Capabilities{TrialAvailable: false}}, nil
+	available, err := s.canRequestTrial(ctx, q, account)
+	if err != nil {
+		return out, err
+	}
+	return wire.AccountResult{Account: publicAccount(account), CsrfToken: session.CsrfToken, Capabilities: wire.Capabilities{TrialAvailable: available}}, nil
 }
 func (s *Service) Logout(ctx context.Context, raw string) error {
 	if raw == "" {

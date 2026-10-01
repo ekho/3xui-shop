@@ -7,15 +7,34 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 )
 
 type Config struct {
-	TrustedProxyCIDRs                                                                                                 []string
-	CabinetOrigin, DatabaseURL, RedisURL, TermsVersion, PrivacyVersion, SMTPAddress, SMTPUser, SMTPPassword, SMTPFrom string
-	MailKey, CodeKey                                                                                                  []byte
-	RateNamespace                                                                                                     string
-	SMTPRootCAs                                                                                                       *x509.CertPool
+	Operators         []int64
+	AdapterToken      string
+	PanelID           string
+	TrialEnabled      bool
+	TrialPeriodDays   int64
+	TrialTrafficGB    int64
+	TrialDevices      int64
+	TrustedProxyCIDRs []string
+
+	CabinetOrigin  string
+	DatabaseURL    string
+	RedisURL       string
+	TermsVersion   string
+	PrivacyVersion string
+	SMTPAddress    string
+	SMTPUser       string
+	SMTPPassword   string
+	SMTPFrom       string
+
+	MailKey       []byte
+	CodeKey       []byte
+	RateNamespace string
+	SMTPRootCAs   *x509.CertPool
 }
 
 func SecretFile(name string) (string, error) {
@@ -41,7 +60,48 @@ func LoadConfig() (Config, error) {
 	if value := os.Getenv("TRUSTED_PROXY_CIDRS"); value != "" {
 		c.TrustedProxyCIDRs = strings.Split(value, ",")
 	}
+	c.PanelID = os.Getenv("PANEL_ID")
 	var err error
+	if value := os.Getenv("TRIAL_ENABLED"); value != "" {
+		c.TrialEnabled, err = strconv.ParseBool(value)
+		if err != nil {
+			return c, errors.New("invalid TRIAL_ENABLED")
+		}
+	}
+	for name, dest := range map[string]*int64{"TRIAL_PERIOD": &c.TrialPeriodDays, "TRIAL_TRAFFIC_GB": &c.TrialTrafficGB, "BONUS_DEVICES_COUNT": &c.TrialDevices} {
+		value := os.Getenv(name)
+		if value == "" {
+			switch name {
+			case "TRIAL_PERIOD":
+				value = "3"
+			case "TRIAL_TRAFFIC_GB":
+				value = "15"
+			case "BONUS_DEVICES_COUNT":
+				value = "1"
+			}
+		}
+		*dest, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return c, errors.New("invalid trial setting: " + name)
+		}
+	}
+	if value := os.Getenv("BOT_OPERATOR_IDS"); value != "" {
+		for _, text := range strings.Split(value, ",") {
+			id, e := strconv.ParseInt(strings.TrimSpace(text), 10, 64)
+			if e != nil || id <= 0 {
+				return c, errors.New("invalid BOT_OPERATOR_IDS")
+			}
+			c.Operators = append(c.Operators, id)
+		}
+		c.AdapterToken, err = SecretFile("BOT_ADAPTER_TOKEN")
+		if err != nil || len(c.AdapterToken) < 32 {
+			return c, errors.New("invalid BOT_ADAPTER_TOKEN_FILE")
+		}
+	}
+	if c.TrialEnabled && (c.PanelID == "" || len(c.Operators) == 0) {
+		return c, errors.New("enabled trial requires panel and operators")
+	}
+
 	for name, dest := range map[string]*string{"DATABASE_URL": &c.DatabaseURL, "REDIS_URL": &c.RedisURL} {
 		if *dest, err = SecretFile(name); err != nil {
 			return c, err

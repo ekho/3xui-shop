@@ -25,6 +25,13 @@ func httpFixture(t *testing.T) (http.Handler, *testkit.Env, s01.Config) {
 		t.Fatal(err)
 	}
 	cfg := s01.Config{CabinetOrigin: "https://cabinet.example.test", TermsVersion: "1", PrivacyVersion: "1", MailKey: bytes.Repeat([]byte{1}, 32), CodeKey: bytes.Repeat([]byte{2}, 32), RateNamespace: uuid.NewString()}
+	cfg.Operators = []int64{101, 202}
+	cfg.AdapterToken = strings.Repeat("x", 43)
+	cfg.PanelID = "dedicated-test"
+	cfg.TrialEnabled = true
+	cfg.TrialPeriodDays = 3
+	cfg.TrialTrafficGB = 15
+	cfg.TrialDevices = 1
 	return New(s01.NewService(env.Pool, env.Redis, queue, cfg), cfg), env, cfg
 }
 func request(h http.Handler, method, path, body, origin string) *httptest.ResponseRecorder {
@@ -160,5 +167,75 @@ func TestLoginRateLimit(t *testing.T) {
 		if rr.Code != want {
 			t.Fatalf("forged XFF request%d want%d got%d", i+1, want, rr.Code)
 		}
+	}
+}
+
+func TestInternalOperatorBoundary(t *testing.T) {
+	h, e, cfg := httpFixture(t)
+	verifiedHTTP(t, h, e, cfg)
+	rr := request(h, "POST", "/api/v1/auth/login", `{"email":"login@example.test","password":"my long safe password ✨"}`, cfg.CabinetOrigin)
+	if rr.Code != 200 {
+		t.Fatal("login", rr.Code)
+	}
+	var login wire.LoginResult
+	json.Unmarshal(rr.Body.Bytes(), &login)
+	cookie := rr.Result().Cookies()[0]
+	create := func(csrf string, key uuid.UUID) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "/api/v1/trial-requests", strings.NewReader(`{"comment":"test request"}`))
+		r.AddCookie(cookie)
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("Origin", cfg.CabinetOrigin)
+		r.Header.Set("X-CSRF-Token", csrf)
+		r.Header.Set("Idempotency-Key", key.String())
+		out := httptest.NewRecorder()
+		h.ServeHTTP(out, r)
+		return out
+	}
+	if rr = create("", uuid.New()); rr.Code != 403 {
+		t.Fatal("trial missing CSRF", rr.Code)
+	}
+	key := uuid.New()
+	if rr = create(login.CsrfToken, key); rr.Code != 201 {
+		t.Fatalf("trial creation want201 got%d", rr.Code)
+	}
+	var trial wire.TrialRequest
+	json.Unmarshal(rr.Body.Bytes(), &trial)
+	if rr = create(login.CsrfToken, key); rr.Code != 200 {
+		t.Fatal("trial replay", rr.Code)
+	}
+	internal := func(token string, actor int64, mode string, withCookie bool) *httptest.ResponseRecorder {
+		body := fmt.Sprintf(`{"operator_tg_id":%d,"decision":"%s","callback_query_id":"%s"}`, actor, mode, uuid.NewString())
+		r := httptest.NewRequest("POST", "/internal/v1/trial-requests/"+trial.RequestId.String()+"/decision", strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
+		if token != "" {
+			r.Header.Set("Authorization", "Bearer "+token)
+		}
+		if withCookie {
+			r.AddCookie(cookie)
+		}
+		out := httptest.NewRecorder()
+		h.ServeHTTP(out, r)
+		return out
+	}
+	for _, token := range []string{"", "wrong"} {
+		if rr = internal(token, 101, "approve", true); rr.Code != 401 {
+			t.Fatal("user cookie must not authorize internal", rr.Code)
+		}
+	}
+	if rr = internal(cfg.AdapterToken, 999, "approve", false); rr.Code != 403 {
+		t.Fatal("forged operator", rr.Code)
+	}
+	if rr = internal(cfg.AdapterToken, 101, "approve", false); rr.Code != 200 {
+		t.Fatal("authorized decision", rr.Code)
+	}
+	if rr = internal(cfg.AdapterToken, 202, "reject", false); rr.Code != 409 || !strings.Contains(rr.Body.String(), `"current_request_status":"approved"`) {
+		t.Fatal("winning state", rr.Code)
+	}
+	r := httptest.NewRequest("GET", "/api/v1/trial-requests/current", nil)
+	r.AddCookie(cookie)
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, r)
+	if rr.Code != 200 || strings.Contains(rr.Body.String(), "operator_tg_id") || strings.Contains(rr.Body.String(), "support_declined") {
+		t.Fatal("internal state leaked")
 	}
 }
