@@ -27,7 +27,7 @@ try{
  step='register';await page.goto('https://localhost:58443/register?lang=en');
  await page.getByLabel('Email',{exact:true}).fill(email);
  await page.getByRole('checkbox',{name:/terms of use/}).check();await page.getByRole('checkbox',{name:/privacy policy/}).check();
- await page.getByRole('button',{name:'Continue',exact:true}).click();await expect(page.getByText('If the address is available, an email has been sent.')).toBeVisible();
+ await page.getByRole('button',{name:'Continue',exact:true}).click();await expect(page.getByText('If the address is available, we will send an email.')).toBeVisible();
  const token=local('token',{email});step='verify';
  await page.goto('https://localhost:58443/verify-email?lang=en#token='+token);expect(new URL(page.url()).hash).toBe('');
  await page.getByLabel('Password',{exact:true}).fill(password);await page.getByRole('button',{name:'Verify email',exact:true}).click();

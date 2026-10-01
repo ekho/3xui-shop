@@ -36,3 +36,9 @@ export const createTrialRequest=(input:TrialRequestInput,key:string,signal?:Abor
 export const getCurrentTrialRequest=(signal?:AbortSignal)=>request<CurrentTrialRequest>('trial-requests/current','GET',undefined,signal);
 export const getSubscription=(signal?:AbortSignal)=>request<Subscription>('subscription','GET',undefined,signal);
 export const getSubscriptionKey=(signal?:AbortSignal)=>request<SubscriptionKey>('subscription/key','GET',undefined,signal);
+
+export type PasswordResetInput=components['schemas']['PasswordResetInput'];
+export type PasswordResetAccepted=components['schemas']['PasswordResetAccepted'];
+export type PasswordResetCompleteInput=components['schemas']['PasswordResetCompleteInput'];
+export const requestPasswordReset=(input:PasswordResetInput)=>request<PasswordResetAccepted>('auth/password-reset','POST',input);
+export const completePasswordReset=(input:PasswordResetCompleteInput)=>request<void>('auth/password-reset/complete','POST',input);
