@@ -176,6 +176,24 @@ func (e ErrorBodyCurrentRequestStatus) Valid() bool {
 	}
 }
 
+// Defines values for PasswordResetInputLocale.
+const (
+	PasswordResetInputLocaleEn PasswordResetInputLocale = "en"
+	PasswordResetInputLocaleRu PasswordResetInputLocale = "ru"
+)
+
+// Valid indicates whether the value is a known member of the PasswordResetInputLocale enum.
+func (e PasswordResetInputLocale) Valid() bool {
+	switch e {
+	case PasswordResetInputLocaleEn:
+		return true
+	case PasswordResetInputLocaleRu:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ReconcileResultStatus.
 const (
 	ReconcileResultStatusApplied      ReconcileResultStatus = "applied"
@@ -497,6 +515,36 @@ type LoginResult struct {
 	CsrfToken string  `json:"csrf_token"`
 }
 
+// PasswordResetAccepted defines model for PasswordResetAccepted.
+type PasswordResetAccepted struct {
+	ChallengeId openapi_types.UUID `json:"challenge_id"`
+	ResendAfter int64              `json:"resend_after"`
+}
+
+// PasswordResetCompleteInput defines model for PasswordResetCompleteInput.
+type PasswordResetCompleteInput struct {
+	ChallengeId *openapi_types.UUID `json:"challenge_id,omitempty"`
+	Code        *string             `json:"code,omitempty"`
+	NewPassword string              `json:"new_password"`
+	Token       *string             `json:"token,omitempty"`
+	union       json.RawMessage
+}
+
+// PasswordResetCompleteInput0 defines model for PasswordResetCompleteInput.0.
+type PasswordResetCompleteInput0 = interface{}
+
+// PasswordResetCompleteInput1 defines model for PasswordResetCompleteInput.1.
+type PasswordResetCompleteInput1 = interface{}
+
+// PasswordResetInput defines model for PasswordResetInput.
+type PasswordResetInput struct {
+	Email  openapi_types.Email      `json:"email"`
+	Locale PasswordResetInputLocale `json:"locale"`
+}
+
+// PasswordResetInputLocale defines model for PasswordResetInput.Locale.
+type PasswordResetInputLocale string
+
 // ReconcileInput defines model for ReconcileInput.
 type ReconcileInput struct {
 	OperatorTgId int64  `json:"operator_tg_id"`
@@ -676,6 +724,16 @@ type LogoutAccountParams struct {
 	XCSRFToken *string `json:"X-CSRF-Token,omitempty"`
 }
 
+// RequestPasswordResetParams defines parameters for RequestPasswordReset.
+type RequestPasswordResetParams struct {
+	Origin string `json:"Origin"`
+}
+
+// CompletePasswordResetParams defines parameters for CompletePasswordReset.
+type CompletePasswordResetParams struct {
+	Origin string `json:"Origin"`
+}
+
 // RegisterAccountParams defines parameters for RegisterAccount.
 type RegisterAccountParams struct {
 	Origin string `json:"Origin"`
@@ -711,6 +769,12 @@ type ReconsiderTrialRequestParams struct {
 // LoginAccountJSONRequestBody defines body for LoginAccount for application/json ContentType.
 type LoginAccountJSONRequestBody = LoginInput
 
+// RequestPasswordResetJSONRequestBody defines body for RequestPasswordReset for application/json ContentType.
+type RequestPasswordResetJSONRequestBody = PasswordResetInput
+
+// CompletePasswordResetJSONRequestBody defines body for CompletePasswordReset for application/json ContentType.
+type CompletePasswordResetJSONRequestBody = PasswordResetCompleteInput
+
 // RegisterAccountJSONRequestBody defines body for RegisterAccount for application/json ContentType.
 type RegisterAccountJSONRequestBody = RegisterInput
 
@@ -737,6 +801,142 @@ type DecideTrialRequestJSONRequestBody = DecisionInput
 
 // ReconsiderTrialRequestJSONRequestBody defines body for ReconsiderTrialRequest for application/json ContentType.
 type ReconsiderTrialRequestJSONRequestBody = ReconsiderInput
+
+// AsPasswordResetCompleteInput0 returns the union data inside the PasswordResetCompleteInput as a PasswordResetCompleteInput0
+func (t PasswordResetCompleteInput) AsPasswordResetCompleteInput0() (PasswordResetCompleteInput0, error) {
+	var body PasswordResetCompleteInput0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromPasswordResetCompleteInput0 overwrites any union data inside the PasswordResetCompleteInput as the provided PasswordResetCompleteInput0
+func (t *PasswordResetCompleteInput) FromPasswordResetCompleteInput0(v PasswordResetCompleteInput0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergePasswordResetCompleteInput0 performs a merge with any union data inside the PasswordResetCompleteInput, using the provided PasswordResetCompleteInput0
+func (t *PasswordResetCompleteInput) MergePasswordResetCompleteInput0(v PasswordResetCompleteInput0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsPasswordResetCompleteInput1 returns the union data inside the PasswordResetCompleteInput as a PasswordResetCompleteInput1
+func (t PasswordResetCompleteInput) AsPasswordResetCompleteInput1() (PasswordResetCompleteInput1, error) {
+	var body PasswordResetCompleteInput1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromPasswordResetCompleteInput1 overwrites any union data inside the PasswordResetCompleteInput as the provided PasswordResetCompleteInput1
+func (t *PasswordResetCompleteInput) FromPasswordResetCompleteInput1(v PasswordResetCompleteInput1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergePasswordResetCompleteInput1 performs a merge with any union data inside the PasswordResetCompleteInput, using the provided PasswordResetCompleteInput1
+func (t *PasswordResetCompleteInput) MergePasswordResetCompleteInput1(v PasswordResetCompleteInput1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t PasswordResetCompleteInput) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	object := make(map[string]json.RawMessage)
+	if t.union != nil {
+		err = json.Unmarshal(b, &object)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if t.ChallengeId != nil {
+		object["challenge_id"], err = json.Marshal(t.ChallengeId)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'challenge_id': %w", err)
+		}
+	}
+
+	if t.Code != nil {
+		object["code"], err = json.Marshal(t.Code)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'code': %w", err)
+		}
+	}
+
+	object["new_password"], err = json.Marshal(t.NewPassword)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'new_password': %w", err)
+	}
+
+	if t.Token != nil {
+		object["token"], err = json.Marshal(t.Token)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'token': %w", err)
+		}
+	}
+	b, err = json.Marshal(object)
+	return b, err
+}
+
+func (t *PasswordResetCompleteInput) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	if err != nil {
+		return err
+	}
+	object := make(map[string]json.RawMessage)
+	err = json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["challenge_id"]; found {
+		err = json.Unmarshal(raw, &t.ChallengeId)
+		if err != nil {
+			return fmt.Errorf("error reading 'challenge_id': %w", err)
+		}
+	}
+
+	if raw, found := object["code"]; found {
+		err = json.Unmarshal(raw, &t.Code)
+		if err != nil {
+			return fmt.Errorf("error reading 'code': %w", err)
+		}
+	}
+
+	if raw, found := object["new_password"]; found {
+		err = json.Unmarshal(raw, &t.NewPassword)
+		if err != nil {
+			return fmt.Errorf("error reading 'new_password': %w", err)
+		}
+	}
+
+	if raw, found := object["token"]; found {
+		err = json.Unmarshal(raw, &t.Token)
+		if err != nil {
+			return fmt.Errorf("error reading 'token': %w", err)
+		}
+	}
+
+	return err
+}
 
 // AsTelegramSent returns the union data inside the TelegramResult as a TelegramSent
 func (t TelegramResult) AsTelegramSent() (TelegramSent, error) {
@@ -980,53 +1180,54 @@ func (t *VerifyInput) UnmarshalJSON(b []byte) error {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"AQA=",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

@@ -84,17 +84,36 @@ func (s *Service) Login(ctx context.Context, in wire.LoginInput, ip string) (wir
 	if account.Restricted {
 		return out, "", failure(403, "ACCOUNT_RESTRICTED")
 	}
+	raw := opaque()
+	csrf := opaque()
+	now := s.now()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return out, "", unavailable()
+	}
+	defer tx.Rollback(ctx)
+	q := store.New(tx)
+	current, err := q.LockAccount(ctx, account.ID)
+	if err != nil {
+		return out, "", unavailable()
+	}
+	if current.EmailKey != email || current.PasswordHash != account.PasswordHash || current.CredentialVersion != account.CredentialVersion {
+		return out, "", failure(401, "INVALID_CREDENTIALS")
+	}
+	if current.Restricted {
+		return out, "", failure(403, "ACCOUNT_RESTRICTED")
+	}
 	limitCtx, done = context.WithTimeout(ctx, 2*time.Second)
 	err = successfulLogin.Run(limitCtx, s.limiter, keys, attempt).Err()
 	done()
 	if err != nil {
 		return out, "", unavailable()
 	}
-	raw := opaque()
-	csrf := opaque()
-	now := s.now()
-	err = store.New(s.pool).AddSession(ctx, store.AddSessionParams{IDHash: digest(raw), AccountID: account.ID, CsrfToken: csrf, CreatedAt: stamp(now), LastSeen: stamp(now), AbsoluteExpiresAt: stamp(now.Add(30 * 24 * time.Hour))})
+	err = q.AddSession(ctx, store.AddSessionParams{IDHash: digest(raw), AccountID: account.ID, CsrfToken: csrf, CreatedAt: stamp(now), LastSeen: stamp(now), AbsoluteExpiresAt: stamp(now.Add(30 * 24 * time.Hour))})
 	if err != nil {
+		return out, "", unavailable()
+	}
+	if err = tx.Commit(ctx); err != nil {
 		return out, "", unavailable()
 	}
 	return wire.LoginResult{Account: publicAccount(account), CsrfToken: csrf}, raw, nil

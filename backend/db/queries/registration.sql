@@ -4,8 +4,8 @@ SELECT * FROM accounts WHERE email_key = $1;
 SELECT * FROM accounts WHERE id = $1;
 -- name: RevokeChallenges :exec
 UPDATE registration_challenges SET revoked = true WHERE email_key = $1 AND NOT revoked;
--- name: RevokeMail :exec
-UPDATE mail_deliveries SET ciphertext = NULL WHERE email_key = $1 AND delivered_at IS NULL;
+-- name: RevokeRegistrationMail :exec
+UPDATE mail_deliveries SET ciphertext = NULL WHERE email_key = $1 AND kind='registration' AND delivered_at IS NULL;
 -- name: ChallengeByID :one
 SELECT * FROM registration_challenges WHERE id = $1 FOR UPDATE;
 -- name: ChallengeByToken :one
@@ -34,3 +34,5 @@ SELECT email_key FROM registration_challenges WHERE id=$1;
 SELECT email_key FROM registration_challenges WHERE token_hash=$1;
 -- name: MailEmailByID :one
 SELECT email_key FROM mail_deliveries WHERE id=$1;
+-- name: LookupMail :one
+SELECT * FROM mail_deliveries WHERE id=$1;

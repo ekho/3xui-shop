@@ -13,7 +13,7 @@ import (
 )
 
 const accountByEmail = `-- name: AccountByEmail :one
-SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription FROM accounts WHERE email_key = $1
+SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version FROM accounts WHERE email_key = $1
 `
 
 func (q *Queries) AccountByEmail(ctx context.Context, emailKey string) (Account, error) {
@@ -35,12 +35,13 @@ func (q *Queries) AccountByEmail(ctx context.Context, emailKey string) (Account,
 		&i.LegacyUserID,
 		&i.AssignedPanelID,
 		&i.HadSubscription,
+		&i.CredentialVersion,
 	)
 	return i, err
 }
 
 const accountByID = `-- name: AccountByID :one
-SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription FROM accounts WHERE id = $1
+SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version FROM accounts WHERE id = $1
 `
 
 func (q *Queries) AccountByID(ctx context.Context, id uuid.UUID) (Account, error) {
@@ -62,6 +63,7 @@ func (q *Queries) AccountByID(ctx context.Context, id uuid.UUID) (Account, error
 		&i.LegacyUserID,
 		&i.AssignedPanelID,
 		&i.HadSubscription,
+		&i.CredentialVersion,
 	)
 	return i, err
 }
@@ -268,8 +270,28 @@ func (q *Queries) LockRegistrationEmail(ctx context.Context, dollar_1 string) er
 	return err
 }
 
+const lookupMail = `-- name: LookupMail :one
+SELECT id, challenge_id, email_key, ciphertext, created_at, delivered_at, kind, credential_challenge_id FROM mail_deliveries WHERE id=$1
+`
+
+func (q *Queries) LookupMail(ctx context.Context, id uuid.UUID) (MailDelivery, error) {
+	row := q.db.QueryRow(ctx, lookupMail, id)
+	var i MailDelivery
+	err := row.Scan(
+		&i.ID,
+		&i.ChallengeID,
+		&i.EmailKey,
+		&i.Ciphertext,
+		&i.CreatedAt,
+		&i.DeliveredAt,
+		&i.Kind,
+		&i.CredentialChallengeID,
+	)
+	return i, err
+}
+
 const mailByID = `-- name: MailByID :one
-SELECT id, challenge_id, email_key, ciphertext, created_at, delivered_at FROM mail_deliveries WHERE id=$1 FOR UPDATE
+SELECT id, challenge_id, email_key, ciphertext, created_at, delivered_at, kind, credential_challenge_id FROM mail_deliveries WHERE id=$1 FOR UPDATE
 `
 
 func (q *Queries) MailByID(ctx context.Context, id uuid.UUID) (MailDelivery, error) {
@@ -282,6 +304,8 @@ func (q *Queries) MailByID(ctx context.Context, id uuid.UUID) (MailDelivery, err
 		&i.Ciphertext,
 		&i.CreatedAt,
 		&i.DeliveredAt,
+		&i.Kind,
+		&i.CredentialChallengeID,
 	)
 	return i, err
 }
@@ -306,11 +330,11 @@ func (q *Queries) RevokeChallenges(ctx context.Context, emailKey string) error {
 	return err
 }
 
-const revokeMail = `-- name: RevokeMail :exec
-UPDATE mail_deliveries SET ciphertext = NULL WHERE email_key = $1 AND delivered_at IS NULL
+const revokeRegistrationMail = `-- name: RevokeRegistrationMail :exec
+UPDATE mail_deliveries SET ciphertext = NULL WHERE email_key = $1 AND kind='registration' AND delivered_at IS NULL
 `
 
-func (q *Queries) RevokeMail(ctx context.Context, emailKey string) error {
-	_, err := q.db.Exec(ctx, revokeMail, emailKey)
+func (q *Queries) RevokeRegistrationMail(ctx context.Context, emailKey string) error {
+	_, err := q.db.Exec(ctx, revokeRegistrationMail, emailKey)
 	return err
 }

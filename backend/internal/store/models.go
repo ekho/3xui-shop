@@ -10,21 +10,22 @@ import (
 )
 
 type Account struct {
-	ID              uuid.UUID
-	EmailKey        string
-	Locale          string
-	PasswordHash    string
-	VerifiedAt      pgtype.Timestamptz
-	Restricted      bool
-	VpnID           uuid.UUID
-	SubID           string
-	PanelKey        string
-	TermsVersion    string
-	PrivacyVersion  string
-	TelegramID      pgtype.Int8
-	LegacyUserID    pgtype.Int8
-	AssignedPanelID pgtype.Text
-	HadSubscription bool
+	ID                uuid.UUID
+	EmailKey          string
+	Locale            string
+	PasswordHash      string
+	VerifiedAt        pgtype.Timestamptz
+	Restricted        bool
+	VpnID             uuid.UUID
+	SubID             string
+	PanelKey          string
+	TermsVersion      string
+	PrivacyVersion    string
+	TelegramID        pgtype.Int8
+	LegacyUserID      pgtype.Int8
+	AssignedPanelID   pgtype.Text
+	HadSubscription   bool
+	CredentialVersion int64
 }
 
 type AuditEvent struct {
@@ -36,6 +37,25 @@ type AuditEvent struct {
 	OperationID  *uuid.UUID
 	OperatorTgID pgtype.Int8
 	Reason       pgtype.Text
+}
+
+type CredentialChallenge struct {
+	ID                uuid.UUID
+	Purpose           string
+	AccountID         *uuid.UUID
+	ChangeID          *uuid.UUID
+	OriginalEmail     string
+	TargetEmail       string
+	CredentialVersion int64
+	TokenHash         []byte
+	CodeHash          []byte
+	CreatedAt         pgtype.Timestamptz
+	TokenExpiresAt    pgtype.Timestamptz
+	CodeExpiresAt     pgtype.Timestamptz
+	FailedGuesses     int32
+	ConfirmedAt       pgtype.Timestamptz
+	UsedAt            pgtype.Timestamptz
+	Revoked           bool
 }
 
 type DecisionCallback struct {
@@ -57,12 +77,14 @@ type IdempotencyRecord struct {
 }
 
 type MailDelivery struct {
-	ID          uuid.UUID
-	ChallengeID *uuid.UUID
-	EmailKey    string
-	Ciphertext  []byte
-	CreatedAt   pgtype.Timestamptz
-	DeliveredAt pgtype.Timestamptz
+	ID                    uuid.UUID
+	ChallengeID           *uuid.UUID
+	EmailKey              string
+	Ciphertext            []byte
+	CreatedAt             pgtype.Timestamptz
+	DeliveredAt           pgtype.Timestamptz
+	Kind                  string
+	CredentialChallengeID *uuid.UUID
 }
 
 type RegistrationChallenge struct {

@@ -11,10 +11,20 @@ import (
 )
 
 func MailSecrets(t *testing.T, pool *pgxpool.Pool, key []byte, challenge uuid.UUID) (uuid.UUID, string, string) {
+	return mailSecrets(t, pool, key, challenge, false)
+}
+func CredentialMailSecrets(t *testing.T, pool *pgxpool.Pool, key []byte, challenge uuid.UUID) (uuid.UUID, string, string) {
+	return mailSecrets(t, pool, key, challenge, true)
+}
+func mailSecrets(t *testing.T, pool *pgxpool.Pool, key []byte, challenge uuid.UUID, credential bool) (uuid.UUID, string, string) {
 	t.Helper()
 	var id uuid.UUID
 	var encrypted []byte
-	if err := pool.QueryRow(context.Background(), `SELECT id,ciphertext FROM mail_deliveries WHERE challenge_id=$1`, challenge).Scan(&id, &encrypted); err != nil {
+	query := `SELECT id,ciphertext FROM mail_deliveries WHERE challenge_id=$1`
+	if credential {
+		query = `SELECT id,ciphertext FROM mail_deliveries WHERE credential_challenge_id=$1`
+	}
+	if err := pool.QueryRow(context.Background(), query, challenge).Scan(&id, &encrypted); err != nil {
 		t.Fatal(err)
 	}
 	block, _ := aes.NewCipher(key)

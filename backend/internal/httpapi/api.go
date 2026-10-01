@@ -108,6 +108,8 @@ func New(svc *s01.Service, cfg s01.Config) *echo.Echo {
 	e.POST("/api/v1/auth/register", a.RegisterAccount)
 	e.POST("/api/v1/auth/verify-email", a.VerifyEmail)
 	e.POST("/api/v1/auth/resend-verification", a.ResendVerification)
+	e.POST("/api/v1/auth/password-reset", a.RequestPasswordReset)
+	e.POST("/api/v1/auth/password-reset/complete", a.CompletePasswordReset)
 	e.POST("/api/v1/auth/login", a.LoginAccount)
 	e.POST("/api/v1/auth/logout", a.LogoutAccount)
 	e.GET("/api/v1/me", a.GetAccount)
