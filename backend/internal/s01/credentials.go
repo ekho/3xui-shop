@@ -67,14 +67,13 @@ func (s *Service) credentialAudit(ctx context.Context, tx pgx.Tx, id uuid.UUID, 
 	}
 	return nil
 }
-func (s *Service) addCredentialProof(ctx context.Context, tx pgx.Tx, id uuid.UUID, purpose string, accountID, changeID *uuid.UUID, original, target string, version int64, locale string) error {
+func (s *Service) addCredentialProof(ctx context.Context, tx pgx.Tx, id uuid.UUID, purpose string, accountID, changeID *uuid.UUID, original, target string, version int64, locale string, now time.Time) error {
 	token := opaque()
 	n, err := rand.Int(rand.Reader, big.NewInt(100000000))
 	if err != nil {
 		return unavailable()
 	}
 	code := fmt.Sprintf("%08d", n)
-	now := s.now()
 	err = store.New(tx).AddCredentialProof(ctx, store.AddCredentialProofParams{ID: id, Purpose: purpose, AccountID: accountID, ChangeID: changeID, OriginalEmail: original, TargetEmail: target, CredentialVersion: version, TokenHash: digest(token), CodeHash: s.codeDigest(id, code), CreatedAt: stamp(now), TokenExpiresAt: stamp(now.Add(30 * time.Minute)), CodeExpiresAt: stamp(now.Add(10 * time.Minute))})
 	if err != nil {
 		return unavailable()
@@ -136,7 +135,7 @@ func (s *Service) RequestPasswordReset(ctx context.Context, in wire.PasswordRese
 		return out, unavailable()
 	}
 	// Unknown recipients use the same proof/job transaction; the worker stops before SMTP.
-	if err = s.addCredentialProof(ctx, tx, out.ChallengeId, "password_reset", accountID, nil, email, email, version, string(in.Locale)); err != nil {
+	if err = s.addCredentialProof(ctx, tx, out.ChallengeId, "password_reset", accountID, nil, email, email, version, string(in.Locale), s.now()); err != nil {
 		return out, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -417,5 +416,9 @@ func (s *Service) GetAccountSecurity(ctx context.Context, raw string) (wire.Acco
 	if err != nil {
 		return wire.AccountSecurity{}, unavailable()
 	}
-	return wire.AccountSecurity{Email: openapi_types.Email(account.EmailKey), HasOtherSessions: other}, nil
+	pending, err := s.pendingEmailChange(ctx, q, account)
+	if err != nil {
+		return wire.AccountSecurity{}, err
+	}
+	return wire.AccountSecurity{Email: openapi_types.Email(account.EmailKey), HasOtherSessions: other, PendingEmailChange: pending}, nil
 }

@@ -99,3 +99,49 @@ func (a *API) RevokeOtherSessions(c *echo.Context) error {
 	}
 	return rotateCookie(c, rotation)
 }
+
+func (a *API) RequestEmailChange(c *echo.Context) error {
+	in, err := decode[wire.EmailChangeInput](a, c, "EmailChangeInput")
+	if err != nil {
+		return err
+	}
+	if _, err = a.auth(c, true); err != nil {
+		return err
+	}
+	raw, err := sessionRaw(c)
+	if err != nil {
+		return err
+	}
+	out, err := a.svc.RequestEmailChange(c.Request().Context(), raw, in, c.RealIP())
+	if err != nil {
+		return err
+	}
+	return c.JSON(202, out)
+}
+func (a *API) ConfirmEmailChange(c *echo.Context) error {
+	in, err := decode[wire.EmailChangeConfirmInput](a, c, "EmailChangeConfirmInput")
+	if err != nil {
+		return err
+	}
+	out, err := a.svc.ConfirmEmailChange(c.Request().Context(), in, c.RealIP())
+	if err != nil {
+		return err
+	}
+	return c.JSON(200, out)
+}
+func (a *API) CancelEmailChange(c *echo.Context) error {
+	if err := requireEmptyBody(c); err != nil {
+		return err
+	}
+	if _, err := a.auth(c, true); err != nil {
+		return err
+	}
+	raw, err := sessionRaw(c)
+	if err != nil {
+		return err
+	}
+	if err = a.svc.CancelEmailChange(c.Request().Context(), raw); err != nil {
+		return err
+	}
+	return c.NoContent(204)
+}

@@ -27,3 +27,15 @@ UPDATE accounts SET password_hash=$2,credential_version=credential_version+1 WHE
 DELETE FROM sessions WHERE account_id=$1;
 -- name: AddCredentialMail :exec
 INSERT INTO mail_deliveries(id,credential_challenge_id,email_key,ciphertext,created_at,kind) VALUES($1,$2,$3,$4,$5,$6);
+-- name: ActiveEmailChange :many
+SELECT * FROM credential_challenges WHERE account_id=$1 AND purpose IN ('email_change_old','email_change_new') AND NOT revoked AND used_at IS NULL AND token_expires_at>sqlc.arg(now)::timestamptz ORDER BY purpose;
+-- name: LockEmailChangePair :many
+SELECT * FROM credential_challenges WHERE change_id=$1 AND purpose IN ('email_change_old','email_change_new') ORDER BY purpose FOR UPDATE;
+-- name: RevokeEmailChangeProofs :exec
+UPDATE credential_challenges SET revoked=true WHERE account_id=$1 AND purpose IN ('email_change_old','email_change_new') AND NOT revoked AND used_at IS NULL;
+-- name: ConfirmCredentialProof :exec
+UPDATE credential_challenges SET confirmed_at=$2 WHERE id=$1;
+-- name: ClearCredentialMail :exec
+UPDATE mail_deliveries SET ciphertext=NULL WHERE credential_challenge_id=$1 AND kind='credential';
+-- name: SetAccountEmail :exec
+UPDATE accounts SET email_key=$2,verified_at=$3,credential_version=credential_version+1 WHERE id=$1;

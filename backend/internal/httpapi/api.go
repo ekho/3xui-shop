@@ -116,6 +116,9 @@ func New(svc *s01.Service, cfg s01.Config) *echo.Echo {
 	e.GET("/api/v1/auth/session", a.GetSessionContext)
 	e.GET("/api/v1/me/security", a.GetAccountSecurity)
 	e.POST("/api/v1/me/password-change", a.ChangePassword)
+	e.POST("/api/v1/me/email-change", a.RequestEmailChange)
+	e.POST("/api/v1/auth/email-change/confirm", a.ConfirmEmailChange)
+	e.POST("/api/v1/me/email-change/cancel", a.CancelEmailChange)
 	e.POST("/api/v1/me/sessions/revoke-others", a.RevokeOtherSessions)
 	e.POST("/api/v1/trial-requests", a.CreateTrialRequest)
 	e.GET("/api/v1/trial-requests/current", a.GetCurrentTrialRequest)
@@ -224,9 +227,8 @@ func (a *API) GetAccount(c *echo.Context) error {
 	return c.JSON(200, out)
 }
 func (a *API) LogoutAccount(c *echo.Context) error {
-	body, err := io.ReadAll(io.LimitReader(c.Request().Body, 1))
-	if err != nil || len(body) != 0 {
-		return invalid()
+	if err := requireEmptyBody(c); err != nil {
+		return err
 	}
 	cookie, err := c.Cookie("__Host-session")
 	raw := ""
@@ -402,4 +404,12 @@ func (a *API) CompleteTelegramJob(c *echo.Context) error {
 		return e
 	}
 	return c.JSON(200, wire.CompleteResult{})
+}
+
+func requireEmptyBody(c *echo.Context) error {
+	body, err := io.ReadAll(io.LimitReader(c.Request().Body, 1))
+	if err != nil || len(body) != 0 {
+		return invalid()
+	}
+	return nil
 }

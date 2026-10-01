@@ -200,3 +200,90 @@ func TestPasswordChangeHTTP(t *testing.T) {
 		})
 	}
 }
+
+func TestEmailChangeHTTP(t *testing.T) {
+	h, e, cfg := httpFixture(t)
+	verifiedHTTP(t, h, e, cfg)
+	owner := uuid.New()
+	ctx := context.Background()
+	if _, err := e.Pool.Exec(ctx, `INSERT INTO accounts(id,email_key,locale,password_hash,verified_at,vpn_id,sub_id,panel_key,terms_version,privacy_version) SELECT $1,'email-owner@example.test',locale,password_hash,verified_at,$2,'ef0123456789abcd',$3,terms_version,privacy_version FROM accounts WHERE email_key='login@example.test'`, owner, uuid.New(), "acct_"+strings.ReplaceAll(owner.String(), "-", "")); err != nil {
+		t.Fatal("owner fixture")
+	}
+	rr := request(h, "POST", "/api/v1/auth/login", `{"email":"email-owner@example.test","password":"my long safe password ✨"}`, cfg.CabinetOrigin)
+	cookie := rr.Result().Cookies()[0]
+	var login wire.LoginResult
+	json.Unmarshal(rr.Body.Bytes(), &login)
+	rr = request(h, "POST", "/api/v1/auth/login", `{"email":"login@example.test","password":"my long safe password ✨"}`, cfg.CabinetOrigin)
+	foreign := rr.Result().Cookies()[0]
+	var other wire.LoginResult
+	json.Unmarshal(rr.Body.Bytes(), &other)
+	call := func(method, path, body, csrf, origin string, using *http.Cookie) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		if using != nil {
+			req.AddCookie(using)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Origin", origin)
+		req.Header.Set("X-CSRF-Token", csrf)
+		out := httptest.NewRecorder()
+		h.ServeHTTP(out, req)
+		return out
+	}
+	body := `{"new_email":"new-owner@example.test","current_password":"my long safe password ✨"}`
+	for _, tc := range []struct {
+		path, body, csrf, origin string
+		cookie                   *http.Cookie
+		want                     int
+	}{
+		{"/api/v1/me/email-change", body, "", cfg.CabinetOrigin, cookie, 403},
+		{"/api/v1/me/email-change", body, login.CsrfToken, "https://foreign.example.test", cookie, 403},
+		{"/api/v1/me/email-change", body, login.CsrfToken, cfg.CabinetOrigin, nil, 401},
+		{"/api/v1/me/email-change", body[:len(body)-1] + `,"account_id":"` + owner.String() + `"}`, login.CsrfToken, cfg.CabinetOrigin, cookie, 400},
+		{"/api/v1/me/email-change/cancel", "{}", login.CsrfToken, cfg.CabinetOrigin, cookie, 400},
+		{"/api/v1/auth/email-change/confirm", `{"token":"` + strings.Repeat("x", 43) + `","challenge_id":"` + uuid.NewString() + `","code":"12345678"}`, "", cfg.CabinetOrigin, nil, 400},
+	} {
+		rr = call("POST", tc.path, tc.body, tc.csrf, tc.origin, tc.cookie)
+		if rr.Code != tc.want {
+			t.Fatal("email boundary", tc.path, rr.Code)
+		}
+	}
+	rr = call("POST", "/api/v1/me/email-change", body, login.CsrfToken, cfg.CabinetOrigin, cookie)
+	if rr.Code != 202 {
+		t.Fatal("email request", rr.Code)
+	}
+	var accepted wire.EmailChangeAccepted
+	json.Unmarshal(rr.Body.Bytes(), &accepted)
+	var proofs []uuid.UUID
+	rows, err := e.Pool.Query(ctx, `SELECT id FROM credential_challenges WHERE change_id=$1 ORDER BY purpose`, accepted.ChangeId)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var id uuid.UUID
+		rows.Scan(&id)
+		proofs = append(proofs, id)
+	}
+	rows.Close()
+	if len(proofs) != 2 {
+		t.Fatal("pair size")
+	}
+	for i, proof := range proofs {
+		_, token, _ := testkit.CredentialMailSecrets(t, e.Pool, cfg.MailKey, proof)
+		encoded, _ := json.Marshal(map[string]string{"token": token})
+		rr = call("POST", "/api/v1/auth/email-change/confirm", string(encoded), "", cfg.CabinetOrigin, foreign)
+		var result wire.EmailChangeResult
+		json.Unmarshal(rr.Body.Bytes(), &result)
+		if rr.Code != 200 || result.Completed != (i == 1) || len(rr.Result().Cookies()) != 0 {
+			t.Fatal("confirmation result/cookie", rr.Code)
+		}
+	}
+	rr = call("GET", "/api/v1/me", "", "", "", foreign)
+	var preserved wire.AccountResult
+	json.Unmarshal(rr.Body.Bytes(), &preserved)
+	if rr.Code != 200 || preserved.Account.AccountId != other.Account.AccountId {
+		t.Fatal("confirmation changed unrelated cookie")
+	}
+	if rr = call("GET", "/api/v1/me/security", "", "", "", cookie); rr.Code != 401 {
+		t.Fatal("old email session alive")
+	}
+}

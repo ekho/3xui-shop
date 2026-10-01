@@ -18,6 +18,7 @@ import (
 	"golang.org/x/net/idna"
 	"math/big"
 	"net/mail"
+	"slices"
 	"strings"
 	"time"
 )
@@ -56,19 +57,32 @@ func (s *Service) codeDigest(id uuid.UUID, code string) []byte {
 func stamp(t time.Time) pgtype.Timestamptz { return pgtype.Timestamptz{Time: t, Valid: true} }
 
 var mailLimit = redis.NewScript(`
-local now=tonumber(ARGV[1]);local entries=KEYS[1];redis.call('ZREMRANGEBYSCORE',entries,'-inf',now-3600000)
-local last=redis.call('ZREVRANGE',entries,0,0,'WITHSCORES')
-if #last>0 and now-tonumber(last[2])<60000 then return math.ceil((60000-now+tonumber(last[2]))/1000) end
-if redis.call('ZCARD',entries)>=5 then local first=redis.call('ZRANGE',entries,0,0,'WITHSCORES');return math.ceil((3600000-now+tonumber(first[2]))/1000) end
-redis.call('ZADD',entries,now,ARGV[2]);redis.call('PEXPIRE',entries,3600000);return 0`)
+local now=tonumber(ARGV[1]);local retry=0
+for _,key in ipairs(KEYS) do
+ redis.call('ZREMRANGEBYSCORE',key,'-inf',now-3600000)
+ local last=redis.call('ZREVRANGE',key,0,0,'WITHSCORES')
+ if #last>0 and now-tonumber(last[2])<60000 then retry=math.max(retry,math.ceil((60000-now+tonumber(last[2]))/1000)) end
+ if redis.call('ZCARD',key)>=5 then local first=redis.call('ZRANGE',key,0,0,'WITHSCORES');retry=math.max(retry,math.ceil((3600000-now+tonumber(first[2]))/1000)) end
+end
+if retry>0 then return retry end
+for _,key in ipairs(KEYS) do redis.call('ZADD',key,now,ARGV[2]);redis.call('PEXPIRE',key,3600000) end
+return 0`)
 
 func (s *Service) limitMail(ctx context.Context, email string) error {
-	h := hmac.New(sha256.New, s.cfg.CodeKey)
-	h.Write([]byte(email))
-	key := fmt.Sprintf("%s:mail:%x", s.cfg.RateNamespace, h.Sum(nil))
+	return s.limitMails(ctx, []string{email})
+}
+func (s *Service) limitMails(ctx context.Context, emails []string) error {
+	slices.Sort(emails)
+	emails = slices.Compact(emails)
+	keys := make([]string, 0, len(emails))
+	for _, email := range emails {
+		h := hmac.New(sha256.New, s.cfg.CodeKey)
+		h.Write([]byte(email))
+		keys = append(keys, fmt.Sprintf("%s:mail:%x", s.cfg.RateNamespace, h.Sum(nil)))
+	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	retry, err := mailLimit.Run(ctx, s.limiter, []string{key}, s.now().UnixMilli(), uuid.NewString()).Int()
+	retry, err := mailLimit.Run(ctx, s.limiter, keys, s.now().UnixMilli(), uuid.NewString()).Int()
 	if err != nil {
 		return unavailable()
 	}

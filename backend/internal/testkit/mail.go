@@ -16,10 +16,12 @@ import (
 
 // SMTP runs a real TLS SMTP conversation on an isolated local socket.
 type SMTP struct {
-	Address string
-	Roots   *x509.CertPool
-	mu      sync.Mutex
-	letters []string
+	Address     string
+	Roots       *x509.CertPool
+	mu          sync.Mutex
+	letters     []string
+	dataStarted chan struct{}
+	dataRelease <-chan struct{}
 }
 
 func MailServer(t *testing.T) *SMTP {
@@ -59,6 +61,20 @@ func (s *SMTP) serve(conn net.Conn) {
 		case strings.HasPrefix(line, "MAIL FROM:"), strings.HasPrefix(line, "RCPT TO:"):
 			fmt.Fprint(conn, "250 OK\r\n")
 		case line == "DATA":
+			s.mu.Lock()
+			started, release := s.dataStarted, s.dataRelease
+			s.dataStarted = nil
+			s.dataRelease = nil
+			s.mu.Unlock()
+			if release != nil {
+				close(started)
+				select {
+				case <-release:
+				case <-time.After(10 * time.Second):
+					return
+				}
+			}
+
 			fmt.Fprint(conn, "354 Send data\r\n")
 			var body strings.Builder
 			for scanner.Scan() {
@@ -84,4 +100,14 @@ func (s *SMTP) Letters() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]string{}, s.letters...)
+}
+
+// Hold exactly one DATA handshake to test transaction ordering during real TLS SMTP.
+func (s *SMTP) HoldNextData() (<-chan struct{}, func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	started, release := make(chan struct{}), make(chan struct{})
+	s.dataStarted, s.dataRelease = started, release
+	var once sync.Once
+	return started, func() { once.Do(func() { close(release) }) }
 }

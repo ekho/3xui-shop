@@ -500,6 +500,38 @@ type DecisionResult struct {
 // DecisionResultDeliveryState defines model for DecisionResult.DeliveryState.
 type DecisionResultDeliveryState string
 
+// EmailChangeAccepted defines model for EmailChangeAccepted.
+type EmailChangeAccepted struct {
+	ChangeId    openapi_types.UUID `json:"change_id"`
+	ExpiresAt   time.Time          `json:"expires_at"`
+	ResendAfter int                `json:"resend_after"`
+}
+
+// EmailChangeConfirmInput defines model for EmailChangeConfirmInput.
+type EmailChangeConfirmInput struct {
+	ChallengeId *openapi_types.UUID `json:"challenge_id,omitempty"`
+	Code        *string             `json:"code,omitempty"`
+	Token       *string             `json:"token,omitempty"`
+	union       json.RawMessage
+}
+
+// EmailChangeConfirmInput0 defines model for EmailChangeConfirmInput.0.
+type EmailChangeConfirmInput0 = interface{}
+
+// EmailChangeConfirmInput1 defines model for EmailChangeConfirmInput.1.
+type EmailChangeConfirmInput1 = interface{}
+
+// EmailChangeInput defines model for EmailChangeInput.
+type EmailChangeInput struct {
+	CurrentPassword string              `json:"current_password"`
+	NewEmail        openapi_types.Email `json:"new_email"`
+}
+
+// EmailChangeResult defines model for EmailChangeResult.
+type EmailChangeResult struct {
+	Completed bool `json:"completed"`
+}
+
 // ErrorBody defines model for ErrorBody.
 type ErrorBody struct {
 	Code                 ErrorBodyCode                  `json:"code"`
@@ -744,6 +776,11 @@ type VerifyResult struct {
 // VerifyResultVerified defines model for VerifyResult.Verified.
 type VerifyResultVerified bool
 
+// ConfirmEmailChangeParams defines parameters for ConfirmEmailChange.
+type ConfirmEmailChangeParams struct {
+	Origin string `json:"Origin"`
+}
+
 // LoginAccountParams defines parameters for LoginAccount.
 type LoginAccountParams struct {
 	Origin string `json:"Origin"`
@@ -780,6 +817,18 @@ type VerifyEmailParams struct {
 	Origin string `json:"Origin"`
 }
 
+// RequestEmailChangeParams defines parameters for RequestEmailChange.
+type RequestEmailChangeParams struct {
+	Origin     string `json:"Origin"`
+	XCSRFToken string `json:"X-CSRF-Token"`
+}
+
+// CancelEmailChangeParams defines parameters for CancelEmailChange.
+type CancelEmailChangeParams struct {
+	Origin     string  `json:"Origin"`
+	XCSRFToken *string `json:"X-CSRF-Token,omitempty"`
+}
+
 // ChangePasswordParams defines parameters for ChangePassword.
 type ChangePasswordParams struct {
 	Origin     string `json:"Origin"`
@@ -809,6 +858,9 @@ type ReconsiderTrialRequestParams struct {
 	IdempotencyKey openapi_types.UUID `json:"Idempotency-Key"`
 }
 
+// ConfirmEmailChangeJSONRequestBody defines body for ConfirmEmailChange for application/json ContentType.
+type ConfirmEmailChangeJSONRequestBody = EmailChangeConfirmInput
+
 // LoginAccountJSONRequestBody defines body for LoginAccount for application/json ContentType.
 type LoginAccountJSONRequestBody = LoginInput
 
@@ -826,6 +878,9 @@ type ResendVerificationJSONRequestBody = ResendInput
 
 // VerifyEmailJSONRequestBody defines body for VerifyEmail for application/json ContentType.
 type VerifyEmailJSONRequestBody = VerifyInput
+
+// RequestEmailChangeJSONRequestBody defines body for RequestEmailChange for application/json ContentType.
+type RequestEmailChangeJSONRequestBody = EmailChangeInput
 
 // ChangePasswordJSONRequestBody defines body for ChangePassword for application/json ContentType.
 type ChangePasswordJSONRequestBody = PasswordChangeInput
@@ -850,6 +905,130 @@ type DecideTrialRequestJSONRequestBody = DecisionInput
 
 // ReconsiderTrialRequestJSONRequestBody defines body for ReconsiderTrialRequest for application/json ContentType.
 type ReconsiderTrialRequestJSONRequestBody = ReconsiderInput
+
+// AsEmailChangeConfirmInput0 returns the union data inside the EmailChangeConfirmInput as a EmailChangeConfirmInput0
+func (t EmailChangeConfirmInput) AsEmailChangeConfirmInput0() (EmailChangeConfirmInput0, error) {
+	var body EmailChangeConfirmInput0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromEmailChangeConfirmInput0 overwrites any union data inside the EmailChangeConfirmInput as the provided EmailChangeConfirmInput0
+func (t *EmailChangeConfirmInput) FromEmailChangeConfirmInput0(v EmailChangeConfirmInput0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeEmailChangeConfirmInput0 performs a merge with any union data inside the EmailChangeConfirmInput, using the provided EmailChangeConfirmInput0
+func (t *EmailChangeConfirmInput) MergeEmailChangeConfirmInput0(v EmailChangeConfirmInput0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsEmailChangeConfirmInput1 returns the union data inside the EmailChangeConfirmInput as a EmailChangeConfirmInput1
+func (t EmailChangeConfirmInput) AsEmailChangeConfirmInput1() (EmailChangeConfirmInput1, error) {
+	var body EmailChangeConfirmInput1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromEmailChangeConfirmInput1 overwrites any union data inside the EmailChangeConfirmInput as the provided EmailChangeConfirmInput1
+func (t *EmailChangeConfirmInput) FromEmailChangeConfirmInput1(v EmailChangeConfirmInput1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeEmailChangeConfirmInput1 performs a merge with any union data inside the EmailChangeConfirmInput, using the provided EmailChangeConfirmInput1
+func (t *EmailChangeConfirmInput) MergeEmailChangeConfirmInput1(v EmailChangeConfirmInput1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t EmailChangeConfirmInput) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	object := make(map[string]json.RawMessage)
+	if t.union != nil {
+		err = json.Unmarshal(b, &object)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if t.ChallengeId != nil {
+		object["challenge_id"], err = json.Marshal(t.ChallengeId)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'challenge_id': %w", err)
+		}
+	}
+
+	if t.Code != nil {
+		object["code"], err = json.Marshal(t.Code)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'code': %w", err)
+		}
+	}
+
+	if t.Token != nil {
+		object["token"], err = json.Marshal(t.Token)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'token': %w", err)
+		}
+	}
+	b, err = json.Marshal(object)
+	return b, err
+}
+
+func (t *EmailChangeConfirmInput) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	if err != nil {
+		return err
+	}
+	object := make(map[string]json.RawMessage)
+	err = json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["challenge_id"]; found {
+		err = json.Unmarshal(raw, &t.ChallengeId)
+		if err != nil {
+			return fmt.Errorf("error reading 'challenge_id': %w", err)
+		}
+	}
+
+	if raw, found := object["code"]; found {
+		err = json.Unmarshal(raw, &t.Code)
+		if err != nil {
+			return fmt.Errorf("error reading 'code': %w", err)
+		}
+	}
+
+	if raw, found := object["token"]; found {
+		err = json.Unmarshal(raw, &t.Token)
+		if err != nil {
+			return fmt.Errorf("error reading 'token': %w", err)
+		}
+	}
+
+	return err
+}
 
 // AsPasswordResetCompleteInput0 returns the union data inside the PasswordResetCompleteInput as a PasswordResetCompleteInput0
 func (t PasswordResetCompleteInput) AsPasswordResetCompleteInput0() (PasswordResetCompleteInput0, error) {
@@ -1229,59 +1408,62 @@ func (t *VerifyInput) UnmarshalJSON(b []byte) error {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"7IstoLHWxVoXa12ew7qs1/8ZAA==",
+	"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",
+	"Lta7WO/yPbzLev2fAQA=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

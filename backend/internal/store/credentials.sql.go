@@ -12,6 +12,52 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const activeEmailChange = `-- name: ActiveEmailChange :many
+SELECT id, purpose, account_id, change_id, original_email, target_email, credential_version, token_hash, code_hash, created_at, token_expires_at, code_expires_at, failed_guesses, confirmed_at, used_at, revoked FROM credential_challenges WHERE account_id=$1 AND purpose IN ('email_change_old','email_change_new') AND NOT revoked AND used_at IS NULL AND token_expires_at>$2::timestamptz ORDER BY purpose
+`
+
+type ActiveEmailChangeParams struct {
+	AccountID *uuid.UUID
+	Now       pgtype.Timestamptz
+}
+
+func (q *Queries) ActiveEmailChange(ctx context.Context, arg ActiveEmailChangeParams) ([]CredentialChallenge, error) {
+	rows, err := q.db.Query(ctx, activeEmailChange, arg.AccountID, arg.Now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CredentialChallenge
+	for rows.Next() {
+		var i CredentialChallenge
+		if err := rows.Scan(
+			&i.ID,
+			&i.Purpose,
+			&i.AccountID,
+			&i.ChangeID,
+			&i.OriginalEmail,
+			&i.TargetEmail,
+			&i.CredentialVersion,
+			&i.TokenHash,
+			&i.CodeHash,
+			&i.CreatedAt,
+			&i.TokenExpiresAt,
+			&i.CodeExpiresAt,
+			&i.FailedGuesses,
+			&i.ConfirmedAt,
+			&i.UsedAt,
+			&i.Revoked,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const addCredentialMail = `-- name: AddCredentialMail :exec
 INSERT INTO mail_deliveries(id,credential_challenge_id,email_key,ciphertext,created_at,kind) VALUES($1,$2,$3,$4,$5,$6)
 `
@@ -75,6 +121,15 @@ func (q *Queries) AddCredentialProof(ctx context.Context, arg AddCredentialProof
 	return err
 }
 
+const clearCredentialMail = `-- name: ClearCredentialMail :exec
+UPDATE mail_deliveries SET ciphertext=NULL WHERE credential_challenge_id=$1 AND kind='credential'
+`
+
+func (q *Queries) ClearCredentialMail(ctx context.Context, credentialChallengeID *uuid.UUID) error {
+	_, err := q.db.Exec(ctx, clearCredentialMail, credentialChallengeID)
+	return err
+}
+
 const clearResetMail = `-- name: ClearResetMail :exec
 UPDATE mail_deliveries m SET ciphertext=NULL FROM credential_challenges c WHERE m.credential_challenge_id=c.id AND m.kind='credential' AND c.target_email=$1 AND c.purpose='password_reset' AND (c.revoked OR c.used_at IS NOT NULL)
 `
@@ -90,6 +145,20 @@ UPDATE mail_deliveries m SET ciphertext=NULL FROM credential_challenges c WHERE 
 
 func (q *Queries) ClearRevokedCredentialMail(ctx context.Context, accountID *uuid.UUID) error {
 	_, err := q.db.Exec(ctx, clearRevokedCredentialMail, accountID)
+	return err
+}
+
+const confirmCredentialProof = `-- name: ConfirmCredentialProof :exec
+UPDATE credential_challenges SET confirmed_at=$2 WHERE id=$1
+`
+
+type ConfirmCredentialProofParams struct {
+	ID          uuid.UUID
+	ConfirmedAt pgtype.Timestamptz
+}
+
+func (q *Queries) ConfirmCredentialProof(ctx context.Context, arg ConfirmCredentialProofParams) error {
+	_, err := q.db.Exec(ctx, confirmCredentialProof, arg.ID, arg.ConfirmedAt)
 	return err
 }
 
@@ -177,6 +246,47 @@ func (q *Queries) LockCredentialProof(ctx context.Context, id uuid.UUID) (Creden
 	return i, err
 }
 
+const lockEmailChangePair = `-- name: LockEmailChangePair :many
+SELECT id, purpose, account_id, change_id, original_email, target_email, credential_version, token_hash, code_hash, created_at, token_expires_at, code_expires_at, failed_guesses, confirmed_at, used_at, revoked FROM credential_challenges WHERE change_id=$1 AND purpose IN ('email_change_old','email_change_new') ORDER BY purpose FOR UPDATE
+`
+
+func (q *Queries) LockEmailChangePair(ctx context.Context, changeID *uuid.UUID) ([]CredentialChallenge, error) {
+	rows, err := q.db.Query(ctx, lockEmailChangePair, changeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CredentialChallenge
+	for rows.Next() {
+		var i CredentialChallenge
+		if err := rows.Scan(
+			&i.ID,
+			&i.Purpose,
+			&i.AccountID,
+			&i.ChangeID,
+			&i.OriginalEmail,
+			&i.TargetEmail,
+			&i.CredentialVersion,
+			&i.TokenHash,
+			&i.CodeHash,
+			&i.CreatedAt,
+			&i.TokenExpiresAt,
+			&i.CodeExpiresAt,
+			&i.FailedGuesses,
+			&i.ConfirmedAt,
+			&i.UsedAt,
+			&i.Revoked,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lookupCredentialByID = `-- name: LookupCredentialByID :one
 SELECT id, purpose, account_id, change_id, original_email, target_email, credential_version, token_hash, code_hash, created_at, token_expires_at, code_expires_at, failed_guesses, confirmed_at, used_at, revoked FROM credential_challenges WHERE id=$1
 `
@@ -242,12 +352,36 @@ func (q *Queries) RevokeCredentialProofs(ctx context.Context, accountID *uuid.UU
 	return err
 }
 
+const revokeEmailChangeProofs = `-- name: RevokeEmailChangeProofs :exec
+UPDATE credential_challenges SET revoked=true WHERE account_id=$1 AND purpose IN ('email_change_old','email_change_new') AND NOT revoked AND used_at IS NULL
+`
+
+func (q *Queries) RevokeEmailChangeProofs(ctx context.Context, accountID *uuid.UUID) error {
+	_, err := q.db.Exec(ctx, revokeEmailChangeProofs, accountID)
+	return err
+}
+
 const revokeResetProofs = `-- name: RevokeResetProofs :exec
 UPDATE credential_challenges SET revoked=true WHERE target_email=$1 AND purpose='password_reset' AND NOT revoked AND used_at IS NULL
 `
 
 func (q *Queries) RevokeResetProofs(ctx context.Context, targetEmail string) error {
 	_, err := q.db.Exec(ctx, revokeResetProofs, targetEmail)
+	return err
+}
+
+const setAccountEmail = `-- name: SetAccountEmail :exec
+UPDATE accounts SET email_key=$2,verified_at=$3,credential_version=credential_version+1 WHERE id=$1
+`
+
+type SetAccountEmailParams struct {
+	ID         uuid.UUID
+	EmailKey   string
+	VerifiedAt pgtype.Timestamptz
+}
+
+func (q *Queries) SetAccountEmail(ctx context.Context, arg SetAccountEmailParams) error {
+	_, err := q.db.Exec(ctx, setAccountEmail, arg.ID, arg.EmailKey, arg.VerifiedAt)
 	return err
 }
 
