@@ -22,7 +22,7 @@ async function request<T>(path:string,method='GET',body?:unknown,signal?:AbortSi
  const headers:Record<string,string>={};if(body!==undefined)headers['Content-Type']='application/json';if(sessionWrite&&csrf)headers['X-CSRF-Token']=csrf;if(key)headers['Idempotency-Key']=key;
  let response:Response;
  try{response=await fetch('/api/v1/'+path,{method,body:body===undefined?undefined:JSON.stringify(body),headers,credentials:'same-origin',cache:'no-store',signal:signal?AbortSignal.any([signal,AbortSignal.timeout(15000)]):AbortSignal.timeout(15000)});}catch(error){if(signal?.aborted)throw error;throw new ApiError(503,'SERVICE_UNAVAILABLE','');}
- if(!response.ok){let failure:unknown;try{failure=await response.json();}catch{failure={};}const raw=failure as Partial<components['schemas']['APIError']>;const id=raw.error?.request_id??'';const delay=Number(response.headers.get('Retry-After'));throw new ApiError(response.status,raw.error?.code??'SERVICE_UNAVAILABLE',/^[0-9a-f-]{36}$/i.test(id)?id:'',Number.isFinite(delay)&&delay>0?Math.min(86400,Math.ceil(delay)):0);}
+ if(!response.ok){if(response.status===401)csrf=undefined;let failure:unknown;try{failure=await response.json();}catch{failure={};}const raw=failure as Partial<components['schemas']['APIError']>;const id=raw.error?.request_id??'';const delay=Number(response.headers.get('Retry-After'));throw new ApiError(response.status,raw.error?.code??'SERVICE_UNAVAILABLE',/^[0-9a-f-]{36}$/i.test(id)?id:'',Number.isFinite(delay)&&delay>0?Math.min(86400,Math.ceil(delay)):0);}
  if(response.status===204)return undefined as T;
  try{return await response.json() as T;}catch{throw new ApiError(503,'SERVICE_UNAVAILABLE','');}
 }
@@ -30,7 +30,7 @@ export const registerAccount=(input:RegisterInput)=>request<RegistrationAccepted
 export const verifyEmail=(input:VerifyInput)=>request<VerifyResult>('auth/verify-email','POST',input);
 export const resendVerification=(input:ResendInput)=>request<ResendAccepted>('auth/resend-verification','POST',input);
 export async function loginAccount(input:LoginInput){const out=await request<LoginResult>('auth/login','POST',input);csrf=out.csrf_token;return out;}
-export async function logoutAccount(){await request<void>('auth/logout','POST',undefined,undefined,true);csrf=undefined;}
+export async function logoutAccount(){try{await request<void>('auth/logout','POST',undefined,undefined,true);}finally{csrf=undefined;}}
 export async function getAccount(signal?:AbortSignal){const out=await request<AccountResult>('me','GET',undefined,signal);csrf=out.csrf_token;return out;}
 export const createTrialRequest=(input:TrialRequestInput,key:string,signal?:AbortSignal)=>request<TrialRequest>('trial-requests','POST',input,signal,true,key);
 export const getCurrentTrialRequest=(signal?:AbortSignal)=>request<CurrentTrialRequest>('trial-requests/current','GET',undefined,signal);
@@ -42,3 +42,13 @@ export type PasswordResetAccepted=components['schemas']['PasswordResetAccepted']
 export type PasswordResetCompleteInput=components['schemas']['PasswordResetCompleteInput'];
 export const requestPasswordReset=(input:PasswordResetInput)=>request<PasswordResetAccepted>('auth/password-reset','POST',input);
 export const completePasswordReset=(input:PasswordResetCompleteInput)=>request<void>('auth/password-reset/complete','POST',input);
+
+export type PasswordChangeInput=components['schemas']['PasswordChangeInput'];
+export type CurrentPasswordInput=components['schemas']['CurrentPasswordInput'];
+export type SessionContext=components['schemas']['SessionContext'];
+export type AccountSecurity=components['schemas']['AccountSecurity'];
+export const clearSession=()=>{csrf=undefined;};
+export async function getSessionContext(signal?:AbortSignal){const out=await request<SessionContext>('auth/session','GET',undefined,signal);csrf=out.csrf_token;return out;}
+export const getAccountSecurity=(signal?:AbortSignal)=>request<AccountSecurity>('me/security','GET',undefined,signal);
+export const changePassword=(input:PasswordChangeInput)=>request<void>('me/password-change','POST',input,undefined,true);
+export const revokeOtherSessions=(input:CurrentPasswordInput)=>request<void>('me/sessions/revoke-others','POST',input,undefined,true);

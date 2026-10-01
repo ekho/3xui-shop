@@ -113,6 +113,10 @@ func New(svc *s01.Service, cfg s01.Config) *echo.Echo {
 	e.POST("/api/v1/auth/login", a.LoginAccount)
 	e.POST("/api/v1/auth/logout", a.LogoutAccount)
 	e.GET("/api/v1/me", a.GetAccount)
+	e.GET("/api/v1/auth/session", a.GetSessionContext)
+	e.GET("/api/v1/me/security", a.GetAccountSecurity)
+	e.POST("/api/v1/me/password-change", a.ChangePassword)
+	e.POST("/api/v1/me/sessions/revoke-others", a.RevokeOtherSessions)
 	e.POST("/api/v1/trial-requests", a.CreateTrialRequest)
 	e.GET("/api/v1/trial-requests/current", a.GetCurrentTrialRequest)
 	e.POST("/internal/v1/trial-requests/:id/decision", a.DecideTrialRequest)
@@ -230,7 +234,11 @@ func (a *API) LogoutAccount(c *echo.Context) error {
 		raw = cookie.Value
 	}
 	if raw != "" {
-		_, err = a.auth(c, true)
+		var out wire.SessionContext
+		out, err = a.svc.GetSessionContext(c.Request().Context(), raw)
+		if err == nil && subtle.ConstantTimeCompare([]byte(c.Request().Header.Get("X-CSRF-Token")), []byte(out.CsrfToken)) != 1 {
+			return &s01.Error{Status: 403, Code: "INVALID_CREDENTIALS"}
+		}
 		var domain *s01.Error
 		if err != nil && (!errors.As(err, &domain) || domain.Status != 401) {
 			return err

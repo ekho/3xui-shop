@@ -70,3 +70,43 @@ func (q *Queries) DeleteSession(ctx context.Context, idHash []byte) error {
 	_, err := q.db.Exec(ctx, deleteSession, idHash)
 	return err
 }
+
+const hasOtherSessions = `-- name: HasOtherSessions :one
+SELECT EXISTS(SELECT 1 FROM sessions WHERE account_id=$1 AND id_hash<>$2 AND absolute_expires_at>$3::timestamptz AND last_seen>$3::timestamptz-INTERVAL '7 days')
+`
+
+type HasOtherSessionsParams struct {
+	AccountID uuid.UUID
+	IDHash    []byte
+	Now       pgtype.Timestamptz
+}
+
+func (q *Queries) HasOtherSessions(ctx context.Context, arg HasOtherSessionsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasOtherSessions, arg.AccountID, arg.IDHash, arg.Now)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const lookupLiveSession = `-- name: LookupLiveSession :one
+SELECT id_hash, account_id, csrf_token, created_at, last_seen, absolute_expires_at FROM sessions WHERE id_hash=$1 AND absolute_expires_at>$2::timestamptz AND last_seen>$2::timestamptz-INTERVAL '7 days'
+`
+
+type LookupLiveSessionParams struct {
+	IDHash []byte
+	Now    pgtype.Timestamptz
+}
+
+func (q *Queries) LookupLiveSession(ctx context.Context, arg LookupLiveSessionParams) (Session, error) {
+	row := q.db.QueryRow(ctx, lookupLiveSession, arg.IDHash, arg.Now)
+	var i Session
+	err := row.Scan(
+		&i.IDHash,
+		&i.AccountID,
+		&i.CsrfToken,
+		&i.CreatedAt,
+		&i.LastSeen,
+		&i.AbsoluteExpiresAt,
+	)
+	return i, err
+}

@@ -6,3 +6,7 @@ WHERE id_hash=sqlc.arg(id_hash) AND absolute_expires_at>sqlc.arg(now)::timestamp
 RETURNING *;
 -- name: DeleteSession :exec
 DELETE FROM sessions WHERE id_hash=$1;
+-- name: LookupLiveSession :one
+SELECT * FROM sessions WHERE id_hash=$1 AND absolute_expires_at>sqlc.arg(now)::timestamptz AND last_seen>sqlc.arg(now)::timestamptz-INTERVAL '7 days';
+-- name: HasOtherSessions :one
+SELECT EXISTS(SELECT 1 FROM sessions WHERE account_id=$1 AND id_hash<>$2 AND absolute_expires_at>sqlc.arg(now)::timestamptz AND last_seen>sqlc.arg(now)::timestamptz-INTERVAL '7 days');

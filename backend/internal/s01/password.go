@@ -25,8 +25,11 @@ var commonPasswords = func() map[string]struct{} {
 func validatePassword(pw string) error {
 	n := utf8.RuneCountInString(pw)
 	_, common := commonPasswords[pw]
-	if !utf8.ValidString(pw) || n < 15 || n > 128 || common {
+	if !utf8.ValidString(pw) || n < 15 || n > 128 {
 		return failure(400, "INVALID_INPUT")
+	}
+	if common {
+		return failure(400, "COMMON_PASSWORD")
 	}
 	return nil
 }

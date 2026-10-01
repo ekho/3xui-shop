@@ -3,10 +3,10 @@ import * as api from './api/client';
 import {config} from './config';
 import {text,link,errorText,type Lang} from './i18n';
 export function Cabinet({lang}:{lang:Lang}){
- const t=text(lang);const[account,setAccount]=useState<api.AccountResult>();const[request,setRequest]=useState<api.TrialRequest|null>(null);const[sub,setSub]=useState<api.Subscription>();const[error,setError]=useState('');const[busy,setBusy]=useState(false);const[comment,setComment]=useState('');const[attempt,setAttempt]=useState<{key:string;comment:string}>();const[key,setKey]=useState('');const[copyStatus,setCopyStatus]=useState('');const[revision,setRevision]=useState(0);const controller=useRef<AbortController>(null);const keyField=useRef<HTMLInputElement>(null);
+ const t=text(lang);const[canLogout,setCanLogout]=useState(false);const[account,setAccount]=useState<api.AccountResult>();const[request,setRequest]=useState<api.TrialRequest|null>(null);const[sub,setSub]=useState<api.Subscription>();const[error,setError]=useState('');const[busy,setBusy]=useState(false);const[comment,setComment]=useState('');const[attempt,setAttempt]=useState<{key:string;comment:string}>();const[key,setKey]=useState('');const[copyStatus,setCopyStatus]=useState('');const[revision,setRevision]=useState(0);const controller=useRef<AbortController>(null);const keyField=useRef<HTMLInputElement>(null);
  useEffect(()=>{const c=new AbortController();controller.current=c;let timer:ReturnType<typeof setTimeout>|undefined;
-  async function refresh(){if(c.signal.aborted)return;try{const a=await api.getAccount(c.signal);const[r,s]=await Promise.all([api.getCurrentTrialRequest(c.signal),api.getSubscription(c.signal)]);if(c.signal.aborted)return;setAccount(a);setRequest(r.request);setSub(s);setError('');if(!['active','expired'].includes(s.status)&&r.request?.status!=='rejected'&&(r.request||['provisioning','needs_review'].includes(s.status)))timer=setTimeout(refresh,5000);
-   }catch(e){if(c.signal.aborted)return;setKey('');if(e instanceof api.ApiError&&e.status===401){location.replace(link('/login',lang));return;}setError(errorText(e,lang));if(!(e instanceof api.ApiError)||e.status===503||e.status===429)timer=setTimeout(refresh,5000);}}
+  async function refresh(){if(c.signal.aborted)return;try{const a=await api.getAccount(c.signal);const[r,s]=await Promise.all([api.getCurrentTrialRequest(c.signal),api.getSubscription(c.signal)]);if(c.signal.aborted)return;setAccount(a);setCanLogout(true);setRequest(r.request);setSub(s);setError('');if(!['active','expired'].includes(s.status)&&r.request?.status!=='rejected'&&(r.request||['provisioning','needs_review'].includes(s.status)))timer=setTimeout(refresh,5000);
+   }catch(e){if(c.signal.aborted)return;setKey('');if(e instanceof api.ApiError&&e.status===401){location.replace(link('/login',lang));return;}setError(errorText(e,lang));if(e instanceof api.ApiError&&e.code==='ACCOUNT_RESTRICTED'){try{await api.getSessionContext(c.signal);if(!c.signal.aborted)setCanLogout(true);}catch{if(!c.signal.aborted)setCanLogout(false);}}if(!(e instanceof api.ApiError)||e.status===503||e.status===429)timer=setTimeout(refresh,5000);}}
   void refresh();return()=>{c.abort();clearTimeout(timer);};
  },[revision]);
  function handle(e:unknown){if(controller.current?.signal.aborted)return;setError(errorText(e,lang));if(e instanceof api.ApiError&&e.status===401){setKey('');location.replace(link('/login',lang));}}
@@ -18,7 +18,7 @@ export function Cabinet({lang}:{lang:Lang}){
  const descriptions={none:t.none,pending:t.pending,rejected:t.rejected,provisioning:t.provisioning,needs_review:t.needsReview,active:t.active,expired:t.expired};
  const date=(value:string|null)=>value?new Date(value).toLocaleString(lang==='ru'?'ru-RU':'en-US'):t.unknown;
  const bytes=(value:number|null)=>value===null?t.unknown:new Intl.NumberFormat(lang,{maximumFractionDigits:2}).format(value/1024**3)+' GiB';
- return <section className="card"><div className="cabinet-head"><div><p className="eyebrow">{t.cabinet}</p><h1>{account?.account.email??t.loading}</h1></div><button onClick={logout} disabled={!account||busy}>{t.logout}</button></div>
+ return <section className="card"><div className="cabinet-head"><div><p className="eyebrow">{t.cabinet}</p><h1>{account?.account.email??t.loading}</h1></div><button onClick={logout} disabled={!canLogout||busy}>{t.logout}</button></div>
   {error?<div className="error" role="alert"><p>{error}</p><button onClick={()=>setRevision(r=>r+1)} disabled={busy}>{t.retry}</button></div>:null}
   {!sub?<p role="status">{t.loading}</p>:<><p className="notice" role="status">{descriptions[status]}</p>
    {request?.status==='pending'&&status!=='pending'?<p>{t.pending}</p>:null}
@@ -27,6 +27,6 @@ export function Cabinet({lang}:{lang:Lang}){
    {sub.observed_at?<p className="help">{t.observed}: {date(sub.observed_at)}{sub.data_stale?' · '+t.stale:''}</p>:null}
    {status==='active'||status==='expired'?<div className="key-panel">{key?<><label htmlFor="subscription-key">{t.key}<input ref={keyField} id="subscription-key" value={key} readOnly/></label><button onClick={copy}>{t.copy}</button><p role="status">{copyStatus}</p><p>{t.importHelp}</p></>:<button className="primary" onClick={reveal} disabled={busy}>{t.showKey}</button>}</div>:null}
   </>}
-  <a className="support" href={config.supportURL}>{t.support}</a>
+  {account?<p><a href={link('/cabinet/security',lang)}>{t.security}</a></p>:null}<a className="support" href={config.supportURL}>{t.support}</a>
  </section>;
 }

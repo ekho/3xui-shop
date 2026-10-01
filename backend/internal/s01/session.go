@@ -9,7 +9,6 @@ import (
 	"example.com/cabinet/backend/internal/store"
 	"example.com/cabinet/backend/internal/wire"
 	"fmt"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/redis/go-redis/v9"
@@ -35,14 +34,14 @@ for _,key in ipairs(KEYS) do redis.call('ZADD',key,now,ARGV[2]);redis.call('PEXP
 return 0`)
 var successfulLogin = redis.NewScript(`for _,key in ipairs(KEYS) do redis.call('ZREM',key,ARGV[1]) end;return 0`)
 
-func (s *Service) loginKeys(email, ip string) []string {
+func (s *Service) loginKeys(identity, ip string) []string {
 	hash := func(value string) string {
 		h := hmac.New(sha256.New, s.cfg.CodeKey)
 		h.Write([]byte(value))
 		return fmt.Sprintf("%x", h.Sum(nil))
 	}
 	prefix := "{" + s.cfg.RateNamespace + "}:login:"
-	return []string{prefix + "email:" + hash(email), prefix + "ip:" + hash(ip)}
+	return []string{prefix + "account:" + hash(identity), prefix + "ip:" + hash(ip)}
 }
 func (s *Service) Login(ctx context.Context, in wire.LoginInput, ip string) (wire.LoginResult, string, error) {
 	out := wire.LoginResult{}
@@ -54,22 +53,19 @@ func (s *Service) Login(ctx context.Context, in wire.LoginInput, ip string) (wir
 	if !utf8.ValidString(in.Password) || length < 15 || length > 128 {
 		return out, "", failure(400, "INVALID_INPUT")
 	}
-	attempt := uuid.NewString()
-	keys := s.loginKeys(email, ip)
-	limitCtx, done := context.WithTimeout(ctx, 2*time.Second)
-	retry, err := loginLimit.Run(limitCtx, s.limiter, keys, s.now().UnixMilli(), attempt).Int()
-	done()
-	if err != nil {
-		return out, "", unavailable()
-	}
-	if retry > 0 {
-		return out, "", &Error{Status: 429, Code: "RATE_LIMITED", Message: "RATE_LIMITED", RetryAfter: retry}
-	}
 	account, err := store.New(s.pool).AccountByEmail(ctx, email)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return out, "", unavailable()
 	}
 	found := err == nil
+	identity := "email:" + email
+	if found {
+		identity = "id:" + account.ID.String()
+	}
+	keys, attempt, err := s.reservePasswordAttempt(ctx, identity, ip)
+	if err != nil {
+		return out, "", err
+	}
 	encoded := dummyHash
 	if found {
 		encoded = account.PasswordHash
@@ -103,11 +99,8 @@ func (s *Service) Login(ctx context.Context, in wire.LoginInput, ip string) (wir
 	if current.Restricted {
 		return out, "", failure(403, "ACCOUNT_RESTRICTED")
 	}
-	limitCtx, done = context.WithTimeout(ctx, 2*time.Second)
-	err = successfulLogin.Run(limitCtx, s.limiter, keys, attempt).Err()
-	done()
-	if err != nil {
-		return out, "", unavailable()
+	if err = s.finishPasswordAttempt(ctx, keys, attempt); err != nil {
+		return out, "", err
 	}
 	err = q.AddSession(ctx, store.AddSessionParams{IDHash: digest(raw), AccountID: account.ID, CsrfToken: csrf, CreatedAt: stamp(now), LastSeen: stamp(now), AbsoluteExpiresAt: stamp(now.Add(30 * 24 * time.Hour))})
 	if err != nil {
@@ -123,17 +116,10 @@ func publicAccount(a store.Account) wire.Account {
 }
 func (s *Service) Authenticate(ctx context.Context, raw string) (wire.AccountResult, error) {
 	out := wire.AccountResult{}
-	decoded, err := base64.RawURLEncoding.DecodeString(raw)
-	if err != nil || len(decoded) != 32 {
-		return out, failure(401, "INVALID_CREDENTIALS")
-	}
 	q := store.New(s.pool)
-	session, err := q.AuthenticateSession(ctx, store.AuthenticateSessionParams{IDHash: digest(raw), Now: stamp(s.now())})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return out, failure(401, "INVALID_CREDENTIALS")
-	}
+	session, err := s.sessionByRaw(ctx, q, raw)
 	if err != nil {
-		return out, unavailable()
+		return out, err
 	}
 	account, err := q.AccountByID(ctx, session.AccountID)
 	if err != nil {
@@ -148,11 +134,47 @@ func (s *Service) Authenticate(ctx context.Context, raw string) (wire.AccountRes
 	}
 	return wire.AccountResult{Account: publicAccount(account), CsrfToken: session.CsrfToken, Capabilities: wire.Capabilities{TrialAvailable: available}}, nil
 }
+func (s *Service) sessionByRaw(ctx context.Context, q *store.Queries, raw string) (store.Session, error) {
+	decoded, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil || len(decoded) != 32 {
+		return store.Session{}, failure(401, "INVALID_CREDENTIALS")
+	}
+	session, err := q.AuthenticateSession(ctx, store.AuthenticateSessionParams{IDHash: digest(raw), Now: stamp(s.now())})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return session, failure(401, "INVALID_CREDENTIALS")
+	}
+	if err != nil {
+		return session, unavailable()
+	}
+	return session, nil
+}
 func (s *Service) Logout(ctx context.Context, raw string) error {
-	if raw == "" {
+	session, err := s.sessionByRaw(ctx, store.New(s.pool), raw)
+	var domain *Error
+	if errors.As(err, &domain) && domain.Status == 401 {
 		return nil
 	}
-	if err := store.New(s.pool).DeleteSession(ctx, digest(raw)); err != nil {
+	if err != nil {
+		return err
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return unavailable()
+	}
+	defer tx.Rollback(ctx)
+	q := store.New(tx)
+	if _, err = q.LockAccount(ctx, session.AccountID); err != nil {
+		return unavailable()
+	}
+	if _, err = q.LookupLiveSession(ctx, store.LookupLiveSessionParams{IDHash: digest(raw), Now: stamp(s.now())}); errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	} else if err != nil {
+		return unavailable()
+	}
+	if q.DeleteSession(ctx, digest(raw)) != nil || s.credentialAudit(ctx, tx, session.AccountID, "logout") != nil {
+		return unavailable()
+	}
+	if tx.Commit(ctx) != nil {
 		return unavailable()
 	}
 	return nil

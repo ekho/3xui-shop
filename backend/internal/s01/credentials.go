@@ -10,10 +10,12 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/redis/go-redis/v9"
 	"math/big"
 	"slices"
 	"time"
+	"unicode/utf8"
 )
 
 var credentialIPLimit = redis.NewScript(`
@@ -252,4 +254,168 @@ func (s *Service) CompletePasswordReset(ctx context.Context, in wire.PasswordRes
 		return unavailable()
 	}
 	return nil
+}
+
+type SessionRotation struct {
+	Raw               string
+	AbsoluteExpiresAt time.Time
+}
+
+func (s *Service) reservePasswordAttempt(ctx context.Context, identity, ip string) ([]string, string, error) {
+	keys, attempt := s.loginKeys(identity, ip), uuid.NewString()
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	retry, err := loginLimit.Run(ctx, s.limiter, keys, s.now().UnixMilli(), attempt).Int()
+	if err != nil {
+		return nil, "", unavailable()
+	}
+	if retry > 0 {
+		return nil, "", &Error{Status: 429, Code: "RATE_LIMITED", RetryAfter: retry}
+	}
+	return keys, attempt, nil
+}
+func (s *Service) finishPasswordAttempt(ctx context.Context, keys []string, attempt string) error {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if successfulLogin.Run(ctx, s.limiter, keys, attempt).Err() != nil {
+		return unavailable()
+	}
+	return nil
+}
+func (s *Service) authenticateCurrentPassword(ctx context.Context, raw, password, ip string) (store.Account, store.Session, error) {
+	q := store.New(s.pool)
+	session, err := s.sessionByRaw(ctx, q, raw)
+	if err != nil {
+		return store.Account{}, session, err
+	}
+	account, err := q.AccountByID(ctx, session.AccountID)
+	if err != nil {
+		return account, session, unavailable()
+	}
+	if account.Restricted {
+		return account, session, failure(403, "ACCOUNT_RESTRICTED")
+	}
+	if !utf8.ValidString(password) || utf8.RuneCountInString(password) < 15 || utf8.RuneCountInString(password) > 128 {
+		return account, session, failure(400, "INVALID_INPUT")
+	}
+	keys, attempt, err := s.reservePasswordAttempt(ctx, "id:"+account.ID.String(), ip)
+	if err != nil {
+		return account, session, err
+	}
+	matched, err := s.checkPassword(ctx, password, account.PasswordHash)
+	if err != nil {
+		return account, session, err
+	}
+	if !matched {
+		return account, session, failure(400, "CURRENT_PASSWORD_INVALID")
+	}
+	if err = s.finishPasswordAttempt(ctx, keys, attempt); err != nil {
+		return account, session, err
+	}
+	return account, session, nil
+}
+
+// Account lock must precede the session row lock for every credential mutation.
+func (s *Service) revalidateCredentialSession(ctx context.Context, q *store.Queries, raw string, snapshot store.Account) (store.Account, store.Session, error) {
+	account, err := q.LockAccount(ctx, snapshot.ID)
+	if err != nil {
+		return account, store.Session{}, unavailable()
+	}
+	session, err := s.sessionByRaw(ctx, q, raw)
+	if err != nil {
+		return account, session, err
+	}
+	if session.AccountID != snapshot.ID || account.CredentialVersion != snapshot.CredentialVersion || account.PasswordHash != snapshot.PasswordHash || account.EmailKey != snapshot.EmailKey {
+		return account, session, failure(401, "INVALID_CREDENTIALS")
+	}
+	if account.Restricted {
+		return account, session, failure(403, "ACCOUNT_RESTRICTED")
+	}
+	return account, session, nil
+}
+func (s *Service) ChangePassword(ctx context.Context, raw string, in wire.PasswordChangeInput, ip string) (SessionRotation, error) {
+	account, _, err := s.authenticateCurrentPassword(ctx, raw, in.CurrentPassword, ip)
+	if err != nil {
+		return SessionRotation{}, err
+	}
+	if in.NewPassword == in.CurrentPassword {
+		return SessionRotation{}, failure(400, "INVALID_INPUT")
+	}
+	if err = validatePassword(in.NewPassword); err != nil {
+		return SessionRotation{}, err
+	}
+	hash, err := s.hashPassword(ctx, in.NewPassword)
+	if err != nil {
+		return SessionRotation{}, err
+	}
+	return s.rotateCredentialSession(ctx, raw, account, hash, "password_change")
+}
+func (s *Service) RevokeOtherSessions(ctx context.Context, raw string, in wire.CurrentPasswordInput, ip string) (SessionRotation, error) {
+	account, _, err := s.authenticateCurrentPassword(ctx, raw, in.CurrentPassword, ip)
+	if err != nil {
+		return SessionRotation{}, err
+	}
+	return s.rotateCredentialSession(ctx, raw, account, "", "revoke_other_sessions")
+}
+func (s *Service) rotateCredentialSession(ctx context.Context, raw string, snapshot store.Account, passwordHash, action string) (SessionRotation, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return SessionRotation{}, unavailable()
+	}
+	defer tx.Rollback(ctx)
+	q := store.New(tx)
+	account, session, err := s.revalidateCredentialSession(ctx, q, raw, snapshot)
+	if err != nil {
+		return SessionRotation{}, err
+	}
+	if passwordHash != "" {
+		emails, err := s.credentialEmails(ctx, tx, account)
+		if err != nil {
+			return SessionRotation{}, err
+		}
+		if err = s.lockCredentialEmails(ctx, tx, emails); err != nil {
+			return SessionRotation{}, err
+		}
+		if q.SetAccountPassword(ctx, store.SetAccountPasswordParams{ID: account.ID, PasswordHash: passwordHash}) != nil || s.revokeCredentialProofs(ctx, tx, account.ID) != nil {
+			return SessionRotation{}, unavailable()
+		}
+		if s.enqueueSecurityNotice(ctx, tx, account.EmailKey, mailPayload{Type: "security_notice", Locale: account.Locale}) != nil {
+			return SessionRotation{}, unavailable()
+		}
+	}
+	rotation := SessionRotation{Raw: opaque(), AbsoluteExpiresAt: session.AbsoluteExpiresAt.Time}
+	now := s.now()
+	if q.DeleteAccountSessions(ctx, account.ID) != nil || q.AddSession(ctx, store.AddSessionParams{IDHash: digest(rotation.Raw), AccountID: account.ID, CsrfToken: opaque(), CreatedAt: stamp(now), LastSeen: stamp(now), AbsoluteExpiresAt: session.AbsoluteExpiresAt}) != nil || s.credentialAudit(ctx, tx, account.ID, action) != nil {
+		return SessionRotation{}, unavailable()
+	}
+	if tx.Commit(ctx) != nil {
+		return SessionRotation{}, unavailable()
+	}
+	return rotation, nil
+}
+func (s *Service) GetSessionContext(ctx context.Context, raw string) (wire.SessionContext, error) {
+	session, err := s.sessionByRaw(ctx, store.New(s.pool), raw)
+	if err != nil {
+		return wire.SessionContext{}, err
+	}
+	return wire.SessionContext{CsrfToken: session.CsrfToken}, nil
+}
+func (s *Service) GetAccountSecurity(ctx context.Context, raw string) (wire.AccountSecurity, error) {
+	q := store.New(s.pool)
+	session, err := s.sessionByRaw(ctx, q, raw)
+	if err != nil {
+		return wire.AccountSecurity{}, err
+	}
+	account, err := q.AccountByID(ctx, session.AccountID)
+	if err != nil {
+		return wire.AccountSecurity{}, unavailable()
+	}
+	if account.Restricted {
+		return wire.AccountSecurity{}, failure(403, "ACCOUNT_RESTRICTED")
+	}
+	other, err := q.HasOtherSessions(ctx, store.HasOtherSessionsParams{AccountID: account.ID, IDHash: digest(raw), Now: stamp(s.now())})
+	if err != nil {
+		return wire.AccountSecurity{}, unavailable()
+	}
+	return wire.AccountSecurity{Email: openapi_types.Email(account.EmailKey), HasOtherSessions: other}, nil
 }

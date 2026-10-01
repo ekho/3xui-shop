@@ -26,3 +26,25 @@ test.describe('S02 reset',()=>{
   await page.goto('/reset-password#token='+token);await page.getByLabel('Пароль',{exact:true}).fill(password);await page.getByLabel('Повторите пароль').fill(password);await page.getByRole('button',{name:'Сохранить пароль'}).click();await expect(page.getByRole('alert')).toBeVisible();await page.clock.runFor(30000);expect(posts).toBe(1);await expect(page.getByRole('link',{name:'Запросить новую инструкцию'})).toBeVisible();
  });
 });
+
+test.describe('S02 sessions',()=>{
+ const account={account:{account_id:id,email:'client@example.test',locale:'en',email_verified:true,telegram_linked:false},csrf_token:'x'.repeat(43),capabilities:{trial_available:true}};
+ test('password change refreshes CSRF; lost reply has no retry',async({page})=>{
+  let reads=0,posts=0;await page.route('**/api/v1/me',async r=>{reads++;await r.fulfill({json:{...account,csrf_token:(reads>1?'y':'x').repeat(43)}})});
+  await page.route('**/api/v1/me/security',r=>r.fulfill({json:{email:account.account.email,has_other_sessions:true,pending_email_change:null}}));
+  await page.route('**/api/v1/me/password-change',async r=>{posts++;expect(r.request().headers()['x-csrf-token']).toBe('x'.repeat(43));expect(r.request().postDataJSON()).toEqual({current_password:'Old long password',new_password:password});await r.fulfill({status:204})});
+  await page.goto('/cabinet/security?lang=en');await expect(page.getByRole('heading',{name:'Account security'})).toBeVisible({timeout:2000});
+  await page.getByLabel('Current password',{exact:true}).fill('Old long password');await page.getByLabel('New password',{exact:true}).fill(password);await page.getByLabel('Repeat password',{exact:true}).fill('different');await page.getByRole('button',{name:'Change password',exact:true}).click();expect(posts).toBe(0);await page.getByLabel('Repeat password',{exact:true}).fill(password);await page.getByRole('button',{name:'Change password',exact:true}).click();await expect(page.getByRole('status')).toContainText('Saved');expect(reads).toBe(2);
+  await page.route('**/api/v1/me/password-change',async r=>{posts++;await r.abort()});await page.getByLabel('Current password',{exact:true}).fill(password);await page.getByLabel('New password',{exact:true}).fill('Another safe new password');await page.getByLabel('Repeat password',{exact:true}).fill('Another safe new password');await page.getByRole('button',{name:'Change password',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Sign in again');expect(posts).toBe(2);await expect(page.getByRole('button',{name:'Change password',exact:true})).toBeDisabled();
+ });
+ test('other sessions uses rotated CSRF',async({page})=>{
+  await page.route('**/api/v1/me',r=>r.fulfill({json:account}));await page.route('**/api/v1/me/security',r=>r.fulfill({json:{email:account.account.email,has_other_sessions:true,pending_email_change:null}}));let calls=0;
+  await page.route('**/api/v1/me/sessions/revoke-others',async r=>{calls++;expect(r.request().headers()['x-csrf-token']).toBe(account.csrf_token);expect(r.request().postDataJSON()).toEqual({current_password:'Old long password'});await r.fulfill({status:204})});
+  await page.goto('/cabinet/security?lang=en');await expect(page.getByRole('heading',{name:'Account security'})).toBeVisible({timeout:2000});await page.getByLabel('Current password',{exact:true}).fill('Old long password');await page.getByRole('button',{name:'End other sessions'}).click();await expect(page.getByRole('status')).toContainText('Saved');expect(calls).toBe(1);
+ });
+ test('restricted logout after reload',async({page})=>{
+  await page.route('**/api/v1/me',r=>r.fulfill({status:403,json:{error:{code:'ACCOUNT_RESTRICTED'}}}));await page.route('**/api/v1/auth/session',r=>r.fulfill({json:{csrf_token:account.csrf_token}}));let calls=0;
+  await page.route('**/api/v1/auth/logout',async r=>{calls++;expect(r.request().headers()['x-csrf-token']).toBe(account.csrf_token);await r.fulfill({status:204})});
+  await page.goto('/cabinet?lang=en');await expect(page.getByRole('alert')).toContainText('restricted');await expect(page.getByRole('button',{name:'Sign out'})).toBeEnabled({timeout:2000});await page.getByRole('button',{name:'Sign out'}).click();await expect(page).toHaveURL(/login/);expect(calls).toBe(1);
+ });
+});
