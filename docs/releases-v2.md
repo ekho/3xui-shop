@@ -16,6 +16,8 @@
 `2.0.0-dev.N` на исходном коммите и GitHub Release с признаком prerelease.
 Описание содержит исходный коммит, адреса образов и изменения из GitHub.
 Повторный запуск проверяет существующий тег и не перемещает его.
+Запуски сериализованы штатной очередью GitHub Actions: до 100 ожидающих сборок
+сохраняются при новых push; при заполненной очереди GitHub отменяет новые запуски.
 
 PR проверяет сборку всех трёх образов без публикации пакетов или релиза.
 Публичные параметры кабинета задаются при запуске контейнера:
@@ -38,5 +40,11 @@ PR проверяет сборку всех трёх образов без пу�
 Проверка workflow:
 
 ```sh
-go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/v2-release.yml
+go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 \
+  -ignore 'unexpected key "queue" for "concurrency" section' \
+  .github/workflows/v2-release.yml
 ```
+
+Actionlint 1.7.12 ещё не распознаёт `concurrency.queue`, поэтому исключается только
+эта диагностика. Значение `max` поддерживает GitHub Actions; серверная проверка
+workflow и сборки выполняются на каждом PR в `v2`.
