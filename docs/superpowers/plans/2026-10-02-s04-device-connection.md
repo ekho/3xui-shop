@@ -30,15 +30,20 @@
 
 - [ ] RED Playwright: five platform instructions and exact hrefs, iOS region selector independent of lang; copy/QR own URL, same input/deep link; expired allowed, denied states hidden.
 - [ ] RED RF1–RF3: defer key/QR response, hide/logout/visibility; fast-forward60s; clipboard rejects and fallback selects input; invalid HTTPS response never becomes clickable.
-- [ ] Install exact QR dependency versions/lock and implement the smallest shared key lifecycle with abort/generation guard; qr canvas has accessible name and text fallback.
-- [ ] GREEN `npm --prefix web run typecheck`, `npm --prefix web run build -- --mode test`, targeted `s03.spec.ts` and `s04.spec.ts` plus existing С01/С02 browser checks. Mock/prevent deep link navigation before clicking.
-- [ ] Specialist returns changed files/commands/verdict; coordinator inspects/stages/commits the owned slice.
+- [x] Install exact QR dependency versions/lock and implement the smallest shared key lifecycle with abort/generation guard; qr canvas has accessible name and text fallback.
+- [x] GREEN `npm --prefix web run typecheck`, `npm --prefix web run build -- --mode test`, targeted `s03.spec.ts` and `s04.spec.ts` plus existing С01/С02 browser checks. Mock/prevent deep link navigation before clicking.
+- [x] Specialist returns changed files/commands/verdict; coordinator inspects/stages/commits the owned slice.
 
 ### Task 2: Native browser acceptance
 
 **Files:** Existing `deploy/s01/browser.mjs` or new focused `deploy/s04/browser.mjs`; create `docs/evidence/s04-acceptance.md` and update progress/roadmap.
 **Interfaces:** Own HTTPS Docker cabinet/native3X-UI3.7.0; existing file-based test account and CA, no credentials or key printed.
 
-- [ ] Actual browser confirms installation links, copy/QR/deep-link string and own API key; intercept protocol click, assert no remote QR request and no new trial/grant/panel writes.
-- [ ] Record all5 AC against exact tested product revision, real versus mocked checks and excluded native Happ action.
+- [x] Actual browser confirms installation links, copy/QR/deep-link string and own API key; intercept protocol click, assert no remote QR request and no new trial/grant/panel writes.
+- [x] Record all5 AC against exact tested product revision, real versus mocked checks and excluded native Happ action.
 - [ ] Coordinator local commit; whole-branch regression/review runs after С06.
+
+Статус перед финальным review: реализация и техническая приёмка проверены;
+итоговый review/закрытие ещё открыты. Неподтверждённые исторические RED steps
+оставлены неотмеченными; Ruling и точные результаты — в
+[общем evidence](../../evidence/s03-s06-progress.md#итоговые-проверки-перед-review).

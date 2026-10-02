@@ -2,19 +2,21 @@
 
 Реализация: backend `f710935`, UI `41a2ade`. Первый реальный browser/native run
 проверял runtime с этими изменениями при checkout `0a14733`. Расширенный native
-driver завершился exit0; итоговый regression С03–С06 ещё выполняется, общий статус
-**Pending**.
+driver завершился exit0. Общий Go-race и browser regression завершены на
+`5c21d94`; source профиля/панели/Connection после native snapshot `0a14733`
+не изменялся. Технические критерии проверены; окончательный статус **Pending
+fresh review**. Общие команды/ревизии — в [сводном evidence](s03-s06-progress.md#итоговые-проверки-перед-review).
 
-| AC | Требование | Проверенная поверхность | Что осталось |
+| AC | Требование | Проверенная поверхность | Статус / граница доказательства |
 | --- | --- | --- | --- |
-| 1 | Собственный trial, upload/download, N/bytes/expiry | Реальный HTTPS cabinet/Mailpit, fixture approve, native3.7.0 и положительный трафик через собственный Docker VPN | Итоговая проверка после С06 |
-| 2 | none/provisioning/needs_review/expired/banned/disabled/exhausted | Playwright С03 и `TestProfileStates`; native none/active/expired/ban/disabled/exhausted | Итоговый regression; provisioning/needs_review UI остаются controlled fixtures |
-| 3 | Clamp/zero/unlimited/no-expiry отличимы от unknown | TLS boundary/membership fixtures, Playwright С03; native exhausted remaining0 и zero quotas/no-expiry с явными unlimited flags | Итоговая проверка после С06 |
-| 4 | Negative/overflow/foreign/unknown отклоняются, чужой key закрыт | TLS panel fixtures `TestProfileTrafficBoundary/Ownership/Membership`; два реальных owner contexts с разными native keys и reciprocal guard | Malformed native data не вносится в живую БД панели; boundary fixtures остаются доказательством этих входов |
-| 5 | Outage сохраняет весь cache/time, первый сбой не создаёт нули | `TestProfileCache`; фактический stop/start собственной панели сохранил полный snapshot/time, stale/key409 и fresh recovery | Первый сбой без cache остаётся fixture proof; итоговый regression |
-| 6 | Старое наблюдение не заменяет новое; GET не пишет panel/Grant | `TestProfileObservationOrder`, `TestProfileOlderReadUsesCurrentObservation`, GET-only TLS fixture, one Grant native readback | Итоговый race regression после С06 |
-| 7 | ru/en/mobile/keyboard/retry/key privacy и С01/С02 | Реальная mobile browser поверхность; Playwright С01–С05; клиентские TTL/abort tests | Итоговый общий regression |
-| 8 | Настоящая native3.7.0/browser, живой Happ исключён | Расширенный `node deploy/s04/browser.mjs`: exit0, positive up/down, native identity/limits/states/outage, прежний Docker proxy восстановлен | Итоговая фиксация ревизии после С06 |
+| 1 | Собственный trial, upload/download, N/bytes/expiry | Реальный HTTPS cabinet/Mailpit, fixture approve, native3.7.0 и положительный трафик через собственный Docker VPN | PASS, native snapshot `0a14733` |
+| 2 | none/provisioning/needs_review/expired/banned/disabled/exhausted | Playwright С03 и `TestProfileStates`; native none/active/expired/ban/disabled/exhausted | PASS; provisioning/needs_review rendering — controlled fixtures |
+| 3 | Clamp/zero/unlimited/no-expiry отличимы от unknown | TLS boundary/membership fixtures, Playwright С03; native exhausted remaining0 и zero quotas/no-expiry с явными unlimited flags | PASS, fixture + native |
+| 4 | Negative/overflow/foreign/unknown отклоняются, чужой key закрыт | `TestProfileTrafficBoundary`, `TestProfileOwnership`, `TestProfileMembership`; два реальных владельца с разными native keys и reciprocal guard | PASS; malformed data проверены TLS fixtures, без порчи native БД |
+| 5 | Outage сохраняет весь cache/time, первый сбой не создаёт нули | `TestProfileCache`; фактический stop/start собственной панели сохранил полный snapshot/time, stale/key409 и fresh recovery | PASS; первый сбой без cache — fixture |
+| 6 | Старое наблюдение не заменяет новое; GET не пишет panel/Grant | `TestProfileObservationOrder`, `TestProfileOlderReadUsesCurrentObservation`, GET-only TLS fixture, one Grant native readback | PASS; полный race suite `5c21d94` |
+| 7 | ru/en/mobile/keyboard/retry/key privacy и С01/С02 | Реальная mobile browser поверхность; Playwright С01–С06, TTL/abort tests | PASS; полный browser59 и Go/Python regression |
+| 8 | Настоящая native3.7.0/browser, живой Happ исключён | Расширенный `node deploy/s04/browser.mjs`: exit0, positive up/down, native identity/limits/states/outage, прежний Docker proxy восстановлен | PASS; неизменность core source до `d6ae035` проверена |
 
 Команды: `go test ./internal/s01 -race -count=1 -run Profile` с file-based
 inputs тестовой PostgreSQL/Redis; `npm --prefix web run test:e2e -- s03.spec.ts

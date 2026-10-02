@@ -1,17 +1,19 @@
 # С05: локальная приёмка поддержки
 
-Client/backend интегрированы в `745250f`. Общий статус **Pending**: настоящая
-двухсторонняя browser поверхность и restore проверяются вместе с С06.
+Client/backend интегрированы в `745250f`. Техническая приёмка завершена:
+реальная двухсторонняя browser поверхность и PG restore прошли вместе с С06
+на `d6ae035` (30 PASS, 0 FAIL/BLOCKED). Окончательный статус **Pending fresh
+review**. Общие команды/ревизии — в [сводном evidence](s03-s06-progress.md#итоговые-проверки-перед-review).
 
-| AC | Требование | Focused evidence | Остаток |
+| AC | Требование | Доказательство | Статус / граница доказательства |
 | --- | --- | --- | --- |
-| 1 | Text/file/page50/close/reopen/auto-reopen, сохранение после reload | `TestSupportConversationFlow/ConcurrentDuplicateAndPaging`, client browser | Actual оператор + два клиента |
-| 2 | Lost/concurrent retry одна запись, mismatch409, draft сохранён | Service race и client failure/429/503 Playwright cases | Actual lost-response retry |
-| 3 | Stored → delivered только recipient ack; чужой/invalid sequence отказал | Service ack checks; browser regression operator3/customer4 отправляет3 | Симметричный operator ack и actual browser |
-| 4 | Ban отделён от VPN/restricted/history; revoked role закрывает запись | `TestSupportBanRoleAndQuota`, role/ban lock race test | CLI revoke С06 и actual subscription/key invariance |
-| 5 | Foreign/forged actor/CSRF/Origin/file/quota/rate отказали | Support service/HTTP boundary tests: NUL400, download-only headers, quotas, denied inputs | Actual download и direct HTTP без роли |
-| 6 | Text/bytes/history/role переживают PG restore; sessions/proofs отозваны | Source bytea/FK и прежний restore механизм С01/С02 | Настоящий dump/restore с новыми С05/С06 данными |
-| 7 | Client/operator ru/en/mobile/keyboard с actual API, `/info` эквивалент | Client Playwright10/10/typecheck; operator принадлежит С06 | Общая browser приёмка С06 |
+| 1 | Text/file/page50/close/reopen/auto-reopen, сохранение после reload | `TestSupportConversationFlow`, `TestSupportConcurrentDuplicateAndPaging`; actual оператор + два клиента, 52 сообщения и страницы50/2 | PASS, native/browser |
+| 2 | Lost/concurrent retry одна запись, mismatch409, draft сохранён | Service race и client failure/429/503 Playwright; actual повтор201/200 и mismatch409, одна запись | PASS; потерянный HTTP response — управляемый browser сценарий |
+| 3 | Stored → delivered только recipient ack; чужой/invalid sequence отказал | Service ack checks; browser operator3/customer4 отправляет3; actual симметричный render ack, sender own-ack409 | PASS, fixtures + actual browser |
+| 4 | Ban отделён от VPN/restricted/history; revoked role закрывает запись | `TestSupportBanRoleAndQuota`, `TestSupportRevocationAndBanWinBlockedWrite`; actual CLI revoke403 и active subscription/key200 при support403 | PASS; native target/VPN сохранены |
+| 5 | Foreign/forged actor/CSRF/Origin/file/quota/rate отказали | `TestSupportHTTPBoundaries`, quota/rate/Redis tests; actual download byte-exact200/foreign404, singleton nosniff/no-store, input400/CSRF403/Origin403 | PASS; oversize/quota/race — real-PG/Redis fixtures |
+| 6 | Text/bytes/history/role переживают PG restore; sessions/proofs отозваны | Actual `pg_dump/restore`: row digests, bytea/receipts/роль/actor совпали; old session401, fresh login и file/key200; maintenance SQL отзывает proofs | PASS; новые локальные данные, без legacy transcript |
+| 7 | Client/operator ru/en/mobile/keyboard с actual API, `/info` эквивалент | Actual RU/EN client/operator375px, Enter, card; client10 и operator10 в общем browser59 | PASS, actual API + fixture browser |
 
 Coordinator GREEN: `go test ./internal/s01 ./internal/httpapi -race -count=1
 -run Support` (оба пакета exit0); `npm run test:e2e -- s05.spec.ts` (10/10).

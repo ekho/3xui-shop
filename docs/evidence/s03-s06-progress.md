@@ -10,10 +10,16 @@
 
 | Сценарий | Спецификация/план | Реализация | Приёмка |
 | --- | --- | --- | --- |
-| С03 | Готовы | Backend `f710935`, UI `41a2ade`; focused GREEN | Native acceptance Pending |
-| С04 | Готовы | UI `41a2ade`; 39 browser checks GREEN | Native acceptance Pending |
-| С05 | Готовы | Backend и client UI готовы; focused Go-race и browser10 GREEN | Two-actor/native acceptance Pending |
-| С06 | Готовы | Backend `70a0294`; React-admin и карточка готовы, полный browser59 GREEN | Native browser/restore и fresh review Pending |
+| С03 | Готовы | Backend `f710935`, UI `41a2ade` | 8 технических AC проверены; fresh review Pending |
+| С04 | Готовы | UI `41a2ade` | 5 технических AC проверены; fresh review Pending |
+| С05 | Готовы | Backend/client `745250f`, operator `5c21d94` | 7 AC проверены, включая actual restore; fresh review Pending |
+| С06 | Готовы | Backend `70a0294`, React-admin `5c21d94` | AC1–7 и runtime/regression AC8 проверены; fresh review AC8 Pending |
+
+## Промежуточная история
+
+Записи ниже сохраняют границы и результаты предыдущих этапов. Их Pending и
+неуспешные attempts описывают состояние на тот момент; актуальная сводка —
+[итоговые проверки](#итоговые-проверки-перед-review).
 
 Discovery: сохранены профильные split/unlimited/ban случаи, платформы + QR,
 Telegram-only создание триала и shared /info card. Старый support не хранит
@@ -99,3 +105,62 @@ driver; URL прежнего сбоя не был сохранён, поэтом
 их выполнение вместе с поздними trial/reconcile/TG-only/restore cases ещё ожидается.
 `deploy/s06/` — воспроизводимый кандидат полной локальной приёмки, общий PASS
 по нему пока не заявлен. Полные предыдущие неуспешные attempts сохранены privately.
+
+## Итоговые проверки перед review
+
+Actual С05/С06 run на чистом `d6ae035188edd6c0d5b14dfa9ec39abdb7da8a58`:
+**30 PASS, 0 FAIL, 0 BLOCKED**, child exit0, без timeout. Проверены actual RU/EN
+375px/Enter search/card и страницы поиска1/2; оператор и два клиента, text/bytea
+attachments, download-only singleton headers и foreign denial, explicit recipient
+ack, close/reopen/auto-reopen, history50/2, support ban при active key/VPN.
+Web reject/reconsider/approve/replay и controlled needs_review→reconcile сохраняют
+настоящий UUID actor, один Grant/job и native target. Настоящий owner TG ID создаёт
+Telegram-only клиента с NULL web credentials через тот же worker; duplicate409.
+Все эти операции прошли без Telegram operators/adapter. Fixture сбоя apply удалён
+до reconcile; fixture restricted ограничен новым собственным тестовым оператором.
+
+Настоящий PG dump/restore сохранил exact per-account digests account/role/support
+text/bytea/receipts/trial/actor/audit/operation/grant и native target/panel identity.
+Старые sessions/proofs отозваны maintenance SQL, payload очищен; старый cookie401,
+fresh login/key/file200. Прежний Docker VPN config совпал побайтно и proxy работает.
+Revoked/restricted operator получил403, раскрытый ключ очищен; logout завершился.
+Coordinator независимо подтвердил HTTPS readiness, web-only, adapter/reconcile
+stopped, отсутствие обоих fault triggers, pinned panel digest и работу own VPN.
+
+| Проверка | Точная команда и поверхность | Проверенная ревизия / результат |
+| --- | --- | --- |
+| Все Go пакеты | `go test -race ./... -count=1` из `backend`, real own PG/Redis через `S01_TEST_DATABASE_URL_FILE` и `S01_TEST_REDIS_URL_FILE` | `5c21d94`, exit0, все пакеты |
+| Полный Python | `poetry run python -m unittest discover -s tests -v`, те же file inputs | `5c21d94`, 103/103, exit0 |
+| Web + build/typecheck | `npm --prefix web run test:e2e` | `5c21d94`, 59/59, exit0 |
+| Go vet | `go -C backend vet ./...` | source `d6ae035`, exit0 |
+| Генерация API/store | `go tool oapi-codegen -config oapi-codegen.yaml ../docs/api/openapi.yaml`, `go tool sqlc generate` из `backend`; `npm --prefix web run api:generate`; `git diff --exit-code` только generated files | source `d6ae035`, exit0, no diff |
+| С03/С04 native/browser | `node deploy/s04/browser.mjs` | runtime snapshot `0a14733`, expanded driver exit0; core source Connection/subscription/panel не изменялся до `d6ae035` |
+| С05/С06 native/browser/restore | `node deploy/s06/browser.mjs` через plugin `run-check.mjs --timeout-seconds 900 --lines 20` | чистый `d6ae035`, 30 PASS, exit0, 293837ms |
+
+После source suites `5c21d94` менялись только Caddy headers, smoke/native drivers
+и evidence. Backend/web/bot/tests source не изменялся, поэтому полные suites
+остаются применимы; gateway headers подтверждены actual native run. Матрицы
+[С03](s03-acceptance.md), [С04](s04-acceptance.md), [С05](s05-acceptance.md),
+[С06](s06-acceptance.md) содержат все28 AC и различают native/real-PG/TLS/browser
+fixtures. Необычные данные панели проверены на TLS fixtures без порчи native БД;
+Happ navigation перехватывается, clipboard только в памяти browser context.
+
+Локальные redacted evidence/logs: `s03-s04-surface-evidence.md`,
+`s06-native-final-acceptance.md`, `s06-native-final-rows.jsonl`,
+`final-source-checks.json`, `coordinator-final-postflight.json` внутри
+`.superpowers/sdd/2026-10-02-s03-s06/`. Предыдущие неуспешные attempts сохранены
+отдельно и не считаются PASS. Публичные drivers и именованные tests воспроизводимы;
+секреты/личные ID/email/cookies/ключи/тела сообщений в evidence не копируются.
+
+Ruling: исходная последовательность RED→GREEN части ранних specialist tasks
+не подтверждена доступными историческими логами — не отмечать эти RED checkbox
+как выполненные и не выдумывать прошлое. Текущие проверки требований исполнены
+полностью и GREEN; функциональная приёмка сохраняет все28 AC. Цена отклонения:
+невозможно подтвердить соблюдение начального TDD-порядка для этих задач; свежий
+review отдельно проверяет достаточность нынешних тестов. RED→GREEN исправлений
+NUL/recipient ack/React-admin card/refresh/none и actual header RED→GREEN сохранены.
+
+Свежий whole-branch review ещё Pending. External SMTP/mailbox, целевой benchmark,
+upstream dependency gate и внешний cutover/rollout остаются вне локальной приёмки.
+Ни production readiness, ни запуск установленного Happ из этих результатов
+не следуют. Цель остаётся active до рассмотрения review и финальной сверки.

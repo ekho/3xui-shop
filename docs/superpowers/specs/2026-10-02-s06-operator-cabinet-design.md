@@ -3,7 +3,7 @@
 Дата: 2026-10-02. Основание: [роадмап](../../roadmaps/2026-10-01-platform-roadmap.md)
 и автономное поручение С03–С06. [С05](2026-10-02-s05-support-design.md) предоставляет
 support API и общую роль. Статус: API/backend/React-admin реализованы;
-[приёмка](../../evidence/s06-acceptance.md) открыта.
+[приёмка](../../evidence/s06-acceptance.md): runtime/regression проверены, свежий whole-branch review открыт.
 
 ## Результат
 

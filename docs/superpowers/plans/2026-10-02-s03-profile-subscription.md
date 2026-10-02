@@ -30,10 +30,10 @@
 
 - [x] Координатор обновляет авторский контракт и генерирует Go/TS до dispatch.
 - [ ] Backend пишет RED tests `TestProfileStates`, `TestProfileTrafficBoundary`, `TestProfileCache` на real PG + TLS panel; assert examples up100/down200/limit1024 → used300/remain724, zero valid, limit0/remainnull, foreign/negative/overflow stale, accounts.vpn_banned vs native disabled, unlimited profile with finite limits, native writes0.
-- [ ] Реализовать минимальный parser/observation/state derivation и protected key; старые проверки provision должны остаться зелёными.
-- [ ] Cache regression: native unlimited profile с7 устройствами/100GB/expiry0 после успешного чтения и outage сохраняет последние лимиты/срок/profile/counters + stale/time; более старый read не перетирает metadata.
-- [ ] GREEN: `S01_TEST_DATABASE_URL_FILE=<private> S01_TEST_REDIS_URL_FILE=<private> go -C backend test ./internal/s01 -run 'TestProfile|TestPanel|TestProvision' -race -count=1`; generation/vet. Логи private, verdict без identity/secrets.
-- [ ] Отчёт specialist, coordinator inspect и local commit Task1.
+- [x] Реализовать минимальный parser/observation/state derivation и protected key; старые проверки provision должны остаться зелёными.
+- [x] Cache regression: native unlimited profile с7 устройствами/100GB/expiry0 после успешного чтения и outage сохраняет последние лимиты/срок/profile/counters + stale/time; более старый read не перетирает metadata.
+- [x] GREEN: `S01_TEST_DATABASE_URL_FILE=<private> S01_TEST_REDIS_URL_FILE=<private> go -C backend test ./internal/s01 -run 'TestProfile|TestPanel|TestProvision' -race -count=1`; generation/vet. Логи private, verdict без identity/secrets.
+- [x] Отчёт specialist, coordinator inspect и local commit Task1.
 
 ### Task 2: Экран кабинета
 
@@ -43,13 +43,18 @@
 - [x] Frontend пишет RED browser tests для states/split/unlimited/stale, upload100/down200/used300/remain724; unknown не0, key clearing, keyboard/mobile/ru-en.
 - [x] Реализовать профиль в существующей карточке, controls/key guards; без новых UI libraries.
 - [x] GREEN: `npm --prefix web run typecheck`, `npm --prefix web run build -- --mode test`, targeted Playwright С03 + existing С01/С02.
-- [ ] Отчёт specialist, coordinator inspect и local commit Task2.
+- [x] Отчёт specialist, coordinator inspect и local commit Task2.
 
 ### Task 3: Native acceptance и coverage
 
 **Files:** Existing `deploy/s01/local.py`, browser driver и `backend/tests`; create `docs/evidence/s03-acceptance.md`.
 
-- [ ] Реальная own3.7.0 readback подтверждает traffic fields/identity; browser actual API показывает состояния и counters; не менять native Happ или production.
-- [ ] Проверить cache outage и отсутствие writes в focused TLS tests; native existing target/Grant/VPN сохраняются.
-- [ ] Записать все8 AC с точной ревизией, commands/result и оставшимися external launch gates; обновить roadmap/progress.
+- [x] Реальная own3.7.0 readback подтверждает traffic fields/identity; browser actual API показывает состояния и counters; не менять native Happ или production.
+- [x] Проверить cache outage и отсутствие writes в focused TLS tests; native existing target/Grant/VPN сохраняются.
+- [x] Записать все8 AC с точной ревизией, commands/result и оставшимися external launch gates; обновить roadmap/progress.
 - [ ] Local commit Task3; общий regression/review после С06, без повторения зелёных suites без причины.
+
+Статус перед финальным review: реализация и техническая приёмка проверены;
+итоговый review/закрытие ещё открыты. Неподтверждённые исторические RED steps
+оставлены неотмеченными; Ruling и точные результаты — в
+[общем evidence](../../evidence/s03-s06-progress.md#итоговые-проверки-перед-review).
