@@ -28,8 +28,10 @@ client-side permissions только скрывают элементы. Ника
 Не добавляются новый JWT, второй пароль/вход или собственная реализация MFA.
 
 Локальная команда `server operator grant|revoke --account-file <private-path>`
-читает UUID из файла, проверяет существующий подтверждённый, unrestricted web-account
-и идемпотентно меняет entitlement с audit; не принимает email/password/Telegram ID.
+читает UUID из файла; grant требует существующий подтверждённый, unrestricted
+web-account. Revoke может удалить имеющуюся роль и у restricted аккаунта.
+Обе команды идемпотентны, меняют entitlement с audit и не принимают
+email/password/Telegram ID.
 Права отзываются независимо от session, следующий admin запрос отказал. Записи
 чтения проверяют роль до выдачи; изменения повторно проверяют её в транзакции
 под блокировкой. Restricted operator не использует права; logout остаётся доступным.
@@ -80,6 +82,11 @@ web-only операторов. canRequestTrial/notify/provision не требу�
 Telegram-card nullable email/name/real ID корректно представляют Telegram-only
 клиента; web email/старые internal callbacks сохраняют своё поведение.
 
+Дата создания нового account сохраняется отдельным `created_at`. Для уже
+существующих accounts она неизвестна: migration оставляет NULL, UI не выдаёт
+дату migration/подтверждения email за дату регистрации. Поиск сортирует
+`created_at DESC NULLS LAST, id DESC`.
+
 ## API и React-admin
 
 `/admin` монтирует lazy React-admin5.15.4 (MIT, React18/19 peer), npm lock.
@@ -104,6 +111,22 @@ Custom dataProvider соответствует собственным typed сх
   locale ru/en и Idempotency-Key; web-аккаунт получает trial через existing request.
 - Support endpoints С05: ответ/вложения/history/receipt/state/ban; карточка
   заменяет `/info`, новая административная чат-реализация не нужна.
+
+Точные DTO зафиксированы в [OpenAPI](../../api/openapi.yaml): OperatorSession,
+OperatorClient/SearchInput/SearchResult/ClientCard, OperatorTrialRequest/Operation,
+OperatorAuditEvent/HistoryInput/HistoryResult и typed inputs/results действий.
+Карточка содержит первые50 заявок и50 audit records с отдельными `has_more`;
+history POST принимает `kind` trials/audit и пару cursor `before_created_at` +
+`before_id` (обе либо ни одной), возвращает до50 в том же порядке.
+Сервер раскрывает только configured `panel_id` и `enabled`.
+
+Новые operator DTO и Telegram-only create передают Telegram ID десятичной
+строкой, чтобы JavaScript не округлял int64. Backend требует положительный int64;
+старые internal request actor fields остаются прежними числами. Единственное
+расширение прежнего response: TelegramPayload.email допускает NULL и получает
+optional display_name/telegram_id. Потребитель бот и backend payload builder
+адаптируются вместе в С06; web-email карточки сохраняют прежнее содержимое.
+Остальные прежние paths/schemas остаются без изменений; `/me` остаётся web-only.
 
 Ключ показывается только по явному запросу и очищается при уходе/скрытии/logout/
 потере роли; нет key/body/email в логах, query strings, browser storage/analytics.

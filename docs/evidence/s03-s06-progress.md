@@ -13,7 +13,7 @@
 | С03 | Готовы | Backend `f710935`, UI `41a2ade`; focused GREEN | Native acceptance Pending |
 | С04 | Готовы | UI `41a2ade`; 39 browser checks GREEN | Native acceptance Pending |
 | С05 | Готовы | Backend и client UI готовы; focused Go-race и browser10 GREEN | Two-actor/native acceptance Pending |
-| С06 | Готовы | Pending | Pending |
+| С06 | Готовы | API/generated/compile bridge готовы; backend и React-admin в работе | Pending |
 
 Discovery: сохранены профильные split/unlimited/ban случаи, платформы + QR,
 Telegram-only создание триала и shared /info card. Старый support не хранит
@@ -48,3 +48,9 @@ customer receipt отправляет максимальный отображё�
 если собственное сообщение новее. Оба дефекта воспроизведены RED и исправлены
 focused GREEN. Coordinator повторил support service/HTTP с race и browser10;
 полная двухсторонняя приёмка и PG restore выполняются вместе с операторским С06.
+
+С06 authored API:9 paths/16 DTO; остальные paths и schemas сохранены.
+TelegramPayload nullable email + optional real identity адаптированы в builder
+и bot formatter; wire contract/typecheck и12 adapter tests GREEN. Новые operator
+DTO используют точный decimal string для Telegram ID и NULL для неизвестной
+исторической даты регистрации. Native backend/frontend работают по frozen contract.

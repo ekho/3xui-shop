@@ -155,6 +155,17 @@ class WebTrialAdapterTests(unittest.IsolatedAsyncioTestCase):
         p=dict(self.job["payload"]);p.pop("comment")
         with self.assertRaises(WebTrialAPIError):render_card(p)
 
+    async def test_telegram_only_card_has_real_identity_without_email(self):
+        payload = dict(self.job["payload"], email=None, display_name="<Support User>", telegram_id="9223372036854775807")
+        text, keyboard = render_card(payload)
+        self.assertIn("&lt;Support User&gt;", text)
+        self.assertIn("9223372036854775807", text)
+        self.assertNotIn("Email: None", text)
+        self.assertIsNotNone(keyboard)
+        for bad in ("0", "-1", "9223372036854775808", "1.0"):
+            with self.assertRaises(WebTrialAPIError):
+                render_card(dict(payload, telegram_id=bad))
+
 
 if __name__ == "__main__":unittest.main()
 

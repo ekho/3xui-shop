@@ -117,7 +117,12 @@ func (s *Service) payload(ctx context.Context, q *store.Queries, a store.Account
 			target = &message.Int64
 		}
 	}
-	return wire.TelegramPayload{RequestId: r.ID, OperationId: r.OperationID, TargetMessageId: target, Email: openapi_types.Email(a.EmailKey), Comment: r.Comment, CreatedAt: r.CreatedAt.Time, Status: wire.TelegramPayloadStatus(status)}, nil
+	var email *openapi_types.Email
+	if a.EmailKey != "" {
+		value := openapi_types.Email(a.EmailKey)
+		email = &value
+	}
+	return wire.TelegramPayload{RequestId: r.ID, OperationId: r.OperationID, TargetMessageId: target, Email: email, Comment: r.Comment, CreatedAt: r.CreatedAt.Time, Status: wire.TelegramPayloadStatus(status)}, nil
 }
 func (s *Service) notify(ctx context.Context, q *store.Queries, a store.Account, r store.TrialRequest, kind, status string) error {
 	seen := map[int64]bool{}

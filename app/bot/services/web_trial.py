@@ -38,17 +38,31 @@ def valid_uuid(value):
 
 def valid_payload(p):
     fields = {"request_id", "operation_id", "target_message_id", "email", "comment", "created_at", "status"}
-    return (isinstance(p, dict) and set(p) == fields and valid_uuid(p["request_id"])
+    optional = {"display_name", "telegram_id"}
+    if not isinstance(p, dict) or not fields <= set(p) <= fields | optional:
+        return False
+    telegram_id = p.get("telegram_id")
+    if telegram_id is not None and (not isinstance(telegram_id, str) or len(telegram_id) > 19 or not re.fullmatch(r"[1-9][0-9]*", telegram_id) or int(telegram_id) > 9223372036854775807):
+        return False
+    display_name = p.get("display_name")
+    if display_name is not None and (not isinstance(display_name, str) or not 1 <= len(display_name) <= 128 or any(ord(ch) < 32 or ord(ch) == 127 for ch in display_name)):
+        return False
+    if p["email"] is None and (display_name is None or telegram_id is None):
+        return False
+    return (valid_uuid(p["request_id"])
             and isinstance(p["status"], str) and p["status"] in STATUS_TEXT
             and (p["operation_id"] is None or valid_uuid(p["operation_id"]))
             and (p["target_message_id"] is None or type(p["target_message_id"]) is int and p["target_message_id"] > 0)
-            and all(isinstance(p[field], str) for field in ("email", "comment", "created_at"))
+            and (p["email"] is None or isinstance(p["email"], str))
+            and all(isinstance(p[field], str) for field in ("comment", "created_at"))
             and len(p["comment"]) <= 1000)
 
 def render_card(payload):
     if not valid_payload(payload): raise WebTrialAPIError(400, "INVALID_RESPONSE")
+    identity = (f"Email: {html.escape(payload['email'])}\n" if payload["email"] is not None
+                else f"Имя: {html.escape(payload['display_name'])}\nTelegram ID: {html.escape(payload['telegram_id'])}\n")
     text = (f"<b>Web-триал</b>\nЗаявка: <code>{html.escape(payload['request_id'])}</code>\n"
-            f"Email: {html.escape(payload['email'])}\n"
+            f"{identity}"
             f"Создана: {html.escape(payload['created_at'])}\n"
             f"Комментарий: {html.escape(payload['comment'])}\n\n"
             f"{STATUS_TEXT[payload['status']]}")
