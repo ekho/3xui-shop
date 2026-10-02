@@ -72,3 +72,17 @@ Npm production audit сохраняет7 moderate записей одной upst
 совместимый исправленный release/override не найден, scanner не отключался.
 Это отдельный gate внешнего запуска, не доказательство production readiness.
 Actual С05/С06 browser/restore и свежий whole-branch review ещё открыты.
+
+Финальная проверка source `5c21d94`: полный `go test -race ./... -count=1`
+прошёл во всех пакетах, полный `poetry run python -m unittest discover -s tests -v`
+прошёл103/103 с необходимыми file inputs. Это новые полные GREEN results;
+прежние частичные/неуспешные запуски сохранены отдельно. Browser59/59,
+typecheck/build и generation no-diff остаются действительными: их source не менялся.
+
+Actual С05/С06 run ещё не завершён. Ранние ошибки ожиданий driver исправлены;
+добавлено ожидание подтверждения email и завершённого POST сообщения. Общая
+proxy-конфигурация теперь устанавливает singleton headers при записи ответа;
+raw HTTP проверки HTML200/API401/health200 подтвердили ровно один nosniff/no-store
+и сохранённые CSP/Referrer. Gateway пересоздан из прежнего image, остальные
+сервисы и прежний owned VPN сохранены. Строгая attachment проверка не ослаблена;
+полный двухсторонний сценарий, restore и final review остаются открыты.

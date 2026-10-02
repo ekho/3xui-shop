@@ -5,6 +5,7 @@
 }
 (headers) {
  header {
+  defer
   Referrer-Policy no-referrer
   X-Content-Type-Options nosniff
   Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-PgqzSxMpLRBzUhg2SooHKWZ2oAc0yWVxeNMrpG5YqoM='; style-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"

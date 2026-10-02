@@ -60,8 +60,12 @@ def run():
                 conn._create_connection=lambda address,timeout,source:socket.create_connection(('127.0.0.1',58443),timeout,source)
                 try:
                     conn.request('GET',path,headers={'Host':'cabinet.example.test:58443'})
-                    response=conn.getresponse();return response.status,dict(response.getheaders()),response.read()
+                    response=conn.getresponse();return response.status,response.getheaders(),response.read()
                 finally:conn.close()
+            def one_header(headers,name):
+                values=[value for key,value in headers if key.lower()==name.lower()]
+                assert len(values)==1, name+' must occur exactly once'
+                return values[0]
             deadline=time.monotonic()+10
             last="not connected"
             while True:
@@ -74,10 +78,17 @@ def run():
                 time.sleep(.2)
             status,headers,body=get('/cabinet')
             assert status==200 and b'__emailToken' in body
-            assert headers.get('Referrer-Policy')=='no-referrer'
-            assert "frame-ancestors 'none'" in headers.get('Content-Security-Policy','')
+            assert one_header(headers,'Referrer-Policy')=='no-referrer'
+            assert "frame-ancestors 'none'" in one_header(headers,'Content-Security-Policy')
+            assert one_header(headers,'X-Content-Type-Options')=='nosniff'
+            assert one_header(headers,'Cache-Control')=='no-store'
             assert get('/internal/v1/telegram/jobs/claim')[0]==404
-            assert get('/api/v1/me')[0]==401
+            status,headers,_=get('/api/v1/me')
+            assert status==401
+            assert one_header(headers,'Referrer-Policy')=='no-referrer'
+            assert "frame-ancestors 'none'" in one_header(headers,'Content-Security-Policy')
+            assert one_header(headers,'X-Content-Type-Options')=='nosniff'
+            assert one_header(headers,'Cache-Control')=='no-store'
             private="""import json,os,ssl,urllib.request
 from pathlib import Path
 ctx=ssl.create_default_context(cafile=os.environ['WEB_TRIAL_API_CA_FILE'])
