@@ -19,7 +19,7 @@ const fixturePath=dir+'/fixtures.json';
 const faultStatePath=dir+'/fault-state.json';
 const continuationPath=dir+'/continuation.json';
 const stage=process.argv[2];
-if(!['setup','fixtures','compensation','assignment','reset','guards','ui','fault-unavailable','fault-lost-reply','fault-restart-check',
+if(!['setup','fixtures','compensation','assignment','reset','guards','recovery-expire','expired-recovery','ui-ru','ui-keyboard','fault-unavailable','fault-lost-reply','fault-restart-check',
  'fault-noack','fault-ack','fault-partial-start','fault-partial-reconcile'].includes(stage))throw Error('S07 stage required');
 const ready=process.env.S07_RUNTIME_MANIFEST;
 if(!ready||!existsSync(ready))throw Error('root-approved S07 runtime manifest required');
@@ -211,7 +211,7 @@ try{
     probe_configs:Object.fromEntries(Object.entries(probe).map(([name,p])=>[name,p.config_path])),
     fault_descriptor:faultTargets.descriptor})+'\n');
  }
- if(['fixtures','compensation','assignment','reset','guards'].includes(stage)){
+ if(['fixtures','compensation','assignment','reset','guards','recovery-expire','expired-recovery'].includes(stage)){
   const data=fixture();step='login existing owned fixtures';
   const actor=await login(browser,data.actor);
   if(actor.id!==data.actor.id)throw Error('S07 operator identity changed');
@@ -425,24 +425,113 @@ try{
    sameNative(beforeGuards.panel,afterGuards.panel,
       ['identity_digest','expiry_ms','limit_ip','traffic_limit_bytes','membership_digest','used_traffic']));
   }
+  if(stage==='expired-recovery'){
+   step='expired recovery precondition';
+   const before=nativeBefore.expired;
+   const priorSub=await http(customers.expired.context,'/api/v1/subscription');
+   if(!before.panel.exists||before.panel.enabled!==false||before.panel.expiry_ms>=Date.now()||
+      before.panel.traffic_limit_bytes<=0||before.panel.used_traffic>=before.panel.traffic_limit_bytes||
+      before.vpn_banned||priorSub.status!==200||priorSub.body?.status!=='needs_review')
+    throw Error('S07 disabled finite recovery precondition absent');
+   step='expired recovery compensation';
+   const key=randomUUID(),input={kind:'compensate',days:1,reason:'S07 restore expired native access'};
+   const postedAt=Date.now();
+   const accepted=await http(actor.context,base(customers.expired.id),'POST',input,actor.csrf,key);
+   const replay=await http(actor.context,base(customers.expired.id),'POST',input,actor.csrf,key);
+   const conflict=await http(actor.context,base(customers.expired.id),'POST',
+     {...input,days:2},actor.csrf,key);
+   if(accepted.status!==202||!accepted.body?.operation_id)
+    throw Error('S07 expired recovery not accepted');
+   const done=await waitOperation(actor,customers.expired.id,accepted.body.operation_id);
+   const after=bridge('snapshot',{account:customers.expired.id});
+   const stored=bridge('operation',{operation:accepted.body.operation_id});
+   const sub=await http(customers.expired.context,'/api/v1/subscription');
+   record('AC1 expired finite recovery enables actual access',
+    'expired nonexhausted disabled client +1d from now; same-key replay one effect, native enabled and subscription active; identity/limits/counters/membership preserved',
+    {codes:[accepted,replay,conflict].map(r=>r.status),same_operation:accepted.body.operation_id===replay.body?.operation_id,
+     applied:done.status==='applied',native_target:stored.panel_matches_target,
+     base_from_now:after.panel.expiry_ms>=postedAt+86400000&&
+      after.panel.expiry_ms<=Date.now()+86400000,
+     enabled:after.panel.enabled,subscription_http:sub.status,subscription_status:sub.body?.status,
+     preserved:sameNative(before.panel,after.panel,
+       ['identity_digest','limit_ip','traffic_limit_bytes','membership_digest','used_traffic','up','down']),
+     operations_delta:after.access_operations-before.access_operations,
+     audit:stored.requested_audit+'/'+stored.applied_audit},
+    accepted.status===202&&replay.status===202&&conflict.status===409&&
+    accepted.body.operation_id===replay.body?.operation_id&&done.status==='applied'&&
+    stored.panel_matches_target&&after.panel.expiry_ms>=postedAt+86400000&&
+    after.panel.expiry_ms<=Date.now()+86400000&&
+    after.panel.enabled===true&&sub.status===200&&sub.body?.status==='active'&&
+    sameNative(before.panel,after.panel,
+      ['identity_digest','limit_ip','traffic_limit_bytes','membership_digest','used_traffic','up','down'])&&
+    after.access_operations-before.access_operations===1&&
+    stored.requested_audit===1&&stored.applied_audit===1);
+  }
+  if(stage==='recovery-expire'){
+   step='prepare same expired client for recovery';
+   const before=nativeBefore.expired;
+   const priorSub=await http(customers.expired.context,'/api/v1/subscription');
+   if(!before.panel.exists||before.panel.enabled!==false||before.panel.expiry_ms<=Date.now()||
+      before.panel.traffic_limit_bytes<=0||before.panel.used_traffic>=before.panel.traffic_limit_bytes||
+      before.vpn_banned||before.trial_grants!==1||before.access_operations!==1||
+      priorSub.status!==200||priorSub.body?.status!=='disabled')
+    throw Error('S07 recovery-expire source precondition absent');
+   const changed=bridge('recovery-expire',{account:customers.expired.id});
+   const after=bridge('snapshot',{account:customers.expired.id});
+   record('AC1 controlled expired recovery fixture',
+    'same owned future-disabled nonexhausted client expiry only becomes past; identity/limits/counters/membership/ban unchanged and no new access operation',
+    {expiry_past:changed.after.expiry_ms<Date.now(),disabled:changed.after.enabled===false,
+     preserved:sameNative(before.panel,after.panel,
+       ['identity_digest','limit_ip','traffic_limit_bytes','membership_digest','used_traffic','up','down']),
+     ban_unchanged:after.vpn_banned===before.vpn_banned,
+     operations_unchanged:after.access_operations===before.access_operations},
+    changed.after.expiry_ms<Date.now()&&changed.after.enabled===false&&
+    sameNative(before.panel,after.panel,
+      ['identity_digest','limit_ip','traffic_limit_bytes','membership_digest','used_traffic','up','down'])&&
+    after.vpn_banned===before.vpn_banned&&after.access_operations===before.access_operations);
+  }
   process.stdout.write(JSON.stringify({stage,status:'completed'})+'\n');
  }
- if(stage==='ui'){
+ if(stage==='ui-ru'){
   const data=fixture();const actor=await login(browser,data.actor);
   if(actor.id!==data.actor.id)throw Error('S07 UI operator identity changed');
   const customer=data.accounts.active;
-  for(const [lang,heading] of [['en','Access operations'],['ru','Операции доступа']]){
-   step='UI '+lang;
-   await actor.page.goto(origin+'/admin/clients/'+customer.id+'/show?lang='+lang);
-   const section=actor.page.getByRole('region',{name:heading});
+  step='UI ru focused';
+  await actor.page.goto(origin+'/admin/clients/'+customer.id+'/show?lang=ru');
+  const section=actor.page.getByRole('region',{name:'Операции доступа'});
+  await expect(section).toBeVisible();
+  const focus=section.getByLabel('Действие',{exact:true});
+  await focus.focus();await expect(focus).toBeFocused();
+  const fit=await actor.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth);
+  record('AC7 RU real 375px operator keyboard',
+   'Russian access form visible, actual Действие selector keyboard focus works and width fits',
+   {visible:true,focused:true,fit},fit);
+  process.stdout.write(JSON.stringify({stage:'ui-ru',rows:1})+'\n');
+ }
+ if(stage==='ui-keyboard'){
+  const data=fixture();const actor=await login(browser,data.actor);
+  if(actor.id!==data.actor.id)throw Error('S07 UI keyboard operator identity changed');
+  for(const [lang,regionName,operationName,daysName,reasonName] of [
+   ['en','Access operations','Operation','Days to add','Reason'],
+   ['ru','Операции доступа','Действие','Дней добавить','Причина операции']]){
+   step='keyboard navigation '+lang;
+   await actor.page.goto(origin+'/admin/clients/'+data.accounts.active.id+'/show?lang='+lang);
+   const section=actor.page.getByRole('region',{name:regionName});
    await expect(section).toBeVisible();
-   const focus=section.getByLabel(lang==='en'?'Operation':'Операция');
-   await focus.focus();await expect(focus).toBeFocused();
+   const operation=section.getByLabel(operationName,{exact:true});
+   await operation.focus();await expect(operation).toBeFocused();
+   await actor.page.keyboard.press('Tab');
+   const days=section.getByLabel(daysName,{exact:true});
+   await expect(days).toBeFocused();
+   await actor.page.keyboard.press('Tab');
+   const reason=section.getByLabel(reasonName,{exact:true});
+   await expect(reason).toBeFocused();
    const fit=await actor.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth);
-   record('AC7 '+lang.toUpperCase()+' real 375px operator keyboard','operator access form labelled, keyboard focus works and width fits',
-    {visible:true,focused:true,fit},fit);
+   record('AC7 '+lang.toUpperCase()+' real keyboard Tab order at 375px',
+    'native operation select → keyboard Tab days input → keyboard Tab reason textarea; form visible and width fits',
+    {visible:true,tab_days:true,tab_reason:true,fit},fit);
   }
-  process.stdout.write(JSON.stringify({stage:'ui',rows:2})+'\n');
+  process.stdout.write(JSON.stringify({stage:'ui-keyboard',rows:2})+'\n');
  }
  if(stage.startsWith('fault-')){
   const data=fixture();step='fault fixture login';

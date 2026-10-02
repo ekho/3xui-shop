@@ -150,6 +150,17 @@ def operation(op):
     return row
 
 
+def native_update_payload(account_row_value, client):
+    if uid(client['uuid']) != account_row_value['vpn_id'] or client['subId'] != account_row_value['sub_id']:
+        raise RuntimeError('S07 fixture update identity mismatch')
+    # 3X-UI 3.7.0 readback is ClientRecord; update binds model.Client.
+    payload = {**client, 'id': client['uuid'], 'created_at': client['createdAt']}
+    payload['allowedIPs'] = [ip.strip() for ip in client['allowedIPs'].split(',') if ip.strip()]
+    if isinstance(payload.get('reverse'), str):
+        payload['reverse'] = json.loads(payload['reverse']) if payload['reverse'].strip() else None
+    return payload
+
+
 def fixture(account, kind):
     a = account_row(account)
     if a['access_operations'] or a['trial_grants'] != 1 or not a['assigned_panel_id']:
@@ -160,13 +171,7 @@ def fixture(account, kind):
     opener, csrf = local.login_panel()
     raw = local.panel_call(opener, 'panel/api/clients/get/' + a['panel_key'])
     client = raw['client']
-    if uid(client['uuid']) != a['vpn_id'] or client['subId'] != a['sub_id']:
-        raise RuntimeError('S07 fixture update identity mismatch')
-    # 3X-UI 3.7.0 readback is ClientRecord; update binds model.Client.
-    payload = {**client, 'id': client['uuid'], 'created_at': client['createdAt']}
-    payload['allowedIPs'] = [ip.strip() for ip in client['allowedIPs'].split(',') if ip.strip()]
-    if isinstance(payload.get('reverse'), str):
-        payload['reverse'] = json.loads(payload['reverse']) if payload['reverse'].strip() else None
+    payload = native_update_payload(a, client)
     if kind in ('expire', 'perpetual'):
         desired = int(time.time() * 1000) - 24 * 3600 * 1000 if kind == 'expire' else 0
         if kind == 'expire' and before['expiry_ms'] <= int(time.time() * 1000):
@@ -191,6 +196,38 @@ def fixture(account, kind):
     else:
         raise ValueError('unknown S07 fixture kind')
     return {'fixture': kind, 'before': before, 'after': after}
+
+
+def recovery_expire(account):
+    a = account_row(account)
+    if a['trial_grants'] != 1 or a['access_operations'] != 1 or a['vpn_banned'] or not a['assigned_panel_id']:
+        raise RuntimeError('S07 recovery fixture account state changed')
+    history = json.loads(query("""SELECT json_build_object(
+      'total',count(*),
+      'applied_comp',count(*) FILTER (WHERE kind='compensate' AND status='applied'),
+      'unresolved',count(*) FILTER (WHERE status<>'applied'))
+      FROM access_operations WHERE account_id=:'account'::uuid;""", account=uid(account)))
+    if history != {'total': 1, 'applied_comp': 1, 'unresolved': 0}:
+        raise RuntimeError('S07 recovery fixture requires sole applied compensation')
+    before = panel(account)
+    if (not before['exists'] or not before['identity_matches'] or before['enabled'] is not False or
+        before['expiry_ms'] <= int(time.time() * 1000) or before['traffic_limit_bytes'] <= 0 or
+        before['used_traffic'] >= before['traffic_limit_bytes']):
+        raise RuntimeError('S07 future disabled nonexhausted fixture absent')
+    opener, csrf = local.login_panel()
+    raw = local.panel_call(opener, 'panel/api/clients/get/' + a['panel_key'])
+    payload = native_update_payload(a, raw['client'])
+    desired = int(time.time() * 1000) - 24 * 3600 * 1000
+    local.panel_call(opener, 'panel/api/clients/update/' + a['panel_key'],
+                     {**payload, 'expiryTime': desired}, csrf)
+    after = panel(account)
+    unchanged = ('identity_digest', 'limit_ip', 'traffic_limit_bytes',
+                 'membership_digest', 'used_traffic', 'up', 'down')
+    if (after['expiry_ms'] != desired or after['enabled'] is not False or
+        any(after[k] != before[k] for k in unchanged) or
+        account_row(account)['access_operations'] != 1):
+        raise RuntimeError('S07 recovery fixture changed unrelated state')
+    return {'before': before, 'after': after}
 
 
 def fixture_unlimited(account, reference_account):
@@ -374,6 +411,8 @@ def run(data):
         return operation(data['operation'])
     if action == 'fixture':
         return fixture(data['account'], data['kind'])
+    if action == 'recovery-expire':
+        return recovery_expire(data['account'])
     if action == 'fixture-unlimited':
         return fixture_unlimited(data['account'], data['reference_account'])
     if action == 'fault-targets':
