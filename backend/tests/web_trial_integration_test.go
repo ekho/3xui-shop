@@ -174,6 +174,11 @@ func open(t *testing.T) *fixture {
 	f.cfg.PanelRootCAs.AddCert(ps.Certificate())
 	var handler http.Handler
 	f.public = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/config.json" {
+			w.Header().Set("Cache-Control", "no-store")
+			http.ServeFile(w, r, filepath.Join(f.root, "web", "scripts", "local-public-config.json"))
+			return
+		}
 		if strings.HasPrefix(r.URL.Path, "/internal/") {
 			http.NotFound(w, r)
 			return
@@ -471,6 +476,14 @@ func (f *fixture) browser(t *testing.T) {
 
 func TestWebTrialHTTPContractPaths(t *testing.T) {
 	f := open(t)
+	status, body, response := f.send(t, f.public.Client(), "GET", "/config.json", nil, "", "", false)
+	var publicConfig map[string]string
+	if status != http.StatusOK || response.Header.Get("Cache-Control") != "no-store" ||
+		!strings.HasPrefix(response.Header.Get("Content-Type"), "application/json") ||
+		json.Unmarshal(body, &publicConfig) != nil || publicConfig["termsVersion"] != f.cfg.TermsVersion ||
+		publicConfig["privacyVersion"] != f.cfg.PrivacyVersion {
+		t.Fatal("browser must receive deployment policy configuration as uncached JSON")
+	}
 	c, csrf, r := f.signup(t, "contract@example.test")
 	raw, err := os.ReadFile(filepath.Join(f.root, "docs", "api", "openapi.yaml"))
 	if err != nil {

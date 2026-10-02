@@ -1,0 +1,126 @@
+name: V2 preview release
+
+on:
+  push:
+    branches: [v2]
+  pull_request:
+    branches: [v2]
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  VERSION: 2.0.0-dev.${{ github.run_number }}
+
+concurrency:
+  group: v2-release-${{ github.ref }}
+  # ponytail: GitHub queues at most 100 pending releases; revisit if that ceiling is reached.
+  queue: max
+  cancel-in-progress: false
+
+jobs:
+  images:
+    name: Image (${{ matrix.component }})
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/v2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: bot
+            context: .
+            suffix: ''
+          - component: backend
+            context: ./backend
+            suffix: -backend
+          - component: web
+            context: ./web
+            suffix: -web
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - name: Set up QEMU
+        if: github.ref == 'refs/heads/v2'
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+      - name: Log in to GHCR
+        if: github.ref == 'refs/heads/v2'
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}${{ matrix.suffix }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=2-dev
+            type=raw,value=${{ env.VERSION }}
+            type=sha,prefix=2-,format=long
+          labels: |
+            org.opencontainers.image.version=${{ env.VERSION }}
+      - name: Build images; publish only from v2
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: ${{ matrix.context }}
+          platforms: ${{ github.ref == 'refs/heads/v2' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
+          push: ${{ github.ref == 'refs/heads/v2' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=v2-${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=v2-${{ matrix.component }}
+
+  release:
+    name: GitHub prerelease
+    needs: images
+    if: github.ref == 'refs/heads/v2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+      - name: Tag the exact published source and create a prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if git show-ref --verify --quiet "refs/tags/$VERSION"; then
+            test "$(git rev-parse "$VERSION^{commit}")" = "$GITHUB_SHA"
+          else
+            git tag -a "$VERSION" "$GITHUB_SHA" -m "$VERSION — предварительная сборка v2"
+            git push origin "refs/tags/$VERSION"
+          fi
+          notes="$RUNNER_TEMP/release-notes.md"
+          cat > "$notes" <<EOF
+          Предварительная сборка версии 2 из ветки v2.
+
+          Исходный коммит: $GITHUB_SHA
+
+          Docker-образы для linux/amd64 и linux/arm64:
+          - Бот: $REGISTRY/$GITHUB_REPOSITORY:$VERSION
+          - Backend: $REGISTRY/$GITHUB_REPOSITORY-backend:$VERSION
+          - Кабинет: $REGISTRY/$GITHUB_REPOSITORY-web:$VERSION
+
+          Публичные настройки кабинета передаются при запуске контейнера.
+          EOF
+          if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq .isPrerelease > "$RUNNER_TEMP/existing-release"; then
+            test "$(cat "$RUNNER_TEMP/existing-release")" = true
+          else
+            gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --verify-tag \
+              --title "$VERSION — предварительная сборка v2" --notes-file "$notes" \
+              --generate-notes --prerelease --latest=false
+          fi

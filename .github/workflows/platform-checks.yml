@@ -49,6 +49,7 @@ jobs:
           go -C backend vet ./...
           npm --prefix web run typecheck
           npm --prefix web run build -- --mode test
+          (cd web && node scripts/runtime-config.test.mjs)
       - name: Behavior and connected consumers
         run: |
           RUN_BROWSER_TESTS=1 make -C backend test-integration
