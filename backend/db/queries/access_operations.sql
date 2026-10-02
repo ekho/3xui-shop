@@ -3,16 +3,16 @@ SELECT * FROM access_operations WHERE id=$1;
 -- name: AccessOperationForAccount :one
 SELECT * FROM access_operations WHERE id=$1 AND account_id=$2;
 -- name: LatestAccessOperation :one
-SELECT * FROM access_operations WHERE account_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1;
+SELECT * FROM access_operations WHERE account_id=$1 AND status<>'skipped' ORDER BY sequence DESC LIMIT 1;
 -- name: LatestAppliedAccess :one
-SELECT * FROM access_operations WHERE account_id=$1 AND status='applied' ORDER BY updated_at DESC,id DESC LIMIT 1;
+SELECT * FROM access_operations WHERE account_id=$1 AND status='applied' ORDER BY updated_at DESC,sequence DESC LIMIT 1;
 -- name: UnresolvedAccessExists :one
 SELECT EXISTS(SELECT 1 FROM access_operations WHERE account_id=$1 AND status IN ('pending','provisioning','needs_review'));
 -- name: UnresolvedTrialExists :one
 SELECT EXISTS(SELECT 1 FROM trial_operations WHERE account_id=$1 AND status IN ('pending','provisioning','needs_review'));
 -- name: InsertAccessOperation :exec
-INSERT INTO access_operations(id,account_id,operator_account_id,kind,status,reason,plan_id,plan_revision,period_days,desired,target,completed_steps,created_at,updated_at)
-VALUES($1,$2,$3,$4,'pending',$5,$6,$7,$8,$9,$10,'["prepared"]'::jsonb,$11,$11);
+INSERT INTO access_operations(id,account_id,operator_account_id,execution_actor_id,kind,status,reason,plan_id,plan_revision,period_days,desired,target,completed_steps,monthly_period,created_at,updated_at)
+VALUES($1,$2,$3,$3,$4,'pending',$5,$6,$7,$8,$9,$10,'["prepared"]'::jsonb,sqlc.narg(monthly_period)::text,$11,$11);
 -- name: LeaseAccessOperation :one
 UPDATE access_operations SET status='provisioning',attempts=attempts+1,lease_hash=$2,lease_expires_at=clock_timestamp()+interval '3 minutes',updated_at=$3
 WHERE id=$1 AND status IN ('pending','provisioning') RETURNING *;
@@ -32,4 +32,4 @@ UPDATE access_operations SET status='pending',lease_hash=NULL,lease_expires_at=N
 UPDATE access_operations SET status='applied',lease_hash=NULL,lease_expires_at=NULL,review_reason=NULL,completed_steps=completed_steps||'["readback_confirmed"]'::jsonb,updated_at=$3
 WHERE id=$1 AND lease_hash=$2 AND status='provisioning' AND lease_expires_at>clock_timestamp();
 -- name: RequeueAccess :execrows
-UPDATE access_operations SET status='pending',attempts=0,reset_acknowledged=$2,review_reason=NULL,updated_at=$3 WHERE id=$1 AND status='needs_review';
+UPDATE access_operations SET status='pending',attempts=0,reset_acknowledged=$2,execution_actor_id=sqlc.arg(execution_actor_id)::uuid,review_reason=NULL,updated_at=$3 WHERE id=$1 AND status='needs_review';

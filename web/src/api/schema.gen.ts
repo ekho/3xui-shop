@@ -1031,13 +1031,15 @@ export interface components {
             unlimited_devices?: boolean;
             connection_available?: boolean;
             /** @enum {string} */
-            access_profile?: "regular" | "euru" | "unlimited" | "banned" | "unknown";
+            access_profile: "regular" | "euru" | "unlimited" | "unknown";
+            /** @description VPN ban is independent of the access profile and account restrictions. */
+            vpn_banned: boolean;
             /** @enum {string|null} */
             panel_error?: "unavailable" | "identity_mismatch" | "unknown_membership" | "invalid_traffic" | null;
             /** Format: uuid */
             access_operation_id: string | null;
             /** @enum {string|null} */
-            access_operation_status: "pending" | "provisioning" | "applied" | "needs_review" | null;
+            access_operation_status: "pending" | "provisioning" | "applied" | "needs_review" | "skipped" | null;
         };
         SubscriptionKey: {
             /** Format: uri */
@@ -1370,6 +1372,9 @@ export interface components {
             support_message_id: string | null;
             /** Format: uuid */
             access_operation_id: string | null;
+            /** @description True for a system-originated monthly reset; null for other audit events. */
+            system_actor: boolean | null;
+            monthly_period: string | null;
         };
         OperatorClientCard: {
             client: components["schemas"]["OperatorClient"];
@@ -1548,10 +1553,10 @@ export interface components {
             expected_revision: number;
             reason: string;
         };
-        /** @description Exactly matching fields for kind: compensate days; assign_plan plan_id/revision/period_days; starter_trial and reset_traffic no extra fields. Server rejects mismatches and trims reason. */
+        /** @description Exactly matching fields for kind: compensate days; assign_plan plan_id/revision/period_days; set_profile profile; set_vpn_ban vpn_banned; starter_trial and reset_traffic no extra fields. monthly_reset is server-only. Server rejects mismatches and trims reason. */
         AccessOperationInput: {
             /** @enum {string} */
-            kind: "compensate" | "assign_plan" | "starter_trial" | "reset_traffic";
+            kind: "compensate" | "assign_plan" | "starter_trial" | "reset_traffic" | "set_profile" | "set_vpn_ban";
             reason: string;
             days?: number;
             /** Format: uuid */
@@ -1560,6 +1565,9 @@ export interface components {
             revision?: number;
             /** Format: int64 */
             period_days?: number;
+            /** @enum {string} */
+            profile?: "regular" | "euru" | "unlimited";
+            vpn_banned?: boolean;
         };
         AccessReconcileInput: {
             reason: string;
@@ -1582,6 +1590,7 @@ export interface components {
             /** Format: int64 */
             period_days: number | null;
             reset_traffic: boolean;
+            vpn_banned: boolean;
         };
         AccessOperation: {
             /** Format: uuid */
@@ -1589,9 +1598,9 @@ export interface components {
             /** Format: uuid */
             account_id: string;
             /** @enum {string} */
-            kind: "compensate" | "assign_plan" | "starter_trial" | "reset_traffic";
+            kind: "compensate" | "assign_plan" | "starter_trial" | "reset_traffic" | "set_profile" | "set_vpn_ban" | "monthly_reset";
             /** @enum {string} */
-            status: "pending" | "provisioning" | "applied" | "needs_review";
+            status: "pending" | "provisioning" | "applied" | "needs_review" | "skipped";
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -1600,7 +1609,7 @@ export interface components {
             /** Format: uuid */
             operator_account_id: string | null;
             desired: components["schemas"]["AccessDesired"];
-            completed_steps: ("prepared" | "panel_updated" | "membership_updated" | "reset_started" | "reset_confirmed" | "ban_reapplied" | "readback_confirmed")[];
+            completed_steps: ("prepared" | "panel_updated" | "membership_updated" | "reset_started" | "reset_confirmed" | "ban_reapplied" | "readback_confirmed" | "state_unchanged" | "intent_saved" | "eligibility_changed" | "period_elapsed_unserved")[];
             review_reason: string | null;
         };
     };

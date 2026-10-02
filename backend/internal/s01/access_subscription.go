@@ -36,7 +36,7 @@ func accessSubscriptionBase(op store.AccessOperation, banned bool, now time.Time
 	out.TrafficLimitBytes = desired.TrafficLimitBytes
 	out.ExpiresAt = desired.ExpiresAt
 	profile := wire.SubscriptionAccessProfile(desired.Profile)
-	out.AccessProfile = &profile
+	out.AccessProfile = profile
 	unlimitedTraffic := desired.TrafficLimitBytes == 0
 	unlimitedDevices := desired.Devices == 0
 	out.UnlimitedTraffic = &unlimitedTraffic

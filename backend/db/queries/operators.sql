@@ -42,8 +42,8 @@ WHERE account_id=$1
 ORDER BY created_at DESC,id DESC LIMIT 51;
 
 -- name: AddTelegramAccount :exec
-INSERT INTO accounts(id,kind,display_name,telegram_id,locale,vpn_id,sub_id,panel_key)
-VALUES($1,'telegram',$2,$3,$4,$5,$6,$7);
+INSERT INTO accounts(id,kind,display_name,telegram_id,locale,vpn_id,sub_id,panel_key,access_profile)
+VALUES($1,'telegram',$2,$3,$4,$5,$6,$7,'regular');
 
 -- name: AccountByTelegramID :one
 SELECT * FROM accounts WHERE telegram_id=$1;

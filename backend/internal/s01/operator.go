@@ -118,6 +118,12 @@ func operatorAudit(e store.AuditEvent) wire.OperatorAuditEvent {
 	if e.Reason.Valid {
 		out.Reason = &e.Reason.String
 	}
+	if e.SystemActor.Valid {
+		out.SystemActor = &e.SystemActor.Bool
+	}
+	if e.MonthlyPeriod.Valid {
+		out.MonthlyPeriod = &e.MonthlyPeriod.String
+	}
 	return out
 }
 func operatorTrialRows(rows []store.OperatorTrialPageRow) ([]wire.OperatorTrialRequest, bool) {
@@ -331,6 +337,14 @@ func (s *Service) OperatorClient(ctx context.Context, actor, target uuid.UUID) (
 	}
 	if err != nil {
 		return out, err
+	}
+	out.Subscription.VpnBanned = a.VpnBanned
+	if out.Subscription.AccessProfile == "" {
+		if a.AccessProfile.Valid {
+			out.Subscription.AccessProfile = wire.SubscriptionAccessProfile(a.AccessProfile.String)
+		} else {
+			out.Subscription.AccessProfile = "unknown"
+		}
 	}
 	return out, nil
 }

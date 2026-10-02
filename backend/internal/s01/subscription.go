@@ -71,7 +71,23 @@ func (s *Service) readProfile(ctx context.Context, op store.TrialOperation) (pro
 	if out.client == nil || out.client.PanelKey != out.target.PanelKey || out.client.VPNID != out.target.VPNID || out.client.SubID != out.target.SubID {
 		return out, errPanelIdentity
 	}
-	out.profile, e = p.AccessProfile(ctx, out.client.InboundIDs)
+	if out.target.Profile != "" {
+		expected, err := p.ProfileInboundIDs(ctx, out.target.Profile)
+		if err != nil {
+			return out, err
+		}
+		attach, detach, err := p.MembershipDiff(ctx, out.client.InboundIDs, expected)
+		if err != nil {
+			return out, err
+		}
+		if len(attach) == 0 && len(detach) == 0 {
+			out.profile = out.target.Profile
+		} else {
+			out.profile, e = p.AccessProfile(ctx, out.client.InboundIDs)
+		}
+	} else {
+		out.profile, e = p.AccessProfile(ctx, out.client.InboundIDs)
+	}
 	if e != nil {
 		return out, e
 	}
@@ -119,7 +135,7 @@ func cachedProfile(out *wire.Subscription, op store.TrialOperation, banned bool,
 	}
 	profileLimits(out, *snapshot.ExpiryTimeMS, *snapshot.LimitIP, *snapshot.TrafficLimitBytes)
 	profile := wire.SubscriptionAccessProfile(snapshot.Profile)
-	out.AccessProfile = &profile
+	out.AccessProfile = profile
 	profileStatus(out, banned, *snapshot.Enabled, now)
 	return true
 }
@@ -171,7 +187,7 @@ func panelError(err error) *wire.SubscriptionPanelError {
 	return &value
 }
 
-func (s *Service) Subscription(ctx context.Context, account uuid.UUID) (wire.Subscription, error) {
+func (s *Service) Subscription(ctx context.Context, account uuid.UUID) (out wire.Subscription, retErr error) {
 	a, err := store.New(s.pool).AccountByID(ctx, account)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return wire.Subscription{}, failure(404, "INVALID_INPUT")
@@ -182,11 +198,34 @@ func (s *Service) Subscription(ctx context.Context, account uuid.UUID) (wire.Sub
 	if a.Restricted {
 		return wire.Subscription{}, failure(403, "ACCOUNT_RESTRICTED")
 	}
+	defer func() {
+		if retErr != nil {
+			return
+		}
+		out.VpnBanned = a.VpnBanned
+		if out.AccessProfile == "" {
+			if a.AccessProfile.Valid {
+				out.AccessProfile = wire.SubscriptionAccessProfile(a.AccessProfile.String)
+			} else {
+				out.AccessProfile = "unknown"
+			}
+		}
+	}()
 	latest, found, err := s.latestAccess(ctx, account)
 	if err != nil {
 		return wire.Subscription{}, err
 	}
 	if found && latest.Status == "applied" {
+		if !a.AssignedPanelID.Valid && (latest.Kind == "set_profile" || latest.Kind == "set_vpn_ban") {
+			state := wire.SubscriptionAccessOperationStatus("applied")
+			return wire.Subscription{Status: "none", DataStale: true, AccessOperationId: &latest.ID, AccessOperationStatus: &state}, nil
+		}
+		if a.AssignedPanelID.Valid && (latest.Kind == "set_profile" || latest.Kind == "set_vpn_ban") {
+			var intent accessTarget
+			if json.Unmarshal(latest.Target, &intent) == nil && intent.NoClientIntent {
+				return s.trialSubscription(ctx, account)
+			}
+		}
 		return s.accessSubscription(ctx, latest, a.VpnBanned)
 	}
 	if found {
@@ -270,7 +309,7 @@ func (s *Service) trialSubscription(ctx context.Context, account uuid.UUID) (wir
 			out.Status = "needs_review"
 			if errors.Is(e, errPanelMembership) {
 				profile := wire.SubscriptionAccessProfileUnknown
-				out.AccessProfile = &profile
+				out.AccessProfile = profile
 			}
 		}
 		available := false

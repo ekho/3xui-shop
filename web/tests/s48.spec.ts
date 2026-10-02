@@ -6,7 +6,7 @@ const otherId='20000000-0000-4000-8000-000000000003';
 const client={account_id:clientId,kind:'telegram',display_name:'Exact Person',email:null,telegram_id:'9223372036854775807',locale:'ru',created_at:null,restricted:false,vpn_banned:false,had_subscription:false};
 const snapshot={source_legacy_user_id:'9223372036854775807',source_tg_id:'9223372036854775807',status:'rejected',requested_at:null,decided_at:null,decided_by:null};
 const event={source_id:'9223372036854775806',target_tg_id:'9223372036854775807',created_at:'2026-10-02T08:00:00Z',action:'approval.reject',actor_type:null,actor_id:null,actor_name:null,source:null};
-const card=(account=client)=>({client:account,subscription:{status:'none',expires_at:null,devices:0,traffic_limit_bytes:0,traffic_used_bytes:0,observed_at:null,data_stale:false},server:null,support:null,trial_requests:[],trial_has_more:false,audit_events:[],audit_has_more:false,legacy_approval:snapshot,legacy_events:[event],legacy_has_more:true});
+const card=(account=client)=>({client:account,subscription:{status:'none',expires_at:null,devices:0,traffic_limit_bytes:0,traffic_used_bytes:0,observed_at:null,data_stale:false,access_profile:'unknown',vpn_banned:account.vpn_banned,access_operation_id:null,access_operation_status:null},server:null,support:null,trial_requests:[],trial_has_more:false,audit_events:[],audit_has_more:false,legacy_approval:snapshot,legacy_events:[event],legacy_has_more:true});
 
 async function routes(page:Page,extra?:(route:Route,path:string)=>Promise<boolean>){
  await page.route('**/api/v1/**',async route=>{const path=new URL(route.request().url()).pathname;

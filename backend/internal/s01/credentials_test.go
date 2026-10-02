@@ -321,7 +321,9 @@ func TestAccountSecurityMigration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = q.AddAccount(ctx, store.AddAccountParams{ID: id, EmailKey: "migration@example.test", Locale: "en", PasswordHash: hash, VerifiedAt: stamp(now), VpnID: uuid.New(), SubID: "0123456789abcdef", PanelKey: "acct_" + id.String(), TermsVersion: "1", PrivacyVersion: "1"}); err != nil {
+	// The fixture is intentionally at migration 5; current generated inserts use later columns.
+	if _, err = e.Pool.Exec(ctx, `INSERT INTO accounts(id,email_key,locale,password_hash,verified_at,vpn_id,sub_id,panel_key,terms_version,privacy_version)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, id, "migration@example.test", "en", hash, now, uuid.New(), "0123456789abcdef", "acct_"+id.String(), "1", "1"); err != nil {
 		t.Fatal(err)
 	}
 	if err = q.AddSession(ctx, store.AddSessionParams{IDHash: digest(raw), AccountID: id, CsrfToken: opaque(), CreatedAt: stamp(now), LastSeen: stamp(now), AbsoluteExpiresAt: stamp(now.Add(30 * 24 * time.Hour))}); err != nil {

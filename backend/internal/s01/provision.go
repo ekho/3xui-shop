@@ -161,8 +161,18 @@ func (s *Service) Provision(parent context.Context, id uuid.UUID) error {
 			return fail(true)
 		}
 	} else {
-		ids, err := p.RegularInboundIDs(ctx)
+		profile := a.AccessProfile.String
+		if profile == "" && a.Kind == "web" {
+			profile = "regular"
+		}
+		if profile != "regular" && profile != "euru" {
+			return fail(true)
+		}
+		ids, err := p.ProfileInboundIDs(ctx, profile)
 		if err != nil {
+			if errors.Is(err, errPanelMembership) {
+				return fail(true)
+			}
 			return fail(false)
 		}
 		if len(ids) == 0 {
@@ -172,7 +182,7 @@ func (s *Service) Provision(parent context.Context, id uuid.UUID) error {
 		if expiry <= op.FirstStartedAt.Time.UnixMilli() {
 			return fail(true)
 		}
-		target = ProvisionTarget{OperationID: op.ID, PanelID: op.PanelID, PanelKey: a.PanelKey, VPNID: a.VpnID, SubID: a.SubID, InboundIDs: ids, ExpiryTimeMS: expiry, DeviceCount: op.Devices, TrafficLimitBytes: op.TrafficGb * 1024 * 1024 * 1024}
+		target = ProvisionTarget{OperationID: op.ID, PanelID: op.PanelID, PanelKey: a.PanelKey, VPNID: a.VpnID, SubID: a.SubID, InboundIDs: ids, ExpiryTimeMS: expiry, DeviceCount: op.Devices, TrafficLimitBytes: op.TrafficGb * 1024 * 1024 * 1024, Profile: profile, Banned: a.VpnBanned}
 		data, err := json.Marshal(target)
 		if err != nil || store.New(s.pool).SaveProvisionTarget(ctx, store.SaveProvisionTargetParams{ID: id, Target: data}) != nil {
 			return fail(false)
@@ -194,7 +204,7 @@ func (s *Service) Provision(parent context.Context, id uuid.UUID) error {
 		}
 		// Recheck account restrictions immediately before each external write.
 		current, err := store.New(s.pool).AccountByID(ctx, a.ID)
-		if err != nil || current.Restricted {
+		if err != nil || current.Restricted || current.VpnBanned != target.Banned || target.Profile != "" && (!current.AccessProfile.Valid || current.AccessProfile.String != target.Profile) {
 			return false
 		}
 		n, err := store.New(s.pool).MarkPanelWrite(ctx, store.MarkPanelWriteParams{ID: id, LeaseHash: lease})
@@ -217,12 +227,26 @@ func (s *Service) Provision(parent context.Context, id uuid.UUID) error {
 			return fail(true)
 		}
 	}
+	if target.Banned && v.Enabled {
+		if !write() {
+			return fail(true)
+		}
+		_ = p.DisableAccess(ctx, target.PanelKey)
+		v, e = p.GetClient(ctx, target.PanelKey)
+		if e != nil || v == nil || v.Enabled {
+			return fail(true)
+		}
+	}
 	if !panelMatches(v, target, s.now()) {
 		return fail(true)
 	}
 	if missing := missingInbounds(v, target); len(missing) > 0 {
 		// Existing target IDs must still be enabled regular inbounds before attaching.
-		regular, err := p.RegularInboundIDs(ctx)
+		profile := target.Profile
+		if profile == "" {
+			profile = "regular"
+		}
+		regular, err := p.ProfileInboundIDs(ctx, profile)
 		if err != nil {
 			return fail(true)
 		}

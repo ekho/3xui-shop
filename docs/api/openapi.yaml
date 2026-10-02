@@ -7429,9 +7429,12 @@
               "regular",
               "euru",
               "unlimited",
-              "banned",
               "unknown"
             ]
+          },
+          "vpn_banned": {
+            "type": "boolean",
+            "description": "VPN ban is independent of the access profile and account restrictions."
           },
           "panel_error": {
             "type": "string",
@@ -7456,6 +7459,7 @@
               "provisioning",
               "applied",
               "needs_review",
+              "skipped",
               null
             ],
             "nullable": true
@@ -7469,6 +7473,8 @@
           "traffic_used_bytes",
           "observed_at",
           "data_stale",
+          "access_profile",
+          "vpn_banned",
           "access_operation_id",
           "access_operation_status"
         ]
@@ -8788,6 +8794,16 @@
             "type": "string",
             "format": "uuid",
             "nullable": true
+          },
+          "system_actor": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "True for a system-originated monthly reset; null for other audit events."
+          },
+          "monthly_period": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$",
+            "nullable": true
           }
         },
         "required": [
@@ -8800,7 +8816,9 @@
           "operator_account_id",
           "reason",
           "support_message_id",
-          "access_operation_id"
+          "access_operation_id",
+          "system_actor",
+          "monthly_period"
         ]
       },
       "OperatorClientCard": {
@@ -9578,7 +9596,9 @@
               "compensate",
               "assign_plan",
               "starter_trial",
-              "reset_traffic"
+              "reset_traffic",
+              "set_profile",
+              "set_vpn_ban"
             ]
           },
           "reason": {
@@ -9605,13 +9625,20 @@
             "format": "int64",
             "minimum": 1,
             "maximum": 106751
+          },
+          "profile": {
+            "type": "string",
+            "enum": ["regular", "euru", "unlimited"]
+          },
+          "vpn_banned": {
+            "type": "boolean"
           }
         },
         "required": [
           "kind",
           "reason"
         ],
-        "description": "Exactly matching fields for kind: compensate days; assign_plan plan_id/revision/period_days; starter_trial and reset_traffic no extra fields. Server rejects mismatches and trims reason."
+        "description": "Exactly matching fields for kind: compensate days; assign_plan plan_id/revision/period_days; set_profile profile; set_vpn_ban vpn_banned; starter_trial and reset_traffic no extra fields. monthly_reset is server-only. Server rejects mismatches and trims reason."
       },
       "AccessReconcileInput": {
         "type": "object",
@@ -9676,6 +9703,9 @@
           },
           "reset_traffic": {
             "type": "boolean"
+          },
+          "vpn_banned": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -9686,7 +9716,8 @@
           "plan_id",
           "revision",
           "period_days",
-          "reset_traffic"
+          "reset_traffic",
+          "vpn_banned"
         ]
       },
       "AccessOperation": {
@@ -9707,7 +9738,10 @@
               "compensate",
               "assign_plan",
               "starter_trial",
-              "reset_traffic"
+              "reset_traffic",
+              "set_profile",
+              "set_vpn_ban",
+              "monthly_reset"
             ]
           },
           "status": {
@@ -9716,7 +9750,8 @@
               "pending",
               "provisioning",
               "applied",
-              "needs_review"
+              "needs_review",
+              "skipped"
             ]
           },
           "created_at": {
@@ -9751,7 +9786,11 @@
                 "reset_started",
                 "reset_confirmed",
                 "ban_reapplied",
-                "readback_confirmed"
+                "readback_confirmed",
+                "state_unchanged",
+                "intent_saved",
+                "eligibility_changed",
+                "period_elapsed_unserved"
               ]
             }
           },

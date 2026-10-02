@@ -31,6 +31,9 @@ type AccessOperation struct {
 	LeaseExpiresAt    pgtype.Timestamptz
 	CreatedAt         pgtype.Timestamptz
 	UpdatedAt         pgtype.Timestamptz
+	Sequence          int64
+	ExecutionActorID  *uuid.UUID
+	MonthlyPeriod     pgtype.Text
 }
 
 type Account struct {
@@ -56,6 +59,7 @@ type Account struct {
 	CreatedAt                    pgtype.Timestamptz
 	RestrictionChangedAt         pgtype.Timestamptz
 	RestrictionOperatorAccountID *uuid.UUID
+	AccessProfile                pgtype.Text
 }
 
 type AuditEvent struct {
@@ -70,6 +74,8 @@ type AuditEvent struct {
 	OperatorAccountID *uuid.UUID
 	SupportMessageID  *uuid.UUID
 	AccessOperationID *uuid.UUID
+	SystemActor       pgtype.Bool
+	MonthlyPeriod     pgtype.Text
 }
 
 type CataloguePlan struct {
@@ -161,6 +167,17 @@ type MailDelivery struct {
 	DeliveredAt           pgtype.Timestamptz
 	Kind                  string
 	CredentialChallengeID *uuid.UUID
+}
+
+type MonthlyResetPeriod struct {
+	AccountID   uuid.UUID
+	LocalPeriod string
+	Timezone    string
+	Status      string
+	OperationID *uuid.UUID
+	DeferredAt  pgtype.Timestamptz
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
 }
 
 type OperatorAccount struct {

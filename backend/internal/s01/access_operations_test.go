@@ -280,7 +280,7 @@ func TestAccessAssignmentAndResetPreserveIdentityAndBan(t *testing.T) {
 		t.Fatal("reset lost ban")
 	}
 	view, err := s.Subscription(ctx, target)
-	if err != nil || view.Status != "banned" || view.AccessProfile == nil || *view.AccessProfile != "euru" {
+	if err != nil || view.Status != "banned" || view.AccessProfile != "euru" {
 		t.Fatalf("subscription after assign/reset: %v", err)
 	}
 }

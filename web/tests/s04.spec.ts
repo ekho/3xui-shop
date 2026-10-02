@@ -4,7 +4,7 @@ import type {components} from '../src/api/schema.gen';
 type Subscription=components['schemas']['Subscription'];
 const ownURL='https://subscriptions.example.test/sub/private-fixture';
 const account={account:{account_id:'b496e45c-4e80-47d6-a868-e3c1da4e4f35',email:'client@example.test',email_verified:true,locale:'en',telegram_linked:false},csrf_token:'x'.repeat(43),capabilities:{trial_available:true}};
-const active:Subscription={status:'active',devices:1,traffic_limit_bytes:1024,traffic_used_bytes:0,observed_at:'2026-10-02T10:00:00Z',data_stale:false,expires_at:'2026-10-05T10:00:00Z',connection_available:true,access_operation_id:null,access_operation_status:null};
+const active:Subscription={status:'active',devices:1,traffic_limit_bytes:1024,traffic_used_bytes:0,observed_at:'2026-10-02T10:00:00Z',data_stale:false,expires_at:'2026-10-05T10:00:00Z',connection_available:true,access_profile:'regular',vpn_banned:false,access_operation_id:null,access_operation_status:null};
 
 async function mock(page:Page,getSub:()=>Subscription=()=>active,key:()=>Promise<string>|string=()=>ownURL){
  await page.route('**/api/v1/**',async route=>{

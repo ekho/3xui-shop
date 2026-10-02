@@ -165,7 +165,7 @@ func TestProfileMembership(t *testing.T) {
 	p.client["limitIp"] = int64(8)
 	p.mu.Unlock()
 	v, err := s.Subscription(context.Background(), account)
-	if err != nil || v.AccessProfile == nil || string(*v.AccessProfile) != "unlimited" || v.ExpiresAt != nil || v.UnlimitedTraffic == nil || *v.UnlimitedTraffic || v.UnlimitedDevices == nil || *v.UnlimitedDevices || v.Devices != 7 {
+	if err != nil || string(v.AccessProfile) != "unlimited" || v.ExpiresAt != nil || v.UnlimitedTraffic == nil || *v.UnlimitedTraffic || v.UnlimitedDevices == nil || *v.UnlimitedDevices || v.Devices != 7 {
 		t.Fatal("inherited profile with finite limits", err)
 	}
 	p.mu.Lock()
@@ -272,14 +272,14 @@ func TestProfileCache(t *testing.T) {
 	p.client["totalGB"] = int64(100 * 1024 * 1024 * 1024)
 	p.mu.Unlock()
 	v, err = s.Subscription(ctx, account)
-	if err != nil || v.AccessProfile == nil || string(*v.AccessProfile) != "unlimited" || v.ExpiresAt != nil || v.Devices != 7 {
+	if err != nil || string(v.AccessProfile) != "unlimited" || v.ExpiresAt != nil || v.Devices != 7 {
 		t.Fatal("native profile change", err)
 	}
 	p.mu.Lock()
 	p.fail = true
 	p.mu.Unlock()
 	stale, err := s.Subscription(ctx, account)
-	if err != nil || !stale.DataStale || stale.ObservedAt == nil || !stale.ObservedAt.Equal(*v.ObservedAt) || stale.TrafficUploadBytes == nil || *stale.TrafficUploadBytes != 100 || stale.TrafficDownloadBytes == nil || *stale.TrafficDownloadBytes != 200 || stale.AccessProfile == nil || *stale.AccessProfile != *v.AccessProfile || stale.Devices != 7 || stale.TrafficLimitBytes != v.TrafficLimitBytes || stale.ExpiresAt != nil || stale.TrafficRemainingBytes == nil || *stale.TrafficRemainingBytes != v.TrafficLimitBytes-300 {
+	if err != nil || !stale.DataStale || stale.ObservedAt == nil || !stale.ObservedAt.Equal(*v.ObservedAt) || stale.TrafficUploadBytes == nil || *stale.TrafficUploadBytes != 100 || stale.TrafficDownloadBytes == nil || *stale.TrafficDownloadBytes != 200 || stale.AccessProfile != v.AccessProfile || stale.Devices != 7 || stale.TrafficLimitBytes != v.TrafficLimitBytes || stale.ExpiresAt != nil || stale.TrafficRemainingBytes == nil || *stale.TrafficRemainingBytes != v.TrafficLimitBytes-300 {
 		t.Fatal("cache outage", err)
 	}
 	if _, err := s.SubscriptionKey(ctx, account); status(err) != 409 {
@@ -346,8 +346,8 @@ func TestProfileOlderReadUsesCurrentObservation(t *testing.T) {
 		if v.TrafficUsedBytes != nil {
 			r.used = *v.TrafficUsedBytes
 		}
-		if v.AccessProfile != nil {
-			r.profile = string(*v.AccessProfile)
+		if v.AccessProfile != "" {
+			r.profile = string(v.AccessProfile)
 		}
 		if v.ObservedAt != nil {
 			r.observed = *v.ObservedAt

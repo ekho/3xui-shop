@@ -57,7 +57,7 @@ func (q *Queries) AccessNeedsReview(ctx context.Context, arg AccessNeedsReviewPa
 }
 
 const accessOperationByID = `-- name: AccessOperationByID :one
-SELECT id, account_id, operator_account_id, kind, status, reason, plan_id, plan_revision, period_days, desired, target, completed_steps, review_reason, write_started, reset_started, reset_acknowledged, attempts, lease_hash, lease_expires_at, created_at, updated_at FROM access_operations WHERE id=$1
+SELECT id, account_id, operator_account_id, kind, status, reason, plan_id, plan_revision, period_days, desired, target, completed_steps, review_reason, write_started, reset_started, reset_acknowledged, attempts, lease_hash, lease_expires_at, created_at, updated_at, sequence, execution_actor_id, monthly_period FROM access_operations WHERE id=$1
 `
 
 func (q *Queries) AccessOperationByID(ctx context.Context, id uuid.UUID) (AccessOperation, error) {
@@ -85,12 +85,15 @@ func (q *Queries) AccessOperationByID(ctx context.Context, id uuid.UUID) (Access
 		&i.LeaseExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Sequence,
+		&i.ExecutionActorID,
+		&i.MonthlyPeriod,
 	)
 	return i, err
 }
 
 const accessOperationForAccount = `-- name: AccessOperationForAccount :one
-SELECT id, account_id, operator_account_id, kind, status, reason, plan_id, plan_revision, period_days, desired, target, completed_steps, review_reason, write_started, reset_started, reset_acknowledged, attempts, lease_hash, lease_expires_at, created_at, updated_at FROM access_operations WHERE id=$1 AND account_id=$2
+SELECT id, account_id, operator_account_id, kind, status, reason, plan_id, plan_revision, period_days, desired, target, completed_steps, review_reason, write_started, reset_started, reset_acknowledged, attempts, lease_hash, lease_expires_at, created_at, updated_at, sequence, execution_actor_id, monthly_period FROM access_operations WHERE id=$1 AND account_id=$2
 `
 
 type AccessOperationForAccountParams struct {
@@ -123,6 +126,9 @@ func (q *Queries) AccessOperationForAccount(ctx context.Context, arg AccessOpera
 		&i.LeaseExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Sequence,
+		&i.ExecutionActorID,
+		&i.MonthlyPeriod,
 	)
 	return i, err
 }
@@ -171,8 +177,8 @@ func (q *Queries) AppendAccessStep(ctx context.Context, arg AppendAccessStepPara
 }
 
 const insertAccessOperation = `-- name: InsertAccessOperation :exec
-INSERT INTO access_operations(id,account_id,operator_account_id,kind,status,reason,plan_id,plan_revision,period_days,desired,target,completed_steps,created_at,updated_at)
-VALUES($1,$2,$3,$4,'pending',$5,$6,$7,$8,$9,$10,'["prepared"]'::jsonb,$11,$11)
+INSERT INTO access_operations(id,account_id,operator_account_id,execution_actor_id,kind,status,reason,plan_id,plan_revision,period_days,desired,target,completed_steps,monthly_period,created_at,updated_at)
+VALUES($1,$2,$3,$3,$4,'pending',$5,$6,$7,$8,$9,$10,'["prepared"]'::jsonb,$12::text,$11,$11)
 `
 
 type InsertAccessOperationParams struct {
@@ -187,6 +193,7 @@ type InsertAccessOperationParams struct {
 	Desired           []byte
 	Target            []byte
 	CreatedAt         pgtype.Timestamptz
+	MonthlyPeriod     pgtype.Text
 }
 
 func (q *Queries) InsertAccessOperation(ctx context.Context, arg InsertAccessOperationParams) error {
@@ -202,12 +209,13 @@ func (q *Queries) InsertAccessOperation(ctx context.Context, arg InsertAccessOpe
 		arg.Desired,
 		arg.Target,
 		arg.CreatedAt,
+		arg.MonthlyPeriod,
 	)
 	return err
 }
 
 const latestAccessOperation = `-- name: LatestAccessOperation :one
-SELECT id, account_id, operator_account_id, kind, status, reason, plan_id, plan_revision, period_days, desired, target, completed_steps, review_reason, write_started, reset_started, reset_acknowledged, attempts, lease_hash, lease_expires_at, created_at, updated_at FROM access_operations WHERE account_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1
+SELECT id, account_id, operator_account_id, kind, status, reason, plan_id, plan_revision, period_days, desired, target, completed_steps, review_reason, write_started, reset_started, reset_acknowledged, attempts, lease_hash, lease_expires_at, created_at, updated_at, sequence, execution_actor_id, monthly_period FROM access_operations WHERE account_id=$1 AND status<>'skipped' ORDER BY sequence DESC LIMIT 1
 `
 
 func (q *Queries) LatestAccessOperation(ctx context.Context, accountID uuid.UUID) (AccessOperation, error) {
@@ -235,12 +243,15 @@ func (q *Queries) LatestAccessOperation(ctx context.Context, accountID uuid.UUID
 		&i.LeaseExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Sequence,
+		&i.ExecutionActorID,
+		&i.MonthlyPeriod,
 	)
 	return i, err
 }
 
 const latestAppliedAccess = `-- name: LatestAppliedAccess :one
-SELECT id, account_id, operator_account_id, kind, status, reason, plan_id, plan_revision, period_days, desired, target, completed_steps, review_reason, write_started, reset_started, reset_acknowledged, attempts, lease_hash, lease_expires_at, created_at, updated_at FROM access_operations WHERE account_id=$1 AND status='applied' ORDER BY updated_at DESC,id DESC LIMIT 1
+SELECT id, account_id, operator_account_id, kind, status, reason, plan_id, plan_revision, period_days, desired, target, completed_steps, review_reason, write_started, reset_started, reset_acknowledged, attempts, lease_hash, lease_expires_at, created_at, updated_at, sequence, execution_actor_id, monthly_period FROM access_operations WHERE account_id=$1 AND status='applied' ORDER BY updated_at DESC,sequence DESC LIMIT 1
 `
 
 func (q *Queries) LatestAppliedAccess(ctx context.Context, accountID uuid.UUID) (AccessOperation, error) {
@@ -268,13 +279,16 @@ func (q *Queries) LatestAppliedAccess(ctx context.Context, accountID uuid.UUID) 
 		&i.LeaseExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Sequence,
+		&i.ExecutionActorID,
+		&i.MonthlyPeriod,
 	)
 	return i, err
 }
 
 const leaseAccessOperation = `-- name: LeaseAccessOperation :one
 UPDATE access_operations SET status='provisioning',attempts=attempts+1,lease_hash=$2,lease_expires_at=clock_timestamp()+interval '3 minutes',updated_at=$3
-WHERE id=$1 AND status IN ('pending','provisioning') RETURNING id, account_id, operator_account_id, kind, status, reason, plan_id, plan_revision, period_days, desired, target, completed_steps, review_reason, write_started, reset_started, reset_acknowledged, attempts, lease_hash, lease_expires_at, created_at, updated_at
+WHERE id=$1 AND status IN ('pending','provisioning') RETURNING id, account_id, operator_account_id, kind, status, reason, plan_id, plan_revision, period_days, desired, target, completed_steps, review_reason, write_started, reset_started, reset_acknowledged, attempts, lease_hash, lease_expires_at, created_at, updated_at, sequence, execution_actor_id, monthly_period
 `
 
 type LeaseAccessOperationParams struct {
@@ -308,6 +322,9 @@ func (q *Queries) LeaseAccessOperation(ctx context.Context, arg LeaseAccessOpera
 		&i.LeaseExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Sequence,
+		&i.ExecutionActorID,
+		&i.MonthlyPeriod,
 	)
 	return i, err
 }
@@ -349,17 +366,23 @@ func (q *Queries) MarkAccessWrite(ctx context.Context, arg MarkAccessWriteParams
 }
 
 const requeueAccess = `-- name: RequeueAccess :execrows
-UPDATE access_operations SET status='pending',attempts=0,reset_acknowledged=$2,review_reason=NULL,updated_at=$3 WHERE id=$1 AND status='needs_review'
+UPDATE access_operations SET status='pending',attempts=0,reset_acknowledged=$2,execution_actor_id=$4::uuid,review_reason=NULL,updated_at=$3 WHERE id=$1 AND status='needs_review'
 `
 
 type RequeueAccessParams struct {
 	ID                uuid.UUID
 	ResetAcknowledged bool
 	UpdatedAt         pgtype.Timestamptz
+	ExecutionActorID  uuid.UUID
 }
 
 func (q *Queries) RequeueAccess(ctx context.Context, arg RequeueAccessParams) (int64, error) {
-	result, err := q.db.Exec(ctx, requeueAccess, arg.ID, arg.ResetAcknowledged, arg.UpdatedAt)
+	result, err := q.db.Exec(ctx, requeueAccess,
+		arg.ID,
+		arg.ResetAcknowledged,
+		arg.UpdatedAt,
+		arg.ExecutionActorID,
+	)
 	if err != nil {
 		return 0, err
 	}

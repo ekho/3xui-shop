@@ -76,6 +76,7 @@ func run() error {
 	workers := river.NewWorkers()
 	river.AddWorker(workers, &s01.ProvisionWorker{Service: svc})
 	river.AddWorker(workers, &s01.AccessWorker{Service: svc})
+	river.AddWorker(workers, &s01.MonthlyResetWorker{Service: svc})
 	queues := map[string]river.QueueConfig{"provision": {MaxWorkers: 2}}
 	if os.Args[1] == "serve" {
 		river.AddWorker(workers, &s01.MailWorker{Service: svc})
@@ -97,6 +98,8 @@ func run() error {
 		<-ctx.Done()
 		return nil
 	}
+	monthlyResult := make(chan error, 1)
+	go func() { monthlyResult <- svc.RunMonthlyResetScheduler(ctx) }()
 	address := os.Getenv("LISTEN_ADDRESS")
 	if address == "" {
 		address = "127.0.0.1:8080"
@@ -104,17 +107,26 @@ func run() error {
 	server := &http.Server{Addr: address, Handler: httpapi.New(svc, cfg), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 	result := make(chan error, 1)
 	go func() { result <- server.ListenAndServe() }()
+	return serveUntilStopped(ctx, server, result, monthlyResult)
+}
+
+func serveUntilStopped(ctx context.Context, server *http.Server, result, monthlyResult <-chan error) error {
+	var err error
 	select {
+	case err = <-monthlyResult:
 	case err = <-result:
 		if errors.Is(err, http.ErrServerClosed) {
-			return nil
+			err = nil
 		}
-		return err
 	case <-ctx.Done():
-		stop, done := context.WithTimeout(context.Background(), 20*time.Second)
-		defer done()
-		return server.Shutdown(stop)
 	}
+	stop, done := context.WithTimeout(context.Background(), 20*time.Second)
+	defer done()
+	shutdownErr := server.Shutdown(stop)
+	if err != nil {
+		return err
+	}
+	return shutdownErr
 }
 
 func runOperatorCommand(action, flag, path string) error {

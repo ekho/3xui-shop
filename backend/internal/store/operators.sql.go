@@ -13,7 +13,7 @@ import (
 )
 
 const accountByTelegramID = `-- name: AccountByTelegramID :one
-SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id FROM accounts WHERE telegram_id=$1
+SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id, access_profile FROM accounts WHERE telegram_id=$1
 `
 
 func (q *Queries) AccountByTelegramID(ctx context.Context, telegramID pgtype.Int8) (Account, error) {
@@ -42,6 +42,7 @@ func (q *Queries) AccountByTelegramID(ctx context.Context, telegramID pgtype.Int
 		&i.CreatedAt,
 		&i.RestrictionChangedAt,
 		&i.RestrictionOperatorAccountID,
+		&i.AccessProfile,
 	)
 	return i, err
 }
@@ -77,8 +78,8 @@ func (q *Queries) AddOperatorAudit(ctx context.Context, arg AddOperatorAuditPara
 }
 
 const addTelegramAccount = `-- name: AddTelegramAccount :exec
-INSERT INTO accounts(id,kind,display_name,telegram_id,locale,vpn_id,sub_id,panel_key)
-VALUES($1,'telegram',$2,$3,$4,$5,$6,$7)
+INSERT INTO accounts(id,kind,display_name,telegram_id,locale,vpn_id,sub_id,panel_key,access_profile)
+VALUES($1,'telegram',$2,$3,$4,$5,$6,$7,'regular')
 `
 
 type AddTelegramAccountParams struct {
@@ -192,7 +193,7 @@ func (q *Queries) GrantOperator(ctx context.Context, arg GrantOperatorParams) (i
 }
 
 const operatorAuditPage = `-- name: OperatorAuditPage :many
-SELECT id, created_at, action, account_id, request_id, operation_id, operator_tg_id, reason, operator_account_id, support_message_id, access_operation_id FROM audit_events
+SELECT id, created_at, action, account_id, request_id, operation_id, operator_tg_id, reason, operator_account_id, support_message_id, access_operation_id, system_actor, monthly_period FROM audit_events
 WHERE account_id=$1
  AND ($2::timestamptz IS NULL OR
       (created_at,id)<($2::timestamptz,$3::uuid))
@@ -226,6 +227,8 @@ func (q *Queries) OperatorAuditPage(ctx context.Context, arg OperatorAuditPagePa
 			&i.OperatorAccountID,
 			&i.SupportMessageID,
 			&i.AccessOperationID,
+			&i.SystemActor,
+			&i.MonthlyPeriod,
 		); err != nil {
 			return nil, err
 		}
@@ -317,7 +320,7 @@ func (q *Queries) RevokeOperator(ctx context.Context, accountID uuid.UUID) (int6
 }
 
 const searchOperatorClients = `-- name: SearchOperatorClients :many
-SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id FROM accounts
+SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id, access_profile FROM accounts
 WHERE $1::text='' OR
  strpos(lower(COALESCE(email_key,'')),lower($1::text))>0 OR
  strpos(lower(COALESCE(display_name,'')),lower($1::text))>0 OR
@@ -364,6 +367,7 @@ func (q *Queries) SearchOperatorClients(ctx context.Context, arg SearchOperatorC
 			&i.CreatedAt,
 			&i.RestrictionChangedAt,
 			&i.RestrictionOperatorAccountID,
+			&i.AccessProfile,
 		); err != nil {
 			return nil, err
 		}

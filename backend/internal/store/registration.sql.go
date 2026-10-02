@@ -13,7 +13,7 @@ import (
 )
 
 const accountByEmail = `-- name: AccountByEmail :one
-SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id FROM accounts WHERE email_key = $1::text
+SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id, access_profile FROM accounts WHERE email_key = $1::text
 `
 
 func (q *Queries) AccountByEmail(ctx context.Context, emailKey string) (Account, error) {
@@ -42,12 +42,13 @@ func (q *Queries) AccountByEmail(ctx context.Context, emailKey string) (Account,
 		&i.CreatedAt,
 		&i.RestrictionChangedAt,
 		&i.RestrictionOperatorAccountID,
+		&i.AccessProfile,
 	)
 	return i, err
 }
 
 const accountByID = `-- name: AccountByID :one
-SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id FROM accounts WHERE id = $1
+SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id, access_profile FROM accounts WHERE id = $1
 `
 
 func (q *Queries) AccountByID(ctx context.Context, id uuid.UUID) (Account, error) {
@@ -76,16 +77,17 @@ func (q *Queries) AccountByID(ctx context.Context, id uuid.UUID) (Account, error
 		&i.CreatedAt,
 		&i.RestrictionChangedAt,
 		&i.RestrictionOperatorAccountID,
+		&i.AccessProfile,
 	)
 	return i, err
 }
 
 const addAccount = `-- name: AddAccount :exec
-INSERT INTO accounts(id,email_key,locale,password_hash,verified_at,vpn_id,sub_id,panel_key,terms_version,privacy_version)
+INSERT INTO accounts(id,email_key,locale,password_hash,verified_at,vpn_id,sub_id,panel_key,terms_version,privacy_version,access_profile)
 VALUES($1::uuid,$2::text,$3::text,
  $4::text,$5::timestamptz,
  $6::uuid,$7::text,$8::text,
- $9::text,$10::text)
+ $9::text,$10::text,'regular')
 `
 
 type AddAccountParams struct {

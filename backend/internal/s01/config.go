@@ -9,12 +9,15 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
+	_ "time/tzdata"
 )
 
 type Config struct {
 	PanelURL, PanelToken, PanelUsername, PanelPassword, SubscriptionBaseURL string
 	PanelDuplicateGuardVerified                                             bool
 	PanelRootCAs                                                            *x509.CertPool
+	AccessResetTimezone                                                     string
 
 	Operators         []int64
 	AdapterToken      string
@@ -65,6 +68,10 @@ func LoadConfig() (Config, error) {
 		c.TrustedProxyCIDRs = strings.Split(value, ",")
 	}
 	c.PanelID = os.Getenv("PANEL_ID")
+	c.AccessResetTimezone = os.Getenv("ACCESS_RESET_TIMEZONE")
+	if c.AccessResetTimezone == "" {
+		c.AccessResetTimezone = "UTC"
+	}
 	c.PanelURL = os.Getenv("PANEL_URL")
 	c.SubscriptionBaseURL = os.Getenv("SUBSCRIPTION_BASE_URL")
 	c.PanelUsername = os.Getenv("PANEL_USERNAME")
@@ -171,6 +178,13 @@ func LoadConfig() (Config, error) {
 	return c, c.Validate()
 }
 func (c Config) Validate() error {
+	zone := c.AccessResetTimezone
+	if zone == "" {
+		zone = "UTC"
+	}
+	if _, err := time.LoadLocation(zone); err != nil {
+		return errors.New("invalid ACCESS_RESET_TIMEZONE")
+	}
 	if c.TrialEnabled || c.PanelURL != "" {
 		for _, raw := range []string{c.PanelURL, c.SubscriptionBaseURL} {
 			u, e := url.Parse(raw)

@@ -47,7 +47,7 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	if err != nil {
 		return unavailable()
 	}
-	if initial.Status == "applied" || initial.Status == "needs_review" {
+	if initial.Status == "applied" || initial.Status == "needs_review" || initial.Status == "skipped" {
 		return nil
 	}
 	c, err := s.pool.Acquire(ctx)
@@ -68,7 +68,7 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	if err != nil {
 		return unavailable()
 	}
-	if current.Status == "applied" || current.Status == "needs_review" {
+	if current.Status == "applied" || current.Status == "needs_review" || current.Status == "skipped" {
 		return nil
 	}
 	lease := digest(uuid.NewString())
@@ -82,6 +82,16 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		stop()
 		other, end := context.WithTimeout(context.Background(), 5*time.Second)
 		defer end()
+		if op.Kind == "monthly_reset" && !op.WriteStarted && !op.ResetStarted && (code == "write_unavailable" || code == "membership_write_unavailable" || code == "reset_write_unavailable") {
+			expired, e := s.monthlyOperationExpired(other, op)
+			if e == nil && expired {
+				return s.finishMonthlyWithoutWrite(other, op, lease, "period_elapsed_unserved")
+			}
+			current, e := store.New(s.pool).AccountByID(other, op.AccountID)
+			if e == nil && (current.VpnBanned || !current.AccessProfile.Valid || current.AccessProfile.String != "unlimited") {
+				return s.finishMonthlyWithoutWrite(other, op, lease, "eligibility_changed")
+			}
+		}
 		if ambiguous || op.WriteStarted || op.ResetStarted || op.Attempts >= 5 || lost.Load() {
 			n, e := store.New(s.pool).AccessNeedsReview(other, store.AccessNeedsReviewParams{ID: id, LeaseHash: lease, ReviewReason: pgtype.Text{String: code, Valid: true}, UpdatedAt: stamp(s.now())})
 			if e != nil || n != 1 {
@@ -99,19 +109,41 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	if json.Unmarshal(op.Target, &t) != nil || t.OperationID != id || t.PanelID != s.cfg.PanelID || t.PanelKey == "" || t.VPNID == uuid.Nil || t.SubID == "" || t.DeviceCount < 0 || t.DeviceCount >= math.MaxInt64 || t.TrafficLimitBytes < 0 || t.ExpiryTimeMS < 0 || len(t.InboundIDs) == 0 {
 		return cleanup("invalid_target", true)
 	}
+	if op.Kind == "monthly_reset" && !op.WriteStarted && !op.ResetStarted {
+		expired, e := s.monthlyOperationExpired(ctx, op)
+		if e != nil {
+			return cleanup("period_guard_unavailable", true)
+		}
+		if expired {
+			stop()
+			return s.finishMonthlyWithoutWrite(ctx, op, lease, "period_elapsed_unserved")
+		}
+	}
+	expectedBan := t.Banned
+	if op.Kind == "set_vpn_ban" {
+		expectedBan = t.PreviousBanned
+	}
 	a, err := store.New(s.pool).AccountByID(ctx, op.AccountID)
-	if err != nil || a.PanelKey != t.PanelKey || a.VpnID != t.VPNID || a.SubID != t.SubID || a.VpnBanned != t.Banned || (a.AssignedPanelID.Valid && a.AssignedPanelID.String != t.PanelID) {
+	if op.Kind == "monthly_reset" && !op.WriteStarted && !op.ResetStarted && err == nil && (a.VpnBanned || !a.AccessProfile.Valid || a.AccessProfile.String != "unlimited") {
+		stop()
+		return s.finishMonthlyWithoutWrite(ctx, op, lease, "eligibility_changed")
+	}
+	if err != nil || a.PanelKey != t.PanelKey || a.VpnID != t.VPNID || a.SubID != t.SubID || a.VpnBanned != expectedBan || (a.AssignedPanelID.Valid && a.AssignedPanelID.String != t.PanelID) {
 		return cleanup("identity_changed", true)
 	}
-	if op.OperatorAccountID == nil {
+	executor := op.ExecutionActorID
+	if executor == nil && op.Kind != "monthly_reset" {
+		executor = op.OperatorAccountID // Operations written before migration 13.
+	}
+	if executor == nil && op.Kind != "monthly_reset" {
 		return cleanup("actor_missing", true)
 	}
-	if err = s.RequireSupportOperator(ctx, *op.OperatorAccountID); err != nil {
+	if executor != nil && s.RequireSupportOperator(ctx, *executor) != nil {
 		return cleanup("actor_revoked", true)
 	}
 	p := NewPanelClient(s.cfg)
 	defer p.Close()
-	if t.Profile == "regular" || t.Profile == "euru" {
+	if t.Profile == "regular" || t.Profile == "euru" || t.Profile == "unlimited" {
 		selected, e := p.ProfileInboundIDs(ctx, t.Profile)
 		if e != nil {
 			return cleanup("profile_changed", true)
@@ -129,7 +161,17 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		if ctx.Err() != nil || lost.Load() {
 			return false
 		}
-		if s.RequireSupportOperator(ctx, *op.OperatorAccountID) != nil {
+		if op.Kind == "monthly_reset" {
+			expired, e := s.monthlyOperationExpired(ctx, op)
+			if e != nil || expired {
+				return false
+			}
+		}
+		if executor != nil && s.RequireSupportOperator(ctx, *executor) != nil {
+			return false
+		}
+		current, e := store.New(s.pool).AccountByID(ctx, op.AccountID)
+		if e != nil || current.PanelKey != t.PanelKey || current.VpnID != t.VPNID || current.SubID != t.SubID || current.VpnBanned != expectedBan || op.Kind == "monthly_reset" && (!current.AccessProfile.Valid || current.AccessProfile.String != "unlimited") {
 			return false
 		}
 		n, e := store.New(s.pool).MarkAccessWrite(ctx, store.MarkAccessWriteParams{ID: id, LeaseHash: lease, UpdatedAt: stamp(s.now())})
@@ -174,13 +216,13 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	if limit > 0 {
 		limit++
 	}
-	if view.ExpiryTimeMS != t.ExpiryTimeMS || view.LimitIP != limit || view.TrafficLimitBytes != t.TrafficLimitBytes || t.Banned && view.Enabled || t.RestoreEnabled && !view.Enabled {
+	if view.ExpiryTimeMS != t.ExpiryTimeMS || view.LimitIP != limit || view.TrafficLimitBytes != t.TrafficLimitBytes || t.Banned && view.Enabled || (t.RestoreEnabled || t.Enable) && !view.Enabled {
 		if !markWrite() {
 			return cleanup("write_unavailable", true)
 		}
 		_ = p.UpdateAccess(ctx, view, t)
 		view, err = p.GetClient(ctx, t.PanelKey)
-		if err != nil || view == nil || view.VPNID != t.VPNID || view.SubID != t.SubID || view.ExpiryTimeMS != t.ExpiryTimeMS || view.LimitIP != limit || view.TrafficLimitBytes != t.TrafficLimitBytes || t.RestoreEnabled && !view.Enabled {
+		if err != nil || view == nil || view.VPNID != t.VPNID || view.SubID != t.SubID || view.ExpiryTimeMS != t.ExpiryTimeMS || view.LimitIP != limit || view.TrafficLimitBytes != t.TrafficLimitBytes || (t.RestoreEnabled || t.Enable) && !view.Enabled {
 			return cleanup("update_unconfirmed", true)
 		}
 		if s.accessStep(ctx, id, lease, "panel_updated") != nil {
@@ -274,7 +316,7 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		}
 	}
 	view, err = p.GetClient(ctx, t.PanelKey)
-	if err != nil || view == nil || view.VPNID != t.VPNID || view.SubID != t.SubID || view.ExpiryTimeMS != t.ExpiryTimeMS || view.LimitIP != limit || view.TrafficLimitBytes != t.TrafficLimitBytes || t.Banned && view.Enabled || t.RestoreEnabled && !view.Enabled {
+	if err != nil || view == nil || view.VPNID != t.VPNID || view.SubID != t.SubID || view.ExpiryTimeMS != t.ExpiryTimeMS || view.LimitIP != limit || view.TrafficLimitBytes != t.TrafficLimitBytes || t.Banned && view.Enabled || (t.RestoreEnabled || t.Enable) && !view.Enabled {
 		return cleanup("readback_mismatch", true)
 	}
 	attach, detach, err = p.MembershipDiff(ctx, view.InboundIDs, t.InboundIDs)
@@ -292,7 +334,7 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	defer tx.Rollback(ctx)
 	final := store.New(tx)
 	a, err = final.LockAccount(ctx, op.AccountID)
-	if err != nil || a.PanelKey != t.PanelKey || a.VpnID != t.VPNID || a.SubID != t.SubID || a.VpnBanned != t.Banned {
+	if err != nil || a.PanelKey != t.PanelKey || a.VpnID != t.VPNID || a.SubID != t.SubID || a.VpnBanned != expectedBan {
 		tx.Rollback(ctx)
 		return cleanup("identity_changed", true)
 	}
@@ -307,7 +349,16 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 			return cleanup("assign_failed", true)
 		}
 	}
-	if _, err = tx.Exec(ctx, "INSERT INTO audit_events(id,created_at,action,account_id,operator_account_id,reason,access_operation_id) VALUES($1,$2,$3,$4,$5,$6,$7)", uuid.New(), s.now(), "access_applied", a.ID, op.OperatorAccountID, op.Reason, id); err != nil {
+	if _, err = tx.Exec(ctx, "UPDATE accounts SET access_profile=$2,vpn_banned=$3 WHERE id=$1", a.ID, t.Profile, t.Banned); err != nil {
+		tx.Rollback(ctx)
+		return cleanup("profile_save_failed", true)
+	}
+	if op.Kind == "monthly_reset" {
+		err = monthlyAudit(ctx, tx, a.ID, op.MonthlyPeriod.String, "monthly_reset_applied", &id, s.now())
+	} else {
+		_, err = tx.Exec(ctx, "INSERT INTO audit_events(id,created_at,action,account_id,operator_account_id,reason,access_operation_id) VALUES($1,$2,$3,$4,$5,$6,$7)", uuid.New(), s.now(), "access_applied", a.ID, op.OperatorAccountID, op.Reason, id)
+	}
+	if err != nil {
 		tx.Rollback(ctx)
 		return cleanup("audit_failed", true)
 	}

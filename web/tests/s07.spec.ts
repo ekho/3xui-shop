@@ -8,9 +8,9 @@ const otherId='20000000-0000-4000-8000-000000000003';
 const operationId='30000000-0000-4000-8000-000000000003';
 const planId='40000000-0000-4000-8000-000000000004';
 const client:Model<'OperatorClient'>={account_id:clientId,kind:'telegram',display_name:'Access Client',email:null,telegram_id:'123456789',locale:'en',created_at:null,restricted:false,vpn_banned:false,had_subscription:true};
-const subscription:Model<'Subscription'>={status:'active',expires_at:'2026-10-12T00:00:00Z',devices:2,traffic_limit_bytes:1024,traffic_used_bytes:128,observed_at:'2026-10-02T00:00:00Z',data_stale:false,access_profile:'regular',access_operation_id:null,access_operation_status:null};
+const subscription:Model<'Subscription'>={status:'active',expires_at:'2026-10-12T00:00:00Z',devices:2,traffic_limit_bytes:1024,traffic_used_bytes:128,observed_at:'2026-10-02T00:00:00Z',data_stale:false,access_profile:'regular',vpn_banned:false,access_operation_id:null,access_operation_status:null};
 const card=(id=clientId,sub=subscription):Model<'OperatorClientCard'>=>({client:{...client,account_id:id,display_name:id===clientId?'Access Client':'Other Client'},subscription:sub,server:{panel_id:'configured',enabled:true},support:null,trial_requests:[],trial_has_more:false,audit_events:[],audit_has_more:false,legacy_approval:null,legacy_events:[],legacy_has_more:false});
-const desired:Model<'AccessDesired'>={expires_at:'2026-10-22T00:00:00Z',devices:2,traffic_limit_bytes:1024,profile:'regular',plan_id:null,revision:null,period_days:null,reset_traffic:false};
+const desired:Model<'AccessDesired'>={expires_at:'2026-10-22T00:00:00Z',devices:2,traffic_limit_bytes:1024,profile:'regular',plan_id:null,revision:null,period_days:null,reset_traffic:false,vpn_banned:false};
 const operation:Model<'AccessOperation'>={operation_id:operationId,account_id:clientId,kind:'compensate',status:'pending',created_at:'2026-10-02T00:00:00Z',updated_at:'2026-10-02T00:00:00Z',reason:'Outage',operator_account_id:operatorId,desired,completed_steps:['prepared'],review_reason:null};
 const plan:Model<'OperatorCataloguePlan'>={plan_id:planId,revision:7,devices:3,traffic_gb:20,profile:'euru',hidden:true,periods:[30,90],prices:[],legacy_plan_id:null,archived:false,actor_account_id:null,source:'operator',changed_at:'2026-10-02T00:00:00Z',reason:'Current'};
 

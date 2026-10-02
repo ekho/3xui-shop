@@ -30,6 +30,8 @@ type ProvisionTarget struct {
 	ExpiryTimeMS      int64     `json:"expiry_time_ms"`
 	DeviceCount       int64     `json:"device_count"`
 	TrafficLimitBytes int64     `json:"traffic_limit_bytes"`
+	Profile           string    `json:"profile,omitempty"`
+	Banned            bool      `json:"banned,omitempty"`
 }
 type PanelClientView struct {
 	Raw                                      map[string]json.RawMessage
@@ -370,7 +372,7 @@ func hasSegment(segments []string, wanted string) bool {
 }
 
 func (p *PanelClient) ProfileInboundIDs(ctx context.Context, profile string) ([]int64, error) {
-	if profile != "regular" && profile != "euru" {
+	if profile != "regular" && profile != "euru" && profile != "unlimited" {
 		return nil, errPanelMembership
 	}
 	tags, e := p.inboundTags(ctx)
@@ -379,7 +381,7 @@ func (p *PanelClient) ProfileInboundIDs(ctx context.Context, profile string) ([]
 	}
 	ids := []int64{}
 	for id, segments := range tags {
-		if hasSegment(segments, profile) {
+		if hasSegment(segments, profile) || profile == "unlimited" && hasSegment(segments, "regular") {
 			ids = append(ids, id)
 		}
 	}
@@ -493,7 +495,7 @@ func (p *PanelClient) UpdateAccess(ctx context.Context, v *PanelClientView, t ac
 	}
 	if t.Banned {
 		data["enable"] = json.RawMessage("false")
-	} else if t.RestoreEnabled {
+	} else if t.RestoreEnabled || t.Enable {
 		data["enable"] = json.RawMessage("true")
 	}
 	out, e := p.call(ctx, "POST", "panel/api/clients/update/"+url.PathEscape(t.PanelKey), data)
@@ -529,7 +531,7 @@ func panelMatches(v *PanelClientView, t ProvisionTarget, now time.Time) bool {
 	if limit > 0 {
 		limit++
 	}
-	return v != nil && v.PanelKey == t.PanelKey && v.VPNID == t.VPNID && v.SubID == t.SubID && v.ExpiryTimeMS == t.ExpiryTimeMS && v.LimitIP == limit && v.TrafficLimitBytes == t.TrafficLimitBytes && (v.Enabled || now.UnixMilli() >= t.ExpiryTimeMS)
+	return v != nil && v.PanelKey == t.PanelKey && v.VPNID == t.VPNID && v.SubID == t.SubID && v.ExpiryTimeMS == t.ExpiryTimeMS && v.LimitIP == limit && v.TrafficLimitBytes == t.TrafficLimitBytes && (t.Banned && !v.Enabled || !t.Banned && (v.Enabled || now.UnixMilli() >= t.ExpiryTimeMS))
 }
 func missingInbounds(v *PanelClientView, t ProvisionTarget) []int64 {
 	have := map[int64]bool{}
