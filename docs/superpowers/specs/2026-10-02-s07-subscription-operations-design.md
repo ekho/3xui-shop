@@ -13,6 +13,8 @@
 
 Компенсация сохраняет devices, текущий traffic limit, profile, счётчики и
 UUID/sub_id/panel_key/server. Срок = max(подтверждённый expiry, now)+N суток.
+Если клиент выключен из-за истёкшего срока, компенсация явно включает его
+после продления; исчерпанный лимит трафика по-прежнему ограничивает доступ.
 Unlimited, perpetual expiry=0, VPN-banned и недоступный назначенный сервер
 отклоняются, как существующий `/comp`. Account restriction/support-ban —
 самостоятельные состояния и не снимаются этой операцией. При отсутствии
@@ -76,7 +78,8 @@ UI объясняет разницу: «Добавить дни» не сбра�
 ## Приёмка
 
 1. Активному/истёкшему finite клиенту начислено1..365 дней от правильного
-   основания; devices/limit/counters/profile/identity не изменились.
+   основания; devices/limit/counters/profile/identity не изменились,
+   истёкший доступ без исчерпанного трафика восстановлен.
 2. Unlimited/perpetual/banned/unreachable отказы не меняют БД/панель; новый
    bonus client создаётся один раз на разрешённой панели без переноса identity.
 3. Assign revision и starter trial применяют правильные period/devices/traffic/
