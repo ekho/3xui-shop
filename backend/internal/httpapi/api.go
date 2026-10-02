@@ -129,6 +129,18 @@ func New(svc *s01.Service, cfg s01.Config) *echo.Echo {
 	e.POST("/internal/v1/trial-operations/:id/reconcile", a.ReconcileTrialOperation)
 	e.POST("/internal/v1/telegram/jobs/claim", a.ClaimTelegramJobs)
 	e.POST("/internal/v1/telegram/jobs/:id/result", a.CompleteTelegramJob)
+	e.GET("/api/v1/support", a.GetSupport)
+	e.POST("/api/v1/support/history", a.GetSupportHistory)
+	e.POST("/api/v1/support/messages", a.CreateSupportMessage)
+	e.POST("/api/v1/support/read", a.AcknowledgeSupport)
+	e.POST("/api/v1/support/state", a.SetSupportState)
+	e.GET("/api/v1/support/messages/:id/attachment", a.GetSupportAttachment)
+	e.GET("/api/v1/operator/clients/:id/support", a.GetOperatorSupport)
+	e.POST("/api/v1/operator/clients/:id/support/history", a.GetOperatorSupportHistory)
+	e.POST("/api/v1/operator/clients/:id/support/messages", a.CreateOperatorSupportMessage)
+	e.POST("/api/v1/operator/clients/:id/support/read", a.AcknowledgeOperatorSupport)
+	e.POST("/api/v1/operator/clients/:id/support/state", a.SetOperatorSupportState)
+	e.POST("/api/v1/operator/clients/:id/support/ban", a.SetOperatorSupportBan)
 	return e
 }
 func invalid() error { return &s01.Error{Status: 400, Code: "INVALID_INPUT"} }

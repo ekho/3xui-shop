@@ -19,9 +19,9 @@ export class ApiError extends Error {
 }
 let csrf:string|undefined;
 async function request<T>(path:string,method='GET',body?:unknown,signal?:AbortSignal,sessionWrite=false,key?:string):Promise<T>{
- const headers:Record<string,string>={};if(body!==undefined)headers['Content-Type']='application/json';if(sessionWrite&&csrf)headers['X-CSRF-Token']=csrf;if(key)headers['Idempotency-Key']=key;
+ const form=body instanceof FormData;const headers:Record<string,string>={};if(body!==undefined&&!form)headers['Content-Type']='application/json';if(sessionWrite&&csrf)headers['X-CSRF-Token']=csrf;if(key)headers['Idempotency-Key']=key;
  let response:Response;
- try{response=await fetch('/api/v1/'+path,{method,body:body===undefined?undefined:JSON.stringify(body),headers,credentials:'same-origin',cache:'no-store',signal:signal?AbortSignal.any([signal,AbortSignal.timeout(15000)]):AbortSignal.timeout(15000)});}catch(error){if(signal?.aborted)throw error;throw new ApiError(503,'SERVICE_UNAVAILABLE','');}
+ try{response=await fetch('/api/v1/'+path,{method,body:body===undefined?undefined:form?body:JSON.stringify(body),headers,credentials:'same-origin',cache:'no-store',signal:signal?AbortSignal.any([signal,AbortSignal.timeout(15000)]):AbortSignal.timeout(15000)});}catch(error){if(signal?.aborted)throw error;throw new ApiError(503,'SERVICE_UNAVAILABLE','');}
  signal?.throwIfAborted();
  if(!response.ok){if(response.status===401)csrf=undefined;let failure:unknown;try{failure=await response.json();}catch{failure={};}const raw=failure as Partial<components['schemas']['APIError']>;const id=raw.error?.request_id??'';const delay=Number(response.headers.get('Retry-After'));throw new ApiError(response.status,raw.error?.code??'SERVICE_UNAVAILABLE',/^[0-9a-f-]{36}$/i.test(id)?id:'',Number.isFinite(delay)&&delay>0?Math.min(86400,Math.ceil(delay)):0);}
  if(response.status===204)return undefined as T;
@@ -61,3 +61,14 @@ export type EmailChangeResult=components['schemas']['EmailChangeResult'];
 export const requestEmailChange=(input:EmailChangeInput)=>request<EmailChangeAccepted>('me/email-change','POST',input,undefined,true);
 export const confirmEmailChange=(input:EmailChangeConfirmInput)=>request<EmailChangeResult>('auth/email-change/confirm','POST',input);
 export const cancelEmailChange=()=>request<void>('me/email-change/cancel','POST',undefined,undefined,true);
+
+export type SupportAttachment=components['schemas']['SupportAttachment'];
+export type SupportMessage=components['schemas']['SupportMessage'];
+export type SupportConversation=components['schemas']['SupportConversation'];
+export type SupportResult=components['schemas']['SupportResult'];
+export const getSupport=(signal?:AbortSignal)=>request<SupportResult>('support','GET',undefined,signal);
+export const getSupportHistory=(before_sequence:number,signal?:AbortSignal)=>request<SupportResult>('support/history','POST',{before_sequence},signal,true);
+export function createSupportMessage(text:string,file:File|undefined,key:string,signal?:AbortSignal){if(!file)return request<SupportMessage>('support/messages','POST',{text},signal,true,key);const body=new FormData();body.append('text',text);body.append('file',file);return request<SupportMessage>('support/messages','POST',body,signal,true,key);}
+export const acknowledgeSupport=(sequence:number,signal?:AbortSignal)=>request<void>('support/read','POST',{sequence},signal,true);
+export const setSupportState=(status:'open'|'closed',signal?:AbortSignal)=>request<void>('support/state','POST',{status},signal,true);
+export const supportAttachmentURL=(id:string)=>'/api/v1/support/messages/'+encodeURIComponent(id)+'/attachment';

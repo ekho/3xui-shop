@@ -12,7 +12,7 @@
 | --- | --- | --- | --- |
 | С03 | Готовы | Backend `f710935`, UI `41a2ade`; focused GREEN | Native acceptance Pending |
 | С04 | Готовы | UI `41a2ade`; 39 browser checks GREEN | Native acceptance Pending |
-| С05 | Готовы | Author contract/generated ready; implementation pending | Pending |
+| С05 | Готовы | Backend и client UI готовы; focused Go-race и browser10 GREEN | Two-actor/native acceptance Pending |
 | С06 | Готовы | Pending | Pending |
 
 Discovery: сохранены профильные split/unlimited/ban случаи, платформы + QR,
@@ -42,3 +42,9 @@ paths/schemas; generated models и nullable response contract check прошли
 С06 дизайн сохраняет единый UUID/worker и real Telegram-only identity; web actors
 отдельны от Telegram. Между новой PG и старой SQLite нет общей uniqueness до
 cutover/импорта; внешнее включение TG-only creation требует прекращения старого writer.
+
+С05 integration: shared text guard отклоняет NUL до PostgreSQL (400 вместо503);
+customer receipt отправляет максимальный отображённый operator sequence, даже
+если собственное сообщение новее. Оба дефекта воспроизведены RED и исправлены
+focused GREEN. Coordinator повторил support service/HTTP с race и browser10;
+полная двухсторонняя приёмка и PG restore выполняются вместе с операторским С06.

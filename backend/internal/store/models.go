@@ -30,14 +30,16 @@ type Account struct {
 }
 
 type AuditEvent struct {
-	ID           uuid.UUID
-	CreatedAt    pgtype.Timestamptz
-	Action       string
-	AccountID    uuid.UUID
-	RequestID    *uuid.UUID
-	OperationID  *uuid.UUID
-	OperatorTgID pgtype.Int8
-	Reason       pgtype.Text
+	ID                uuid.UUID
+	CreatedAt         pgtype.Timestamptz
+	Action            string
+	AccountID         uuid.UUID
+	RequestID         *uuid.UUID
+	OperationID       *uuid.UUID
+	OperatorTgID      pgtype.Int8
+	Reason            pgtype.Text
+	OperatorAccountID *uuid.UUID
+	SupportMessageID  *uuid.UUID
 }
 
 type CredentialChallenge struct {
@@ -88,6 +90,11 @@ type MailDelivery struct {
 	CredentialChallengeID *uuid.UUID
 }
 
+type OperatorAccount struct {
+	AccountID uuid.UUID
+	GrantedAt pgtype.Timestamptz
+}
+
 type RegistrationChallenge struct {
 	ID             uuid.UUID
 	EmailKey       string
@@ -110,6 +117,29 @@ type Session struct {
 	CreatedAt         pgtype.Timestamptz
 	LastSeen          pgtype.Timestamptz
 	AbsoluteExpiresAt pgtype.Timestamptz
+}
+
+type SupportConversation struct {
+	ID                       uuid.UUID
+	AccountID                uuid.UUID
+	Status                   string
+	SupportBanned            bool
+	CreatedAt                pgtype.Timestamptz
+	UpdatedAt                pgtype.Timestamptz
+	CustomerReceivedSequence int64
+	OperatorReceivedSequence int64
+}
+
+type SupportMessage struct {
+	ID              uuid.UUID
+	ConversationID  uuid.UUID
+	Sequence        int64
+	SenderAccountID uuid.UUID
+	SenderKind      string
+	Text            string
+	CreatedAt       pgtype.Timestamptz
+	AttachmentName  pgtype.Text
+	AttachmentBytes []byte
 }
 
 type TelegramDelivery struct {

@@ -42,6 +42,6 @@ export function Cabinet({lang}:{lang:Lang}){
    {panelMessage?<div className="warning" role="alert"><p>{panelMessage}</p><button onClick={retry} disabled={busy}>{t.retry}</button></div>:null}
    {keyStatuses.has(sub.status)&&allowsKey(sub)?<Connection lang={lang} subscriptionURL={key} busy={keyBusy} onReveal={reveal} onHide={clearKey}/>:null}
   </>}
-  {account?<p><a href={link('/cabinet/security',lang)}>{t.security}</a></p>:null}<a className="support" href={config.supportURL}>{t.support}</a>
+  {account?<p className="account-links"><a href={link('/cabinet/security',lang)}>{t.security}</a><a href={link('/cabinet/support',lang)}>{t.supportMessages}</a></p>:null}<a className="support" href={config.supportURL}>{t.support}</a>
  </section>;
 }
