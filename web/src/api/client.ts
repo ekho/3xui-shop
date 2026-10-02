@@ -72,3 +72,29 @@ export function createSupportMessage(text:string,file:File|undefined,key:string,
 export const acknowledgeSupport=(sequence:number,signal?:AbortSignal)=>request<void>('support/read','POST',{sequence},signal,true);
 export const setSupportState=(status:'open'|'closed',signal?:AbortSignal)=>request<void>('support/state','POST',{status},signal,true);
 export const supportAttachmentURL=(id:string)=>'/api/v1/support/messages/'+encodeURIComponent(id)+'/attachment';
+
+export type OperatorSession=components['schemas']['OperatorSession'];
+export type OperatorClient=components['schemas']['OperatorClient'];
+export type OperatorSearchResult=components['schemas']['OperatorSearchResult'];
+export type OperatorClientCard=components['schemas']['OperatorClientCard'];
+export type OperatorTrialRequest=components['schemas']['OperatorTrialRequest'];
+export type OperatorAuditEvent=components['schemas']['OperatorAuditEvent'];
+export type OperatorHistoryResult=components['schemas']['OperatorHistoryResult'];
+export type OperatorDecisionResult=components['schemas']['OperatorDecisionResult'];
+export type OperatorTelegramTrialResult=components['schemas']['OperatorTelegramTrialResult'];
+const operatorClientPath=(id:string)=>'operator/clients/'+encodeURIComponent(id);
+export async function getOperatorSession(signal?:AbortSignal){const out=await request<OperatorSession>('operator/session','GET',undefined,signal);csrf=out.csrf_token;return out;}
+export const searchOperatorClients=(q:string,page:number,signal?:AbortSignal)=>request<OperatorSearchResult>('operator/clients/search','POST',{q,page,per_page:50},signal,true);
+export const getOperatorClient=(id:string,signal?:AbortSignal)=>request<OperatorClientCard>(operatorClientPath(id),'GET',undefined,signal);
+export const getOperatorClientHistory=(id:string,input:components['schemas']['OperatorHistoryInput'],signal?:AbortSignal)=>request<OperatorHistoryResult>(operatorClientPath(id)+'/history','POST',input,signal,true);
+export const getOperatorClientKey=(id:string,signal?:AbortSignal)=>request<SubscriptionKey>(operatorClientPath(id)+'/key','GET',undefined,signal);
+export const decideOperatorTrial=(id:string,input:components['schemas']['OperatorDecisionInput'],key:string,signal?:AbortSignal)=>request<OperatorDecisionResult>('operator/trial-requests/'+encodeURIComponent(id)+'/decision','POST',input,signal,true,key);
+export const reconsiderOperatorTrial=(id:string,reason:string,key:string,signal?:AbortSignal)=>request<TrialRequest>('operator/trial-requests/'+encodeURIComponent(id)+'/reconsider','POST',{reason},signal,true,key);
+export const reconcileOperatorTrial=(id:string,reason:string,key:string,signal?:AbortSignal)=>request<components['schemas']['ReconcileResult']>('operator/trial-operations/'+encodeURIComponent(id)+'/reconcile','POST',{reason},signal,true,key);
+export const createOperatorTelegramTrial=(input:components['schemas']['OperatorTelegramTrialInput'],key:string,signal?:AbortSignal)=>request<OperatorTelegramTrialResult>('operator/clients/trial','POST',input,signal,true,key);
+export const getOperatorSupport=(id:string,signal?:AbortSignal)=>request<SupportResult>(operatorClientPath(id)+'/support','GET',undefined,signal);
+export const getOperatorSupportHistory=(id:string,before_sequence:number,signal?:AbortSignal)=>request<SupportResult>(operatorClientPath(id)+'/support/history','POST',{before_sequence},signal,true);
+export function createOperatorSupportMessage(id:string,text:string,file:File|undefined,key:string,signal?:AbortSignal){if(!file)return request<SupportMessage>(operatorClientPath(id)+'/support/messages','POST',{text},signal,true,key);const body=new FormData();body.append('text',text);body.append('file',file);return request<SupportMessage>(operatorClientPath(id)+'/support/messages','POST',body,signal,true,key);}
+export const acknowledgeOperatorSupport=(id:string,sequence:number,signal?:AbortSignal)=>request<void>(operatorClientPath(id)+'/support/read','POST',{sequence},signal,true);
+export const setOperatorSupportState=(id:string,status:'open'|'closed',signal?:AbortSignal)=>request<void>(operatorClientPath(id)+'/support/state','POST',{status},signal,true);
+export const setOperatorSupportBan=(id:string,banned:boolean,reason:string,signal?:AbortSignal)=>request<void>(operatorClientPath(id)+'/support/ban','POST',{banned,reason},signal,true);

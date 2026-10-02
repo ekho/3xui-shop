@@ -28,20 +28,20 @@
 **Files:** Coordinator OpenAPI/wire/TS. Backend create migration `00009_operator_clients.sql`, queries `operators.sql`, service `operator.go`, HTTP `operator.go`, focused tests; modify registration/session/credential/provision/trial/audit methods, main CLI and generated store. If Telegram payload becomes nullable, bounded bot formatter + its focused tests must be updated by backend owner.
 **Interfaces:** OperatorSession(ctx,session account UUID), SearchClients(typed q/page/perPage), OperatorClient/Card/Key, Decide/Reconsider/Reconcile as real UUID actor, CreateTelegramTrial(...true TG ID/name/locale,key), Grant/RevokeOperator(file UUID). Existing internal TG callback methods remain compatible.
 
-- [ ] Coordinator freezes exact API schemas and generates; source-aware actor and entitlement from С05 reused.
+- [x] Coordinator freezes exact API schemas and generates; source-aware actor and entitlement from С05 reused.
 - [ ] RED migration/auth tests: existing data constraints preserved; Telegram-only credentialsNULL, incomplete web rejects; login/reset no fake identity; role self-grant/revoke race denied.
 - [ ] RED trial concurrency tests: web-only cfg.Operators=[] succeeds, bot/web same request creates one Grant/Operation/job with winning actor, lost response idempotent; duplicate Telegram creation/used/panel failure/source-aware worker covered.
-- [ ] Implement common actor-aware transaction core, typed search/card/history/key and CLI, preserving strict target and UUID; update native/bot fixtures only for changed contracts.
-- [ ] GREEN focused real-PG/Redis race/HTTP/migration tests, source generation/vet, bot formatter regression; report → coordinator local commit and ownership release.
+- [x] Implement common actor-aware transaction core, typed search/card/history/key and CLI, preserving strict target and UUID; update native/bot fixtures only for changed contracts.
+- [x] GREEN focused real-PG/Redis race/HTTP/migration tests, source generation/vet, bot formatter regression; report → coordinator local commit and ownership release.
 
 ### Task 2: React-admin
 
 **Files:** Create `web/src/Admin.tsx`, `web/tests/s06.spec.ts`; modify package/lock, api/client.ts, main.tsx lazy mount, i18n/style, Playwright discovery; reuse Support view API helpers from С05.
 **Interfaces:** AuthProvider uses existing cookie login/logout/operator session; dataProvider typed search/card actions, no local JWT. Client support service exposes shared controls/data, no second chat model.
 
-- [ ] RED unauthorized direct admin/revoke, search/page/card/key hide, true actor decisions/new Telegram-only client; support text/file/state/ban/ack and errors; ru/en/mobile/keyboard.
-- [ ] Pin react-admin5.15.4 and implement minimum resources/providers/actions; show deferred financial data honestly, no fake counters. Preserve normal cabinet/auth routes and CSRF after reload.
-- [ ] GREEN typecheck/build, focused С06+С05 and affected earlier browser checks; report → coordinator local commit.
+- [x] RED unauthorized direct admin/revoke, search/page/card/key hide, true actor decisions/new Telegram-only client; support text/file/state/ban/ack and errors; ru/en/mobile/keyboard.
+- [x] Pin react-admin5.15.4 and implement minimum resources/providers/actions; show deferred financial data honestly, no fake counters. Preserve normal cabinet/auth routes and CSRF after reload.
+- [x] GREEN typecheck/build, focused С06+С05 and affected earlier browser checks; report → coordinator local commit.
 
 ### Task 3: Full integration and acceptance
 

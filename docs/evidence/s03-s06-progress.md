@@ -13,7 +13,7 @@
 | С03 | Готовы | Backend `f710935`, UI `41a2ade`; focused GREEN | Native acceptance Pending |
 | С04 | Готовы | UI `41a2ade`; 39 browser checks GREEN | Native acceptance Pending |
 | С05 | Готовы | Backend и client UI готовы; focused Go-race и browser10 GREEN | Two-actor/native acceptance Pending |
-| С06 | Готовы | API и backend готовы; React-admin передан, интеграционные исправления карточки/refresh в работе | Pending |
+| С06 | Готовы | Backend `70a0294`; React-admin и карточка готовы, полный browser59 GREEN | Native browser/restore и fresh review Pending |
 
 Discovery: сохранены профильные split/unlimited/ban случаи, платформы + QR,
 Telegram-only создание триала и shared /info card. Старый support не хранит
@@ -67,6 +67,8 @@ product key не ослабляли. Python suite:102 checks прошли, од�
 повтор этого check прошёл. Standard Go/wire/sqlc/TypeScript generation no-diff.
 React-admin action/card исправления подтверждены RED→GREEN: success refresh,
 полная подписка/ограничения/actor history, честное unknown для none. Browser
-regression58/58 прошёл до последнего none-case; focused С06 после него10/10.
-Перед runtime rebuild проверяется lock новых зависимостей; actual С05/С06
-browser/restore и свежий whole-branch review ещё открыты.
+regression59/59 после последнего none-case прошёл; suite включает build/typecheck.
+Npm production audit сохраняет7 moderate записей одной upstream dependency chain;
+совместимый исправленный release/override не найден, scanner не отключался.
+Это отдельный gate внешнего запуска, не доказательство production readiness.
+Actual С05/С06 browser/restore и свежий whole-branch review ещё открыты.
