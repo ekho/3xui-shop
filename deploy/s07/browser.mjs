@@ -17,8 +17,9 @@ const dir=root+'.superpowers/sdd/2026-10-02-s07-access-operations/e2e';
 mkdirSync(dir,{recursive:true,mode:0o700});chmodSync(dir,0o700);
 const fixturePath=dir+'/fixtures.json';
 const faultStatePath=dir+'/fault-state.json';
+const continuationPath=dir+'/continuation.json';
 const stage=process.argv[2];
-if(!['setup','normal','ui','fault-unavailable','fault-lost-reply','fault-restart-check',
+if(!['setup','fixtures','compensation','assignment','reset','guards','ui','fault-unavailable','fault-lost-reply','fault-restart-check',
  'fault-noack','fault-ack','fault-partial-start','fault-partial-reconcile'].includes(stage))throw Error('S07 stage required');
 const ready=process.env.S07_RUNTIME_MANIFEST;
 if(!ready||!existsSync(ready))throw Error('root-approved S07 runtime manifest required');
@@ -146,6 +147,13 @@ function completeFixture(value){
 }
 function faultState(){return existsSync(faultStatePath)?JSON.parse(readFileSync(faultStatePath)):{};}
 function privateFault(value){const out=openSync(faultStatePath,'w',0o600);try{writeSync(out,JSON.stringify(value));}finally{closeSync(out);}chmodSync(faultStatePath,0o600);}
+function continuation(){return existsSync(continuationPath)?JSON.parse(readFileSync(continuationPath)):{};}
+function privateContinuation(value){
+ const temporary=continuationPath+'.next-'+randomUUID();
+ const out=openSync(temporary,'wx',0o600);
+ try{writeSync(out,JSON.stringify(value));}finally{closeSync(out);}
+ chmodSync(temporary,0o600);renameSync(temporary,continuationPath);
+}
 
 let browser,step='preflight';
 try{
@@ -203,7 +211,7 @@ try{
     probe_configs:Object.fromEntries(Object.entries(probe).map(([name,p])=>[name,p.config_path])),
     fault_descriptor:faultTargets.descriptor})+'\n');
  }
- if(stage==='normal'){
+ if(['fixtures','compensation','assignment','reset','guards'].includes(stage)){
   const data=fixture();step='login existing owned fixtures';
   const actor=await login(browser,data.actor);
   if(actor.id!==data.actor.id)throw Error('S07 operator identity changed');
@@ -212,20 +220,27 @@ try{
    if(customers[name].id!==credentials.id)throw Error('S07 customer identity changed');
   }
   const nativeBefore={};for(const [name,c] of Object.entries(customers))nativeBefore[name]=bridge('snapshot',{account:c.id});
-  record('AC8 native preflight','owned accounts and baseline VPN config unchanged; probe gave nonzero traffic to active/banned',
-    {config_unchanged:bridge('transport').vpn_config_digest===data.baseline_vpn_digest,
-     active_traffic_positive:nativeBefore.active.panel.used_traffic>0,
-     banned_traffic_positive:nativeBefore.banned.panel.used_traffic>0},
-    bridge('transport').vpn_config_digest===data.baseline_vpn_digest&&
-    nativeBefore.active.panel.used_traffic>0&&nativeBefore.banned.panel.used_traffic>0);
-  step='native fixture transitions';
+  if(stage==='fixtures'){
+  step='expired native fixture';
   const expired=bridge('fixture',{account:customers.expired.id,kind:'expire'});
+  step='perpetual native fixture';
   const perpetual=bridge('fixture',{account:customers.perpetual.id,kind:'perpetual'});
+  step='VPN-ban native fixture';
   const banned=bridge('fixture',{account:customers.banned.id,kind:'ban'});
   record('AC1/2/4 native negative fixtures','expired/perpetual expiry and true VPN ban confirmed, no unrelated native changes',
-    {expired:expired.after.expiry_ms<Date.now(),perpetual:perpetual.after.expiry_ms===0,
+   {expired:expired.after.expiry_ms<Date.now(),perpetual:perpetual.after.expiry_ms===0,
      banned:banned.after.enabled===false},
     expired.after.expiry_ms<Date.now()&&perpetual.after.expiry_ms===0&&banned.after.enabled===false);
+  }
+  if(stage==='compensation'){
+  if(nativeBefore.active.access_operations||nativeBefore.expired.access_operations||nativeBefore.missing.access_operations)
+   throw Error('S07 compensation continuation already advanced');
+  const expired={after:nativeBefore.expired.panel};
+  const perpetual={after:nativeBefore.perpetual.panel};
+  const banned={after:nativeBefore.banned.panel};
+  if(!(expired.after.expiry_ms<Date.now()&&perpetual.after.expiry_ms===0&&banned.after.enabled===false&&
+    nativeBefore.banned.vpn_banned&&nativeBefore.active.panel.used_traffic>0))
+   throw Error('S07 native fixture continuation precondition absent');
   const reject=[];
   for(const days of [0,366])reject.push(await http(actor.context,base(customers.active.id),'POST',
     {kind:'compensate',days,reason:'S07 bound'},actor.csrf,randomUUID()));
@@ -303,6 +318,10 @@ try{
    missingAfter.panel.assigned_server_digest===nativeBefore.active.panel.assigned_server_digest&&
    missingAfter.panel.traffic_limit_bytes===0&&
    missingAfter.trial_grants===0&&missingAfter.access_operations===1);
+  }
+  if(stage==='assignment'){
+  if(nativeBefore.active.access_operations!==1||nativeBefore.missing.access_operations!==1)
+   throw Error('S07 assignment continuation precondition absent');
   step='stale and current assignment';
   const regular=data.plans.regular;
   const assignInput={kind:'assign_plan',plan_id:regular.id,revision:regular.revision,
@@ -338,6 +357,12 @@ try{
     starterDone.status==='applied'&&starterNative.trial_grants===nativeBefore.active.trial_grants&&
     starterDone.desired.profile==='regular'&&starterNative.panel.used_traffic===0&&
     starterNative.panel.identity_digest===nativeBefore.active.panel.identity_digest);
+  privateContinuation({...continuation(),starter_operation:starterDone.operation_id});
+  }
+  if(stage==='reset'){
+  const starterOperation=continuation().starter_operation;
+  if(!starterOperation||nativeBefore.banned.access_operations)
+   throw Error('S07 reset continuation precondition absent');
   step='banned manual reset';
   const bannedBefore=bridge('snapshot',{account:customers.banned.id});
   const reset=await http(actor.context,base(customers.banned.id),'POST',
@@ -358,11 +383,16 @@ try{
      ['identity_digest','expiry_ms','limit_ip','traffic_limit_bytes','membership_digest']));
   const sub=await http(customers.active.context,'/api/v1/subscription');
   record('AC7 current subscription reflects last applied access','S03 subscription exposes latest access operation/status and confirmed current terms',
-   {status:sub.status,operation_match:sub.body?.access_operation_id===starterDone.operation_id,
+   {status:sub.status,operation_match:sub.body?.access_operation_id===starterOperation,
     operation_status:sub.body?.access_operation_status,
     expiry_present:!!sub.body?.expires_at},
-   sub.status===200&&sub.body?.access_operation_id===starterDone.operation_id&&
+   sub.status===200&&sub.body?.access_operation_id===starterOperation&&
    sub.body?.access_operation_status==='applied'&&!!sub.body?.expires_at);
+  }
+  if(stage==='guards'){
+  const starterOperation=continuation().starter_operation;
+  if(!starterOperation||nativeBefore.active.access_operations!==3)
+   throw Error('S07 guards continuation precondition absent');
   step='operator API guards';
   const beforeGuards=bridge('snapshot',{account:customers.active.id});
   const denied=await http(customers.missing.context,base(customers.active.id),'POST',
@@ -373,7 +403,7 @@ try{
     {kind:'compensate',days:1,reason:'S07 CSRF'},'wrong',randomUUID());
   const originGuard=await http(actor.context,base(customers.active.id),'POST',
     {kind:'compensate',days:1,reason:'S07 origin'},actor.csrf,randomUUID(),{Origin:'https://foreign.example.test'});
-  const wrongPair=await http(actor.context,opPath(customers.missing.id,starterDone.operation_id));
+  const wrongPair=await http(actor.context,opPath(customers.missing.id,starterOperation));
   const badKind=await http(actor.context,base(customers.active.id),'POST',
     {kind:'reset_traffic',days:2,reason:'S07 mismatched body'},actor.csrf,randomUUID());
   const badReason=await http(actor.context,base(customers.active.id),'POST',
@@ -391,10 +421,11 @@ try{
       sameNative(beforeGuards.panel,afterGuards.panel,
        ['identity_digest','expiry_ms','limit_ip','traffic_limit_bytes','membership_digest','used_traffic'])},
     codes.join('/')==='403/400/403/403/404/400/400/403'&&roleBefore.role&&!roleAfter.role&&
-    afterGuards.access_operations===beforeGuards.access_operations&&
-    sameNative(beforeGuards.panel,afterGuards.panel,
+   afterGuards.access_operations===beforeGuards.access_operations&&
+   sameNative(beforeGuards.panel,afterGuards.panel,
       ['identity_digest','expiry_ms','limit_ip','traffic_limit_bytes','membership_digest','used_traffic']));
-  process.stdout.write(JSON.stringify({stage:'normal',status:'completed',rows:11})+'\n');
+  }
+  process.stdout.write(JSON.stringify({stage,status:'completed'})+'\n');
  }
  if(stage==='ui'){
   const data=fixture();const actor=await login(browser,data.actor);

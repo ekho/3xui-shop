@@ -160,6 +160,13 @@ def fixture(account, kind):
     opener, csrf = local.login_panel()
     raw = local.panel_call(opener, 'panel/api/clients/get/' + a['panel_key'])
     client = raw['client']
+    if uid(client['uuid']) != a['vpn_id'] or client['subId'] != a['sub_id']:
+        raise RuntimeError('S07 fixture update identity mismatch')
+    # 3X-UI 3.7.0 readback is ClientRecord; update binds model.Client.
+    payload = {**client, 'id': client['uuid'], 'created_at': client['createdAt']}
+    payload['allowedIPs'] = [ip.strip() for ip in client['allowedIPs'].split(',') if ip.strip()]
+    if isinstance(payload.get('reverse'), str):
+        payload['reverse'] = json.loads(payload['reverse']) if payload['reverse'].strip() else None
     if kind in ('expire', 'perpetual'):
         desired = int(time.time() * 1000) - 24 * 3600 * 1000 if kind == 'expire' else 0
         if kind == 'expire' and before['expiry_ms'] <= int(time.time() * 1000):
@@ -167,7 +174,7 @@ def fixture(account, kind):
         if kind == 'perpetual' and before['expiry_ms'] == 0:
             raise RuntimeError('S07 perpetual fixture already perpetual')
         local.panel_call(opener, 'panel/api/clients/update/' + a['panel_key'],
-                         {**client, 'expiryTime': desired}, csrf)
+                         {**payload, 'expiryTime': desired}, csrf)
         after = panel(account)
         unchanged = ('identity_digest', 'limit_ip', 'traffic_limit_bytes', 'membership_digest',
                      'used_traffic', 'up', 'down')

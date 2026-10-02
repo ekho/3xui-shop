@@ -35,6 +35,7 @@ type fakePanel struct {
 	up, down                                                                         int64
 	loseReset                                                                        bool
 	resetLeavesTraffic                                                               bool
+	strictNativeUpdate                                                               bool
 	loseAdd, emptyRead, failRead, partial, noRegular, noEuru, sharedRegularUnlimited bool
 }
 
@@ -178,6 +179,15 @@ func (p *fakePanel) serve(w http.ResponseWriter, r *http.Request) {
 		if d.Decode(&body) != nil || p.client == nil {
 			w.WriteHeader(400)
 			return
+		}
+		if p.strictNativeUpdate {
+			id, validID := body["id"].(string)
+			ips, validIPs := body["allowedIPs"].([]any)
+			if !validID || id != p.client["id"] || !validIPs || len(ips) != 2 || ips[0] != "10.0.0.2/32" || ips[1] != "10.0.0.3/32" {
+				w.WriteHeader(400)
+				reply(map[string]any{"success": false, "msg": "invalid client model", "obj": nil})
+				return
+			}
 		}
 		p.client = body
 		reply(map[string]any{"success": true, "obj": nil})

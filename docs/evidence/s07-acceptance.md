@@ -1,11 +1,22 @@
-# С07: локальная приёмка операций доступа — подготовлено, не выполнялось
+# С07: локальная приёмка операций доступа — в процессе
 
-**Статус PENDING.** Новый backend/gateway image ещё не подтверждён root.
-Ни один С07 behavioral driver не запускался против прежнего runtime. Текущие
-ожидания взяты из [спецификации](../superpowers/specs/2026-10-02-s07-subscription-operations-design.md),
+**Статус PENDING.** Root подтвердил продуктовую ревизию
+`432137dd201fa58920f866da5f80303db685441d` и собственный Docker runtime
+по [manifest](../../.superpowers/sdd/2026-10-02-s48-s09-s07-s08/runtime-s07.json).
+Первый `setup` дал 3 PASS/1 BLOCKED; после восстановления тех же восьми
+контролируемых аккаунтов первый `normal` дал 2 PASS/1 BLOCKED. Два широких
+этапа заморожены: их строки сохранены в [setup.jsonl](../../.superpowers/sdd/2026-10-02-s07-access-operations/e2e/setup.jsonl)
+и [normal.jsonl](../../.superpowers/sdd/2026-10-02-s07-access-operations/e2e/normal.jsonl).
+Root установил узкой диагностикой, что `clients/get.client` в 3X-UI3.7.0
+возвращает readback-модель с числовым `id` и строковым `allowedIPs`, а
+`clients/update` принимает UUID `id` и массив `allowedIPs`. Ни expiry,
+ни perpetual, ни VPN-ban в первом `normal` не применились. Продуктовый
+адаптер исправляет backend owner; тестовый bridge нормализован отдельно.
+Оставшиеся проверки пока не запускались. Контрактные ожидания взяты из
+[спецификации](../superpowers/specs/2026-10-02-s07-subscription-operations-design.md),
 [плана](../superpowers/plans/2026-10-02-s07-s08-access-operations.md),
-[OpenAPI](../api/openapi.yaml) и незавершённого source S07; перед запуском
-driver/source contract будет сверен с финальной продуктовой ревизией.
+[OpenAPI](../api/openapi.yaml) и подтверждённой ревизии source S07; перед
+продолжением будет сверен новый runtime после исправления адаптера.
 
 Реальная будущая поверхность ограничена собственным Docker project
 `cabinet-s01-local`, HTTPS `localhost:58443`, Mailpit `localhost:59446`,
@@ -27,10 +38,9 @@ Happ, установленный MacVPN, trust/clipboard и внешняя пу�
 повтор. При окончательной сверке source это ожидание будет проверено заново.
 
 Драйверы [browser.mjs](../../deploy/s07/browser.mjs) и
-[local.py](../../deploy/s07/local.py) сейчас проходят только статическую
-проверку синтаксиса. Они сохраняют criterion, target, exact command,
+[local.py](../../deploy/s07/local.py) сохраняют criterion, target, exact command,
 expected, actual, verdict и непустую ссылку на private JSONL artifact.
-До реального прогона запись со статусом PASS не создаётся. Пароли,
+PASS создан только для реально пройденных шагов. Пароли,
 cookies, subscription links, raw panel replies и личные данные в публичный
 evidence не попадают. Приватные собственные файлы располагаются в
 `.superpowers/sdd/2026-10-02-s07-access-operations/e2e/` (mode600);
@@ -46,7 +56,11 @@ evidence не попадают. Приватные собственные фай
 
 ```text
 S07_RUNTIME_MANIFEST=.superpowers/sdd/2026-10-02-s48-s09-s07-s08/runtime-s07.json node /Users/ekho/.codex/plugins/cache/tradeos/tradeos-ai-engineering-kit/2.0.0/scripts/run-check.mjs --cwd /Users/ekho/.codex/worktrees/web-trial-s01/3xui-shop --timeout-seconds 420 --lines 12 -- node deploy/s07/browser.mjs setup
-S07_RUNTIME_MANIFEST=.superpowers/sdd/2026-10-02-s48-s09-s07-s08/runtime-s07.json node /Users/ekho/.codex/plugins/cache/tradeos/tradeos-ai-engineering-kit/2.0.0/scripts/run-check.mjs --cwd /Users/ekho/.codex/worktrees/web-trial-s01/3xui-shop --timeout-seconds 420 --lines 12 -- node deploy/s07/browser.mjs normal
+S07_RUNTIME_MANIFEST=.superpowers/sdd/2026-10-02-s48-s09-s07-s08/runtime-s07.json node /Users/ekho/.codex/plugins/cache/tradeos/tradeos-ai-engineering-kit/2.0.0/scripts/run-check.mjs --cwd /Users/ekho/.codex/worktrees/web-trial-s01/3xui-shop --timeout-seconds 420 --lines 12 -- node deploy/s07/browser.mjs fixtures
+S07_RUNTIME_MANIFEST=.superpowers/sdd/2026-10-02-s48-s09-s07-s08/runtime-s07.json node /Users/ekho/.codex/plugins/cache/tradeos/tradeos-ai-engineering-kit/2.0.0/scripts/run-check.mjs --cwd /Users/ekho/.codex/worktrees/web-trial-s01/3xui-shop --timeout-seconds 420 --lines 12 -- node deploy/s07/browser.mjs compensation
+S07_RUNTIME_MANIFEST=.superpowers/sdd/2026-10-02-s48-s09-s07-s08/runtime-s07.json node /Users/ekho/.codex/plugins/cache/tradeos/tradeos-ai-engineering-kit/2.0.0/scripts/run-check.mjs --cwd /Users/ekho/.codex/worktrees/web-trial-s01/3xui-shop --timeout-seconds 420 --lines 12 -- node deploy/s07/browser.mjs assignment
+S07_RUNTIME_MANIFEST=.superpowers/sdd/2026-10-02-s48-s09-s07-s08/runtime-s07.json node /Users/ekho/.codex/plugins/cache/tradeos/tradeos-ai-engineering-kit/2.0.0/scripts/run-check.mjs --cwd /Users/ekho/.codex/worktrees/web-trial-s01/3xui-shop --timeout-seconds 420 --lines 12 -- node deploy/s07/browser.mjs reset
+S07_RUNTIME_MANIFEST=.superpowers/sdd/2026-10-02-s48-s09-s07-s08/runtime-s07.json node /Users/ekho/.codex/plugins/cache/tradeos/tradeos-ai-engineering-kit/2.0.0/scripts/run-check.mjs --cwd /Users/ekho/.codex/worktrees/web-trial-s01/3xui-shop --timeout-seconds 420 --lines 12 -- node deploy/s07/browser.mjs guards
 S07_RUNTIME_MANIFEST=.superpowers/sdd/2026-10-02-s48-s09-s07-s08/runtime-s07.json node /Users/ekho/.codex/plugins/cache/tradeos/tradeos-ai-engineering-kit/2.0.0/scripts/run-check.mjs --cwd /Users/ekho/.codex/worktrees/web-trial-s01/3xui-shop --timeout-seconds 420 --lines 12 -- node deploy/s07/browser.mjs ui
 printf '{"action":"restore"}' | python3 deploy/s07/local.py
 ```
@@ -67,14 +81,14 @@ readback без прямого исправления панели root.
 
 | Критерий | Real target; exact command/stage | Ожидание | Факт сейчас | Verdict; артефакт подготовки |
 | --- | --- | --- | --- | --- |
-| AC1 | HTTPS operator API + 3X-UI3.7.0; `browser.mjs normal` | Активному finite прибавлены ровно2 дня от прежнего expiry, истёкшему —1 день от now; счётчики, limits, profile и identity прежние; 0/366 отклонены | Не запускалось | **PENDING**; [normal driver](../../deploy/s07/browser.mjs) |
-| AC2 | Own panel/PG и exact-key upstream read fault; `browser.mjs setup`, `normal`, `fault-unavailable` | Unlimited, perpetual, VPN-banned, unavailable не пишут операцию/панель; missing bonus создаёт один native client без первого trial grant и cap | Не запускалось | **PENDING**; [bridge](../../deploy/s07/local.py), [fault request](../../.superpowers/sdd/2026-10-02-s07-access-operations/e2e/infrastructure-request.json) |
-| AC3 | Hidden regular/EURU catalogue revisions, native panel, PG; `browser.mjs normal`, `fault-partial-start`, `fault-partial-reconcile` | Текущая revision/period принимается, stale409; snapshot остаётся прежним после edit; assignment/starter начинают новый срок/reset, UUID/subId/server постоянны | Не запускалось | **PENDING**; [driver](../../deploy/s07/browser.mjs) |
-| AC4 | Native nonzero counters, true VPN ban, root exact fault; `browser.mjs normal`, `fault-lost-reply`, `fault-restart-check`, `fault-noack`, `fault-ack` | Manual reset обнуляет счётчики и сохраняет ban/limits/expiry; потерянный ответ успешного reset оставляет needs_review даже при нулевом readback и не повторяет reset без явного согласия | Не запускалось | **PENDING**; [driver](../../deploy/s07/browser.mjs), [fault request](../../.superpowers/sdd/2026-10-02-s07-access-operations/e2e/infrastructure-request.json) |
-| AC5 | HTTPS operator API, River/PG, restart; `browser.mjs normal`, `fault-lost-reply`, `fault-restart-check`, `fault-partial-start` | Same-key replay не создаёт второй эффект, changed-body409, конфликтующая операция409, lost upstream reply и restart не дублируют reset/дни | Не запускалось | **PENDING**; [driver](../../deploy/s07/browser.mjs) |
+| AC1 | HTTPS operator API + 3X-UI3.7.0; `browser.mjs fixtures`, `compensation` | Активному finite прибавлены ровно2 дня от прежнего expiry, истёкшему —1 день от now; счётчики, limits, profile и identity прежние; 0/366 отклонены | Первый `normal` остановлен до API действий | **PENDING**; [normal.jsonl](../../.superpowers/sdd/2026-10-02-s07-access-operations/e2e/normal.jsonl), [driver](../../deploy/s07/browser.mjs) |
+| AC2 | Own panel/PG и exact-key upstream read fault; `browser.mjs setup`, `fixtures`, `compensation`, `fault-unavailable` | Unlimited, perpetual, VPN-banned, unavailable не пишут операцию/панель; missing bonus создаёт один native client без первого trial grant и cap | Owned fixture baseline подтверждён, действия ещё не проверены | **PENDING**; [setup.jsonl](../../.superpowers/sdd/2026-10-02-s07-access-operations/e2e/setup.jsonl), [bridge](../../deploy/s07/local.py) |
+| AC3 | Hidden regular/EURU catalogue revisions, native panel, PG; `browser.mjs assignment`, `fault-partial-start`, `fault-partial-reconcile` | Текущая revision/period принимается, stale409; snapshot остаётся прежним после edit; assignment/starter начинают новый срок/reset, UUID/subId/server постоянны | Не запускалось | **PENDING**; [driver](../../deploy/s07/browser.mjs) |
+| AC4 | Native nonzero counters, true VPN ban, root exact fault; `browser.mjs reset`, `fault-lost-reply`, `fault-restart-check`, `fault-noack`, `fault-ack` | Manual reset обнуляет счётчики и сохраняет ban/limits/expiry; потерянный ответ успешного reset оставляет needs_review даже при нулевом readback и не повторяет reset без явного согласия | Nonzero precondition подтвердился; reset не запускался | **PENDING**; [normal.jsonl](../../.superpowers/sdd/2026-10-02-s07-access-operations/e2e/normal.jsonl), [driver](../../deploy/s07/browser.mjs) |
+| AC5 | HTTPS operator API, River/PG, restart; `browser.mjs compensation`, `fault-lost-reply`, `fault-restart-check`, `fault-partial-start` | Same-key replay не создаёт второй эффект, changed-body409, конфликтующая операция409, lost upstream reply и restart не дублируют reset/дни | Не запускалось | **PENDING**; [driver](../../deploy/s07/browser.mjs) |
 | AC6 | Same operation and audit under partial fault; `browser.mjs fault-noack`, `fault-ack`, `fault-partial-start`, `fault-partial-reconcile` | Несовпавший panel readback блокирует вторую запись; сверка без reset-cost бережёт новый трафик, с явным согласием завершает ту же операцию; partial membership не теряет шаги | Не запускалось | **PENDING**; [driver](../../deploy/s07/browser.mjs) |
-| AC7 | HTTPS session/CSRF/Origin, RU/EN Chromium375px, S03 subscription; `browser.mjs normal`, `ui` | Nonoperator/revoked/forged/foreign/invalid отказы без изменения; UI keyboard/focus/mobile и статусы; текущая подписка отражает последний applied target | Не запускалось | **PENDING**; [driver](../../deploy/s07/browser.mjs), [web tests](../../web/tests/s07.spec.ts) |
-| AC8 | Own Docker 3X-UI/API/browser/PG disposable restore; `browser.mjs setup`, `normal`, `ui`, fault stages; `python3 deploy/s07/local.py restore` | Identity/counter/readback, regression и backup/restore access audit/catalogue плюс auth cleanup подтверждены на frozen source/image | Не запускалось | **PENDING**; [bridge](../../deploy/s07/local.py), [runtime request](../../.superpowers/sdd/2026-10-02-s07-access-operations/e2e/infrastructure-request.json) |
+| AC7 | HTTPS session/CSRF/Origin, RU/EN Chromium375px, S03 subscription; `browser.mjs reset`, `guards`, `ui` | Nonoperator/revoked/forged/foreign/invalid отказы без изменения; UI keyboard/focus/mobile и статусы; текущая подписка отражает последний applied target | Не запускалось | **PENDING**; [driver](../../deploy/s07/browser.mjs), [web tests](../../web/tests/s07.spec.ts) |
+| AC8 | Own Docker 3X-UI/API/browser/PG disposable restore; `browser.mjs setup`, focused continuations, `ui`, fault stages; `python3 deploy/s07/local.py restore` | Identity/counter/readback, regression и backup/restore access audit/catalogue плюс auth cleanup подтверждены на frozen source/image | Baseline manifest/fixtures и positive traffic подтверждены, остальное не запускалось | **PENDING**; [setup.jsonl](../../.superpowers/sdd/2026-10-02-s07-access-operations/e2e/setup.jsonl), [normal.jsonl](../../.superpowers/sdd/2026-10-02-s07-access-operations/e2e/normal.jsonl) |
 
 После actual run таблица заменяется фактическими кодами, счётчиками,
 дигестами, source/image ревизией, bounded log links и private JSONL rows.

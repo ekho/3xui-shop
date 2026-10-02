@@ -448,6 +448,38 @@ func (p *PanelClient) UpdateAccess(ctx context.Context, v *PanelClientView, t ac
 	for k, value := range v.Raw {
 		data[k] = value
 	}
+	// GET returns a ClientRecord (numeric id, UUID, CSV allowedIPs), while
+	// update binds a Client (UUID id, string-array allowedIPs).
+	var recordUUID string
+	if json.Unmarshal(data["uuid"], &recordUUID) != nil {
+		return errPanelIdentity
+	}
+	parsed, err := uuid.Parse(recordUUID)
+	if err != nil || parsed != t.VPNID {
+		return errPanelIdentity
+	}
+	data["id"], err = json.Marshal(t.VPNID.String())
+	if err != nil {
+		return errPanel
+	}
+	if raw, ok := data["allowedIPs"]; ok {
+		var csv string
+		var ips []string
+		if json.Unmarshal(raw, &csv) == nil {
+			for _, part := range strings.Split(csv, ",") {
+				if trimmed := strings.TrimSpace(part); trimmed != "" {
+					ips = append(ips, trimmed)
+				}
+			}
+		} else if json.Unmarshal(raw, &ips) != nil {
+			return errPanel
+		}
+		if len(ips) == 0 {
+			delete(data, "allowedIPs")
+		} else if data["allowedIPs"], err = json.Marshal(ips); err != nil {
+			return errPanel
+		}
+	}
 	limit := t.DeviceCount
 	if limit > 0 {
 		limit++

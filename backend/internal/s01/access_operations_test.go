@@ -87,6 +87,27 @@ func TestAccessCompensationPreservesConditions(t *testing.T) {
 	}
 }
 
+func TestAccessUpdateConvertsNativeClientRecord(t *testing.T) {
+	s, _, p, actor, target, _ := accessActors(t)
+	ctx := context.Background()
+	p.client["allowedIPs"] = "10.0.0.2/32, 10.0.0.3/32"
+	p.client["comment"] = "manual note"
+	p.client["limitHwid"] = 4
+	p.strictNativeUpdate = true
+	id := p.client["id"]
+	op, err := s.CreateAccessOperation(ctx, actor, target, uuid.New(), wire.AccessOperationInput{Kind: "compensate", Reason: "native record update", Days: ptrInt(1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.ApplyAccess(ctx, op.OperationId); err != nil {
+		t.Fatal(err)
+	}
+	current, err := s.GetAccessOperation(ctx, actor, target, op.OperationId)
+	if err != nil || current.Status != "applied" || p.updates != 1 || p.client["id"] != id || p.client["comment"] != "manual note" || p.client["limitHwid"] != json.Number("4") {
+		t.Fatalf("native ClientRecord update rejected or lost raw fields: %v", err)
+	}
+}
+
 func TestAccessRejectsInvalidAndBonusOnce(t *testing.T) {
 	s, e := fixture(t)
 	p := panelFixture(t, s)
