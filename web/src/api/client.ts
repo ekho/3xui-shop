@@ -101,3 +101,15 @@ export function createOperatorSupportMessage(id:string,text:string,file:File|und
 export const acknowledgeOperatorSupport=(id:string,sequence:number,signal?:AbortSignal)=>request<void>(operatorClientPath(id)+'/support/read','POST',{sequence},signal,true);
 export const setOperatorSupportState=(id:string,status:'open'|'closed',signal?:AbortSignal)=>request<void>(operatorClientPath(id)+'/support/state','POST',{status},signal,true);
 export const setOperatorSupportBan=(id:string,banned:boolean,reason:string,signal?:AbortSignal)=>request<void>(operatorClientPath(id)+'/support/ban','POST',{banned,reason},signal,true);
+
+export type CataloguePrice=components['schemas']['CataloguePrice'];
+export type CatalogueTerms=components['schemas']['CatalogueTerms'];
+export type CataloguePlanSnapshot=components['schemas']['CataloguePlanSnapshot'];
+export type OperatorCataloguePlan=components['schemas']['OperatorCataloguePlan'];
+export type CatalogueResult=components['schemas']['CatalogueResult'];
+export type OperatorCatalogueResult=components['schemas']['OperatorCatalogueResult'];
+export const getCatalogue=(signal?:AbortSignal)=>request<CatalogueResult>('catalogue','GET',undefined,signal);
+export const getOperatorCatalogue=(page:number,signal?:AbortSignal)=>request<OperatorCatalogueResult>('operator/catalogue?page='+page+'&per_page=50','GET',undefined,signal);
+export const createCataloguePlan=(input:components['schemas']['CataloguePlanCreateInput'],key:string,signal?:AbortSignal)=>request<OperatorCataloguePlan>('operator/catalogue/plans','POST',input,signal,true,key);
+export const reviseCataloguePlan=(id:string,input:components['schemas']['CataloguePlanRevisionInput'],key:string,signal?:AbortSignal)=>request<OperatorCataloguePlan>('operator/catalogue/plans/'+encodeURIComponent(id)+'/revision','POST',input,signal,true,key);
+export const archiveCataloguePlan=(id:string,input:components['schemas']['CataloguePlanArchiveInput'],key:string,signal?:AbortSignal)=>request<OperatorCataloguePlan>('operator/catalogue/plans/'+encodeURIComponent(id)+'/archive','POST',input,signal,true,key);

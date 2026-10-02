@@ -28,6 +28,9 @@ func TestAccountRestrictionDowngradePreservesHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err = provider.Down(ctx); err != nil {
+		t.Fatal("down from empty catalogue", err)
+	}
 	if _, err = provider.Down(ctx); err == nil || !strings.Contains(err.Error(), "account restriction downgrade blocked") {
 		t.Fatal("history downgrade permitted", err)
 	}

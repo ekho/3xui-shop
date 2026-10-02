@@ -47,6 +47,27 @@ type AuditEvent struct {
 	SupportMessageID  *uuid.UUID
 }
 
+type CataloguePlan struct {
+	ID              uuid.UUID
+	LegacyPlanID    pgtype.Int8
+	CurrentRevision int64
+	CurrentDevices  int32
+	CurrentProfile  string
+	CurrentHidden   bool
+	Archived        bool
+}
+
+type CatalogueRevision struct {
+	PlanID         uuid.UUID
+	Revision       int64
+	Terms          []byte
+	Archived       bool
+	ActorAccountID *uuid.UUID
+	Source         string
+	ChangedAt      pgtype.Timestamptz
+	Reason         pgtype.Text
+}
+
 type CredentialChallenge struct {
 	ID                uuid.UUID
 	Purpose           string

@@ -786,6 +786,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/catalogue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Authenticated unrestricted account. Current active visible snapshots only. No query parameters; private no-store response. */
+        get: operations["getCatalogue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operator/catalogue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Verified unrestricted web operator. Strict page/per_page query only; page 1+, per_page 1..50. Includes hidden and archived current snapshots, private no-store response. */
+        get: operations["getOperatorCatalogue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operator/catalogue/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Verified unrestricted web operator. Actor only from session; Origin, CSRF and UUID Idempotency-Key required. Strict JSON <=16 KiB, no unknown fields, private no-store response. */
+        post: operations["createCataloguePlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operator/catalogue/plans/{id}/revision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Verified unrestricted web operator. Actor only from session; Origin, CSRF and UUID Idempotency-Key required. Strict JSON <=16 KiB, no unknown fields, private no-store response. */
+        post: operations["reviseCataloguePlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operator/catalogue/plans/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Verified unrestricted web operator. Actor only from session; Origin, CSRF and UUID Idempotency-Key required. Strict JSON <=16 KiB, no unknown fields, private no-store response. */
+        post: operations["archiveCataloguePlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1000,7 +1085,7 @@ export interface components {
         };
         ErrorBody: {
             /** @enum {string} */
-            code: "INVALID_INPUT" | "INVALID_CREDENTIALS" | "EMAIL_VERIFICATION_REQUIRED" | "ACCOUNT_RESTRICTED" | "TRIAL_DISABLED" | "TRIAL_ALREADY_USED" | "TRIAL_RECONSIDERATION_REQUIRED" | "REQUEST_STATE_CONFLICT" | "OPERATION_NOT_READY" | "IDEMPOTENCY_CONFLICT" | "RATE_LIMITED" | "SERVICE_UNAVAILABLE" | "OPERATOR_ACCOUNT_PROTECTED";
+            code: "INVALID_INPUT" | "INVALID_CREDENTIALS" | "EMAIL_VERIFICATION_REQUIRED" | "ACCOUNT_RESTRICTED" | "TRIAL_DISABLED" | "TRIAL_ALREADY_USED" | "TRIAL_RECONSIDERATION_REQUIRED" | "REQUEST_STATE_CONFLICT" | "OPERATION_NOT_READY" | "IDEMPOTENCY_CONFLICT" | "RATE_LIMITED" | "SERVICE_UNAVAILABLE" | "OPERATOR_ACCOUNT_PROTECTED" | "CATALOGUE_REVISION_CONFLICT" | "CATALOGUE_LAST_VISIBLE" | "CATALOGUE_DEVICES_CONFLICT";
             message: string;
             /** Format: uuid */
             request_id: string;
@@ -1322,6 +1407,89 @@ export interface components {
             actor_id: string | null;
             actor_name: string | null;
             source: string | null;
+        };
+        CataloguePrice: {
+            /** Format: int64 */
+            period_days: number;
+            /** @enum {string} */
+            currency: "RUB" | "USD" | "XTR";
+            /** @description Nonnegative signed int64 minor units as canonical decimal text; server rejects values above 9223372036854775807. Never parse as JavaScript Number. */
+            amount_minor: string;
+        };
+        /** @description Full terms. Server requires complete RUB/USD/XTR matrix for each period on visible plans. Hidden plans may have empty prices; unlimited must be hidden. */
+        CatalogueTerms: {
+            devices: number;
+            traffic_gb: number;
+            /** @enum {string} */
+            profile: "regular" | "euru" | "unlimited";
+            hidden: boolean;
+            periods: number[];
+            prices: components["schemas"]["CataloguePrice"][];
+        };
+        CataloguePlanSnapshot: {
+            /** Format: uuid */
+            plan_id: string;
+            /** Format: int64 */
+            revision: number;
+            devices: number;
+            traffic_gb: number;
+            /** @enum {string} */
+            profile: "regular" | "euru" | "unlimited";
+            hidden: boolean;
+            periods: number[];
+            prices: components["schemas"]["CataloguePrice"][];
+        };
+        /** @description Operator metadata. CLI-created revisions have null web actor/reason; every manual change records both. */
+        OperatorCataloguePlan: {
+            /** Format: uuid */
+            plan_id: string;
+            /** Format: int64 */
+            revision: number;
+            devices: number;
+            traffic_gb: number;
+            /** @enum {string} */
+            profile: "regular" | "euru" | "unlimited";
+            hidden: boolean;
+            periods: number[];
+            prices: components["schemas"]["CataloguePrice"][];
+            legacy_plan_id: string | null;
+            archived: boolean;
+            /** Format: uuid */
+            actor_account_id: string | null;
+            /** @enum {string} */
+            source: "operator" | "legacy_import" | "unlimited_seed";
+            /** Format: date-time */
+            changed_at: string;
+            reason: string | null;
+        };
+        /** @description Only current active visible plans, no operator metadata. */
+        CatalogueResult: {
+            plans: components["schemas"]["CataloguePlanSnapshot"][];
+        };
+        OperatorCatalogueResult: {
+            plans: components["schemas"]["OperatorCataloguePlan"][];
+            /** Format: int64 */
+            total: number;
+            page: number;
+            per_page: number;
+        };
+        /** @description Reason is trimmed by server to 1-1000 Unicode characters, NUL forbidden. */
+        CataloguePlanCreateInput: {
+            terms: components["schemas"]["CatalogueTerms"];
+            reason: string;
+        };
+        /** @description Full replacement terms; optimistic expected revision. Reason is trimmed 1-1000 Unicode characters, NUL forbidden. */
+        CataloguePlanRevisionInput: {
+            terms: components["schemas"]["CatalogueTerms"];
+            /** Format: int64 */
+            expected_revision: number;
+            reason: string;
+        };
+        /** @description Archive creates a new immutable revision. Reason is trimmed 1-1000 Unicode characters, NUL forbidden. */
+        CataloguePlanArchiveInput: {
+            /** Format: int64 */
+            expected_revision: number;
+            reason: string;
         };
     };
     responses: never;
@@ -5558,6 +5726,462 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OperatorRestrictionResult"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    /** @description Seconds before retry */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    getCatalogue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogueResult"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    /** @description Seconds before retry */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    getOperatorCatalogue: {
+        parameters: {
+            query: {
+                page: number;
+                per_page: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorCatalogueResult"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    /** @description Seconds before retry */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    createCataloguePlan: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token": string;
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CataloguePlanCreateInput"];
+            };
+        };
+        responses: {
+            /** @description Current immutable revision */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorCataloguePlan"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    /** @description Seconds before retry */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    reviseCataloguePlan: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token": string;
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CataloguePlanRevisionInput"];
+            };
+        };
+        responses: {
+            /** @description Current immutable revision */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorCataloguePlan"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    /** @description Seconds before retry */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    archiveCataloguePlan: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token": string;
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CataloguePlanArchiveInput"];
+            };
+        };
+        responses: {
+            /** @description Current immutable revision */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorCataloguePlan"];
                 };
             };
             /** @description Safe error */

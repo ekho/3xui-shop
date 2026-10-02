@@ -77,7 +77,7 @@ func New(svc *s01.Service, cfg s01.Config) *echo.Echo {
 			c.Response().Header().Set("Cache-Control", "no-store")
 			c.Response().Header().Set("X-Content-Type-Options", "nosniff")
 			c.Response().Header().Set("Referrer-Policy", "no-referrer")
-			if c.Request().URL.RawQuery != "" && c.Path() != "" {
+			if c.Request().URL.RawQuery != "" && c.Path() != "" && !(c.Request().Method == "GET" && c.Path() == "/api/v1/operator/catalogue") {
 				return invalid()
 			}
 			if c.Request().Method == "POST" && len(c.Path()) >= 4 && c.Path()[:4] == "/api" && c.Request().Header.Get("Origin") != cfg.CabinetOrigin {
@@ -142,6 +142,11 @@ func New(svc *s01.Service, cfg s01.Config) *echo.Echo {
 	e.POST("/api/v1/operator/clients/:id/support/state", a.SetOperatorSupportState)
 	e.POST("/api/v1/operator/clients/:id/support/ban", a.SetOperatorSupportBan)
 	e.GET("/api/v1/operator/session", a.GetOperatorSession)
+	e.GET("/api/v1/catalogue", a.GetCatalogue)
+	e.GET("/api/v1/operator/catalogue", a.GetOperatorCatalogue)
+	e.POST("/api/v1/operator/catalogue/plans", a.CreateCataloguePlan)
+	e.POST("/api/v1/operator/catalogue/plans/:id/revision", a.ReviseCataloguePlan)
+	e.POST("/api/v1/operator/catalogue/plans/:id/archive", a.ArchiveCataloguePlan)
 	e.POST("/api/v1/operator/clients/search", a.SearchOperatorClients)
 	e.GET("/api/v1/operator/clients/:id", a.GetOperatorClient)
 	e.POST("/api/v1/operator/clients/:id/history", a.GetOperatorClientHistory)
