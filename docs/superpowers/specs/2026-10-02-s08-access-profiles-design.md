@@ -17,6 +17,10 @@ inbounds не изменяются. Старые unknown groups — ошибка
 - Regular/euru заменяют только access profile и управляемые memberships,
   сохраняя текущий срок/devices/traffic и ban overlay. Без panel client профиль
   сохраняется для будущего provisioning; новый trial/bonus использует его.
+- Компенсация С07 сохраняет отказ при VPN-ban, включая аккаунт без клиента.
+  Поэтому будущий bonus использует сохранённый профиль после явного unban;
+  первый trial может применить сохранённый профиль с ban overlay, оставаясь
+  недоступным до unban. Ни один путь не снимает ban автоматически.
 - Unlimited назначает текущую hidden unlimited revision из С09, expiry=0,
   её devices/traffic, memberships unlimited+regular и прежний ban. Отсутствующий
   plan, конфликт devices или неподготовленный С41 честно блокируют действие.
