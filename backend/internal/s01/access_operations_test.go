@@ -7,6 +7,7 @@ import (
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
 	"testing"
+	"time"
 )
 
 func TestAccessOperationInputAndForeignGuard(t *testing.T) {
@@ -84,6 +85,84 @@ func TestAccessCompensationPreservesConditions(t *testing.T) {
 	card, err := s.OperatorClient(ctx, actor, target)
 	if err != nil || card.Subscription.AccessOperationId == nil || *card.Subscription.AccessOperationId != op.OperationId {
 		t.Fatalf("restricted operator card lost access: %v", err)
+	}
+}
+
+func TestAccessExpiredCompensationRestoresNativeEnable(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		refuse     bool
+		exhausted  bool
+		wantOp     string
+		wantStatus string
+		wantEnable bool
+	}{
+		{name: "restored", wantOp: "applied", wantStatus: "active", wantEnable: true},
+		{name: "activation_refused", refuse: true, wantOp: "needs_review", wantStatus: "needs_review"},
+		{name: "exhausted", exhausted: true, wantOp: "applied", wantStatus: "exhausted"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, _, p, actor, target, _ := accessActors(t)
+			ctx := context.Background()
+			p.client["expiryTime"] = json.Number("1")
+			p.client["enable"] = false
+			p.refuseActivation = tc.refuse
+			beforeID, beforeSub, beforeKey := p.client["id"], p.client["subId"], p.client["email"]
+			beforeLimit, beforeTraffic := integer(t, p.client["limitIp"]), integer(t, p.client["totalGB"])
+			if tc.exhausted {
+				p.up = beforeTraffic
+			}
+			beforeUsed := p.up
+			op, err := s.CreateAccessOperation(ctx, actor, target, uuid.New(), wire.AccessOperationInput{Kind: "compensate", Reason: "expired access", Days: ptrInt(1)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = s.ApplyAccess(ctx, op.OperationId); err != nil {
+				t.Fatal(err)
+			}
+			current, err := s.GetAccessOperation(ctx, actor, target, op.OperationId)
+			if err != nil || current.Status != wire.AccessOperationStatus(tc.wantOp) {
+				t.Fatalf("operation claimed wrong result: %v status=%s", err, current.Status)
+			}
+			if p.client["enable"] != tc.wantEnable || p.up != beforeUsed || p.resets != 0 || integer(t, p.client["limitIp"]) != beforeLimit || integer(t, p.client["totalGB"]) != beforeTraffic || p.client["id"] != beforeID || p.client["subId"] != beforeSub || p.client["email"] != beforeKey || len(p.ids) != 2 {
+				t.Fatal("compensation changed conditions or native enable state")
+			}
+			if !tc.refuse {
+				view, err := s.Subscription(ctx, target)
+				if err != nil || view.Status != wire.SubscriptionStatus(tc.wantStatus) || view.ExpiresAt == nil || !view.ExpiresAt.After(s.now()) {
+					t.Fatalf("subscription did not reflect extension: %v status=%s", err, view.Status)
+				}
+			}
+		})
+	}
+}
+
+func TestAccessRestoredSubscriptionLifecycle(t *testing.T) {
+	for _, state := range []string{"expired", "exhausted"} {
+		t.Run(state, func(t *testing.T) {
+			s, _, p, actor, target, _ := accessActors(t)
+			ctx := context.Background()
+			p.client["expiryTime"] = json.Number("1")
+			p.client["enable"] = false
+			op, err := s.CreateAccessOperation(ctx, actor, target, uuid.New(), wire.AccessOperationInput{Kind: "compensate", Reason: "restore access", Days: ptrInt(1)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = s.ApplyAccess(ctx, op.OperationId); err != nil || p.client["enable"] != true {
+				t.Fatalf("restoration not confirmed: %v", err)
+			}
+			p.client["enable"] = false // Native later disables an expired or depleted client.
+			if state == "expired" {
+				after := op.Desired.ExpiresAt.Add(time.Second)
+				s.now = func() time.Time { return after }
+			} else {
+				p.up = integer(t, p.client["totalGB"])
+			}
+			view, err := s.Subscription(ctx, target)
+			if err != nil || view.Status != wire.SubscriptionStatus(state) || view.PanelError != nil || view.DataStale {
+				t.Fatalf("legitimate native disable was treated as identity drift: %v status=%s", err, view.Status)
+			}
+		})
 	}
 }
 

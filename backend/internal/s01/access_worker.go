@@ -161,17 +161,26 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 			return cleanup("baseline_changed", true)
 		}
 	}
+	if t.RestoreEnabled {
+		if t.Banned || op.Kind != "compensate" || s.now().UnixMilli() >= t.ExpiryTimeMS || t.TrafficLimitBytes > 0 && (view.UsedTraffic == nil || *view.UsedTraffic >= t.TrafficLimitBytes) {
+			return cleanup("activation_unsafe", true)
+		}
+		banned, e := store.New(s.pool).AccountVPNBan(ctx, op.AccountID)
+		if e != nil || banned {
+			return cleanup("ban_changed", true)
+		}
+	}
 	limit := t.DeviceCount
 	if limit > 0 {
 		limit++
 	}
-	if view.ExpiryTimeMS != t.ExpiryTimeMS || view.LimitIP != limit || view.TrafficLimitBytes != t.TrafficLimitBytes || t.Banned && view.Enabled {
+	if view.ExpiryTimeMS != t.ExpiryTimeMS || view.LimitIP != limit || view.TrafficLimitBytes != t.TrafficLimitBytes || t.Banned && view.Enabled || t.RestoreEnabled && !view.Enabled {
 		if !markWrite() {
 			return cleanup("write_unavailable", true)
 		}
 		_ = p.UpdateAccess(ctx, view, t)
 		view, err = p.GetClient(ctx, t.PanelKey)
-		if err != nil || view == nil || view.VPNID != t.VPNID || view.SubID != t.SubID || view.ExpiryTimeMS != t.ExpiryTimeMS || view.LimitIP != limit || view.TrafficLimitBytes != t.TrafficLimitBytes {
+		if err != nil || view == nil || view.VPNID != t.VPNID || view.SubID != t.SubID || view.ExpiryTimeMS != t.ExpiryTimeMS || view.LimitIP != limit || view.TrafficLimitBytes != t.TrafficLimitBytes || t.RestoreEnabled && !view.Enabled {
 			return cleanup("update_unconfirmed", true)
 		}
 		if s.accessStep(ctx, id, lease, "panel_updated") != nil {
@@ -265,7 +274,7 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		}
 	}
 	view, err = p.GetClient(ctx, t.PanelKey)
-	if err != nil || view == nil || view.VPNID != t.VPNID || view.SubID != t.SubID || view.ExpiryTimeMS != t.ExpiryTimeMS || view.LimitIP != limit || view.TrafficLimitBytes != t.TrafficLimitBytes || t.Banned && view.Enabled {
+	if err != nil || view == nil || view.VPNID != t.VPNID || view.SubID != t.SubID || view.ExpiryTimeMS != t.ExpiryTimeMS || view.LimitIP != limit || view.TrafficLimitBytes != t.TrafficLimitBytes || t.Banned && view.Enabled || t.RestoreEnabled && !view.Enabled {
 		return cleanup("readback_mismatch", true)
 	}
 	attach, detach, err = p.MembershipDiff(ctx, view.InboundIDs, t.InboundIDs)

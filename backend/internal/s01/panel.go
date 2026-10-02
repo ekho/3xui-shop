@@ -493,6 +493,8 @@ func (p *PanelClient) UpdateAccess(ctx context.Context, v *PanelClientView, t ac
 	}
 	if t.Banned {
 		data["enable"] = json.RawMessage("false")
+	} else if t.RestoreEnabled {
+		data["enable"] = json.RawMessage("true")
 	}
 	out, e := p.call(ctx, "POST", "panel/api/clients/update/"+url.PathEscape(t.PanelKey), data)
 	if e != nil || !*out.Success {

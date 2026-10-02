@@ -37,6 +37,7 @@ type accessTarget struct {
 	Missing                   bool      `json:"missing"`
 	Reset                     bool      `json:"reset"`
 	Banned                    bool      `json:"banned"`
+	RestoreEnabled            bool      `json:"restore_enabled"`
 	PreviousExpiryMS          int64     `json:"previous_expiry_ms"`
 	PreviousLimitIP           int64     `json:"previous_limit_ip"`
 	PreviousTrafficLimitBytes int64     `json:"previous_traffic_limit_bytes"`
@@ -207,6 +208,12 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 			if err != nil {
 				return out, failure(409, "ACCESS_NOT_ELIGIBLE")
 			}
+		}
+		if v != nil && !v.Enabled && !a.VpnBanned && v.ExpiryTimeMS > 0 && v.ExpiryTimeMS <= now.UnixMilli() {
+			if v.TrafficLimitBytes > 0 && v.UsedTraffic == nil {
+				return out, failure(409, "ACCESS_NOT_ELIGIBLE")
+			}
+			t.RestoreEnabled = v.TrafficLimitBytes == 0 || *v.UsedTraffic < v.TrafficLimitBytes
 		}
 		base := now.UnixMilli()
 		if t.ExpiryTimeMS > base {

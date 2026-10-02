@@ -86,6 +86,9 @@ func (s *Service) readAccess(ctx context.Context, op store.AccessOperation) (acc
 	if err != nil {
 		return target, nil, 0, 0, err
 	}
+	if target.RestoreEnabled && !v.Enabled && s.now().UnixMilli() < target.ExpiryTimeMS && (target.TrafficLimitBytes == 0 || up+down < target.TrafficLimitBytes) {
+		return target, nil, 0, 0, errPanelIdentity
+	}
 	return target, v, up, down, nil
 }
 

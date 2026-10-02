@@ -36,6 +36,7 @@ type fakePanel struct {
 	loseReset                                                                        bool
 	resetLeavesTraffic                                                               bool
 	strictNativeUpdate                                                               bool
+	refuseActivation                                                                 bool
 	loseAdd, emptyRead, failRead, partial, noRegular, noEuru, sharedRegularUnlimited bool
 }
 
@@ -188,6 +189,9 @@ func (p *fakePanel) serve(w http.ResponseWriter, r *http.Request) {
 				reply(map[string]any{"success": false, "msg": "invalid client model", "obj": nil})
 				return
 			}
+		}
+		if p.refuseActivation && body["enable"] == true {
+			body["enable"] = false
 		}
 		p.client = body
 		reply(map[string]any{"success": true, "obj": nil})
