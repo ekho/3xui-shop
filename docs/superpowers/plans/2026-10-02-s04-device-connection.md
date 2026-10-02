@@ -41,9 +41,9 @@
 
 - [x] Actual browser confirms installation links, copy/QR/deep-link string and own API key; intercept protocol click, assert no remote QR request and no new trial/grant/panel writes.
 - [x] Record all5 AC against exact tested product revision, real versus mocked checks and excluded native Happ action.
-- [ ] Coordinator local commit; whole-branch regression/review runs after С06.
+- [x] Coordinator local commit; whole-branch regression/review runs after С06.
 
-Статус перед финальным review: реализация и техническая приёмка проверены;
-итоговый review/закрытие ещё открыты. Неподтверждённые исторические RED steps
-оставлены неотмеченными; Ruling и точные результаты — в
-[общем evidence](../../evidence/s03-s06-progress.md#итоговые-проверки-перед-review).
+Итоговый статус: локальная реализация и приёмка завершены; один свежий
+whole-branch review и обязательный RED→GREEN fix pass пройдены. Неподтверждённые
+исторические RED steps оставлены неотмеченными; Ruling и точные результаты —
+в [общем evidence](../../evidence/s03-s06-progress.md#итоговое-закрытие-локальной-приёмки).

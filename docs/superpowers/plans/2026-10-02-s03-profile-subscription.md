@@ -52,9 +52,9 @@
 - [x] Реальная own3.7.0 readback подтверждает traffic fields/identity; browser actual API показывает состояния и counters; не менять native Happ или production.
 - [x] Проверить cache outage и отсутствие writes в focused TLS tests; native existing target/Grant/VPN сохраняются.
 - [x] Записать все8 AC с точной ревизией, commands/result и оставшимися external launch gates; обновить roadmap/progress.
-- [ ] Local commit Task3; общий regression/review после С06, без повторения зелёных suites без причины.
+- [x] Local commit Task3; общий regression/review после С06, без повторения зелёных suites без причины.
 
-Статус перед финальным review: реализация и техническая приёмка проверены;
-итоговый review/закрытие ещё открыты. Неподтверждённые исторические RED steps
-оставлены неотмеченными; Ruling и точные результаты — в
-[общем evidence](../../evidence/s03-s06-progress.md#итоговые-проверки-перед-review).
+Итоговый статус: локальная реализация и приёмка завершены; один свежий
+whole-branch review и обязательный RED→GREEN fix pass пройдены. Неподтверждённые
+исторические RED steps оставлены неотмеченными; Ruling и точные результаты —
+в [общем evidence](../../evidence/s03-s06-progress.md#итоговое-закрытие-локальной-приёмки).

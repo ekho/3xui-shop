@@ -4,8 +4,9 @@ Frozen API и совместимость payload: `1381d2e`; backend `70a0294`, 
 Actual native/browser/restore run на `d6ae035` завершён: 30 PASS, 0 FAIL/BLOCKED,
 exit0. Свежий review завершён с двумя Important общей support UI-границы.
 F1/F2 исправлены с browser RED→GREEN; полный web64/64 GREEN. Окончательный
-статус **Pending focused actual UI check**, AC7/AC8 открыты до новой проверки
-затронутого UI. Команды/ревизии и findings — в
+статус **локально принято, все8 AC**. Focused actual support UI/API на
+`df34ef5`:6 PASS, exit0; оба callers восстановили104 сообщения и сохранили
+composer при delayed POST. Lifecycle управляемый; физическое скрытие вкладки не заявлено. Команды/ревизии и findings — в
 [сводном evidence](s03-s06-progress.md#финальный-review-и-один-проход-исправлений).
 
 | AC | Требование | Необходимое доказательство | Статус |
@@ -16,8 +17,8 @@ F1/F2 исправлены с browser RED→GREEN; полный web64/64 GREEN. 
 | 4 | Bot/web concurrency/lost response дают одну неизменную выдачу | `TestOperatorConcurrentBotWebDecisionOneGrant`; actual replay и одна Grant/job, native UUID/sub/target readback; browser lost response сохраняет idempotency | PASS; bot/web race — real-PG, транспорт бота остановлен |
 | 5 | TG-only NULL credentials, общий worker; duplicate/used/disabled/uncertain protected | `TestOperatorTelegramOriginHasNoWebCredentials`, `TestOperatorTelegramProvisionAndUncertainty`, migration/auth tests; actual true owner ID, worker applied, duplicate409, one Grant/native identity | PASS; ID не публикуется, нет fake web credentials |
 | 6 | cfg.Operators=[] и adapter stopped не мешают web request/approve/provision/key | Actual web-only request/decision/shared worker/key200 при пустом BOT_OPERATOR_IDS и остановленном adapter; postflight подтвердил режим | PASS, own native runtime |
-| 7 | Operator support text/file/state/ban/receipt вместе с client UI, VPN не меняется | Actual два клиента/operator, byte-exact download, page50, receipts/state/ban, native target/key/VPN сохранены | Native/backend PASS; F1/F2 shared UI исправлены, actual check ожидается; [С05](s05-acceptance.md) |
-| 8 | PG restore сохраняет новые данные/роли/actors/identity; session revoke, accessibility/regression/review | Actual dump/restore digests равны, old session401, fresh login/key/file200; full Go-race, web64, Python103; actual RU mobile/Enter | Restore/regression PASS; review и browser fix pass завершены, focused actual UI check открыт |
+| 7 | Operator support text/file/state/ban/receipt вместе с client UI, VPN не меняется | Actual два клиента/operator, byte-exact download, page50, receipts/state/ban, native target/key/VPN сохранены | PASS; F1/F2 shared UI исправлены, actual support6 PASS; [С05](s05-acceptance.md) |
+| 8 | PG restore сохраняет новые данные/роли/actors/identity; session revoke, accessibility/regression/review | Actual dump/restore digests равны, old session401, fresh login/key/file200; full Go-race, web64, Python103; actual RU mobile/Enter | PASS; review и один RED→GREEN fix pass завершены, web64 и focused actual UI6 PASS |
 
 Authored9 paths/16 DTO, nullable-email wire contract и12 bot-adapter tests
 дополнены полным regression и actual runtime. Секреты, личные ID, тела сообщений,

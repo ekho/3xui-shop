@@ -50,10 +50,10 @@
 - [x] Own Docker3X-UI3.7.0/Mailpit/PG/Redis preflight and rebuild; register actual operator/customer, file-based CLI role, browser search/support/approve/new TG-only trial with adapter stopped; key identity/one Grant/native target readback and own Docker VPN.
 - [x] Real dump/restore verifies support blobs/roles/actors/TG-only identity; old session/proofs revoked, fresh owner login and original VPN retained.
 - [x] Complete8 С03,5 С04,7 С05,8 С06 AC matrices with exact revisions/commands; run generated no-diff, full Go-race, web suites, Python and bounded native integration once after code is stable.
-- [ ] One fresh read-only whole-branch Astra/high review from0e2009e to current code; required findings fixed with focused RED→GREEN, broaden regression only for new changes.
-- [ ] Coordinator commits final evidence/progress and verifies goal achieved. No push/merge/deploy/release or production inference.
+- [x] One fresh read-only whole-branch Astra/high review from0e2009e to current code; required findings fixed with focused RED→GREEN, broaden regression only for new changes.
+- [x] Coordinator commits final evidence/progress and verifies goal achieved. No push/merge/deploy/release or production inference.
 
-Статус перед финальным review: реализация и техническая приёмка проверены;
-итоговый review/закрытие ещё открыты. Неподтверждённые исторические RED steps
-оставлены неотмеченными; Ruling и точные результаты — в
-[общем evidence](../../evidence/s03-s06-progress.md#итоговые-проверки-перед-review).
+Итоговый статус: локальная реализация и приёмка завершены; один свежий
+whole-branch review и обязательный RED→GREEN fix pass пройдены. Неподтверждённые
+исторические RED steps оставлены неотмеченными; Ruling и точные результаты —
+в [общем evidence](../../evidence/s03-s06-progress.md#итоговое-закрытие-локальной-приёмки).

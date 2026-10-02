@@ -10,10 +10,10 @@
 
 | Сценарий | Спецификация/план | Реализация | Приёмка |
 | --- | --- | --- | --- |
-| С03 | Готовы | Backend `f710935`, UI `41a2ade` | 8 AC проверены; review без новых замечаний, общий fix pass открыт |
-| С04 | Готовы | UI `41a2ade` | 5 AC проверены; review без новых замечаний, общий fix pass открыт |
-| С05 | Готовы | Backend/client `745250f`, operator `5c21d94` | Restore/backend проверены; два Important в shared UI исправляются |
-| С06 | Готовы | Backend `70a0294`, React-admin `5c21d94` | Trial/role/restore проверены; support UI AC7 и final AC8 ждут fix pass |
+| С03 | Готовы | Backend `f710935`, UI `41a2ade` | 8/8 AC локально приняты; общий review/fix pass завершён |
+| С04 | Готовы | UI `41a2ade` | 5/5 AC локально приняты; общий review/fix pass завершён |
+| С05 | Готовы | Backend/client `745250f`, operator `5c21d94` | 7/7 AC локально приняты; F1/F2 RED→GREEN, web64 и actual UI6 PASS |
+| С06 | Готовы | Backend `70a0294`, React-admin `5c21d94` | 8/8 AC локально приняты; trial/role/restore и shared support UI проверены |
 
 ## Промежуточная история
 
@@ -160,10 +160,10 @@ Ruling: исходная последовательность RED→GREEN час
 review отдельно проверяет достаточность нынешних тестов. RED→GREEN исправлений
 NUL/recipient ack/React-admin card/refresh/none и actual header RED→GREEN сохранены.
 
-Свежий whole-branch review завершён; его выводы и открытый fix pass ниже.
+Свежий whole-branch review завершён; его выводы и завершённый fix pass ниже.
 External SMTP/mailbox, целевой benchmark, upstream dependency gate и внешний
 cutover/rollout остаются вне локальной приёмки. Ни production readiness, ни
-запуск установленного Happ из этих результатов не следуют. Цель остаётся active.
+запуск установленного Happ из этих результатов не следуют. Локальная приёмка С03–С06 закрыта; внешние gates не входят в её объём.
 
 ## Финальный review и один проход исправлений
 
@@ -178,16 +178,16 @@ cutover/rollout остаются вне локальной приёмки. Ни 
 
 | Finding | Эффект | Критерии / решение |
 | --- | --- | --- |
-| F1 Important | После скрытой вкладки и более50 новых сообщений polling объединяет последний page с прежним history, но курсор остаётся старым; часть переписки нельзя загрузить без reload | С05 AC1/RF5, С06 AC7; обязателен shared UI fix и browser RED→GREEN |
-| F2 Important | Пока send POST выполняется, новый текст/файл остаётся редактируемым и стирается поздним success прежнего сообщения | С05 AC2/AC7, С06 AC7; обязателен composer fix и browser RED→GREEN |
-| F3 Minor | Старый history response может заменить локальные receipt counters; PostgreSQL GREATEST сохраняет durable receipt, но UI повторяет ack | Не блокирует durable delivery; отдельный polish в fix pass не добавляется, итоговая судьба фиксируется после F1 |
+| F1 Important | После скрытой вкладки и более50 новых сообщений polling объединяет последний page с прежним history, но курсор остаётся старым; часть переписки нельзя загрузить без reload | С05 AC1/RF5, С06 AC7; исправлен: browser RED→GREEN + actual104/104 обоих callers |
+| F2 Important | Пока send POST выполняется, новый текст/файл остаётся редактируемым и стирается поздним success прежнего сообщения | С05 AC2/AC7, С06 AC7; исправлен: native disabled + browser RED→GREEN + delayed actual POST |
+| F3 Minor | Старый history response может заменить локальные receipt counters; PostgreSQL GREATEST сохраняет durable receipt, но UI повторяет ack | Устранён следствием F1: history response больше не заменяет conversation; operator race test не допускает повторного ack. Отдельный Minor fix не добавлялся |
 
 F1/F2 подтверждены чтением всех callers: client Support и OperatorSupport
 используют один SupportThread. Native50/2 проверялось после reload, поэтому
-его PASS не опровергает F1. Два исправления выполняются одной ограниченной
+его PASS не опровергает F1. Два исправления выполнены одной ограниченной
 frontend-границей, с настоящими browser RED перед изменением продукта и общей
-web проверкой после GREEN. Backend/API/migrations/бот не меняются; их Go/Python
-результаты сохраняют силу. После изменения UI нужен focused actual support run,
+web64/64 проверкой после GREEN. Backend/API/migrations/бот не меняются; их Go/Python
+результаты сохраняют силу. После изменения UI пройден focused actual support run,
 проверки роли/триала/TG-only/restore не повторяются без изменения их source.
 
 Final: Ruling: исключённые Happ/Mac VPN/clipboard/trust остаются исключёнными —
@@ -205,3 +205,76 @@ Final: Ruling: тарифы/компенсации/VPN-ban/account restrictions/
 Final: Ruling: upstream dependency gate сохраняется перед внешним запуском —
 review не подтвердил полную недостижимость всех parser consumers и scanner
 не отключён — цена: production readiness остаётся открытой.
+
+
+## Итоговое закрытие локальной приёмки
+
+Обязательные F1/F2 исправлены в `df34ef5b4cd06a1af0e831b8fd2e5ae1889c2fff`.
+F1 дополнительно воспроизведён RED при own send до latest refresh: одиночный
+ответ отправки больше не считается загруженной страницей и не маскирует gap.
+Message/cursor/hasMore обновляются атомарно; поздняя history не откатывает новый
+cursor и conversation. Пересечение определяется по sequence загруженных страниц,
+без предположения о соседних глобальных номерах. F2 использует native disabled
+textarea/file; draft/file/idempotency сохраняются при failure, следующий ввод
+доступен после success. F3 устранён следствием обязательного history fix;
+отдельных deferred minors по этому review не осталось.
+
+Final: minor (deferred): coordinator source inspection `Support.tsx:19,24`
+показал редактируемую причину support-ban во время POST и её очистку при success.
+Можно потерять причину, введённую следом; уже отправленный reason/audit сохраняется.
+Это отдельный operator UX Minor, не новый обязательный composer fix F2;
+browser-воспроизведение этого дополнительного случая не выполнялось.
+
+Final: fixed F1 — customer hidden-history и own-send-before-poll tests
+RED→GREEN; operator late-history race GREEN. Final focused25/25 и full web64/64 GREEN.
+Final: fixed F2 — customer/operator pending-send composer tests RED→GREEN;
+final focused25/25 и full web64/64 GREEN, включая typecheck/build.
+Полный `npm --prefix web run test:e2e` завершился exit0 на source `df34ef5`.
+Все предыдущие Go-race пакеты и Python103 PASS сохраняют силу: деревья
+`backend`, `app`, `tests` точно совпадают с `5c21d94`. Стандартная generation
+no-diff/vet и сохранность24 старых paths/44 schemas подтверждены до review;
+contracts/generated source в этом fix pass не менялись.
+
+Actual focused command: `node .superpowers/sdd/2026-10-02-s03-s06/s05-support-focus.mjs`
+через bounded run-check с лимитом900s: **6 PASS, 0 FAIL, 0 BLOCKED, exit0**.
+Оба реальных HTTPS callers загрузили latest50/older2 до exhaustion, после52
+новых сообщений восстановили все104 без reload, по одному older click.
+Две реальные записи второй беседы создали пропуски в глобальной нумерации;
+максимум28 сообщений на actor при лимите30/15min, без bypass/SQL inserts.
+При delayed POST обе стороны имели заблокированные composer fields; следующий
+binary attachment сохранён и скачан byte-exact200. Все три новые роли отозваны.
+
+Пересобран и пересоздан только gateway из frontend `df34ef5`:
+`sha256:622f78822c7e59763787430b88857791148ba239d453919b203515d3cfbe8c14`.
+Backend/pinned native3X-UI3.7.0 не менялись. Независимый coordinator postflight
+подтвердил ready, строгие singleton headers, web-only/bot stopped, отсутствие
+fault triggers/reconcile, неизменные source hashes и прежний Docker VPN файл.
+Focused native readback подтвердил прежние target/panel/one Grant. Ранее
+полные30 native PASS на `d6ae035` остаются доказательством неизменённых trial,
+role, TG-only и настоящего PG restore; они не перезапускались.
+
+Новые private0600 proofs: `review-fix-verification.json`,
+`s05-support-focus.jsonl`, `s05-support-focus-result.json`,
+`support-review-gateway-rollout.json`, `support-review-gateway-after.json`,
+`coordinator-support-final-postflight.json` внутри общего local evidence.
+Полные логи прочитаны coordinator; aggregate PASS не включает прошлые FAIL.
+
+Final: Ruling: управляемый visibilityState/visibilitychange используется на
+реальных HTTPS/API страницах — два дешёвых preflight показали visible во всех
+окнах Chromium, а AC требует работающего UI/API, не OS tab-manager proof —
+цена: физическое скрытие/occlusion вкладки не подтверждено. Само сохранение
+истории104/104, отправка/bytes/receipt/authorization выполнены реальным сервисом.
+
+Task С05.2: Ruling: delegated frontend slice выполнялся без commits/helpers —
+координатор сохранял интеграцию и финальный review — цена: при неверной границе
+понадобится дополнительный frontend review.
+Task С06.2: Ruling: delegated frontend slice выполнялся без commits/helpers —
+координатор сохранял интеграцию/runtime/whole-branch review — цена: при неверной
+границе понадобится дополнительный frontend review.
+
+Все28 функциональных AC проверены; один свежий whole-branch review и один
+проход обязательных исправлений завершены. С03–С06 локально приняты.
+Локальная ветка/worktree сохраняются. Push, PR/MR, merge, внешний CI,
+production/release и внешний rollout не выполнялись.
+Следующий отдельный этап: спецификация С48; затем С09 и зависимые С07/С08,
+при этом unlimited требует С41. Эти этапы здесь не реализовывались.

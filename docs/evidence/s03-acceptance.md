@@ -4,8 +4,9 @@
 проверял runtime с этими изменениями при checkout `0a14733`. Расширенный native
 driver завершился exit0. Общий Go-race и browser regression завершены на
 `5c21d94`; source профиля/панели/Connection после native snapshot `0a14733`
-не изменялся. Технические критерии проверены; окончательный статус **Pending
-fresh review**. Общие команды/ревизии — в [сводном evidence](s03-s06-progress.md#итоговые-проверки-перед-review).
+не изменялся. Все8 AC локально приняты. Свежий whole-branch review не выявил новых
+замечаний к профилю; обязательные support fixes общей ветки закрыты на `df34ef5`.
+Текущий полный web64 GREEN; core профиля/панели неизменён. Команды/ревизии — в [сводном evidence](s03-s06-progress.md#итоговое-закрытие-локальной-приёмки).
 
 | AC | Требование | Проверенная поверхность | Статус / граница доказательства |
 | --- | --- | --- | --- |
@@ -15,8 +16,8 @@ fresh review**. Общие команды/ревизии — в [сводном 
 | 4 | Negative/overflow/foreign/unknown отклоняются, чужой key закрыт | `TestProfileTrafficBoundary`, `TestProfileOwnership`, `TestProfileMembership`; два реальных владельца с разными native keys и reciprocal guard | PASS; malformed data проверены TLS fixtures, без порчи native БД |
 | 5 | Outage сохраняет весь cache/time, первый сбой не создаёт нули | `TestProfileCache`; фактический stop/start собственной панели сохранил полный snapshot/time, stale/key409 и fresh recovery | PASS; первый сбой без cache — fixture |
 | 6 | Старое наблюдение не заменяет новое; GET не пишет panel/Grant | `TestProfileObservationOrder`, `TestProfileOlderReadUsesCurrentObservation`, GET-only TLS fixture, one Grant native readback | PASS; полный race suite `5c21d94` |
-| 7 | ru/en/mobile/keyboard/retry/key privacy и С01/С02 | Реальная mobile browser поверхность; Playwright С01–С06, TTL/abort tests | PASS; полный browser59 и Go/Python regression |
-| 8 | Настоящая native3.7.0/browser, живой Happ исключён | Расширенный `node deploy/s04/browser.mjs`: exit0, positive up/down, native identity/limits/states/outage, прежний Docker proxy восстановлен | PASS; неизменность core source до `d6ae035` проверена |
+| 7 | ru/en/mobile/keyboard/retry/key privacy и С01/С02 | Реальная mobile browser поверхность; Playwright С01–С06, TTL/abort tests | PASS; полный browser64 `df34ef5` и Go/Python regression |
+| 8 | Настоящая native3.7.0/browser, живой Happ исключён | Расширенный `node deploy/s04/browser.mjs`: exit0, positive up/down, native identity/limits/states/outage, прежний Docker proxy восстановлен | PASS; неизменность core source до `df34ef5` проверена |
 
 Команды: `go test ./internal/s01 -race -count=1 -run Profile` с file-based
 inputs тестовой PostgreSQL/Redis; `npm --prefix web run test:e2e -- s03.spec.ts
