@@ -38,6 +38,31 @@ test('history is sorted and deduplicated with delivery and protected attachment 
  await page.getByRole('button',{name:'Load older messages'}).click();expect(historyBody).toEqual({before_sequence:51});await expect(page.locator('[data-sequence]')).toHaveCount(4);expect(await page.locator('[data-sequence]').evaluateAll(items=>items.map(item=>item.getAttribute('data-sequence')))).toEqual(['49','50','51','52']);await expect(page.getByRole('button',{name:'Load older messages'})).toHaveCount(0);
 });
 
+test('returning after more than 50 new messages keeps all own history reachable',async({page})=>{
+ const all=Array.from({length:61},(_,index)=>message((index+1)*10));let later=false,historyBefore=0;
+ await baseRoutes(page,()=>({conversation,messages:later?all.slice(-50):all.slice(1,2),has_more:true,oldest_sequence:later?120:20}),async(route,path)=>{
+  if(path.endsWith('/support/history')){historyBefore=(route.request().postDataJSON() as {before_sequence:number}).before_sequence;await route.fulfill({json:{conversation,messages:all.filter(row=>row.sequence<historyBefore),has_more:false,oldest_sequence:10}});return true;}return false;
+ });
+ await page.goto('/cabinet/support?lang=en');await expect(page.locator('[data-sequence]')).toHaveCount(1);await page.getByRole('button',{name:'Load older messages'}).click();await expect(page.locator('[data-sequence]')).toHaveCount(2);await expect(page.getByRole('button',{name:'Load older messages'})).toHaveCount(0);
+ await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'));});later=true;
+ await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});document.dispatchEvent(new Event('visibilitychange'));});await expect(page.locator('[data-sequence]')).toHaveCount(52);
+ await page.getByRole('button',{name:'Load older messages'}).click();expect(historyBefore).toBe(120);await expect(page.locator('[data-sequence]')).toHaveCount(61);
+ await expect(page.locator('[data-sequence="20"]')).toBeVisible();await expect(page.locator('[data-sequence="610"]')).toBeVisible();
+});
+
+test('sending during a hidden history gap does not make the latest page look complete',async({page})=>{
+ const all=Array.from({length:62},(_,index)=>message((index+1)*10));let later=false,historyBefore=0;
+ await baseRoutes(page,()=>({conversation,messages:later?all.slice(-50):all.slice(1,2),has_more:true,oldest_sequence:later?130:20}),async(route,path)=>{
+  if(path.endsWith('/support/history')){historyBefore=(route.request().postDataJSON() as {before_sequence:number}).before_sequence;await route.fulfill({json:{conversation,messages:all.filter(row=>row.sequence<historyBefore),has_more:false,oldest_sequence:10}});return true;}
+  if(path.endsWith('/support/messages')){await route.fulfill({status:201,json:all.at(-1)});return true;}return false;
+ });
+ await page.goto('/cabinet/support?lang=en');await page.getByRole('button',{name:'Load older messages'}).click();await expect(page.locator('[data-sequence]')).toHaveCount(2);await expect(page.getByRole('button',{name:'Load older messages'})).toHaveCount(0);
+ await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'));});later=true;
+ await page.getByLabel('Message').fill('Message 62');await page.getByRole('button',{name:'Send'}).click();await expect(page.locator('[data-sequence="620"]')).toBeVisible();
+ await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});document.dispatchEvent(new Event('visibilitychange'));});await expect(page.locator('[data-sequence]')).toHaveCount(52);
+ await page.getByRole('button',{name:'Load older messages'}).click();expect(historyBefore).toBe(130);await expect(page.locator('[data-sequence]')).toHaveCount(62);await expect(page.locator('[data-sequence="120"]')).toBeVisible();
+});
+
 test('text send keeps explicit stored meaning and closed conversation can reopen',async({page})=>{
  let state=conversation;const states:string[]=[],keys:string[]=[];await baseRoutes(page,()=>({conversation:state,messages:[],has_more:false,oldest_sequence:null}),async(route,path)=>{
   if(path.endsWith('/support/messages')){expect(route.request().headers()['content-type']).toContain('application/json');expect(route.request().headers()['x-csrf-token']).toBe(csrf);keys.push(route.request().headers()['idempotency-key']);expect(route.request().postDataJSON()).toEqual({text:'Need help'});state={...state,status:'open'};await route.fulfill({status:201,json:message(1,'customer','Need help','stored')});return true;}
@@ -45,6 +70,14 @@ test('text send keeps explicit stored meaning and closed conversation can reopen
  });
  await page.goto('/cabinet/support?lang=en');await page.getByRole('button',{name:'Close conversation'}).click();await expect(page.getByText('Conversation closed.')).toBeVisible();await page.getByLabel('Message').fill('Need help');await page.getByRole('button',{name:'Reopen and send'}).click();await expect(page.getByText('Need help')).toBeVisible();await expect(page.getByText('Stored in support',{exact:true})).toBeVisible();expect(states).toEqual(['closed']);expect(keys).toHaveLength(1);
  await page.getByRole('button',{name:'Close conversation'}).click();await page.getByRole('button',{name:'Reopen conversation'}).click();expect(states).toEqual(['closed','closed','open']);
+});
+
+test('customer composer stays intact and cannot be replaced while a send is pending',async({page})=>{
+ let release!:()=>void,received=0;const pending=new Promise<void>(resolve=>release=resolve);
+ await baseRoutes(page,()=>empty,async(route,path)=>{if(path.endsWith('/support/messages')){received++;await pending;await route.fulfill({status:201,json:message(1,'customer','First draft')});return true;}return false;});
+ await page.goto('/cabinet/support?lang=en');await page.getByLabel('Message').fill('First draft');await page.getByLabel('File').setInputFiles({name:'first.txt',mimeType:'text/plain',buffer:Buffer.from('first')});await page.getByRole('button',{name:'Send'}).click();await expect.poll(()=>received).toBe(1);
+ try{await expect(page.getByLabel('Message')).toBeDisabled();await expect(page.getByLabel('File')).toBeDisabled();await expect(page.getByLabel('Message')).toHaveValue('First draft');await expect(page.getByLabel('File')).toHaveValue(/first.txt/);}finally{release();}
+ await expect(page.getByText('First draft',{exact:true})).toBeVisible();await expect(page.getByLabel('Message')).toBeEnabled();await page.getByLabel('Message').fill('Next draft');await expect(page.getByLabel('Message')).toHaveValue('Next draft');
 });
 
 test('file uses one multipart request and client limits are accessible',async({page})=>{

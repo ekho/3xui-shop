@@ -10,10 +10,10 @@
 
 | Сценарий | Спецификация/план | Реализация | Приёмка |
 | --- | --- | --- | --- |
-| С03 | Готовы | Backend `f710935`, UI `41a2ade` | 8 технических AC проверены; fresh review Pending |
-| С04 | Готовы | UI `41a2ade` | 5 технических AC проверены; fresh review Pending |
-| С05 | Готовы | Backend/client `745250f`, operator `5c21d94` | 7 AC проверены, включая actual restore; fresh review Pending |
-| С06 | Готовы | Backend `70a0294`, React-admin `5c21d94` | AC1–7 и runtime/regression AC8 проверены; fresh review AC8 Pending |
+| С03 | Готовы | Backend `f710935`, UI `41a2ade` | 8 AC проверены; review без новых замечаний, общий fix pass открыт |
+| С04 | Готовы | UI `41a2ade` | 5 AC проверены; review без новых замечаний, общий fix pass открыт |
+| С05 | Готовы | Backend/client `745250f`, operator `5c21d94` | Restore/backend проверены; два Important в shared UI исправляются |
+| С06 | Готовы | Backend `70a0294`, React-admin `5c21d94` | Trial/role/restore проверены; support UI AC7 и final AC8 ждут fix pass |
 
 ## Промежуточная история
 
@@ -160,7 +160,48 @@ Ruling: исходная последовательность RED→GREEN час
 review отдельно проверяет достаточность нынешних тестов. RED→GREEN исправлений
 NUL/recipient ack/React-admin card/refresh/none и actual header RED→GREEN сохранены.
 
-Свежий whole-branch review ещё Pending. External SMTP/mailbox, целевой benchmark,
-upstream dependency gate и внешний cutover/rollout остаются вне локальной приёмки.
-Ни production readiness, ни запуск установленного Happ из этих результатов
-не следуют. Цель остаётся active до рассмотрения review и финальной сверки.
+Свежий whole-branch review завершён; его выводы и открытый fix pass ниже.
+External SMTP/mailbox, целевой benchmark, upstream dependency gate и внешний
+cutover/rollout остаются вне локальной приёмки. Ни production readiness, ни
+запуск установленного Happ из этих результатов не следуют. Цель остаётся active.
+
+## Финальный review и один проход исправлений
+
+Свежий reviewer `gpt-6-astra/high` проверил весь диапазон
+`0e2009e3cd16b134d43ce05fc6f3b71587c30824..2dfc380bf25b8f088df5c654328d2b003f400094`,
+все28 AC и20 RF, human source/generated contracts/migrations/consumers и
+реальные redacted logs. Checkout/HEAD не изменял. Verdict: локальная готовность
+после исправлений, **0 Critical, 2 Important, 1 Minor**. Полные зелёные suites
+не повторял; source assertions прочитаны, сравнение прежних contracts подтверждено.
+Новые воспроизведения выполняли текущий transpiled SupportThread в памяти,
+это не новый browser/native run.
+
+| Finding | Эффект | Критерии / решение |
+| --- | --- | --- |
+| F1 Important | После скрытой вкладки и более50 новых сообщений polling объединяет последний page с прежним history, но курсор остаётся старым; часть переписки нельзя загрузить без reload | С05 AC1/RF5, С06 AC7; обязателен shared UI fix и browser RED→GREEN |
+| F2 Important | Пока send POST выполняется, новый текст/файл остаётся редактируемым и стирается поздним success прежнего сообщения | С05 AC2/AC7, С06 AC7; обязателен composer fix и browser RED→GREEN |
+| F3 Minor | Старый history response может заменить локальные receipt counters; PostgreSQL GREATEST сохраняет durable receipt, но UI повторяет ack | Не блокирует durable delivery; отдельный polish в fix pass не добавляется, итоговая судьба фиксируется после F1 |
+
+F1/F2 подтверждены чтением всех callers: client Support и OperatorSupport
+используют один SupportThread. Native50/2 проверялось после reload, поэтому
+его PASS не опровергает F1. Два исправления выполняются одной ограниченной
+frontend-границей, с настоящими browser RED перед изменением продукта и общей
+web проверкой после GREEN. Backend/API/migrations/бот не меняются; их Go/Python
+результаты сохраняют силу. После изменения UI нужен focused actual support run,
+проверки роли/триала/TG-only/restore не повторяются без изменения их source.
+
+Final: Ruling: исключённые Happ/Mac VPN/clipboard/trust остаются исключёнными —
+это явная граница владельца, browser protocol intercept и owned Docker VPN
+проверяют разрешённый результат — цена: реальный native import не подтверждён.
+Final: Ruling: external SMTP/benchmark/production/publication/cutover остаются
+отдельными gates — локальный мандат их не включает — цена: внешняя готовность
+не доказана и не объявляется.
+Final: Ruling: совместная уникальность PG/legacy SQLite и импорт переписки
+остаются С46/С37 — локальный source обещает уникальность только своей БД —
+цена: перед внешним запуском обязателен согласованный cutover старого writer.
+Final: Ruling: тарифы/компенсации/VPN-ban/account restrictions/деньги/промокоды
+остаются С07/С08/С48/С18/С21/С22 — здесь читаются состояния, не добавляются
+будущие mutations — цена: эти будущие действия пока доступны старым кодом.
+Final: Ruling: upstream dependency gate сохраняется перед внешним запуском —
+review не подтвердил полную недостижимость всех parser consumers и scanner
+не отключён — цена: production readiness остаётся открытой.
