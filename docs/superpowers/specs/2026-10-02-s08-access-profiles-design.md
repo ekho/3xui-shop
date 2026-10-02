@@ -1,6 +1,6 @@
 # С08 — профили доступа и VPN-ban; обязательный reset С41
 
-Статус: проект для согласования; выполняется после С48/С09 и общего executor С07.
+Статус: автономная спецификация по разрешению пользователя; после С48/С09 и executor С07.
 Основание: [роадмап](../../roadmaps/2026-10-01-platform-roadmap.md),
 `app/bot/services/inbound_groups.py`, `vpn.py`, `tasks/unlimited_reset.py`.
 
