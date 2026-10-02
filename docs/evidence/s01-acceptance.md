@@ -12,19 +12,21 @@ Docker API/VPN/restore/rollback и мобильный browser повторно �
 Предыдущая приёмка3.5.0 на `7306973` сохранена как историческое доказательство.
 Полная спецификация: [S01](../superpowers/specs/2026-10-01-s01-web-trial-design.md).
 
-**Implementation:** Tasks1–7 локально реализованы и проверены; локальная подготовка
-Task8 проверена. Независимое ревью выполнено; четыре Important исправлены
+**Implementation:** Tasks1–8 локально выполнены и проверены. Независимое ревью
+выполнено; четыре Important исправлены
 с проверками RED→GREEN и полным зелёным набором. Два Minor исправлены в С02;
 свежий review всей ветки при завершении С02 не нашёл замечаний.
 **Delivery:** локальные commits, без push/PR/merge/remote CI/deploy.
-**Acceptance:** OPEN — локальные Mailpit/3X-UI/Xray/VPN/PG restore проверены.
+**Local acceptance:** **PASS / CLOSED**, 2026-10-02, по решению владельца.
+Все 19 локальных AC закрыты; Mailpit/3X-UI/Xray/VPN/PG restore проверены.
 Настоящие Telegram approve/reject и обновления карточек проверены на отдельном
 тестовом боте, пересмотр поддержкой сохранил причину и создал связанную заявку.
 Backend завершил выдачу после остановки бота; key и настоящий VPN доступны.
 Ручной импорт в Happ подтверждён. По решению владельца 2026-10-02 переключение
 живого Happ исключено из приёмки; VPN проверяется собственным Docker-клиентом.
-Подключение через Happ не заявляется проверенным. Внешняя доставка email
-и замер на целевой машине остаются открыты.
+Подключение через Happ не заявляется проверенным.
+**External launch readiness:** **OPEN** — внешняя доставка email и замер
+на целевой машине обязательны перед внешним запуском и не считаются пройденными.
 Локальный стенд запущен и сохранён.
 
 ## Актуальная сверка С01 после С02 — 2026-10-02
@@ -46,9 +48,11 @@ VLESS/TLS-запрос к собственному origin — **PASS**. Врем
 Настоящие операторские callbacks, отказ/пересмотр и bot-stop сохраняют прежние
 доказательства: С02 не менял обработчики этих решений; регрессия адаптера пройдена.
 
-Исключён только тест с переключением живого Happ. Ручной импорт остаётся
-историческим PASS, Docker VPN — доказательством рабочего data plane.
-Внешний mailbox и замер на целевой машине остаются отдельными открытыми пунктами.
+Решение владельца 2026-10-02: завершить локальную приёмку. Ручной Happ import
+остаётся историческим PASS, Docker VPN — доказательством рабочего data plane;
+переключение живого Happ исключено. Внешний mailbox и замер на целевой машине
+перенесены в обязательные проверки перед внешним запуском. Они не блокируют
+закрытие локальной приёмки и не объявляются PASS.
 
 ## Проверенные локальные команды исходной приёмки С01
 
@@ -87,7 +91,7 @@ Tool versions: Go1.27.1, Node24.11.1, Python3.13, Poetry2.5.1, Chromium153
 
 | AC | Автоматическое доказательство | Статус / остаётся |
 | --- | --- | --- |
-| 1 no-Telegram → trial → VPN | Native Docker panel/SMTP/Xray data plane + mobile browser; genuine operator approve, native readback/VPN; manual import в Happ5.9.0 | Docker + real Telegram + Happ import PASS; внешний mailbox pending; переключение живого Happ исключено из приёмки |
+| 1 no-Telegram → trial → VPN | Native Docker panel/SMTP/Xray data plane + mobile browser; genuine operator approve, native readback/VPN; manual import в Happ5.9.0 | Local PASS; внешний mailbox обязателен перед внешним запуском; переключение живого Happ исключено из приёмки |
 | 2 bot down before decision | `TestS01FlowAndFailures`; регистрация/письмо/login/request при остановленном test bot, доставка после запуска | Local + real Telegram PASS |
 | 3 bot down after approve | Worker starts after Python consumer exits; настоящий approve, наблюдённые callback.created_at < Docker FinishedAt < granted_at, key/native readback/VPN при остановленном боте | Local + real bot-stop PASS |
 | 4 scanner/duplicate/parallel verify | registration tests; browser fragment cleared, no automatic POST | Local PASS |
@@ -246,9 +250,10 @@ timeout — test pause дольше public15s deadline, product code не мен
 локальная конфигурация возвращена к fixture operator101 и dummy token path,
 чтобы `local.py check` сохранял исходные условия. Копия test token удалена,
 предоставленный владельцем `.env` не изменён. Backend HTTPS, owner key и VPN
-сохранены. Полная приёмка остаётся OPEN.
+сохранены. На момент этого теста общая приёмка оставалась OPEN; актуальная
+локальная приёмка закрыта решением владельца 2026-10-02.
 
-## Внешние prerequisites и владелец
+## Обязательные проверки перед внешним запуском и владелец
 
 Владелец предоставил отдельный test bot и operator ID, подтвердил отсутствие
 другого обработчика и начал личный чат. Настоящие approve/reject/edit и пересмотр
@@ -272,14 +277,16 @@ backend health и отдельный Docker Xray connection проверены.
 к собственному origin. Исходный Compose восстановлен; продуктовый код не менялся.
 Отключение TLS verification не применяется. Test bot остановлен.
 Переключение живого Happ исключено из приёмки решением владельца 2026-10-02.
-Остаются внешний SMTP/test mailbox и целевая машина для benchmark. Владелец подтвердил,
+Локальная приёмка закрыта решением владельца 2026-10-02. Перед внешним запуском
+обязательны внешний SMTP/test mailbox и целевая машина для benchmark. Владелец подтвердил,
 что внешние SMTP/test mailbox и целевая машина пока недоступны. DNS/сертификаты и
 опубликованные policies/support нужны при внешнем тестовом запуске; локальные
 terms/privacy пока fixtures. Владелец предоставляет SMTP/test mailbox и целевой
 test server до соответствующих проверок. Production panel/version и
 performance не оценены.
 
-Native3.7.0 duplicate guard: **не подтверждён**, config false. Приёмка С01 в целом
-OPEN для внешних проверок. Исходный review С01 указан выше; свежий whole-branch
+Native3.7.0 duplicate guard: **не подтверждён**, config false; безопасный запрет
+неоднозначного повторного create проверен. Local acceptance С01: **CLOSED**;
+external launch readiness: **OPEN**. Исходный review С01 указан выше; свежий whole-branch
 review при завершении С02 проверил всю ветку без замечаний. CI workflow только
 проверяет; main/tag Docker Publish не менялся. Нет push/PR/merge/remote CI/release.
