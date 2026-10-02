@@ -75,7 +75,7 @@ def database_file(db):
     if not db.startswith('cabinet_s01_restore_s09_'):
         raise ValueError('disposable database name required')
     source = urlsplit((s48.local.STATE / 'database-url').read_text().strip())
-    if source.hostname != 'postgres' or source.username != 'cabinet_s01' or source.path != '/cabinet_s01':
+    if source.hostname != 'postgres' or source.username != 'cabinet_s01' or source.path != '/' + s48.local.database():
         raise RuntimeError('owned database URL mismatch')
     STATE.mkdir(mode=0o700, parents=True, exist_ok=True)
     STATE.chmod(0o700)
