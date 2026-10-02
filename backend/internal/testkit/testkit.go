@@ -37,18 +37,18 @@ func Open(t *testing.T) *Env {
 		}
 		return strings.TrimSpace(string(b))
 	}
-	config, err := pgxpool.ParseConfig(read("S01_TEST_DATABASE_URL_FILE"))
+	config, err := pgxpool.ParseConfig(read("TEST_DATABASE_URL_FILE"))
 	if err != nil {
 		t.Fatal("prerequisite: invalid database config")
 	}
-	if config.ConnConfig.Database != "s01_test" {
-		t.Fatal("prerequisite: admin database must be s01_test")
+	if config.ConnConfig.Database != "platform_test" {
+		t.Fatal("prerequisite: admin database must be platform_test")
 	}
 	admin, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		t.Fatal("prerequisite: cannot open test admin pool")
 	}
-	name := "s01_test_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	name := "platform_test_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 	// name is solely a UUID generated here, never caller input.
 	if _, err = admin.Exec(ctx, `CREATE DATABASE `+name); err != nil {
 		admin.Close()
@@ -65,7 +65,7 @@ func Open(t *testing.T) *Env {
 	if err = db.Migrate(ctx, pool); err != nil {
 		t.Fatal("prerequisite: migration failed", err)
 	}
-	ro, err := redis.ParseURL(read("S01_TEST_REDIS_URL_FILE"))
+	ro, err := redis.ParseURL(read("TEST_REDIS_URL_FILE"))
 	if err != nil {
 		t.Fatal("prerequisite: invalid redis config")
 	}

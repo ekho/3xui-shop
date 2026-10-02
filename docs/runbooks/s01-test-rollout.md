@@ -11,7 +11,7 @@
 локальной тестовой PostgreSQL/Redis, не для production.
 
 ```sh
-docker compose -f deploy/s01/compose.test.yml up -d --wait postgres redis
+docker compose -f deploy/acceptance/compose.test.yml up -d --wait postgres redis
 poetry install --no-interaction
 npm --prefix web ci --ignore-scripts
 (cd web && npx playwright install chromium)
@@ -20,7 +20,7 @@ npm --prefix web ci --ignore-scripts
 Создать вне Git два файла, mode0600, с локальными тестовыми URL:
 `postgres://s01_test@127.0.0.1:55491/s01_test?sslmode=disable` и
 `redis://127.0.0.1:56391/0`. Передать **пути** через
-`S01_TEST_DATABASE_URL_FILE` и `S01_TEST_REDIS_URL_FILE`.
+`TEST_DATABASE_URL_FILE` и `TEST_REDIS_URL_FILE`.
 Fixture создаёт свою случайную БД и удаляет только её. Restore-тест использует
 именно этот локальный контейнер и собственные временные dump-файлы, mode0600.
 
@@ -33,7 +33,7 @@ make -C backend test-integration
 poetry run python -m unittest discover -s tests -v
 npm --prefix web run typecheck
 npm --prefix web run test:e2e
-(cd web && S01_E2E_MODE=real npm run test:e2e)
+(cd web && E2E_MODE=real npm run test:e2e)
 ```
 
 Real API browser mode означает настоящий HTTPS API, PG/Redis/River, Python
@@ -46,9 +46,9 @@ production-клиенты не отключают проверку сертиф�
 Для контейнерной сборки и проверки маршрутов:
 
 ```sh
-docker compose --env-file deploy/s01/.env.example -f deploy/s01/compose.acceptance.yml config --quiet
-docker compose --env-file deploy/s01/.env.example -f deploy/s01/compose.acceptance.yml build
-python3 deploy/s01/smoke.py
+docker compose --env-file deploy/acceptance/.env.example -f deploy/acceptance/compose.acceptance.yml config --quiet
+docker compose --env-file deploy/acceptance/.env.example -f deploy/acceptance/compose.acceptance.yml build
+python3 deploy/acceptance/smoke.py
 ```
 
 Smoke создаёт отдельный `cabinet-s01-smoke`, временные ключи/сертификаты и свою
@@ -64,9 +64,9 @@ project. Базы `compose.test.yml` и будущего acceptance project со
 Из корня feature-worktree, с Docker, OpenSSL, Python и установленным web Playwright:
 
 ```sh
-python3 deploy/s01/local.py up
-python3 deploy/s01/local.py check
-node deploy/s01/browser.mjs
+python3 deploy/acceptance/local.py up
+python3 deploy/acceptance/local.py check
+node deploy/acceptance/browser.mjs
 ```
 
 `up` собирает backend/web/adapter и поднимает только проект `cabinet-s01-local`:
@@ -126,7 +126,7 @@ Native attach сохранил credentials/expiry/limits и добавил то�
 Остановить только этот стенд, сохранив volumes/private state:
 
 ```sh
-python3 deploy/s01/local.py down
+python3 deploy/acceptance/local.py down
 ```
 
 По умолчанию test bot выключен профилем `telegram`. Для настоящего апрува владелец предоставляет
@@ -153,11 +153,11 @@ Dummy token не должен использоваться для Telegram-за�
 не вставляются в .env, CLI values, build args, логи или evidence. В .env только
 публичные значения и абсолютные пути к файлам. Контейнерные UID/GID должны
 читать mode0600 файлы; Compose file-backed secrets не меняют владельца файла.
-Указать `S01_RUNTIME_UID/GID` соответствующим владельцу на тестовой машине.
+Указать `APP_RUNTIME_UID/GID` соответствующим владельцу на тестовой машине.
 
 ## Порядок запуска выделенного acceptance project
 
-1. Подготовить private config вне Git по `deploy/s01/.env.example`. `DATABASE_URL_FILE`
+1. Подготовить private config вне Git по `deploy/acceptance/.env.example`. `DATABASE_URL_FILE`
    должен указывать на database `cabinet_s01`, host `postgres:5432`; password
    соответствует PG password file. Redis — `redis:6379/0`. Никаких root .env/app/data mounts.
 2. Убедиться, что выбранный subnet свободен; IP gateway и TRUSTED_PROXY_CIDRS `/32`
@@ -223,7 +223,7 @@ credential proofs отзываются до reconcile/serve/ingress. Истор�
 С01 проверяла сохранённую owner session; теперь проверяется новый login того
 же владельца и прежний VPN. Порядок и SQL — в [runbook С02](s02-account-security.md).
 
-Автоматическая репетиция: `go -C backend test ./tests -run '^TestS01BackupRestore$' -count=1`.
+Автоматическая репетиция: `go -C backend test ./tests -run '^TestWebTrialBackupRestore$' -count=1`.
 Она делает настоящий pg_dump/pg_restore после external add и до DB applied,
 с running operation, immutable target, reserved grant, **running River job** и session.
 Восстановление в отдельную БД запускает только provision queue; ключи/expiry
@@ -245,7 +245,7 @@ credential proofs отзываются до reconcile/serve/ingress. Истор�
 поставляемый режим восстановления:
 
 ```sh
-docker compose --profile restore --env-file /secure/s01/public.env -f deploy/s01/compose.acceptance.yml up --no-build -d reconcile
+docker compose --profile restore --env-file /secure/s01/public.env -f deploy/acceptance/compose.acceptance.yml up --no-build -d reconcile
 ```
 
 Он не открывает HTTP и не обрабатывает mail queue. Running job становится

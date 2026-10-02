@@ -1,7 +1,7 @@
 package httpapi
 
 import (
-	"example.com/cabinet/backend/internal/s01"
+	"example.com/cabinet/backend/internal/platform"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/labstack/echo/v5"
 	"net/http"
@@ -33,7 +33,7 @@ func (a *API) CompletePasswordReset(c *echo.Context) error {
 func sessionRaw(c *echo.Context) (string, error) {
 	cookie, err := c.Cookie("__Host-session")
 	if err != nil {
-		return "", &s01.Error{Status: 401, Code: "INVALID_CREDENTIALS"}
+		return "", &platform.Error{Status: 401, Code: "INVALID_CREDENTIALS"}
 	}
 	return cookie.Value, nil
 }
@@ -59,7 +59,7 @@ func (a *API) GetAccountSecurity(c *echo.Context) error {
 	}
 	return c.JSON(200, out)
 }
-func rotateCookie(c *echo.Context, rotation s01.SessionRotation) error {
+func rotateCookie(c *echo.Context, rotation platform.SessionRotation) error {
 	c.SetCookie(&http.Cookie{Name: "__Host-session", Value: rotation.Raw, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, Path: "/", Expires: rotation.AbsoluteExpiresAt, MaxAge: max(0, int(time.Until(rotation.AbsoluteExpiresAt).Seconds()))})
 	return c.NoContent(204)
 }

@@ -3,7 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"errors"
-	"example.com/cabinet/backend/internal/s01"
+	"example.com/cabinet/backend/internal/platform"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
@@ -54,14 +54,14 @@ func readSupportMessage(a *API, c *echo.Context) (string, string, []byte, error)
 		return "", "", nil, invalid()
 	}
 	if c.Request().ContentLength > supportRequestMax {
-		return "", "", nil, &s01.Error{Status: 413, Code: "INVALID_INPUT"}
+		return "", "", nil, &platform.Error{Status: 413, Code: "INVALID_INPUT"}
 	}
 	raw, err := io.ReadAll(io.LimitReader(c.Request().Body, supportRequestMax+1))
 	if err != nil {
 		return "", "", nil, invalid()
 	}
 	if len(raw) > supportRequestMax {
-		return "", "", nil, &s01.Error{Status: 413, Code: "INVALID_INPUT"}
+		return "", "", nil, &platform.Error{Status: 413, Code: "INVALID_INPUT"}
 	}
 	reader := multipart.NewReader(bytes.NewReader(raw), params["boundary"])
 	var text, name string
@@ -101,7 +101,7 @@ func readSupportMessage(a *API, c *echo.Context) (string, string, []byte, error)
 				return "", "", nil, invalid()
 			}
 			if len(file) > 10*1024*1024 {
-				return "", "", nil, &s01.Error{Status: 413, Code: "INVALID_INPUT"}
+				return "", "", nil, &platform.Error{Status: 413, Code: "INVALID_INPUT"}
 			}
 		default:
 			return "", "", nil, invalid()

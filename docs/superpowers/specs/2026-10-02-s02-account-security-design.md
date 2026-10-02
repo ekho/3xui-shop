@@ -340,9 +340,9 @@ API/migration locks, runnable checks и правилами rollout, выбира
   остальные сценарии, включая минимальную админку, остаются в своих границах.
 - [Архитектурный контекст](2026-10-01-cabinet-backend-miniapp-design.md):
   email/password, независимость от Telegram, reset без auto-login и session TTL.
-- [session.go](../../../backend/internal/s01/session.go),
-  [registration.go](../../../backend/internal/s01/registration.go),
-  [mail.go](../../../backend/internal/s01/mail.go),
+- [session.go](../../../backend/internal/platform/session.go),
+  [registration.go](../../../backend/internal/platform/registration.go),
+  [mail.go](../../../backend/internal/platform/mail.go),
   [HTTP API](../../../backend/internal/httpapi/api.go): текущие login/verification/
   hashing/mail/Origin/CSRF и блокировка logout при restriction.
 - [Миграции](../../../backend/db/migrations/00001_registration.sql),

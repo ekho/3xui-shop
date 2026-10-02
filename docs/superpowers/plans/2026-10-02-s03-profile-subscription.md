@@ -25,19 +25,19 @@
 
 ### Task 1: Backend и контракт чтения
 
-**Files:** Modify `docs/api/openapi.yaml`, `backend/internal/s01/panel.go`, `subscription.go`, `backend/db/queries/provisioning.sql`; create migration00007 and focused `profile_test.go`; generated wire/store coordinator + backend respectively.
+**Files:** Modify `docs/api/openapi.yaml`, `backend/internal/platform/panel.go`, `subscription.go`, `backend/db/queries/provisioning.sql`; create migration00007 and focused `profile_test.go`; generated wire/store coordinator + backend respectively.
 **Interfaces:** Existing Subscription/SubscriptionKey; native ReadTraffic and access memberships; optional split fields; strict existing provision untouched.
 
 - [x] Координатор обновляет авторский контракт и генерирует Go/TS до dispatch.
 - [ ] Backend пишет RED tests `TestProfileStates`, `TestProfileTrafficBoundary`, `TestProfileCache` на real PG + TLS panel; assert examples up100/down200/limit1024 → used300/remain724, zero valid, limit0/remainnull, foreign/negative/overflow stale, accounts.vpn_banned vs native disabled, unlimited profile with finite limits, native writes0.
 - [x] Реализовать минимальный parser/observation/state derivation и protected key; старые проверки provision должны остаться зелёными.
 - [x] Cache regression: native unlimited profile с7 устройствами/100GB/expiry0 после успешного чтения и outage сохраняет последние лимиты/срок/profile/counters + stale/time; более старый read не перетирает metadata.
-- [x] GREEN: `S01_TEST_DATABASE_URL_FILE=<private> S01_TEST_REDIS_URL_FILE=<private> go -C backend test ./internal/s01 -run 'TestProfile|TestPanel|TestProvision' -race -count=1`; generation/vet. Логи private, verdict без identity/secrets.
+- [x] GREEN: `TEST_DATABASE_URL_FILE=<private> TEST_REDIS_URL_FILE=<private> go -C backend test ./internal/platform -run 'TestProfile|TestPanel|TestProvision' -race -count=1`; generation/vet. Логи private, verdict без identity/secrets.
 - [x] Отчёт specialist, coordinator inspect и local commit Task1.
 
 ### Task 2: Экран кабинета
 
-**Files:** Modify `web/src/Cabinet.tsx`, `web/src/api/client.ts`, `web/src/i18n.ts`, `web/src/style.css`; create `web/tests/s03.spec.ts`.
+**Files:** Modify `web/src/Cabinet.tsx`, `web/src/api/client.ts`, `web/src/i18n.ts`, `web/src/style.css`; create `web/tests/subscription-profile.spec.ts`.
 **Interfaces:** Task1 frozen generated Subscription shape; account/me unchanged; late fetches cancelled.
 
 - [x] Frontend пишет RED browser tests для states/split/unlimited/stale, upload100/down200/used300/remain724; unknown не0, key clearing, keyboard/mobile/ru-en.
@@ -47,7 +47,7 @@
 
 ### Task 3: Native acceptance и coverage
 
-**Files:** Existing `deploy/s01/local.py`, browser driver и `backend/tests`; create `docs/evidence/s03-acceptance.md`.
+**Files:** Existing `deploy/acceptance/local.py`, browser driver и `backend/tests`; create `docs/evidence/s03-acceptance.md`.
 
 - [x] Реальная own3.7.0 readback подтверждает traffic fields/identity; browser actual API показывает состояния и counters; не менять native Happ или production.
 - [x] Проверить cache outage и отсутствие writes в focused TLS tests; native existing target/Grant/VPN сохраняются.

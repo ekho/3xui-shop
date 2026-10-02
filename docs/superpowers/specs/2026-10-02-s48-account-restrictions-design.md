@@ -86,7 +86,7 @@ CLI-контракт: `server import-legacy-approvals --dry-run` либо `--app
 строго типизированный JSON-пакет на stdin и existing DATABASE_URL_FILE.
 Пакет содержит version1, массив users с исходными approval полями и массив
 approval_events с перечисленными метаданными. Экспортёр
-`deploy/s48/export_legacy_approval.py` принимает путь к контролируемому снимку,
+`deploy/account-restrictions/export_legacy_approval.py` принимает путь к контролируемому снимку,
 открывает SQLite `mode=ro` и отправляет пакет только в stdout для pipe.
 Неизвестные поля/версии/статусы, повтор source ID внутри пакета, некорректные
 даты или нецелые идентификаторы отклоняются до применения. Исходная timezone

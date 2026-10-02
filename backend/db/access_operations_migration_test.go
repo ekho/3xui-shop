@@ -28,7 +28,7 @@ func TestAccessOperationHistoryBlocksDowngrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = provider.Down(ctx); err != nil {
+	if _, err = provider.DownTo(ctx, 12); err != nil {
 		t.Fatalf("empty profile layer should downgrade: %v", err)
 	}
 	if _, err = provider.Down(ctx); err == nil || !strings.Contains(err.Error(), "access operation downgrade blocked") {
@@ -49,7 +49,7 @@ func TestAccessSequenceBackfillsExistingChronology(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = provider.Down(ctx); err != nil {
+	if _, err = provider.DownTo(ctx, 12); err != nil {
 		t.Fatal(err)
 	}
 	account, older, newer := uuid.New(), uuid.New(), uuid.New()
@@ -85,7 +85,7 @@ func TestAccessProfileBackfillsOnlyConfirmedHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = provider.Down(ctx); err != nil {
+	if _, err = provider.DownTo(ctx, 12); err != nil {
 		t.Fatal(err)
 	}
 	accessAccount, trialAccount, unknownAccount := uuid.New(), uuid.New(), uuid.New()

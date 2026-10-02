@@ -32,7 +32,7 @@
 
 ## Task 1: С07 — persistent executor и операторские API
 
-**Files:** migration `backend/db/migrations/00012_access_operations.sql`, queries/generated store; `backend/internal/s01/access_operations.go`, `access_worker.go`, focused tests; `panel.go`, `provision.go`, `subscription.go`, `operator.go`; `backend/internal/httpapi/access_operations.go`, tests/routes; OpenAPI/generated wire; `backend/cmd/server/main.go` queue registration.
+**Files:** migration `backend/db/migrations/00012_access_operations.sql`, queries/generated store; `backend/internal/platform/access_operations.go`, `access_worker.go`, focused tests; `panel.go`, `provision.go`, `subscription.go`, `operator.go`; `backend/internal/httpapi/access_operations.go`, tests/routes; OpenAPI/generated wire; `backend/cmd/server/main.go` queue registration.
 
 **Interfaces:**
 - `CreateAccessOperation(ctx context.Context, actor,target,key uuid.UUID,in wire.AccessOperationInput) (wire.AccessOperation,error)` stores pending operation and River job atomically.

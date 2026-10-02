@@ -10,8 +10,8 @@ import (
 
 func TestOperatorHTTPAuthorityAndActions(t *testing.T) {
 	h, e, cfg := httpFixture(t)
-	customer := supportLogin(t, h, e, cfg, "s06-http-customer@example.test")
-	operator := supportLogin(t, h, e, cfg, "s06-http-operator@example.test")
+	customer := supportLogin(t, h, e, cfg, "operator-http-customer@example.test")
+	operator := supportLogin(t, h, e, cfg, "operator-http-operator@example.test")
 	search := []byte(`{"q":"","page":1,"per_page":50}`)
 	if r := supportRequest(h, &customer, "POST", "/api/v1/operator/clients/search", "application/json", search, cfg.CabinetOrigin, uuid.Nil); r.Code != 403 {
 		t.Fatal("customer search", r.Code)

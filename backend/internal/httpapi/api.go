@@ -6,7 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
-	"example.com/cabinet/backend/internal/s01"
+	"example.com/cabinet/backend/internal/platform"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/google/uuid"
@@ -22,12 +22,12 @@ import (
 )
 
 type API struct {
-	svc      *s01.Service
-	cfg      s01.Config
+	svc      *platform.Service
+	cfg      platform.Config
 	contract *openapi3.T
 }
 
-func New(svc *s01.Service, cfg s01.Config) *echo.Echo {
+func New(svc *platform.Service, cfg platform.Config) *echo.Echo {
 	e := echo.New()
 	e.IPExtractor = echo.ExtractIPDirect()
 	if len(cfg.TrustedProxyCIDRs) > 0 {
@@ -49,7 +49,7 @@ func New(svc *s01.Service, cfg s01.Config) *echo.Echo {
 	e.HTTPErrorHandler = func(c *echo.Context, err error) {
 		status := 503
 		code := "SERVICE_UNAVAILABLE"
-		var domain *s01.Error
+		var domain *platform.Error
 		if errors.As(err, &domain) {
 			status = domain.Status
 			code = domain.Code
@@ -81,17 +81,17 @@ func New(svc *s01.Service, cfg s01.Config) *echo.Echo {
 				return invalid()
 			}
 			if c.Request().Method == "POST" && len(c.Path()) >= 4 && c.Path()[:4] == "/api" && c.Request().Header.Get("Origin") != cfg.CabinetOrigin {
-				return &s01.Error{Status: 403, Code: "INVALID_CREDENTIALS"}
+				return &platform.Error{Status: 403, Code: "INVALID_CREDENTIALS"}
 			}
 			ctx, cancel := context.WithTimeout(c.Request().Context(), 15*time.Second)
 			defer cancel()
 			c.SetRequest(c.Request().WithContext(ctx))
 			if strings.HasPrefix(c.Path(), "/internal/") {
 				if cfg.AdapterToken == "" || subtle.ConstantTimeCompare([]byte(c.Request().Header.Get("Authorization")), []byte("Bearer "+cfg.AdapterToken)) != 1 {
-					return &s01.Error{Status: 401, Code: "INVALID_CREDENTIALS"}
+					return &platform.Error{Status: 401, Code: "INVALID_CREDENTIALS"}
 				}
 				if c.Request().Header.Get("Origin") != "" {
-					return &s01.Error{Status: 403, Code: "INVALID_CREDENTIALS"}
+					return &platform.Error{Status: 403, Code: "INVALID_CREDENTIALS"}
 				}
 			}
 			return next(c)
@@ -101,7 +101,7 @@ func New(svc *s01.Service, cfg s01.Config) *echo.Echo {
 		ctx, cancel := context.WithTimeout(c.Request().Context(), 2*time.Second)
 		defer cancel()
 		if !svc.Health(ctx) {
-			return &s01.Error{Status: 503, Code: "SERVICE_UNAVAILABLE"}
+			return &platform.Error{Status: 503, Code: "SERVICE_UNAVAILABLE"}
 		}
 		return c.JSON(200, map[string]bool{"ok": true})
 	})
@@ -161,7 +161,7 @@ func New(svc *s01.Service, cfg s01.Config) *echo.Echo {
 	e.POST("/api/v1/operator/clients/trial", a.CreateOperatorTelegramTrial)
 	return e
 }
-func invalid() error { return &s01.Error{Status: 400, Code: "INVALID_INPUT"} }
+func invalid() error { return &platform.Error{Status: 400, Code: "INVALID_INPUT"} }
 func decode[T any](a *API, c *echo.Context, schema string) (T, error) {
 	var out T
 	media, _, err := mime.ParseMediaType(c.Request().Header.Get("Content-Type"))
@@ -238,14 +238,14 @@ func (a *API) LoginAccount(c *echo.Context) error {
 func (a *API) auth(c *echo.Context, write bool) (wire.AccountResult, error) {
 	cookie, err := c.Cookie("__Host-session")
 	if err != nil {
-		return wire.AccountResult{}, &s01.Error{Status: 401, Code: "INVALID_CREDENTIALS"}
+		return wire.AccountResult{}, &platform.Error{Status: 401, Code: "INVALID_CREDENTIALS"}
 	}
 	out, err := a.svc.Authenticate(c.Request().Context(), cookie.Value)
 	if err != nil {
 		return out, err
 	}
 	if write && subtle.ConstantTimeCompare([]byte(c.Request().Header.Get("X-CSRF-Token")), []byte(out.CsrfToken)) != 1 {
-		return out, &s01.Error{Status: 403, Code: "INVALID_CREDENTIALS"}
+		return out, &platform.Error{Status: 403, Code: "INVALID_CREDENTIALS"}
 	}
 	return out, nil
 }
@@ -269,9 +269,9 @@ func (a *API) LogoutAccount(c *echo.Context) error {
 		var out wire.SessionContext
 		out, err = a.svc.GetSessionContext(c.Request().Context(), raw)
 		if err == nil && subtle.ConstantTimeCompare([]byte(c.Request().Header.Get("X-CSRF-Token")), []byte(out.CsrfToken)) != 1 {
-			return &s01.Error{Status: 403, Code: "INVALID_CREDENTIALS"}
+			return &platform.Error{Status: 403, Code: "INVALID_CREDENTIALS"}
 		}
-		var domain *s01.Error
+		var domain *platform.Error
 		if err != nil && (!errors.As(err, &domain) || domain.Status != 401) {
 			return err
 		}

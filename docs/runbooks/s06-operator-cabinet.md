@@ -30,8 +30,8 @@ target и один Grant. Профиль bot не включается для we
 На собственном `cabinet-s01-local` стенде:
 
 ```sh
-python3 deploy/s01/local.py up
-node deploy/s06/browser.mjs
+python3 deploy/acceptance/local.py up
+node deploy/operator-cabinet/browser.mjs
 ```
 
 До второй команды source/image должны соответствовать проверяемой ревизии,

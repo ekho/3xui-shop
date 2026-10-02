@@ -7,7 +7,7 @@ UPDATE access_operations AS a SET sequence=ranked.n FROM (SELECT id,row_number()
 SELECT setval('access_operations_sequence_seq',COALESCE((SELECT max(sequence) FROM access_operations),1),(SELECT count(*)>0 FROM access_operations));
 ALTER TABLE access_operations ALTER COLUMN sequence SET DEFAULT nextval('access_operations_sequence_seq'), ALTER COLUMN sequence SET NOT NULL;
 ALTER TABLE access_operations ADD CONSTRAINT access_operations_sequence_key UNIQUE(sequence);
--- Only confirmed native writes and granted trials establish a pre-S08 profile.
+-- Only confirmed native writes and granted trials establish a existing profile.
 -- Old trial targets had no profile field because provisioning could only use regular.
 UPDATE accounts AS a SET access_profile = COALESCE(
  (SELECT CASE WHEN x.target->>'profile' IN ('regular','euru','unlimited') THEN x.target->>'profile' END

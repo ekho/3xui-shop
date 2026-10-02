@@ -25,7 +25,7 @@
 
 ### Task 1: Подключение в существующем кабинете
 
-**Files:** Modify `web/src/Cabinet.tsx`, `web/src/i18n.ts`, `web/src/style.css`, `web/package.json`, `web/package-lock.json`; create `web/src/Connection.tsx` только если отдельный компонент уменьшает сложность кабинета; test `web/tests/s04.spec.ts`.
+**Files:** Modify `web/src/Cabinet.tsx`, `web/src/i18n.ts`, `web/src/style.css`, `web/package.json`, `web/package-lock.json`; create `web/src/Connection.tsx` только если отдельный компонент уменьшает сложность кабинета; test `web/tests/device-connection.spec.ts`.
 **Interfaces:** Existing `api.getSubscriptionKey(signal)` → SubscriptionKey, С03 connection_available/status. New connection controls consume current key/clear callback; no second independent secret cache.
 
 - [ ] RED Playwright: five platform instructions and exact hrefs, iOS region selector independent of lang; copy/QR own URL, same input/deep link; expired allowed, denied states hidden.
@@ -36,7 +36,7 @@
 
 ### Task 2: Native browser acceptance
 
-**Files:** Existing `deploy/s01/browser.mjs` or new focused `deploy/s04/browser.mjs`; create `docs/evidence/s04-acceptance.md` and update progress/roadmap.
+**Files:** Existing `deploy/acceptance/browser.mjs` or new focused `deploy/device-connection/browser.mjs`; create `docs/evidence/s04-acceptance.md` and update progress/roadmap.
 **Interfaces:** Own HTTPS Docker cabinet/native3X-UI3.7.0; existing file-based test account and CA, no credentials or key printed.
 
 - [x] Actual browser confirms installation links, copy/QR/deep-link string and own API key; intercept protocol click, assert no remote QR request and no new trial/grant/panel writes.

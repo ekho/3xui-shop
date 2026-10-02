@@ -5,7 +5,7 @@ import (
 	"errors"
 	"example.com/cabinet/backend/db"
 	"example.com/cabinet/backend/internal/httpapi"
-	"example.com/cabinet/backend/internal/s01"
+	"example.com/cabinet/backend/internal/platform"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -41,7 +41,7 @@ func run() error {
 		slog.Error("usage: server serve|migrate|reconcile or server operator grant|revoke --account-file <absolute-path>")
 		return errors.New("invalid command")
 	}
-	cfg, err := s01.LoadConfig()
+	cfg, err := platform.LoadConfig()
 	if err != nil {
 		slog.Error("invalid configuration")
 		return err
@@ -72,17 +72,17 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	svc := s01.NewService(pool, limiter, queue, cfg)
+	svc := platform.NewService(pool, limiter, queue, cfg)
 	workers := river.NewWorkers()
-	river.AddWorker(workers, &s01.ProvisionWorker{Service: svc})
-	river.AddWorker(workers, &s01.AccessWorker{Service: svc})
-	river.AddWorker(workers, &s01.MonthlyResetWorker{Service: svc})
+	river.AddWorker(workers, &platform.ProvisionWorker{Service: svc})
+	river.AddWorker(workers, &platform.AccessWorker{Service: svc})
+	river.AddWorker(workers, &platform.MonthlyResetWorker{Service: svc})
 	queues := map[string]river.QueueConfig{"provision": {MaxWorkers: 2}}
 	if os.Args[1] == "serve" {
-		river.AddWorker(workers, &s01.MailWorker{Service: svc})
+		river.AddWorker(workers, &platform.MailWorker{Service: svc})
 		queues[river.QueueDefault] = river.QueueConfig{MaxWorkers: 2}
 	}
-	worker, err := river.NewClient(riverpgxv5.New(pool), &river.Config{Workers: workers, Queues: queues, RescueStuckJobsAfter: s01.ProvisionRescueAfter, Logger: slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))})
+	worker, err := river.NewClient(riverpgxv5.New(pool), &river.Config{Workers: workers, Queues: queues, RescueStuckJobsAfter: platform.ProvisionRescueAfter, Logger: slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))})
 	if err != nil {
 		return err
 	}
@@ -145,7 +145,7 @@ func runOperatorCommand(action, flag, path string) error {
 	if err != nil || id == uuid.Nil {
 		return errors.New("invalid operator account file")
 	}
-	databaseURL, err := s01.SecretFile("DATABASE_URL")
+	databaseURL, err := platform.SecretFile("DATABASE_URL")
 	if err != nil {
 		return err
 	}
@@ -159,7 +159,7 @@ func runOperatorCommand(action, flag, path string) error {
 	if err = pool.Ping(ctx); err != nil {
 		return errors.New("database unavailable")
 	}
-	if err = s01.NewService(pool, nil, nil, s01.Config{}).ChangeOperatorRole(ctx, id, action == "grant"); err != nil {
+	if err = platform.NewService(pool, nil, nil, platform.Config{}).ChangeOperatorRole(ctx, id, action == "grant"); err != nil {
 		return errors.New("operator role change failed")
 	}
 	return nil

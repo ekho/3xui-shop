@@ -1,0 +1,56 @@
+# Only backend calls to gateway:9444 can receive a controlled fault.
+# localhost:59444 remains available for independent native readback.
+import /etc/caddy/base.Caddyfile
+https://localhost:9444 {
+ tls /run/secrets/public_cert /run/secrets/public_key
+ reverse_proxy panel:2053
+}
+https://gateway:9444 {
+ tls /run/secrets/public_cert /run/secrets/public_key
+ log fault {
+  output stdout
+  format filter {
+   wrap json
+   fields {
+    request delete
+    resp_headers delete
+    user_id delete
+   }
+  }
+ }
+ @before {
+  method {$FAULT_METHOD:POST}
+  path {$FAULT_PATH:/__fault_disabled__}
+  expression `{env.FAULT_MODE} == "before"`
+ }
+ handle @before {
+  log_append fault before
+  respond "Owned acceptance fault" 502
+ }
+ @after {
+  method {$FAULT_METHOD:POST}
+  path {$FAULT_PATH:/__fault_disabled__}
+  expression `{env.FAULT_MODE} == "after"`
+ }
+ handle @after {
+  log_append fault after
+  reverse_proxy panel:2053 {
+   @success status 200
+   handle_response @success {
+    respond "Owned acceptance fault" 502
+   }
+  }
+ }
+ handle {
+  log_skip
+  reverse_proxy panel:2053
+ }
+}
+https://localhost:9445 {
+ tls /run/secrets/public_cert /run/secrets/public_key
+ reverse_proxy panel:2096
+}
+https://localhost:9446 {
+ tls /run/secrets/public_cert /run/secrets/public_key
+ reverse_proxy mailpit:8025
+}

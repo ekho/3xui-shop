@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "deploy/s48/export_legacy_approval.py"
+SCRIPT = Path(__file__).resolve().parents[1] / "deploy/account-restrictions/export_legacy_approval.py"
 
 
 class LegacyApprovalExportTest(unittest.TestCase):

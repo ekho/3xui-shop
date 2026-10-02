@@ -29,7 +29,7 @@
 
 ## Task 1: Backend, schema, API и контролируемый перенос
 
-**Files:** `docs/api/openapi.yaml`; `backend/db/migrations/00010_account_restrictions.sql`; `backend/db/queries/operators.sql` (или отдельный restrictions.sql); `backend/internal/store/*` generated; `backend/internal/wire/models.gen.go`; `backend/internal/s01/restrictions.go`, `legacy_approval.go` и соответствующие tests; `backend/internal/s01/operator.go`; `backend/internal/httpapi/operator.go`, `api.go`, tests; `backend/cmd/server/main.go`, CLI tests; `deploy/s48/export_legacy_approval.py` и unittest в `tests/`.
+**Files:** `docs/api/openapi.yaml`; `backend/db/migrations/00010_account_restrictions.sql`; `backend/db/queries/operators.sql` (или отдельный restrictions.sql); `backend/internal/store/*` generated; `backend/internal/wire/models.gen.go`; `backend/internal/platform/restrictions.go`, `legacy_approval.go` и соответствующие tests; `backend/internal/platform/operator.go`; `backend/internal/httpapi/operator.go`, `api.go`, tests; `backend/cmd/server/main.go`, CLI tests; `deploy/account-restrictions/export_legacy_approval.py` и unittest в `tests/`.
 
 **Interfaces:**
 - Consumes: `lockOperatorPair(ctx, tx, actor, target)`, existing `replay`/`saveIdempotency`, DeleteAccountSessions/RevokeCredentialProofs/ClearRevokedCredentialMail.
@@ -45,7 +45,7 @@
 
 ## Task 2: React-admin restriction and historical approval
 
-**Files:** `web/src/Admin.tsx` (small extracted component if necessary), `web/src/api/client.ts`, generated schema, `web/src/i18n.ts`, `web/src/style.css` as needed, `web/tests/s48.spec.ts`.
+**Files:** `web/src/Admin.tsx` (small extracted component if necessary), `web/src/api/client.ts`, generated schema, `web/src/i18n.ts`, `web/src/style.css` as needed, `web/tests/account-restrictions.spec.ts`.
 
 **Interfaces:** Consumes Task1 schemas and current client card; produces restriction action/form and paged read-only legacy history. Existing key/support/trial states remain separate.
 
@@ -55,9 +55,9 @@
 
 ## Task 3: Local acceptance and cutover boundary
 
-**Files:** `deploy/s48/local.py`, `deploy/s48/browser.mjs` if needed for reproducible actual evidence; `docs/evidence/s48-acceptance.md`; existing roadmap; private plan ledger.
+**Files:** `deploy/account-restrictions/local.py`, `deploy/account-restrictions/browser.mjs` if needed for reproducible actual evidence; `docs/evidence/s48-acceptance.md`; existing roadmap; private plan ledger.
 
-**Interfaces:** Reuses own Compose project/private bridge from `deploy/s01/local.py` and `deploy/s06/local.py`; no live Telegram or installed VPN.
+**Interfaces:** Reuses own Compose project/private bridge from `deploy/acceptance/local.py` and `deploy/operator-cabinet/local.py`; no live Telegram or installed VPN.
 
 - [x] Record owned images, rollout/rollback and unchanged Docker VPN state. Rebuild only backend/gateway after guards pass. Use controlled disposable identities and readonly SQLite fixtures.
 - [x] Run real web/API restrict→old-session denied→unrestrict→new login; verify panel identity/limits/counters unchanged. Run pipe dry-run/apply/replay/conflict; then backup/restore fixture verifying snapshots/events/restriction and auth cleanup procedure.

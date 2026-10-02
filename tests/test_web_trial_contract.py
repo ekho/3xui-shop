@@ -17,16 +17,16 @@ from app.bot.services.web_trial import WebTrialAdapter, WebTrialAPIError
 
 class WebTrialContractTests(unittest.IsolatedAsyncioTestCase):
     async def test_real_consumer(self):
-        url=os.environ.get('S01_CONTRACT_URL')
+        url=os.environ.get('TRIAL_CONTRACT_URL')
         root=Path(__file__).resolve().parents[1]
         if not url:
-            result=subprocess.run(['go','test','-C',str(root/'backend'),'./tests','-run','^TestS01FlowAndFailures$','-count=1'],cwd=root,capture_output=True,text=True,timeout=120)
+            result=subprocess.run(['go','test','-C',str(root/'backend'),'./tests','-run','^TestWebTrialFlowAndFailures$','-count=1'],cwd=root,capture_output=True,text=True,timeout=120)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             return
         self.assertIn(urlsplit(url).hostname,('127.0.0.1','localhost'))
-        request_id=str(UUID(os.environ['S01_CONTRACT_REQUEST_ID']))
-        token=Path(os.environ['S01_CONTRACT_TOKEN_FILE']).read_text().strip()
-        adapter=WebTrialAdapter(url,token,{101},os.environ['S01_CONTRACT_CA_FILE'])
+        request_id=str(UUID(os.environ['TRIAL_CONTRACT_REQUEST_ID']))
+        token=Path(os.environ['TRIAL_CONTRACT_TOKEN_FILE']).read_text().strip()
+        adapter=WebTrialAdapter(url,token,{101},os.environ['TRIAL_CONTRACT_CA_FILE'])
         self.addAsyncCleanup(adapter.close)
         IsAdmin.set_admins([101]);IsDev.set_developer(202)
         storage=MemoryStorage();self.addAsyncCleanup(storage.close)

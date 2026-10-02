@@ -67,7 +67,7 @@ CLI package содержит `version:1`, `durations`, `plans`; цена legacy
 `npm --prefix web run build` (exit0) и напрямую сверил все артефакты. Точные bounded логи
 связаны в [приватном source-check manifest](../../.superpowers/sdd/2026-10-02-s09-catalogue/e2e/regression-checks.json).
 UI fault/error/retry и stale draft также покрыты
-[web S09 tests](../../web/tests/s09.spec.ts); real browser проверил happy path,
+[web S09 tests](../../web/tests/catalogue.spec.ts); real browser проверил happy path,
 мобильную ширину и keyboard, но не вводил fault injection.
 
 Дополнительный restricted-actor тест native backend выполнил на real-PG testkit

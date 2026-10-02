@@ -9,8 +9,8 @@ import (
 
 func TestAccessOperationHTTPAuthorityAndStrictShape(t *testing.T) {
 	h, e, cfg := httpFixture(t)
-	customer := supportLogin(t, h, e, cfg, "s07-http-customer@example.test")
-	operator := supportLogin(t, h, e, cfg, "s07-http-operator@example.test")
+	customer := supportLogin(t, h, e, cfg, "access-http-customer@example.test")
+	operator := supportLogin(t, h, e, cfg, "access-http-operator@example.test")
 	path := "/api/v1/operator/clients/" + customer.id.String() + "/access-operations"
 	good := []byte(`{"kind":"compensate","reason":"support","days":7}`)
 	if r := supportRequest(h, &customer, "POST", path, "application/json", good, cfg.CabinetOrigin, uuid.New()); r.Code != 403 {

@@ -176,7 +176,7 @@ plans.json
 
 tmp_test/
 
-# S01 development artifacts
+# Local development artifacts
 backend/server
 web/node_modules/
 web/test-results/

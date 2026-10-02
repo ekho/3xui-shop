@@ -26,7 +26,7 @@ func TestOperatorCLIFileGrantAndRestrictedRevoke(t *testing.T) {
 	if err = os.WriteFile(accountFile, []byte(id.String()+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	source, err := os.ReadFile(os.Getenv("S01_TEST_DATABASE_URL_FILE"))
+	source, err := os.ReadFile(os.Getenv("TEST_DATABASE_URL_FILE"))
 	if err != nil {
 		t.Fatal(err)
 	}

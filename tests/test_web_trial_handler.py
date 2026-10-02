@@ -86,7 +86,7 @@ import asyncio, os, tempfile
 from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, patch
-from deploy.s01 import bot_adapter as entry
+from deploy.acceptance import bot_adapter as entry
 from app.bot.routers.admin_tools import web_trial_handler as handler
 async def check():
     identifier="11111111-1111-4111-8111-111111111111"

@@ -10,8 +10,8 @@ import (
 
 func TestCatalogueHTTPStrictQueriesAndWriteAuthority(t *testing.T) {
 	h, e, cfg := httpFixture(t)
-	customer := supportLogin(t, h, e, cfg, "s09-customer@example.test")
-	operator := supportLogin(t, h, e, cfg, "s09-operator@example.test")
+	customer := supportLogin(t, h, e, cfg, "catalogue-customer@example.test")
+	operator := supportLogin(t, h, e, cfg, "catalogue-operator@example.test")
 	if _, err := e.Pool.Exec(context.Background(), `INSERT INTO operator_accounts(account_id,granted_at) VALUES($1,$2)`, operator.id, e.Clock()); err != nil {
 		t.Fatal(err)
 	}

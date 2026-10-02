@@ -21,7 +21,7 @@ func TestCatalogueCLIStrictPackageAndApply(t *testing.T) {
 		}
 	}
 	e := testkit.Open(t)
-	source, err := os.ReadFile(os.Getenv("S01_TEST_DATABASE_URL_FILE"))
+	source, err := os.ReadFile(os.Getenv("TEST_DATABASE_URL_FILE"))
 	if err != nil {
 		t.Fatal(err)
 	}

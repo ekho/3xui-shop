@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"example.com/cabinet/backend/internal/s01"
+	"example.com/cabinet/backend/internal/platform"
 	"example.com/cabinet/backend/internal/testkit"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
@@ -21,7 +21,7 @@ type supportSession struct {
 	csrf   string
 }
 
-func supportLogin(t *testing.T, h http.Handler, e *testkit.Env, cfg s01.Config, email string) supportSession {
+func supportLogin(t *testing.T, h http.Handler, e *testkit.Env, cfg platform.Config, email string) supportSession {
 	t.Helper()
 	body, _ := json.Marshal(map[string]string{"email": email, "locale": "ru", "accepted_terms_version": "1", "accepted_privacy_version": "1"})
 	r := request(h, "POST", "/api/v1/auth/register", string(body), cfg.CabinetOrigin)

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"example.com/cabinet/backend/internal/s01"
+	"example.com/cabinet/backend/internal/platform"
 	"example.com/cabinet/backend/internal/testkit"
 	"example.com/cabinet/backend/internal/wire"
 	"fmt"
@@ -17,14 +17,14 @@ import (
 	"testing"
 )
 
-func httpFixture(t *testing.T) (http.Handler, *testkit.Env, s01.Config) {
+func httpFixture(t *testing.T) (http.Handler, *testkit.Env, platform.Config) {
 	t.Helper()
 	env := testkit.Open(t)
 	queue, err := river.NewClient(riverpgxv5.New(env.Pool), &river.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := s01.Config{CabinetOrigin: "https://cabinet.example.test", TermsVersion: "1", PrivacyVersion: "1", MailKey: bytes.Repeat([]byte{1}, 32), CodeKey: bytes.Repeat([]byte{2}, 32), RateNamespace: uuid.NewString()}
+	cfg := platform.Config{CabinetOrigin: "https://cabinet.example.test", TermsVersion: "1", PrivacyVersion: "1", MailKey: bytes.Repeat([]byte{1}, 32), CodeKey: bytes.Repeat([]byte{2}, 32), RateNamespace: uuid.NewString()}
 	cfg.Operators = []int64{101, 202}
 	cfg.AdapterToken = strings.Repeat("x", 43)
 	cfg.PanelID = "dedicated-test"
@@ -32,7 +32,7 @@ func httpFixture(t *testing.T) (http.Handler, *testkit.Env, s01.Config) {
 	cfg.TrialPeriodDays = 3
 	cfg.TrialTrafficGB = 15
 	cfg.TrialDevices = 1
-	return New(s01.NewService(env.Pool, env.Redis, queue, cfg), cfg), env, cfg
+	return New(platform.NewService(env.Pool, env.Redis, queue, cfg), cfg), env, cfg
 }
 func request(h http.Handler, method, path, body, origin string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
@@ -83,7 +83,7 @@ func TestRegistrationHTTP(t *testing.T) {
 	}
 }
 
-func verifiedHTTP(t *testing.T, h http.Handler, e *testkit.Env, cfg s01.Config) {
+func verifiedHTTP(t *testing.T, h http.Handler, e *testkit.Env, cfg platform.Config) {
 	t.Helper()
 	rr := request(h, "POST", "/api/v1/auth/register", `{"email":"login@example.test","locale":"ru","accepted_terms_version":"1","accepted_privacy_version":"1"}`, cfg.CabinetOrigin)
 	if rr.Code != 202 {

@@ -36,7 +36,7 @@
 
 ### Task 2: React-admin
 
-**Files:** Create `web/src/Admin.tsx`, `web/tests/s06.spec.ts`; modify package/lock, api/client.ts, main.tsx lazy mount, i18n/style, Playwright discovery; reuse Support view API helpers from С05.
+**Files:** Create `web/src/Admin.tsx`, `web/tests/operator-cabinet.spec.ts`; modify package/lock, api/client.ts, main.tsx lazy mount, i18n/style, Playwright discovery; reuse Support view API helpers from С05.
 **Interfaces:** AuthProvider uses existing cookie login/logout/operator session; dataProvider typed search/card actions, no local JWT. Client support service exposes shared controls/data, no second chat model.
 
 - [x] RED unauthorized direct admin/revoke, search/page/card/key hide, true actor decisions/new Telegram-only client; support text/file/state/ban/ack and errors; ru/en/mobile/keyboard.

@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"example.com/cabinet/backend/internal/s01"
+	"example.com/cabinet/backend/internal/platform"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"io"
 	"os"
@@ -13,8 +13,8 @@ import (
 	"unicode/utf8"
 )
 
-func decodeLegacyCatalogue(reader io.Reader) (s01.LegacyCataloguePackage, error) {
-	var pkg s01.LegacyCataloguePackage
+func decodeLegacyCatalogue(reader io.Reader) (platform.LegacyCataloguePackage, error) {
+	var pkg platform.LegacyCataloguePackage
 	const limit = 32 << 20
 	data, err := io.ReadAll(io.LimitReader(reader, limit+1))
 	if err != nil || len(data) > limit || !utf8.Valid(data) {
@@ -32,7 +32,7 @@ func runCatalogueCommand(args []string) error {
 	if (len(args) != 1 || args[0] != "seed-unlimited") && (len(args) != 2 || args[0] != "import-legacy" || (args[1] != "--dry-run" && args[1] != "--apply")) {
 		return errors.New("invalid catalogue command")
 	}
-	var pkg s01.LegacyCataloguePackage
+	var pkg platform.LegacyCataloguePackage
 	if args[0] == "import-legacy" {
 		var err error
 		pkg, err = decodeLegacyCatalogue(os.Stdin)
@@ -40,7 +40,7 @@ func runCatalogueCommand(args []string) error {
 			return importError("IMPORT_INVALID_PACKAGE")
 		}
 	}
-	url, err := s01.SecretFile("DATABASE_URL")
+	url, err := platform.SecretFile("DATABASE_URL")
 	if err != nil {
 		return importError("IMPORT_DATABASE_UNAVAILABLE")
 	}
@@ -51,7 +51,7 @@ func runCatalogueCommand(args []string) error {
 		return importError("IMPORT_DATABASE_UNAVAILABLE")
 	}
 	defer pool.Close()
-	svc := s01.NewService(pool, nil, nil, s01.Config{})
+	svc := platform.NewService(pool, nil, nil, platform.Config{})
 	if args[0] == "seed-unlimited" {
 		plan, created, e := svc.SeedUnlimitedCatalogue(ctx)
 		if e != nil {
@@ -67,7 +67,7 @@ func runCatalogueCommand(args []string) error {
 }
 
 func catalogueCLIError(err error) error {
-	var domain *s01.Error
+	var domain *platform.Error
 	if errors.As(err, &domain) {
 		return importError(domain.Code)
 	}
