@@ -86,3 +86,16 @@ raw HTTP проверки HTML200/API401/health200 подтвердили ров
 и сохранённые CSP/Referrer. Gateway пересоздан из прежнего image, остальные
 сервисы и прежний owned VPN сохранены. Строгая attachment проверка не ослаблена;
 полный двухсторонний сценарий, restore и final review остаются открыты.
+
+Actual С05/С06 continuation на `b3bfac4` подтвердил строгую attachment boundary,
+двухсторонние recipient receipts, idempotency/CSRF/Origin/input guards, support ban,
+RU customer/mobile/keyboard и history50. Составная проверка web reject остановила
+общий run; source продукта не меняли. Узкая controlled browser проверка exit0
+воспроизвела create→immediate GET без UUID, затем POST201→valid UUID→reject/card
+с правильным web actor и required Telegram-null. Это достаточная гонка исходного
+driver; URL прежнего сбоя не был сохранён, поэтому точная причина остаётся выводом.
+Для повторов добавлены ожидания POST и UUID preconditions, не ослаблены guards.
+Драйвер дополнен actual RU operator/keyboard и body-only search pagination;
+их выполнение вместе с поздними trial/reconcile/TG-only/restore cases ещё ожидается.
+`deploy/s06/` — воспроизводимый кандидат полной локальной приёмки, общий PASS
+по нему пока не заявлен. Полные предыдущие неуспешные attempts сохранены privately.
