@@ -28,6 +28,10 @@ https://{$CABINET_HOST}:8443 {
  handle /healthz {
   reverse_proxy backend:8080
  }
+ handle /config.json {
+  root * /run/web-public
+  file_server
+ }
  handle {
   root * /srv
   try_files {path} /index.html

@@ -6,7 +6,7 @@ import {Security} from './Security';
 import {Cabinet} from './Cabinet';
 import {Catalogue} from './Catalogue';
 import {Support} from './Support';
-import {config,validateConfig} from './config';
+import {config,loadConfig} from './config';
 import {text,link,type Lang} from './i18n';
 import './style.css';
 const OperatorAdmin=lazy(()=>import('./Admin'));
@@ -21,4 +21,5 @@ function App(){
  return <><header><a href={link(admin?'/admin':'/cabinet',lang)} className="brand">{admin?t.operatorCabinet:t.cabinet}</a><div aria-label="Language"><button type="button" aria-pressed={lang==='ru'} onClick={()=>setLang('ru')}>RU</button><button type="button" aria-pressed={lang==='en'} onClick={()=>setLang('en')}>EN</button></div></header>{admin?<div className="admin-root"><Routes><Route path="/admin/*" element={<Suspense fallback={<p role="status">{t.loading}</p>}><OperatorAdmin lang={lang}/></Suspense>}/></Routes></div>:<main>{regular}</main>}<footer><a href={config.termsURL}>{t.termsLink}</a><a href={config.privacyURL}>{t.privacyLink}</a></footer></>;
 }
 const root=createRoot(document.getElementById('root')!);
-try{validateConfig(config);root.render(<BrowserRouter><App/></BrowserRouter>);}catch{root.render(<main><p role="alert">Сервис не настроен. / Service is not configured.</p></main>);}
+root.render(<main><p role="status">Загрузка… / Loading…</p></main>);
+void loadConfig().then(()=>root.render(<BrowserRouter><App/></BrowserRouter>)).catch(()=>root.render(<main><p role="alert">Сервис не настроен. / Service is not configured.</p></main>));

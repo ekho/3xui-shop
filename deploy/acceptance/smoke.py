@@ -3,6 +3,7 @@ Prerequisite: build the three local images with compose.acceptance.yml first.
 """
 import base64
 import http.client
+import json
 import os
 from pathlib import Path
 import secrets
@@ -82,6 +83,18 @@ def run():
             assert "frame-ancestors 'none'" in one_header(headers,'Content-Security-Policy')
             assert one_header(headers,'X-Content-Type-Options')=='nosniff'
             assert one_header(headers,'Cache-Control')=='no-store'
+            status,headers,body=get('/config.json')
+            assert status==200
+            assert one_header(headers,'Content-Type').startswith('application/json')
+            assert one_header(headers,'Cache-Control')=='no-store'
+            public_values=dict(line.split('=',1) for line in lines if '=' in line)
+            assert json.loads(body)=={
+                'termsVersion':public_values['TERMS_VERSION'],
+                'privacyVersion':public_values['PRIVACY_VERSION'],
+                'termsURL':public_values['TERMS_URL'],
+                'privacyURL':public_values['PRIVACY_URL'],
+                'supportURL':public_values['SUPPORT_URL'],
+            }, 'cabinet configuration must come from the deployment environment'
             assert get('/internal/v1/telegram/jobs/claim')[0]==404
             status,headers,_=get('/api/v1/me')
             assert status==401
@@ -126,7 +139,7 @@ else:
     raise AssertionError('restore runtime opened HTTP')
 """
             command(compose+['run','--rm','--no-deps','--entrypoint','python','bot','-c',no_http])
-            print('PASS: local HTTPS, public/private routing, secret-file access, repeated migrations, bounded rollback, provision-only restore runtime')
+            print('PASS: local HTTPS, runtime public config, public/private routing, secret-file access, repeated migrations, bounded rollback, provision-only restore runtime')
         except Exception:
             details=command(compose+['logs','--no-color','--tail','25','migrate','backend','gateway','reconcile']).decode(errors='replace')
             for value in REDACTIONS:details=details.replace(value,'[redacted]')

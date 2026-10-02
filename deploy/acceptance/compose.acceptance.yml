@@ -77,14 +77,7 @@ services:
       migrate: {condition: service_completed_successfully}
   gateway:
     image: cabinet-web:local
-    build:
-      context: ../../web
-      args:
-        VITE_TERMS_VERSION: '${TERMS_VERSION:?required}'
-        VITE_PRIVACY_VERSION: '${PRIVACY_VERSION:?required}'
-        VITE_TERMS_URL: '${TERMS_URL:?required}'
-        VITE_PRIVACY_URL: '${PRIVACY_URL:?required}'
-        VITE_SUPPORT_URL: '${SUPPORT_URL:?required}'
+    build: {context: ../../web}
     user: '${APP_RUNTIME_UID:-10001}:${APP_RUNTIME_GID:-10001}'
     read_only: true
     cap_drop: [ALL]
@@ -92,11 +85,16 @@ services:
     environment:
       CABINET_HOST: '${CABINET_HOST:?required}'
       CABINET_MAINTENANCE: '${CABINET_MAINTENANCE:-false}'
+      TERMS_VERSION: '${TERMS_VERSION:?required}'
+      PRIVACY_VERSION: '${PRIVACY_VERSION:?required}'
+      TERMS_URL: '${TERMS_URL:?required}'
+      PRIVACY_URL: '${PRIVACY_URL:?required}'
+      SUPPORT_URL: '${SUPPORT_URL:?required}'
     command: [caddy, run, --config, /etc/caddy/Caddyfile, --adapter, caddyfile]
     ports: ['127.0.0.1:58443:8443']
     volumes: ['./Caddyfile:/etc/caddy/Caddyfile:ro']
     secrets: [public_cert, public_key, adapter_cert, adapter_key]
-    tmpfs: ['/data:uid=${APP_RUNTIME_UID:-10001},gid=${APP_RUNTIME_GID:-10001},mode=0700', '/config:uid=${APP_RUNTIME_UID:-10001},gid=${APP_RUNTIME_GID:-10001},mode=0700']
+    tmpfs: ['/data:uid=${APP_RUNTIME_UID:-10001},gid=${APP_RUNTIME_GID:-10001},mode=0700', '/config:uid=${APP_RUNTIME_UID:-10001},gid=${APP_RUNTIME_GID:-10001},mode=0700', '/run/web-public:uid=${APP_RUNTIME_UID:-10001},gid=${APP_RUNTIME_GID:-10001},mode=0700']
     networks:
       default: {ipv4_address: '${APP_GATEWAY_IP:-172.31.98.14}'}
     depends_on: [backend]
