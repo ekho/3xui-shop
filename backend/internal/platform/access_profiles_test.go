@@ -98,6 +98,68 @@ func TestAccessNoClientIntentUsedByFirstTrial(t *testing.T) {
 	}
 }
 
+func TestAccessSavedProfileFirstTrialKeysFollowGrantedClient(t *testing.T) {
+	s, e := fixture(t)
+	p := panelFixture(t, s)
+	ctx := context.Background()
+	actor := verified(t, s, e, "first-key-operator@example.test")
+	if err := s.ChangeOperatorRole(ctx, actor, true); err != nil {
+		t.Fatal(err)
+	}
+	target := verified(t, s, e, "first-key-target@example.test")
+	var vpnID uuid.UUID
+	var subID string
+	if err := e.Pool.QueryRow(ctx, `SELECT vpn_id,sub_id FROM accounts WHERE id=$1`, target).Scan(&vpnID, &subID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateAccessOperation(ctx, actor, target, uuid.New(), wire.AccessOperationInput{Kind: "set_profile", Profile: profileInput("euru"), Reason: "saved first profile"}); err != nil {
+		t.Fatal(err)
+	}
+	request, _, err := s.CreateTrialRequest(ctx, target, uuid.New(), wire.TrialRequestInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision, err := s.DecideTrialRequest(ctx, request.RequestId, decision(101, "approve"))
+	if err != nil || decision.OperationId == nil {
+		t.Fatalf("trial approval: %v", err)
+	}
+	if err := s.Provision(ctx, *decision.OperationId); err != nil {
+		t.Fatal(err)
+	}
+	view, err := s.Subscription(ctx, target)
+	if err != nil || view.Status != "active" || view.AccessProfile != "euru" || p.client["id"] != vpnID.String() || p.client["subId"] != subID {
+		t.Fatalf("saved profile changed first grant identity or status: %v %+v", err, view)
+	}
+	for _, read := range []func() (wire.SubscriptionKey, error){
+		func() (wire.SubscriptionKey, error) { return s.SubscriptionKey(ctx, target) },
+		func() (wire.SubscriptionKey, error) { return s.OperatorClientKey(ctx, actor, target) },
+	} {
+		key, err := read()
+		if err != nil || key.SubscriptionUrl != "https://subscriptions.example.test/sub/"+subID {
+			t.Fatalf("confirmed first grant key unavailable: %v %+v", err, key)
+		}
+	}
+	banned := true
+	ban, err := s.CreateAccessOperation(ctx, actor, target, uuid.New(), wire.AccessOperationInput{Kind: "set_vpn_ban", VpnBanned: &banned, Reason: "suspend access"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SubscriptionKey(ctx, target); status(err) != 409 {
+		t.Fatalf("pending ban allowed key: %v", err)
+	}
+	if err := s.ApplyAccess(ctx, ban.OperationId); err != nil {
+		t.Fatal(err)
+	}
+	for _, read := range []func() (wire.SubscriptionKey, error){
+		func() (wire.SubscriptionKey, error) { return s.SubscriptionKey(ctx, target) },
+		func() (wire.SubscriptionKey, error) { return s.OperatorClientKey(ctx, actor, target) },
+	} {
+		if _, err := read(); status(err) != 403 {
+			t.Fatalf("banned key escaped: %v", err)
+		}
+	}
+}
+
 // Entering unlimited must bind one hidden current revision and revoking it
 // returns to the configured starter period, without changing native identity.
 func TestAccessUnlimitedCurrentRevisionAndRevoke(t *testing.T) {
@@ -133,6 +195,44 @@ func TestAccessUnlimitedCurrentRevisionAndRevoke(t *testing.T) {
 	if err != nil || view.AccessProfile != "regular" || view.ExpiresAt == nil || p.resets != 1 || integer(t, p.client["limitIp"]) != s.cfg.TrialDevices+1 || p.client["id"] != beforeID || p.client["subId"] != beforeSub || len(p.ids) != 2 {
 		current, _ := s.GetAccessOperation(ctx, actor, target, revoke.OperationId)
 		t.Fatalf("unlimited revoke failed: %v, %+v; operation=%+v; ids=%v resets=%d", err, view, current, p.ids, p.resets)
+	}
+}
+
+func TestAccessUnlimitedRevisionChangeQueuesCurrentTerms(t *testing.T) {
+	s, e, p, actor, target, _ := accessActors(t)
+	ctx := context.Background()
+	seed, _, err := s.SeedUnlimitedCatalogue(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := wire.AccessOperationInput{Kind: "set_profile", Profile: profileInput("unlimited"), Reason: "current unlimited terms"}
+	first, err := s.CreateAccessOperation(ctx, actor, target, uuid.New(), input)
+	if err != nil || s.ApplyAccess(ctx, first.OperationId) != nil {
+		t.Fatalf("first unlimited revision: %v", err)
+	}
+	beforeID, beforeSub, beforeTraffic := p.client["id"], p.client["subId"], p.up
+	terms := wire.CatalogueTerms{Devices: 8, TrafficGb: 200, Profile: "unlimited", Hidden: true, Periods: []int64{}, Prices: []wire.CataloguePrice{}}
+	revised, err := s.ReviseCataloguePlan(ctx, actor, seed.PlanId, uuid.New(), wire.CataloguePlanRevisionInput{ExpectedRevision: seed.Revision, Terms: terms, Reason: "new unlimited limits"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeJobs := count(t, e, "river_job")
+	key := uuid.New()
+	second, err := s.CreateAccessOperation(ctx, actor, target, key, input)
+	if err != nil || second.Status != "pending" || second.Desired.Revision == nil || *second.Desired.Revision != revised.Revision || second.Desired.Devices != 8 || second.Desired.TrafficLimitBytes != 200*1024*1024*1024 || count(t, e, "river_job") != beforeJobs+1 {
+		t.Fatalf("changed hidden terms were treated as unchanged: %v %+v", err, second)
+	}
+	replay, err := s.CreateAccessOperation(ctx, actor, target, key, input)
+	if err != nil || replay.OperationId != second.OperationId {
+		t.Fatalf("changed revision replay: %v", err)
+	}
+	if err = s.ApplyAccess(ctx, second.OperationId); err != nil || integer(t, p.client["totalGB"]) != 200*1024*1024*1024 || integer(t, p.client["limitIp"]) != 9 || p.client["id"] != beforeID || p.client["subId"] != beforeSub || p.up != beforeTraffic || p.resets != 0 {
+		t.Fatalf("new unlimited revision not applied without resetting usage: %v", err)
+	}
+	beforeJobs = count(t, e, "river_job")
+	noOp, err := s.CreateAccessOperation(ctx, actor, target, uuid.New(), input)
+	if err != nil || noOp.Status != "applied" || len(noOp.CompletedSteps) != 1 || noOp.CompletedSteps[0] != "state_unchanged" || count(t, e, "river_job") != beforeJobs {
+		t.Fatalf("truly equal hidden terms queued again: %v %+v", err, noOp)
 	}
 }
 

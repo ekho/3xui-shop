@@ -330,7 +330,7 @@ func (q *Queries) LeaseAccessOperation(ctx context.Context, arg LeaseAccessOpera
 }
 
 const markAccessReset = `-- name: MarkAccessReset :execrows
-UPDATE access_operations SET reset_started=true,completed_steps=completed_steps||'["reset_started"]'::jsonb,updated_at=$3 WHERE id=$1 AND lease_hash=$2 AND status='provisioning' AND lease_expires_at>clock_timestamp()
+UPDATE access_operations SET reset_started=true,reset_acknowledged=false,completed_steps=completed_steps||'["reset_started"]'::jsonb,updated_at=$3 WHERE id=$1 AND lease_hash=$2 AND status='provisioning' AND lease_expires_at>clock_timestamp()
 `
 
 type MarkAccessResetParams struct {

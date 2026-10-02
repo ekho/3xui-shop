@@ -346,6 +346,50 @@ func TestAccessLostResetReplyWithZeroReadbackNeedsReview(t *testing.T) {
 	}
 }
 
+func TestAccessResetConsentConsumedBeforeNativeRetry(t *testing.T) {
+	s, e, p, actor, target, _ := accessActors(t)
+	ctx := context.Background()
+	p.loseReset = true
+	op, err := s.CreateAccessOperation(ctx, actor, target, uuid.New(), wire.AccessOperationInput{Kind: "reset_traffic", Reason: "ambiguous first reply"})
+	if err != nil || s.ApplyAccess(ctx, op.OperationId) != nil || p.resets != 1 {
+		t.Fatalf("initial ambiguous reset: %v resets=%d", err, p.resets)
+	}
+	if _, err = s.ReconcileAccessOperation(ctx, actor, target, op.OperationId, uuid.New(), wire.AccessReconcileInput{Reason: "one more reset approved", AcknowledgeResetCost: true}); err != nil {
+		t.Fatal(err)
+	}
+	p.loseReset = false
+	if _, err = e.Pool.Exec(ctx, `CREATE FUNCTION fail_access_finish() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+		IF NEW.status IN ('applied','needs_review') THEN RAISE EXCEPTION 'controlled final-write outage'; END IF;
+		RETURN NEW; END $$;
+		CREATE TRIGGER fail_access_finish BEFORE UPDATE ON access_operations FOR EACH ROW EXECUTE FUNCTION fail_access_finish()`); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.ApplyAccess(ctx, op.OperationId); err == nil || p.resets != 2 {
+		t.Fatalf("second reset did not reach failed final write: %v resets=%d", err, p.resets)
+	}
+	if _, err = e.Pool.Exec(ctx, `DROP TRIGGER fail_access_finish ON access_operations; DROP FUNCTION fail_access_finish()`); err != nil {
+		t.Fatal(err)
+	}
+	var acknowledged bool
+	if err = e.Pool.QueryRow(ctx, `SELECT reset_acknowledged FROM access_operations WHERE id=$1`, op.OperationId).Scan(&acknowledged); err != nil || acknowledged {
+		t.Fatalf("one reset consent survived external reset: %v acknowledged=%t", err, acknowledged)
+	}
+	p.up = 77 // Traffic accumulated after the acknowledged reset and before recovery.
+	if err = s.ApplyAccess(ctx, op.OperationId); err != nil || p.resets != 2 || p.up != 77 {
+		t.Fatalf("recovery erased new traffic: %v resets=%d traffic=%d", err, p.resets, p.up)
+	}
+	current, err := s.GetAccessOperation(ctx, actor, target, op.OperationId)
+	if err != nil || current.Status != "needs_review" {
+		t.Fatalf("positive readback was not left for review: %v status=%s", err, current.Status)
+	}
+	if _, err = s.ReconcileAccessOperation(ctx, actor, target, op.OperationId, uuid.New(), wire.AccessReconcileInput{Reason: "renew one reset", AcknowledgeResetCost: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.ApplyAccess(ctx, op.OperationId); err != nil || p.resets != 3 || p.up != 0 {
+		t.Fatalf("renewed consent did not permit one reset: %v resets=%d traffic=%d", err, p.resets, p.up)
+	}
+}
+
 func TestAccessPartialResetRequiresExplicitCost(t *testing.T) {
 	s, e, p, actor, target, _ := accessActors(t)
 	ctx := context.Background()

@@ -200,6 +200,47 @@ func TestMonthlyLostResetReplyNeedsReview(t *testing.T) {
 	}
 }
 
+func TestMonthlyAcknowledgedResetDoesNotRepeatAfterFinalWriteFailure(t *testing.T) {
+	s, p, actor, target := unlimitedAccount(t)
+	ctx := context.Background()
+	s.cfg.AccessResetTimezone = "UTC"
+	if _, err := s.EnqueueMonthlyResets(ctx, time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)); err != nil || s.ApplyMonthlyReset(ctx, target, "2026-10") != nil {
+		t.Fatalf("monthly enqueue: %v", err)
+	}
+	var id uuid.UUID
+	if err := s.pool.QueryRow(ctx, `SELECT operation_id FROM monthly_reset_periods WHERE account_id=$1 AND local_period='2026-10'`, target).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	p.loseReset = true
+	if err := s.ApplyAccess(ctx, id); err != nil || p.resets != 1 {
+		t.Fatalf("initial monthly ambiguity: %v resets=%d", err, p.resets)
+	}
+	if _, err := s.ReconcileAccessOperation(ctx, actor, target, id, uuid.New(), wire.AccessReconcileInput{Reason: "approve one repeat", AcknowledgeResetCost: true}); err != nil {
+		t.Fatal(err)
+	}
+	p.loseReset = false
+	if _, err := s.pool.Exec(ctx, `CREATE FUNCTION fail_monthly_finish() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+		IF NEW.status IN ('applied','needs_review') THEN RAISE EXCEPTION 'controlled final-write outage'; END IF;
+		RETURN NEW; END $$;
+		CREATE TRIGGER fail_monthly_finish BEFORE UPDATE ON access_operations FOR EACH ROW EXECUTE FUNCTION fail_monthly_finish()`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ApplyAccess(ctx, id); err == nil || p.resets != 2 {
+		t.Fatalf("acknowledged monthly reset did not reach final-write failure: %v resets=%d", err, p.resets)
+	}
+	if _, err := s.pool.Exec(ctx, `DROP TRIGGER fail_monthly_finish ON access_operations; DROP FUNCTION fail_monthly_finish()`); err != nil {
+		t.Fatal(err)
+	}
+	p.up = 88
+	if err := s.ApplyAccess(ctx, id); err != nil || p.resets != 2 || p.up != 88 {
+		t.Fatalf("monthly recovery erased new usage: %v resets=%d traffic=%d", err, p.resets, p.up)
+	}
+	op, err := s.GetAccessOperation(ctx, actor, target, id)
+	if err != nil || op.Status != "needs_review" {
+		t.Fatalf("monthly positive readback lost review: %v status=%s", err, op.Status)
+	}
+}
+
 func TestMonthlyPromotedOperationCannotResetPreviousMonth(t *testing.T) {
 	s, p, actor, target := unlimitedAccount(t)
 	ctx := context.Background()

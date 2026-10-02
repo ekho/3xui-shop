@@ -286,6 +286,7 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 				return cleanup("reset_mark_failed", true)
 			}
 			op.ResetStarted = true
+			op.ResetAcknowledged = false
 			resetErr := p.ResetAccessTraffic(ctx, t.PanelKey)
 			// Native resetTraffic can re-enable a banned client even when the reply is lost.
 			if t.Banned {

@@ -391,6 +391,18 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 	}
 	immediate := t.NoClientIntent
 	step := "intent_saved"
+	sameNativeTarget := true
+	if v != nil && in.Kind == "set_profile" && t.Profile == "unlimited" {
+		limit := t.DeviceCount
+		if limit > 0 {
+			limit++
+		}
+		attach, detach, e := panel.MembershipDiff(ctx, v.InboundIDs, t.InboundIDs)
+		if e != nil {
+			return out, failure(409, "ACCESS_NOT_ELIGIBLE")
+		}
+		sameNativeTarget = v.ExpiryTimeMS == t.ExpiryTimeMS && v.LimitIP == limit && v.TrafficLimitBytes == t.TrafficLimitBytes && len(attach) == 0 && len(detach) == 0
+	}
 	if t.NoClientIntent {
 		if t.Profile == "" {
 			return out, failure(409, "ACCESS_NOT_ELIGIBLE")
@@ -398,7 +410,7 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 		if in.Kind == "set_profile" && a.AccessProfile.Valid && a.AccessProfile.String == t.Profile || in.Kind == "set_vpn_ban" && a.VpnBanned == t.Banned {
 			step = "state_unchanged"
 		}
-	} else if v != nil && (in.Kind == "set_profile" && profile == t.Profile || in.Kind == "set_vpn_ban" && a.VpnBanned == t.Banned) && !t.Reset && !t.Enable && (t.Banned && !v.Enabled || !t.Banned && (v.Enabled || in.Kind == "set_profile" && (v.ExpiryTimeMS > 0 && v.ExpiryTimeMS <= now.UnixMilli() || v.TrafficLimitBytes > 0 && v.UsedTraffic != nil && *v.UsedTraffic >= v.TrafficLimitBytes))) {
+	} else if v != nil && sameNativeTarget && (in.Kind == "set_profile" && profile == t.Profile || in.Kind == "set_vpn_ban" && a.VpnBanned == t.Banned) && !t.Reset && !t.Enable && (t.Banned && !v.Enabled || !t.Banned && (v.Enabled || in.Kind == "set_profile" && (v.ExpiryTimeMS > 0 && v.ExpiryTimeMS <= now.UnixMilli() || v.TrafficLimitBytes > 0 && v.UsedTraffic != nil && *v.UsedTraffic >= v.TrafficLimitBytes))) {
 		immediate, step = true, "state_unchanged"
 	}
 	if immediate {

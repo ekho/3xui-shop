@@ -22,7 +22,7 @@ UPDATE access_operations SET write_started=true,updated_at=$3 WHERE id=$1 AND le
 UPDATE access_operations SET completed_steps=CASE WHEN completed_steps ? sqlc.arg(step)::text THEN completed_steps ELSE completed_steps||jsonb_build_array(sqlc.arg(step)::text) END,updated_at=sqlc.arg(updated_at)::timestamptz
 WHERE id=sqlc.arg(id)::uuid AND lease_hash=sqlc.arg(lease_hash)::bytea AND status='provisioning' AND lease_expires_at>clock_timestamp();
 -- name: MarkAccessReset :execrows
-UPDATE access_operations SET reset_started=true,completed_steps=completed_steps||'["reset_started"]'::jsonb,updated_at=$3 WHERE id=$1 AND lease_hash=$2 AND status='provisioning' AND lease_expires_at>clock_timestamp();
+UPDATE access_operations SET reset_started=true,reset_acknowledged=false,completed_steps=completed_steps||'["reset_started"]'::jsonb,updated_at=$3 WHERE id=$1 AND lease_hash=$2 AND status='provisioning' AND lease_expires_at>clock_timestamp();
 -- name: AccessNeedsReview :execrows
 UPDATE access_operations SET status='needs_review',lease_hash=NULL,lease_expires_at=NULL,review_reason=$3,updated_at=$4
 WHERE id=$1 AND lease_hash=$2 AND status='provisioning';

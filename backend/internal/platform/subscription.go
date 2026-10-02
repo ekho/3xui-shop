@@ -30,6 +30,14 @@ func (s *Service) accountOperation(ctx context.Context, account uuid.UUID) (stor
 	return q.AccountOperation(ctx, account)
 }
 
+func savedNoClientIntent(op store.AccessOperation) bool {
+	if op.Kind != "set_profile" && op.Kind != "set_vpn_ban" {
+		return false
+	}
+	var target accessTarget
+	return json.Unmarshal(op.Target, &target) == nil && target.NoClientIntent
+}
+
 type profileRead struct {
 	target     ProvisionTarget
 	client     *PanelClientView
@@ -220,11 +228,8 @@ func (s *Service) Subscription(ctx context.Context, account uuid.UUID) (out wire
 			state := wire.SubscriptionAccessOperationStatus("applied")
 			return wire.Subscription{Status: "none", DataStale: true, AccessOperationId: &latest.ID, AccessOperationStatus: &state}, nil
 		}
-		if a.AssignedPanelID.Valid && (latest.Kind == "set_profile" || latest.Kind == "set_vpn_ban") {
-			var intent accessTarget
-			if json.Unmarshal(latest.Target, &intent) == nil && intent.NoClientIntent {
-				return s.trialSubscription(ctx, account)
-			}
+		if a.AssignedPanelID.Valid && savedNoClientIntent(latest) {
+			return s.trialSubscription(ctx, account)
 		}
 		return s.accessSubscription(ctx, latest, a.VpnBanned)
 	}
@@ -362,7 +367,9 @@ func (s *Service) SubscriptionKey(ctx context.Context, account uuid.UUID) (wire.
 		if latest.Status != "applied" {
 			return out, failure(409, "OPERATION_NOT_READY")
 		}
-		return s.accessKey(ctx, latest)
+		if !a.AssignedPanelID.Valid || !savedNoClientIntent(latest) {
+			return s.accessKey(ctx, latest)
+		}
 	}
 	op, e := s.accountOperation(ctx, account)
 	if errors.Is(e, pgx.ErrNoRows) {
