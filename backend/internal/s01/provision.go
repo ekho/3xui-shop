@@ -50,10 +50,10 @@ func watchOwner(ctx context.Context, c *pgxpool.Conn, cancel context.CancelFunc)
 	var once sync.Once
 	return func() { once.Do(func() { stop(); <-done }) }, lost
 }
-func releaseOwner(c *pgxpool.Conn, id uuid.UUID) {
+func releaseOwner(c *pgxpool.Conn, account uuid.UUID) {
 	ctx, end := context.WithTimeout(context.Background(), time.Second)
 	defer end()
-	if _, e := c.Exec(ctx, `SELECT pg_advisory_unlock(hashtextextended('provision:'||$1::text,0))`, id.String()); e != nil {
+	if _, e := c.Exec(ctx, `SELECT pg_advisory_unlock(hashtextextended('account-access:'||$1::text,0))`, account.String()); e != nil {
 		c.Conn().Close(ctx)
 	}
 	c.Release()
@@ -91,12 +91,19 @@ func validSnapshot(op store.TrialOperation) bool {
 func (s *Service) Provision(parent context.Context, id uuid.UUID) error {
 	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
 	defer cancel()
+	initial, e := store.New(s.pool).OperationByID(ctx, id)
+	if errors.Is(e, pgx.ErrNoRows) {
+		return nil
+	}
+	if e != nil {
+		return unavailable()
+	}
 	c, e := s.pool.Acquire(ctx)
 	if e != nil {
 		return unavailable()
 	}
 	var locked bool
-	e = c.QueryRow(ctx, `SELECT pg_try_advisory_lock(hashtextextended('provision:'||$1::text,0))`, id.String()).Scan(&locked)
+	e = c.QueryRow(ctx, `SELECT pg_try_advisory_lock(hashtextextended('account-access:'||$1::text,0))`, initial.AccountID.String()).Scan(&locked)
 	if e != nil || !locked {
 		c.Release()
 		if e == nil {
@@ -104,7 +111,7 @@ func (s *Service) Provision(parent context.Context, id uuid.UUID) error {
 		}
 		return unavailable()
 	}
-	defer releaseOwner(c, id)
+	defer releaseOwner(c, initial.AccountID)
 	q := store.New(c)
 	op, e := q.OperationByID(ctx, id)
 	if errors.Is(e, pgx.ErrNoRows) {
@@ -328,7 +335,7 @@ func (s *Service) reconcileOperationLocked(ctx context.Context, tx pgx.Tx, q *st
 	var out wire.ReconcileResult
 	id := op.ID
 	var locked bool
-	if err := tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock(hashtextextended('provision:'||$1::text,0))`, id.String()).Scan(&locked); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock(hashtextextended('account-access:'||$1::text,0))`, a.ID.String()).Scan(&locked); err != nil {
 		return out, unavailable()
 	}
 	current, err := q.OperationByID(ctx, id)

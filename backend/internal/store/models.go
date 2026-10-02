@@ -9,6 +9,30 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AccessOperation struct {
+	ID                uuid.UUID
+	AccountID         uuid.UUID
+	OperatorAccountID *uuid.UUID
+	Kind              string
+	Status            string
+	Reason            string
+	PlanID            *uuid.UUID
+	PlanRevision      pgtype.Int8
+	PeriodDays        pgtype.Int8
+	Desired           []byte
+	Target            []byte
+	CompletedSteps    []byte
+	ReviewReason      pgtype.Text
+	WriteStarted      bool
+	ResetStarted      bool
+	ResetAcknowledged bool
+	Attempts          int32
+	LeaseHash         []byte
+	LeaseExpiresAt    pgtype.Timestamptz
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
 type Account struct {
 	ID                           uuid.UUID
 	EmailKey                     pgtype.Text
@@ -45,6 +69,7 @@ type AuditEvent struct {
 	Reason            pgtype.Text
 	OperatorAccountID *uuid.UUID
 	SupportMessageID  *uuid.UUID
+	AccessOperationID *uuid.UUID
 }
 
 type CataloguePlan struct {

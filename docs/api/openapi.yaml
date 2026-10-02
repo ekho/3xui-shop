@@ -6601,6 +6601,408 @@
           }
         }
       }
+    },
+    "/api/v1/operator/clients/{id}/access-operations": {
+      "post": {
+        "operationId": "createAccessOperation",
+        "description": "Verified unrestricted web operator, target may be restricted. Actor only from session. Strict kind-specific body and UUID Idempotency-Key. Accepted operation is asynchronous.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted operation snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessOperation"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccessOperationInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/operator/clients/{id}/access-operations/{operation_id}": {
+      "get": {
+        "operationId": "getAccessOperation",
+        "description": "Verified unrestricted web operator. Foreign account/operation pair returns 404.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Accepted operation snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessOperation"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/operator/clients/{id}/access-operations/{operation_id}/reconcile": {
+      "post": {
+        "operationId": "reconcileAccessOperation",
+        "description": "Verified unrestricted web operator; explicit reset cost acknowledgment when uncertain destructive step is repeated.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted operation snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessOperation"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccessReconcileInput"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -7041,6 +7443,22 @@
               "invalid_traffic",
               null
             ]
+          },
+          "access_operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "access_operation_status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "provisioning",
+              "applied",
+              "needs_review",
+              null
+            ],
+            "nullable": true
           }
         },
         "required": [
@@ -7050,7 +7468,9 @@
           "traffic_limit_bytes",
           "traffic_used_bytes",
           "observed_at",
-          "data_stale"
+          "data_stale",
+          "access_operation_id",
+          "access_operation_status"
         ]
       },
       "SubscriptionKey": {
@@ -7445,7 +7865,11 @@
               "OPERATOR_ACCOUNT_PROTECTED",
               "CATALOGUE_REVISION_CONFLICT",
               "CATALOGUE_LAST_VISIBLE",
-              "CATALOGUE_DEVICES_CONFLICT"
+              "CATALOGUE_DEVICES_CONFLICT",
+              "ACCESS_OPERATION_CONFLICT",
+              "ACCESS_NOT_ELIGIBLE",
+              "ACCESS_PLAN_CONFLICT",
+              "ACCESS_RECONCILE_REQUIRED"
             ]
           },
           "message": {
@@ -8359,6 +8783,11 @@
             "type": "string",
             "format": "uuid",
             "nullable": true
+          },
+          "access_operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
           }
         },
         "required": [
@@ -8370,7 +8799,8 @@
           "operator_tg_id",
           "operator_account_id",
           "reason",
-          "support_message_id"
+          "support_message_id",
+          "access_operation_id"
         ]
       },
       "OperatorClientCard": {
@@ -9137,6 +9567,212 @@
           "reason"
         ],
         "description": "Archive creates a new immutable revision. Reason is trimmed 1-1000 Unicode characters, NUL forbidden."
+      },
+      "AccessOperationInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "compensate",
+              "assign_plan",
+              "starter_trial",
+              "reset_traffic"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365
+          },
+          "plan_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "period_days": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 106751
+          }
+        },
+        "required": [
+          "kind",
+          "reason"
+        ],
+        "description": "Exactly matching fields for kind: compensate days; assign_plan plan_id/revision/period_days; starter_trial and reset_traffic no extra fields. Server rejects mismatches and trims reason."
+      },
+      "AccessReconcileInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "acknowledge_reset_cost": {
+            "type": "boolean",
+            "description": "Explicit true only when choosing to repeat a destructive reset after ambiguous effect."
+          }
+        },
+        "required": [
+          "reason",
+          "acknowledge_reset_cost"
+        ]
+      },
+      "AccessDesired": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "devices": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "traffic_limit_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "profile": {
+            "type": "string",
+            "enum": [
+              "regular",
+              "euru",
+              "unlimited"
+            ]
+          },
+          "plan_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "period_days": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "reset_traffic": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "expires_at",
+          "devices",
+          "traffic_limit_bytes",
+          "profile",
+          "plan_id",
+          "revision",
+          "period_days",
+          "reset_traffic"
+        ]
+      },
+      "AccessOperation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "account_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "compensate",
+              "assign_plan",
+              "starter_trial",
+              "reset_traffic"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "provisioning",
+              "applied",
+              "needs_review"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "operator_account_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "desired": {
+            "$ref": "#/components/schemas/AccessDesired"
+          },
+          "completed_steps": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "prepared",
+                "panel_updated",
+                "membership_updated",
+                "reset_started",
+                "reset_confirmed",
+                "ban_reapplied",
+                "readback_confirmed"
+              ]
+            }
+          },
+          "review_reason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "operation_id",
+          "account_id",
+          "kind",
+          "status",
+          "created_at",
+          "updated_at",
+          "reason",
+          "operator_account_id",
+          "desired",
+          "completed_steps",
+          "review_reason"
+        ]
       }
     }
   }

@@ -297,6 +297,11 @@ func (s *Service) decideTrialLocked(ctx context.Context, tx pgx.Tx, q *store.Que
 	}
 	var operation *uuid.UUID
 	if decision == "approve" {
+		if active, err := q.UnresolvedAccessExists(ctx, a.ID); err != nil {
+			return r, unavailable()
+		} else if active {
+			return r, failure(409, "ACCESS_OPERATION_CONFLICT")
+		}
 		if err := s.trialEligibility(ctx, q, a); err != nil {
 			return r, err
 		}

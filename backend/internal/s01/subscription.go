@@ -160,18 +160,73 @@ func panelError(err error) *wire.SubscriptionPanelError {
 	var value wire.SubscriptionPanelError
 	switch {
 	case errors.Is(err, errPanelIdentity):
-		value = wire.IdentityMismatch
+		value = wire.SubscriptionPanelErrorIdentityMismatch
 	case errors.Is(err, errPanelMembership):
-		value = wire.UnknownMembership
+		value = wire.SubscriptionPanelErrorUnknownMembership
 	case errors.Is(err, errPanelTraffic):
-		value = wire.InvalidTraffic
+		value = wire.SubscriptionPanelErrorInvalidTraffic
 	default:
-		value = wire.Unavailable
+		value = wire.SubscriptionPanelErrorUnavailable
 	}
 	return &value
 }
 
 func (s *Service) Subscription(ctx context.Context, account uuid.UUID) (wire.Subscription, error) {
+	a, err := store.New(s.pool).AccountByID(ctx, account)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return wire.Subscription{}, failure(404, "INVALID_INPUT")
+	}
+	if err != nil {
+		return wire.Subscription{}, unavailable()
+	}
+	if a.Restricted {
+		return wire.Subscription{}, failure(403, "ACCOUNT_RESTRICTED")
+	}
+	latest, found, err := s.latestAccess(ctx, account)
+	if err != nil {
+		return wire.Subscription{}, err
+	}
+	if found && latest.Status == "applied" {
+		return s.accessSubscription(ctx, latest, a.VpnBanned)
+	}
+	if found {
+		prior, e := store.New(s.pool).LatestAppliedAccess(ctx, account)
+		if e == nil {
+			out, e := s.accessSubscription(ctx, prior, a.VpnBanned)
+			if e != nil {
+				return out, e
+			}
+			out.AccessOperationId = &latest.ID
+			state := wire.SubscriptionAccessOperationStatus(latest.Status)
+			out.AccessOperationStatus = &state
+			if latest.Status == "needs_review" {
+				out.Status = "needs_review"
+			} else {
+				out.Status = "provisioning"
+			}
+			out.DataStale = true
+			return out, nil
+		}
+		if !errors.Is(e, pgx.ErrNoRows) {
+			return wire.Subscription{}, unavailable()
+		}
+	}
+	out, e := s.trialSubscription(ctx, account)
+	if found && e == nil {
+		out.AccessOperationId = &latest.ID
+		state := wire.SubscriptionAccessOperationStatus(latest.Status)
+		out.AccessOperationStatus = &state
+		if latest.Status == "needs_review" {
+			out.Status = "needs_review"
+		} else {
+			out.Status = "provisioning"
+		}
+		out.DataStale = true
+	}
+	return out, e
+}
+
+func (s *Service) trialSubscription(ctx context.Context, account uuid.UUID) (wire.Subscription, error) {
 	out := wire.Subscription{Status: "none", DataStale: true}
 	op, e := s.accountOperation(ctx, account)
 	if errors.Is(e, pgx.ErrNoRows) {
@@ -250,6 +305,26 @@ func (s *Service) Subscription(ctx context.Context, account uuid.UUID) (wire.Sub
 
 func (s *Service) SubscriptionKey(ctx context.Context, account uuid.UUID) (wire.SubscriptionKey, error) {
 	out := wire.SubscriptionKey{}
+	a, authErr := store.New(s.pool).AccountByID(ctx, account)
+	if errors.Is(authErr, pgx.ErrNoRows) {
+		return out, failure(404, "INVALID_INPUT")
+	}
+	if authErr != nil {
+		return out, unavailable()
+	}
+	if a.Restricted {
+		return out, failure(403, "ACCOUNT_RESTRICTED")
+	}
+	latest, found, e := s.latestAccess(ctx, account)
+	if e != nil {
+		return out, e
+	}
+	if found {
+		if latest.Status != "applied" {
+			return out, failure(409, "OPERATION_NOT_READY")
+		}
+		return s.accessKey(ctx, latest)
+	}
 	op, e := s.accountOperation(ctx, account)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return out, failure(409, "OPERATION_NOT_READY")

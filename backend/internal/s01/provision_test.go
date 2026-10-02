@@ -22,21 +22,25 @@ import (
 )
 
 type fakePanel struct {
-	blockRead                                        bool
-	afterAdd                                         func()
-	failAfterAdd                                     bool
-	dropAdd                                          bool
-	mu                                               sync.Mutex
-	server                                           *httptest.Server
-	client                                           map[string]any
-	ids                                              []int64
-	adds, attaches, otherWrites                      int
-	loseAdd, emptyRead, failRead, partial, noRegular bool
+	blockRead                                                                        bool
+	afterAdd                                                                         func()
+	failAfterAdd                                                                     bool
+	dropAdd                                                                          bool
+	mu                                                                               sync.Mutex
+	server                                                                           *httptest.Server
+	client                                                                           map[string]any
+	ids                                                                              []int64
+	adds, attaches, otherWrites                                                      int
+	updates, resets, disables, detaches                                              int
+	up, down                                                                         int64
+	loseReset                                                                        bool
+	resetLeavesTraffic                                                               bool
+	loseAdd, emptyRead, failRead, partial, noRegular, noEuru, sharedRegularUnlimited bool
 }
 
 func panelFixture(t *testing.T, s *Service) *fakePanel {
 	t.Helper()
-	p := &fakePanel{}
+	p := &fakePanel{up: 1234}
 	p.server = httptest.NewTLSServer(http.HandlerFunc(p.serve))
 	t.Cleanup(p.server.Close)
 	s.cfg.PanelURL = p.server.URL
@@ -58,9 +62,19 @@ func (p *fakePanel) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case r.Method == "GET" && r.URL.Path == "/panel/api/inbounds/list":
-		rows := []map[string]any{{"id": 1, "enable": true, "tag": "node-regular-tcp"}, {"id": 2, "enable": true, "tag": "regular-second"}, {"id": 9, "enable": true, "tag": "unlimited-only"}, {"id": 99, "enable": true, "tag": "unknown"}}
+		rows := []map[string]any{{"id": 1, "enable": true, "tag": "node-regular-tcp"}, {"id": 2, "enable": true, "tag": "regular-second"}, {"id": 3, "enable": true, "tag": "euru-only"}, {"id": 9, "enable": true, "tag": "unlimited-only"}, {"id": 99, "enable": true, "tag": "unknown"}}
 		if p.noRegular {
 			rows = rows[2:]
+		}
+		if p.noEuru {
+			for _, row := range rows {
+				if row["id"] == 3 {
+					row["tag"] = "manual-only"
+				}
+			}
+		}
+		if p.sharedRegularUnlimited {
+			rows[0]["tag"] = "node-regular-unlimited-tcp"
 		}
 		reply(map[string]any{"success": true, "obj": rows})
 	case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/panel/api/clients/get/"):
@@ -85,8 +99,12 @@ func (p *fakePanel) serve(w http.ResponseWriter, r *http.Request) {
 		for key, value := range p.client {
 			record[key] = value
 		}
-		record["uuid"], record["id"] = p.client["id"], 1
-		reply(map[string]any{"success": true, "obj": map[string]any{"client": record, "inboundIds": p.ids, "usedTraffic": int64(1234)}})
+		vpn := p.client["id"]
+		if original, ok := p.client["uuid"]; ok {
+			vpn = original
+		}
+		record["uuid"], record["id"] = vpn, 1
+		reply(map[string]any{"success": true, "obj": map[string]any{"client": record, "inboundIds": p.ids, "usedTraffic": p.up + p.down}})
 	case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/panel/api/clients/traffic/"):
 		if p.failRead {
 			w.WriteHeader(503)
@@ -96,7 +114,11 @@ func (p *fakePanel) serve(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(404)
 			return
 		}
-		reply(map[string]any{"success": true, "obj": map[string]any{"email": p.client["email"], "uuid": p.client["id"], "subId": p.client["subId"], "up": int64(1234), "down": int64(0)}})
+		vpn := p.client["id"]
+		if original, ok := p.client["uuid"]; ok {
+			vpn = original
+		}
+		reply(map[string]any{"success": true, "obj": map[string]any{"email": p.client["email"], "uuid": vpn, "subId": p.client["subId"], "up": p.up, "down": p.down}})
 	case r.Method == "POST" && r.URL.Path == "/panel/api/clients/add":
 		p.adds++
 		var body struct {
@@ -147,6 +169,59 @@ func (p *fakePanel) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		json.NewDecoder(r.Body).Decode(&body)
 		p.ids = append(p.ids, body.InboundIDs...)
+		reply(map[string]any{"success": true, "obj": nil})
+	case r.Method == "POST" && strings.Contains(r.URL.Path, "/update/"):
+		p.updates++
+		var body map[string]any
+		d := json.NewDecoder(r.Body)
+		d.UseNumber()
+		if d.Decode(&body) != nil || p.client == nil {
+			w.WriteHeader(400)
+			return
+		}
+		p.client = body
+		reply(map[string]any{"success": true, "obj": nil})
+	case r.Method == "POST" && strings.Contains(r.URL.Path, "/resetTraffic/"):
+		p.resets++
+		if !p.resetLeavesTraffic {
+			p.up = 0
+			p.down = 0
+		}
+		if p.client != nil {
+			p.client["enable"] = true
+		}
+		if p.loseReset {
+			p.loseReset = false
+			c, _, err := w.(http.Hijacker).Hijack()
+			if err == nil {
+				c.Close()
+			}
+			return
+		}
+		reply(map[string]any{"success": true, "obj": nil})
+	case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/bulkDisable"):
+		p.disables++
+		if p.client != nil {
+			p.client["enable"] = false
+		}
+		reply(map[string]any{"success": true, "obj": nil})
+	case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/detach"):
+		p.detaches++
+		var body struct {
+			InboundIDs []int64 `json:"inboundIds"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		remove := map[int64]bool{}
+		for _, id := range body.InboundIDs {
+			remove[id] = true
+		}
+		ids := []int64{}
+		for _, id := range p.ids {
+			if !remove[id] {
+				ids = append(ids, id)
+			}
+		}
+		p.ids = ids
 		reply(map[string]any{"success": true, "obj": nil})
 	default:
 		if r.Method != "GET" {

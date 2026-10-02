@@ -48,11 +48,8 @@ func TestOperatorDowngradePreservesSourceAndActors(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			// Remove empty S09 and S48 before testing the S06 fail-closed guard.
-			if _, err = provider.Down(ctx); err != nil {
-				t.Fatal("down from empty catalogue", err)
-			}
-			if _, err = provider.Down(ctx); err != nil {
+			// Target the owning migration so later additive migrations do not change this test.
+			if _, err = provider.DownTo(ctx, 9); err != nil {
 				t.Fatal("down to operator migration", err)
 			}
 			if _, err = provider.Down(ctx); err == nil || !strings.Contains(err.Error(), "operator client downgrade blocked") {
@@ -84,13 +81,7 @@ func TestOperatorMigrationKeepsOldCreationDateUnknown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = provider.Down(ctx); err != nil {
-		t.Fatal("down from empty catalogue", err)
-	}
-	if _, err = provider.Down(ctx); err != nil {
-		t.Fatal("down to operator migration", err)
-	}
-	if _, err = provider.Down(ctx); err != nil {
+	if _, err = provider.DownTo(ctx, 8); err != nil {
 		t.Fatal("down to original accounts schema", err)
 	}
 	id := uuid.New()
@@ -98,7 +89,7 @@ func TestOperatorMigrationKeepsOldCreationDateUnknown(t *testing.T) {
 		VALUES($1,'old@example.test','ru','fixture',now(),$2,'aaaaaaaaaaaaaaaa',$3,'1','1')`, id, uuid.New(), "acct_"+id.String()); err != nil {
 		t.Fatal("old account fixture", err)
 	}
-	if _, err = provider.Up(ctx); err != nil {
+	if _, err = provider.UpTo(ctx, 9); err != nil {
 		t.Fatal("operator migration", err)
 	}
 	var oldKind string

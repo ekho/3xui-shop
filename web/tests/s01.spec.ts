@@ -3,7 +3,7 @@ import type {components} from '../src/api/schema.gen';
 type Model<K extends keyof components['schemas']> = components['schemas'][K];
 const account:Model<'AccountResult'>={account:{account_id:'b496e45c-4e80-47d6-a868-e3c1da4e4f35',email:'client@example.test',email_verified:true,locale:'ru',telegram_linked:false},csrf_token:'x'.repeat(43),capabilities:{trial_available:true}};
 const trial:Model<'TrialRequest'>={request_id:'425e3641-912b-4e50-b4d2-6b4a21598890',status:'pending',created_at:'2026-10-01T00:00:00Z',decided_at:null,operation_id:null,previous_request_id:null};
-const none:Model<'Subscription'>={status:'none',devices:0,traffic_limit_bytes:0,traffic_used_bytes:null,observed_at:null,data_stale:true,expires_at:null};
+const none:Model<'Subscription'>={status:'none',devices:0,traffic_limit_bytes:0,traffic_used_bytes:null,observed_at:null,data_stale:true,expires_at:null,access_operation_id:null,access_operation_status:null};
 async function mock(page:Page,current:Model<'CurrentTrialRequest'>={request:null},sub:Model<'Subscription'>=none){
  await page.route('**/api/v1/**',async route=>{
   const p=new URL(route.request().url()).pathname;const body=p.endsWith('/me')?account:p.endsWith('/current')?current:p.endsWith('/subscription')?sub:p.endsWith('/key')?{subscription_url:'https://subscriptions.example.test/sub/fixtureprivate000'}:{};

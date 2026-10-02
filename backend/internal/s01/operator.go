@@ -110,7 +110,7 @@ func operatorTrial(r store.OperatorTrialPageRow) wire.OperatorTrialRequest {
 func operatorAudit(e store.AuditEvent) wire.OperatorAuditEvent {
 	out := wire.OperatorAuditEvent{Id: e.ID, CreatedAt: e.CreatedAt.Time, Action: e.Action,
 		RequestId: e.RequestID, OperationId: e.OperationID,
-		OperatorAccountId: e.OperatorAccountID, SupportMessageId: e.SupportMessageID}
+		OperatorAccountId: e.OperatorAccountID, SupportMessageId: e.SupportMessageID, AccessOperationId: e.AccessOperationID}
 	if e.OperatorTgID.Valid {
 		id := strconv.FormatInt(e.OperatorTgID.Int64, 10)
 		out.OperatorTgId = &id
@@ -338,6 +338,29 @@ func (s *Service) OperatorClient(ctx context.Context, actor, target uuid.UUID) (
 // Restricted customers cannot call the cabinet Subscription endpoint. The
 // operator card still shows the last stored observation, explicitly stale.
 func (s *Service) restrictedOperatorSubscription(ctx context.Context, a store.Account) (wire.Subscription, error) {
+	if latest, found, err := s.latestAccess(ctx, a.ID); err != nil {
+		return wire.Subscription{}, err
+	} else if found {
+		base := latest
+		if latest.Status != "applied" {
+			if prior, e := store.New(s.pool).LatestAppliedAccess(ctx, a.ID); e == nil {
+				base = prior
+			}
+		}
+		out, e := accessSubscriptionBase(base, a.VpnBanned, s.now())
+		if e != nil {
+			return out, e
+		}
+		out.AccessOperationId = &latest.ID
+		state := wire.SubscriptionAccessOperationStatus(latest.Status)
+		out.AccessOperationStatus = &state
+		if latest.Status == "needs_review" {
+			out.Status = "needs_review"
+		} else if latest.Status != "applied" {
+			out.Status = "provisioning"
+		}
+		return out, nil
+	}
 	out := wire.Subscription{Status: "none", DataStale: true}
 	available := false
 	out.ConnectionAvailable = &available

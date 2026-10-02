@@ -329,6 +329,167 @@ func (p *PanelClient) Attach(ctx context.Context, key string, ids []int64) error
 	}
 	return nil
 }
+
+func (p *PanelClient) inboundTags(ctx context.Context) (map[int64][]string, error) {
+	if p.auth(ctx) != nil {
+		return nil, errPanel
+	}
+	out, e := p.call(ctx, "GET", "panel/api/inbounds/list", nil)
+	if e != nil || !*out.Success {
+		return nil, errPanel
+	}
+	var rows []struct {
+		ID     int64  `json:"id"`
+		Enable bool   `json:"enable"`
+		Tag    string `json:"tag"`
+	}
+	if json.Unmarshal(out.Obj, &rows) != nil || rows == nil {
+		return nil, errPanel
+	}
+	tags := map[int64][]string{}
+	for _, r := range rows {
+		if r.ID <= 0 || tags[r.ID] != nil {
+			return nil, errPanelMembership
+		}
+		if r.Enable {
+			tags[r.ID] = strings.Split(r.Tag, "-")
+		} else {
+			tags[r.ID] = []string{}
+		}
+	}
+	return tags, nil
+}
+
+func hasSegment(segments []string, wanted string) bool {
+	for _, segment := range segments {
+		if segment == wanted {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *PanelClient) ProfileInboundIDs(ctx context.Context, profile string) ([]int64, error) {
+	if profile != "regular" && profile != "euru" {
+		return nil, errPanelMembership
+	}
+	tags, e := p.inboundTags(ctx)
+	if e != nil {
+		return nil, e
+	}
+	ids := []int64{}
+	for id, segments := range tags {
+		if hasSegment(segments, profile) {
+			ids = append(ids, id)
+		}
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	if len(ids) == 0 {
+		return nil, errPanelMembership
+	}
+	return ids, nil
+}
+
+// Only IDs belonging to a known managed profile are detached. Other memberships survive.
+func (p *PanelClient) MembershipDiff(ctx context.Context, current, desired []int64) ([]int64, []int64, error) {
+	tags, e := p.inboundTags(ctx)
+	if e != nil {
+		return nil, nil, e
+	}
+	need := map[int64]bool{}
+	have := map[int64]bool{}
+	for _, id := range desired {
+		if _, ok := tags[id]; !ok {
+			return nil, nil, errPanelMembership
+		}
+		need[id] = true
+	}
+	for _, id := range current {
+		if _, ok := tags[id]; !ok {
+			return nil, nil, errPanelMembership
+		}
+		have[id] = true
+	}
+	attach, detach := []int64{}, []int64{}
+	for id := range need {
+		if !have[id] {
+			attach = append(attach, id)
+		}
+	}
+	for id := range have {
+		if !need[id] && (hasSegment(tags[id], "regular") || hasSegment(tags[id], "euru") || hasSegment(tags[id], "unlimited")) {
+			detach = append(detach, id)
+		}
+	}
+	sort.Slice(attach, func(i, j int) bool { return attach[i] < attach[j] })
+	sort.Slice(detach, func(i, j int) bool { return detach[i] < detach[j] })
+	return attach, detach, nil
+}
+
+func (p *PanelClient) Detach(ctx context.Context, key string, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if p.auth(ctx) != nil {
+		return errPanel
+	}
+	out, e := p.call(ctx, "POST", "panel/api/clients/"+url.PathEscape(key)+"/detach", map[string]any{"inboundIds": ids})
+	if e != nil || !*out.Success {
+		return errPanel
+	}
+	return nil
+}
+
+func (p *PanelClient) UpdateAccess(ctx context.Context, v *PanelClientView, t accessTarget) error {
+	if p.auth(ctx) != nil || v == nil || v.PanelKey != t.PanelKey || v.VPNID != t.VPNID || v.SubID != t.SubID {
+		return errPanelIdentity
+	}
+	data := make(map[string]json.RawMessage, len(v.Raw))
+	for k, value := range v.Raw {
+		data[k] = value
+	}
+	limit := t.DeviceCount
+	if limit > 0 {
+		limit++
+	}
+	for name, value := range map[string]any{"expiryTime": t.ExpiryTimeMS, "limitIp": limit, "totalGB": t.TrafficLimitBytes} {
+		raw, e := json.Marshal(value)
+		if e != nil {
+			return errPanel
+		}
+		data[name] = raw
+	}
+	if t.Banned {
+		data["enable"] = json.RawMessage("false")
+	}
+	out, e := p.call(ctx, "POST", "panel/api/clients/update/"+url.PathEscape(t.PanelKey), data)
+	if e != nil || !*out.Success {
+		return errPanel
+	}
+	return nil
+}
+
+func (p *PanelClient) ResetAccessTraffic(ctx context.Context, key string) error {
+	if p.auth(ctx) != nil {
+		return errPanel
+	}
+	out, e := p.call(ctx, "POST", "panel/api/clients/resetTraffic/"+url.PathEscape(key), map[string]any{})
+	if e != nil || !*out.Success {
+		return errPanel
+	}
+	return nil
+}
+
+func (p *PanelClient) DisableAccess(ctx context.Context, key string) error {
+	if p.auth(ctx) != nil {
+		return errPanel
+	}
+	out, e := p.call(ctx, "POST", "panel/api/clients/bulkDisable", map[string]any{"emails": []string{key}})
+	if e != nil || !*out.Success {
+		return errPanel
+	}
+	return nil
+}
 func panelMatches(v *PanelClientView, t ProvisionTarget, now time.Time) bool {
 	limit := t.DeviceCount
 	if limit > 0 {

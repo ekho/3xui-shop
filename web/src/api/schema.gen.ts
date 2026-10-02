@@ -871,6 +871,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/operator/clients/{id}/access-operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Verified unrestricted web operator, target may be restricted. Actor only from session. Strict kind-specific body and UUID Idempotency-Key. Accepted operation is asynchronous. */
+        post: operations["createAccessOperation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operator/clients/{id}/access-operations/{operation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Verified unrestricted web operator. Foreign account/operation pair returns 404. */
+        get: operations["getAccessOperation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operator/clients/{id}/access-operations/{operation_id}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Verified unrestricted web operator; explicit reset cost acknowledgment when uncertain destructive step is repeated. */
+        post: operations["reconcileAccessOperation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -983,6 +1034,10 @@ export interface components {
             access_profile?: "regular" | "euru" | "unlimited" | "banned" | "unknown";
             /** @enum {string|null} */
             panel_error?: "unavailable" | "identity_mismatch" | "unknown_membership" | "invalid_traffic" | null;
+            /** Format: uuid */
+            access_operation_id: string | null;
+            /** @enum {string|null} */
+            access_operation_status: "pending" | "provisioning" | "applied" | "needs_review" | null;
         };
         SubscriptionKey: {
             /** Format: uri */
@@ -1085,7 +1140,7 @@ export interface components {
         };
         ErrorBody: {
             /** @enum {string} */
-            code: "INVALID_INPUT" | "INVALID_CREDENTIALS" | "EMAIL_VERIFICATION_REQUIRED" | "ACCOUNT_RESTRICTED" | "TRIAL_DISABLED" | "TRIAL_ALREADY_USED" | "TRIAL_RECONSIDERATION_REQUIRED" | "REQUEST_STATE_CONFLICT" | "OPERATION_NOT_READY" | "IDEMPOTENCY_CONFLICT" | "RATE_LIMITED" | "SERVICE_UNAVAILABLE" | "OPERATOR_ACCOUNT_PROTECTED" | "CATALOGUE_REVISION_CONFLICT" | "CATALOGUE_LAST_VISIBLE" | "CATALOGUE_DEVICES_CONFLICT";
+            code: "INVALID_INPUT" | "INVALID_CREDENTIALS" | "EMAIL_VERIFICATION_REQUIRED" | "ACCOUNT_RESTRICTED" | "TRIAL_DISABLED" | "TRIAL_ALREADY_USED" | "TRIAL_RECONSIDERATION_REQUIRED" | "REQUEST_STATE_CONFLICT" | "OPERATION_NOT_READY" | "IDEMPOTENCY_CONFLICT" | "RATE_LIMITED" | "SERVICE_UNAVAILABLE" | "OPERATOR_ACCOUNT_PROTECTED" | "CATALOGUE_REVISION_CONFLICT" | "CATALOGUE_LAST_VISIBLE" | "CATALOGUE_DEVICES_CONFLICT" | "ACCESS_OPERATION_CONFLICT" | "ACCESS_NOT_ELIGIBLE" | "ACCESS_PLAN_CONFLICT" | "ACCESS_RECONCILE_REQUIRED";
             message: string;
             /** Format: uuid */
             request_id: string;
@@ -1313,6 +1368,8 @@ export interface components {
             reason: string | null;
             /** Format: uuid */
             support_message_id: string | null;
+            /** Format: uuid */
+            access_operation_id: string | null;
         };
         OperatorClientCard: {
             client: components["schemas"]["OperatorClient"];
@@ -1490,6 +1547,61 @@ export interface components {
             /** Format: int64 */
             expected_revision: number;
             reason: string;
+        };
+        /** @description Exactly matching fields for kind: compensate days; assign_plan plan_id/revision/period_days; starter_trial and reset_traffic no extra fields. Server rejects mismatches and trims reason. */
+        AccessOperationInput: {
+            /** @enum {string} */
+            kind: "compensate" | "assign_plan" | "starter_trial" | "reset_traffic";
+            reason: string;
+            days?: number;
+            /** Format: uuid */
+            plan_id?: string;
+            /** Format: int64 */
+            revision?: number;
+            /** Format: int64 */
+            period_days?: number;
+        };
+        AccessReconcileInput: {
+            reason: string;
+            /** @description Explicit true only when choosing to repeat a destructive reset after ambiguous effect. */
+            acknowledge_reset_cost: boolean;
+        };
+        AccessDesired: {
+            /** Format: date-time */
+            expires_at: string | null;
+            /** Format: int64 */
+            devices: number;
+            /** Format: int64 */
+            traffic_limit_bytes: number;
+            /** @enum {string} */
+            profile: "regular" | "euru" | "unlimited";
+            /** Format: uuid */
+            plan_id: string | null;
+            /** Format: int64 */
+            revision: number | null;
+            /** Format: int64 */
+            period_days: number | null;
+            reset_traffic: boolean;
+        };
+        AccessOperation: {
+            /** Format: uuid */
+            operation_id: string;
+            /** Format: uuid */
+            account_id: string;
+            /** @enum {string} */
+            kind: "compensate" | "assign_plan" | "starter_trial" | "reset_traffic";
+            /** @enum {string} */
+            status: "pending" | "provisioning" | "applied" | "needs_review";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            reason: string;
+            /** Format: uuid */
+            operator_account_id: string | null;
+            desired: components["schemas"]["AccessDesired"];
+            completed_steps: ("prepared" | "panel_updated" | "membership_updated" | "reset_started" | "reset_confirmed" | "ban_reapplied" | "readback_confirmed")[];
+            review_reason: string | null;
         };
     };
     responses: never;
@@ -6234,6 +6346,279 @@ export interface operations {
                 headers: {
                     /** @description Seconds before retry */
                     "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    createAccessOperation: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token": string;
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessOperationInput"];
+            };
+        };
+        responses: {
+            /** @description Accepted operation snapshot */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessOperation"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    getAccessOperation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted operation snapshot */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessOperation"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    reconcileAccessOperation: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token": string;
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessReconcileInput"];
+            };
+        };
+        responses: {
+            /** @description Accepted operation snapshot */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessOperation"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content: {

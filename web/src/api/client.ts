@@ -113,3 +113,11 @@ export const getOperatorCatalogue=(page:number,signal?:AbortSignal)=>request<Ope
 export const createCataloguePlan=(input:components['schemas']['CataloguePlanCreateInput'],key:string,signal?:AbortSignal)=>request<OperatorCataloguePlan>('operator/catalogue/plans','POST',input,signal,true,key);
 export const reviseCataloguePlan=(id:string,input:components['schemas']['CataloguePlanRevisionInput'],key:string,signal?:AbortSignal)=>request<OperatorCataloguePlan>('operator/catalogue/plans/'+encodeURIComponent(id)+'/revision','POST',input,signal,true,key);
 export const archiveCataloguePlan=(id:string,input:components['schemas']['CataloguePlanArchiveInput'],key:string,signal?:AbortSignal)=>request<OperatorCataloguePlan>('operator/catalogue/plans/'+encodeURIComponent(id)+'/archive','POST',input,signal,true,key);
+
+export type AccessOperationInput=components['schemas']['AccessOperationInput'];
+export type AccessOperation=components['schemas']['AccessOperation'];
+export type AccessReconcileInput=components['schemas']['AccessReconcileInput'];
+const accessPath=(clientId:string)=>operatorClientPath(clientId)+'/access-operations';
+export const createAccessOperation=(clientId:string,input:AccessOperationInput,key:string,signal?:AbortSignal)=>request<AccessOperation>(accessPath(clientId),'POST',input,signal,true,key);
+export const getAccessOperation=(clientId:string,operationId:string,signal?:AbortSignal)=>request<AccessOperation>(accessPath(clientId)+'/'+encodeURIComponent(operationId),'GET',undefined,signal);
+export const reconcileAccessOperation=(clientId:string,operationId:string,input:AccessReconcileInput,key:string,signal?:AbortSignal)=>request<AccessOperation>(accessPath(clientId)+'/'+encodeURIComponent(operationId)+'/reconcile','POST',input,signal,true,key);

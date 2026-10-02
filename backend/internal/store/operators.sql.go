@@ -192,7 +192,7 @@ func (q *Queries) GrantOperator(ctx context.Context, arg GrantOperatorParams) (i
 }
 
 const operatorAuditPage = `-- name: OperatorAuditPage :many
-SELECT id, created_at, action, account_id, request_id, operation_id, operator_tg_id, reason, operator_account_id, support_message_id FROM audit_events
+SELECT id, created_at, action, account_id, request_id, operation_id, operator_tg_id, reason, operator_account_id, support_message_id, access_operation_id FROM audit_events
 WHERE account_id=$1
  AND ($2::timestamptz IS NULL OR
       (created_at,id)<($2::timestamptz,$3::uuid))
@@ -225,6 +225,7 @@ func (q *Queries) OperatorAuditPage(ctx context.Context, arg OperatorAuditPagePa
 			&i.Reason,
 			&i.OperatorAccountID,
 			&i.SupportMessageID,
+			&i.AccessOperationID,
 		); err != nil {
 			return nil, err
 		}

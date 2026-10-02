@@ -75,6 +75,7 @@ func run() error {
 	svc := s01.NewService(pool, limiter, queue, cfg)
 	workers := river.NewWorkers()
 	river.AddWorker(workers, &s01.ProvisionWorker{Service: svc})
+	river.AddWorker(workers, &s01.AccessWorker{Service: svc})
 	queues := map[string]river.QueueConfig{"provision": {MaxWorkers: 2}}
 	if os.Args[1] == "serve" {
 		river.AddWorker(workers, &s01.MailWorker{Service: svc})
