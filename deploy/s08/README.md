@@ -1,90 +1,56 @@
-# С08/С41 acceptance driver readiness
+# С08/С41 local acceptance drivers
 
-Scope: owned `cabinet-s01-local` only. This directory contains acceptance
-drivers and source-review notes, not product code or runtime controls.
-No S08 behavioral command may run before root supplies a new verified
-runtime manifest and a per-stage packet. S07 evidence and fixtures are
-immutable inputs. No gate, probe, Compose, native inbound, installed VPN,
-browser trust or clipboard operation is performed here.
+The one-shot S08 acceptance ran against owned `cabinet-s01-local` on product
+revision `1b90f9f5c7cfe3f1bfcdbcaf9bcaa3ed19a75b1f`, backend image
+`sha256:f676404a90c39349ee6539133d324fa0a01f64b1018c107591ac6fb853fc2975`,
+gateway image `sha256:d70e6e26598449623146affebac698fdf2d33b039bf3c09870b661561acc4ccb`,
+and pinned 3X-UI 3.7.0. Root verified live image IDs separately in
+[runtime-s08.json](../../.superpowers/sdd/2026-10-02-s48-s09-s07-s08/runtime-s08.json).
+The driver checks owned transport and primary VPN config digest against that
+manifest; it does not inspect live image IDs. No gate, probe, Compose, native
+inbound, installed VPN, browser trust or clipboard operation is performed by
+these drivers.
+Root's independent [postflight](../../.superpowers/sdd/2026-10-02-s48-s09-s07-s08/postflight-s08.json)
+confirmed unchanged images and primary VPN digest, health, stopped
+probe/gate/bot/reconcile, UTC, and zero unresolved access operations.
 
-Current contract source review (pre-freeze):
+The executed sequence was `readiness` (3 PASS), `setup` (2), `finite` (3),
+`unlimited` (3), `ban` (4), `intent-trial` (3), `intent-bonus` (4), `guards`
+(3), `ui` (3), then `restore` (4): **32/32 actual local evidence rows PASS**.
+Each stage wrote one private JSONL under
+`.superpowers/sdd/2026-10-02-s08-access-profiles/e2e/`; the credential
+checkpoint is mode 0600 and its contents must not be printed. Stages are
+one-shot and should not be repeated. Exact commands, bounded wrapper logs,
+AC1–8 mapping and limitations are in
+[the acceptance evidence](../../docs/evidence/s08-s41-acceptance.md).
 
-- [S08 design](../../docs/superpowers/specs/2026-10-02-s08-access-profiles-design.md)
-  has eight criteria and mandates S41 monthly reset before unlimited is
-  enabled. [Task 3 plan](../../docs/superpowers/plans/2026-10-02-s07-s08-access-operations.md)
-  requires native profiles/ban and isolated Go clock/period proof.
-- Current [OpenAPI](../../docs/api/openapi.yaml) extends POST
-  `/api/v1/operator/clients/{id}/access-operations` with exact typed inputs
-  `set_profile {profile,reason}` and `set_vpn_ban {vpn_banned,reason}`;
-  `monthly_reset` is read-only response kind, never HTTP input. POST202,
-  GET200, reconcile202 retain S07 semantics. Final fields/status/error
-  codes must be re-read after backend source freeze.
-- `Subscription.access_profile` is regular/euru/unlimited/unknown and
-  `vpn_banned` is separate. A no-client intent does not fabricate a live
-  subscription. New-key no-op must produce applied `state_unchanged`
-  without panel write/River job; no-client save uses `intent_saved`.
-- S41 source proof must cover injected UTC and Europe/Moscow clocks,
-  3600/3601s startup grace, unique account/local-month period across two
-  workers/restart, busy wait and elapsed-period unserved audit, banned and
-  non-unlimited skip, and lost reset reply. Never change the Mac clock.
+`readiness` reused the existing eligible S07 finite account and operator,
+confirmed a real nonzero native counter, exact inbound IDs 1 regular / 2
+unmanaged / 3 EURU / 4 unlimited and exactly one current hidden unlimited
+seed. It checkpointed two fresh `s08-UUID@example.test` credentials before
+`setup` registered precisely those two no-client accounts. Root attached
+only the already existing unmanaged id2 to the owned finite client and ran
+the separate local VPN probe; the driver never configures those surfaces.
+Root's probe yielded 224 bytes before `finite` and 1344 stable bytes after
+`unlimited` revoked to EURU, both with the primary VPN preserved.
 
-Planned one-shot stages (each stops on first FAIL/BLOCKED and emits only
-booleans, counts, opaque digests and private artifact paths):
+`browser.mjs` uses actual cabinet/operator HTTPS requests and Chromium at
+375px, and `local.py` reads native 3X-UI and owned PostgreSQL rows without
+printing credentials, links, raw panel replies or personal data. `restore`
+copies the live DB through a pipe into a fresh disposable DB, seeds one
+synthetic `2099-01` account-period **there only**, checks uniqueness and
+repeated post-restore auth cleanup, then backs that disposable DB into a
+second fresh disposable DB and verifies the period and all digests again.
+The active DB receives no synthetic monthly period.
 
-1. `readiness` — source/runtime/image/panel/fixture/plan cardinality and
-   ownership read-only checks, then atomically checkpoint selected owned
-   credentials and metadata before any write.
-2. `finite` — current regular→euru→regular, preserving native key/UUID/subId,
-   server, expiry, devices, traffic limit/used, ban and unmanaged inbound.
-3. `unlimited` — hidden current plan/revision, expiry0, inherited regular,
-   unchanged grant counters, reversion to chosen starter profile/reset and
-   ban preservation; negative
-   absent/ambiguous plan, device conflict, scheduler prerequisite.
-4. `ban` — ban→S07 manual reset→ban retained→unban on the finite live
-   fixture. Expired-unban, exhausted-unban and expired→unlimited enable
-   boundaries require isolated source proof unless root supplies a controlled
-   owned native fixture. No implicit account/support unban.
-5. `intent-trial` and `intent-bonus` — two separate owned no-client accounts.
-   The first keeps profile+ban; first trial consumes both and remains
-   disabled. The second proves banned no-client compensation409, explicit
-   unban, then bonus consumes the preserved profile without a first-trial
-   Grant. No duplicate native effect.
-6. `guards` and `ui` — no-op/new-key, replay/body conflict, strict
-   auth/CSRF/Origin/input, live RU/EN375px and real Tab path; pending/error/
-   retry can use component route doubles but must be labelled as such.
-7. `S08_RUNTIME_MANIFEST=<root manifest> python3 deploy/s08/local.py restore`
-   — live DB read-only pipe backup to a fresh disposable DB, synthetic period
-   and uniqueness there, repeated auth cleanup, then second disposable pipe
-   backup/restore to prove the period itself survives. Never seed live DB.
-8. S41 isolated source tests — actual executed Go commands and test logs
-   supplied by backend/root, never inferred from static source.
-
-Root readiness packet required before stage 1:
-
-- Exact final commit, backend/gateway/pinned panel digests, health, bot and
-  reconcile stopped, primary VPN config hash unchanged, gate off/probe
-  stopped. Stage 1 checks owned transport and primary VPN digest against the
-  manifest; root supplies separate live image-ID inspection proof.
-- Read-only classification of S07 owned accounts after S08 migration:
-  confirmed profile versus legacy unknown, pending operations, native
-  identity, ban and counter. An assigned S07 account may have nullable DB
-  profile after migration; reuse only if latest **applied persisted access
-  target**, client Subscription and native managed memberships all confirm
-  regular. A native appearance alone never upgrades unknown state.
-  Otherwise create at most one finite target and two independent no-client
-  `s08-UUID@example.test` accounts, using S07 operator.
-- Exact managed regular/EURU/unlimited and existing unmanaged local-probe
-  inbound tag/ID mapping: root currently reports id1 regular port24443,
-  id2 unmanaged probe port24444, id3 EURU port34444, id4 unlimited
-  port34445. Approve attaching only a selected owned client to unmanaged
-  id2 if needed. Never modify the inbound.
-- Exactly one current hidden unlimited catalogue plan (or permission for
-  the driver to create one owned plan if none), its native prerequisites and
-  scheduler config. No overwrite of S09/S07 plans.
-- Explicit plan for nonzero counters. Exhausted 1GiB traffic and negative
-  ambiguous-plan/empty/retag/scheduler boundaries remain isolated source
-  tests unless root supplies a separate controlled fixture packet.
-
-The driver will use S07's file-backed local TLS/Mailpit and PostgreSQL
-bridges, avoid raw response/secret output, and write private files mode600.
-Do not execute a placeholder command merely because the source parses.
+The live stages prove active finite profile/ban transitions, no-client
+intent→first trial and bonus, strict HTTP guards, current-state no-op,
+real RU/EN keyboard/confirmation UI and disposable restore. S41 clock,
+timezone, busy period, elapsed period, eligibility and lost-reset cases
+are executed Go source tests with a controlled panel/DB fixture, **not** a
+forced live scheduler tick or macOS clock change. Expired/exhausted unban,
+expired unlimited activation and unready unlimited-plan/inbound cases are
+source-only boundaries. Pending/error/retry UI uses route-double component
+tests; the live UI stage does not inject those faults. Prior real S07
+lost-reply/restart/partial-effect evidence covers the shared executor,
+while new S08-specific races and reconciliation guards use Go tests.
