@@ -326,6 +326,78 @@ func (e SubscriptionStatus) Valid() bool {
 	}
 }
 
+// Defines values for SupportConversationStatus.
+const (
+	SupportConversationStatusClosed SupportConversationStatus = "closed"
+	SupportConversationStatusOpen   SupportConversationStatus = "open"
+)
+
+// Valid indicates whether the value is a known member of the SupportConversationStatus enum.
+func (e SupportConversationStatus) Valid() bool {
+	switch e {
+	case SupportConversationStatusClosed:
+		return true
+	case SupportConversationStatusOpen:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SupportMessageDelivery.
+const (
+	Delivered SupportMessageDelivery = "delivered"
+	Stored    SupportMessageDelivery = "stored"
+)
+
+// Valid indicates whether the value is a known member of the SupportMessageDelivery enum.
+func (e SupportMessageDelivery) Valid() bool {
+	switch e {
+	case Delivered:
+		return true
+	case Stored:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SupportMessageSender.
+const (
+	Customer SupportMessageSender = "customer"
+	Operator SupportMessageSender = "operator"
+)
+
+// Valid indicates whether the value is a known member of the SupportMessageSender enum.
+func (e SupportMessageSender) Valid() bool {
+	switch e {
+	case Customer:
+		return true
+	case Operator:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SupportStateInputStatus.
+const (
+	SupportStateInputStatusClosed SupportStateInputStatus = "closed"
+	SupportStateInputStatusOpen   SupportStateInputStatus = "open"
+)
+
+// Valid indicates whether the value is a known member of the SupportStateInputStatus enum.
+func (e SupportStateInputStatus) Valid() bool {
+	switch e {
+	case SupportStateInputStatusClosed:
+		return true
+	case SupportStateInputStatusOpen:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TelegramFailedCode.
 const (
 	EditFailed      TelegramFailedCode = "edit_failed"
@@ -752,6 +824,86 @@ type SubscriptionKey struct {
 	SubscriptionUrl string `json:"subscription_url"`
 }
 
+// SupportAttachment defines model for SupportAttachment.
+type SupportAttachment struct {
+	Name      string `json:"name"`
+	SizeBytes int64  `json:"size_bytes"`
+}
+
+// SupportBanInput defines model for SupportBanInput.
+type SupportBanInput struct {
+	Banned bool   `json:"banned"`
+	Reason string `json:"reason"`
+}
+
+// SupportConversation defines model for SupportConversation.
+type SupportConversation struct {
+	CreatedAt                time.Time                 `json:"created_at"`
+	CustomerReceivedSequence int64                     `json:"customer_received_sequence"`
+	Id                       openapi_types.UUID        `json:"id"`
+	OperatorReceivedSequence int64                     `json:"operator_received_sequence"`
+	Status                   SupportConversationStatus `json:"status"`
+	SupportBanned            bool                      `json:"support_banned"`
+	UpdatedAt                time.Time                 `json:"updated_at"`
+}
+
+// SupportConversationStatus defines model for SupportConversation.Status.
+type SupportConversationStatus string
+
+// SupportHistoryInput defines model for SupportHistoryInput.
+type SupportHistoryInput struct {
+	BeforeSequence int64 `json:"before_sequence"`
+}
+
+// SupportMessage defines model for SupportMessage.
+type SupportMessage struct {
+	Attachment *SupportAttachment     `json:"attachment"`
+	CreatedAt  time.Time              `json:"created_at"`
+	Delivery   SupportMessageDelivery `json:"delivery"`
+	Id         openapi_types.UUID     `json:"id"`
+	Sender     SupportMessageSender   `json:"sender"`
+	Sequence   int64                  `json:"sequence"`
+	Text       string                 `json:"text"`
+}
+
+// SupportMessageDelivery defines model for SupportMessage.Delivery.
+type SupportMessageDelivery string
+
+// SupportMessageSender defines model for SupportMessage.Sender.
+type SupportMessageSender string
+
+// SupportMessageInput defines model for SupportMessageInput.
+type SupportMessageInput struct {
+	Text string `json:"text"`
+}
+
+// SupportMultipartInput defines model for SupportMultipartInput.
+type SupportMultipartInput struct {
+	File *openapi_types.File `json:"file,omitempty"`
+	Text string              `json:"text"`
+}
+
+// SupportReadInput defines model for SupportReadInput.
+type SupportReadInput struct {
+	Sequence int64 `json:"sequence"`
+}
+
+// SupportResult defines model for SupportResult.
+type SupportResult struct {
+	Conversation   *SupportConversation `json:"conversation"`
+	HasMore        bool                 `json:"has_more"`
+	Messages       []SupportMessage     `json:"messages"`
+	OldestSequence *int64               `json:"oldest_sequence"`
+}
+
+// SupportStateInput defines model for SupportStateInput.
+type SupportStateInput struct {
+	Status SupportStateInputStatus `json:"status"`
+}
+
+// SupportStateInputStatus defines model for SupportStateInput.Status.
+type SupportStateInputStatus string
+
 // TelegramFailed defines model for TelegramFailed.
 type TelegramFailed struct {
 	Code TelegramFailedCode `json:"code"`
@@ -918,6 +1070,62 @@ type RevokeOtherSessionsParams struct {
 	XCSRFToken string `json:"X-CSRF-Token"`
 }
 
+// SetOperatorSupportBanParams defines parameters for SetOperatorSupportBan.
+type SetOperatorSupportBanParams struct {
+	Origin     string `json:"Origin"`
+	XCSRFToken string `json:"X-CSRF-Token"`
+}
+
+// GetOperatorSupportHistoryParams defines parameters for GetOperatorSupportHistory.
+type GetOperatorSupportHistoryParams struct {
+	Origin     string `json:"Origin"`
+	XCSRFToken string `json:"X-CSRF-Token"`
+}
+
+// CreateOperatorSupportMessageParams defines parameters for CreateOperatorSupportMessage.
+type CreateOperatorSupportMessageParams struct {
+	Origin         string             `json:"Origin"`
+	XCSRFToken     string             `json:"X-CSRF-Token"`
+	IdempotencyKey openapi_types.UUID `json:"Idempotency-Key"`
+}
+
+// AcknowledgeOperatorSupportParams defines parameters for AcknowledgeOperatorSupport.
+type AcknowledgeOperatorSupportParams struct {
+	Origin     string `json:"Origin"`
+	XCSRFToken string `json:"X-CSRF-Token"`
+}
+
+// SetOperatorSupportStateParams defines parameters for SetOperatorSupportState.
+type SetOperatorSupportStateParams struct {
+	Origin     string `json:"Origin"`
+	XCSRFToken string `json:"X-CSRF-Token"`
+}
+
+// GetSupportHistoryParams defines parameters for GetSupportHistory.
+type GetSupportHistoryParams struct {
+	Origin     string `json:"Origin"`
+	XCSRFToken string `json:"X-CSRF-Token"`
+}
+
+// CreateSupportMessageParams defines parameters for CreateSupportMessage.
+type CreateSupportMessageParams struct {
+	Origin         string             `json:"Origin"`
+	XCSRFToken     string             `json:"X-CSRF-Token"`
+	IdempotencyKey openapi_types.UUID `json:"Idempotency-Key"`
+}
+
+// AcknowledgeSupportParams defines parameters for AcknowledgeSupport.
+type AcknowledgeSupportParams struct {
+	Origin     string `json:"Origin"`
+	XCSRFToken string `json:"X-CSRF-Token"`
+}
+
+// SetSupportStateParams defines parameters for SetSupportState.
+type SetSupportStateParams struct {
+	Origin     string `json:"Origin"`
+	XCSRFToken string `json:"X-CSRF-Token"`
+}
+
 // CreateTrialRequestParams defines parameters for CreateTrialRequest.
 type CreateTrialRequestParams struct {
 	Origin         string             `json:"Origin"`
@@ -964,6 +1172,39 @@ type ChangePasswordJSONRequestBody = PasswordChangeInput
 
 // RevokeOtherSessionsJSONRequestBody defines body for RevokeOtherSessions for application/json ContentType.
 type RevokeOtherSessionsJSONRequestBody = CurrentPasswordInput
+
+// SetOperatorSupportBanJSONRequestBody defines body for SetOperatorSupportBan for application/json ContentType.
+type SetOperatorSupportBanJSONRequestBody = SupportBanInput
+
+// GetOperatorSupportHistoryJSONRequestBody defines body for GetOperatorSupportHistory for application/json ContentType.
+type GetOperatorSupportHistoryJSONRequestBody = SupportHistoryInput
+
+// CreateOperatorSupportMessageJSONRequestBody defines body for CreateOperatorSupportMessage for application/json ContentType.
+type CreateOperatorSupportMessageJSONRequestBody = SupportMessageInput
+
+// CreateOperatorSupportMessageMultipartRequestBody defines body for CreateOperatorSupportMessage for multipart/form-data ContentType.
+type CreateOperatorSupportMessageMultipartRequestBody = SupportMultipartInput
+
+// AcknowledgeOperatorSupportJSONRequestBody defines body for AcknowledgeOperatorSupport for application/json ContentType.
+type AcknowledgeOperatorSupportJSONRequestBody = SupportReadInput
+
+// SetOperatorSupportStateJSONRequestBody defines body for SetOperatorSupportState for application/json ContentType.
+type SetOperatorSupportStateJSONRequestBody = SupportStateInput
+
+// GetSupportHistoryJSONRequestBody defines body for GetSupportHistory for application/json ContentType.
+type GetSupportHistoryJSONRequestBody = SupportHistoryInput
+
+// CreateSupportMessageJSONRequestBody defines body for CreateSupportMessage for application/json ContentType.
+type CreateSupportMessageJSONRequestBody = SupportMessageInput
+
+// CreateSupportMessageMultipartRequestBody defines body for CreateSupportMessage for multipart/form-data ContentType.
+type CreateSupportMessageMultipartRequestBody = SupportMultipartInput
+
+// AcknowledgeSupportJSONRequestBody defines body for AcknowledgeSupport for application/json ContentType.
+type AcknowledgeSupportJSONRequestBody = SupportReadInput
+
+// SetSupportStateJSONRequestBody defines body for SetSupportState for application/json ContentType.
+type SetSupportStateJSONRequestBody = SupportStateInput
 
 // CreateTrialRequestJSONRequestBody defines body for CreateTrialRequest for application/json ContentType.
 type CreateTrialRequestJSONRequestBody = TrialRequestInput
@@ -1485,64 +1726,81 @@ func (t *VerifyInput) UnmarshalJSON(b []byte) error {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
