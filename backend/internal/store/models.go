@@ -11,22 +11,25 @@ import (
 
 type Account struct {
 	ID                uuid.UUID
-	EmailKey          string
+	EmailKey          pgtype.Text
 	Locale            string
-	PasswordHash      string
+	PasswordHash      pgtype.Text
 	VerifiedAt        pgtype.Timestamptz
 	Restricted        bool
 	VpnID             uuid.UUID
 	SubID             string
 	PanelKey          string
-	TermsVersion      string
-	PrivacyVersion    string
+	TermsVersion      pgtype.Text
+	PrivacyVersion    pgtype.Text
 	TelegramID        pgtype.Int8
 	LegacyUserID      pgtype.Int8
 	AssignedPanelID   pgtype.Text
 	HadSubscription   bool
 	CredentialVersion int64
 	VpnBanned         bool
+	Kind              string
+	DisplayName       pgtype.Text
+	CreatedAt         pgtype.Timestamptz
 }
 
 type AuditEvent struct {
@@ -208,4 +211,5 @@ type TrialRequest struct {
 	Reason            pgtype.Text
 	OperationID       *uuid.UUID
 	PreviousRequestID *uuid.UUID
+	OperatorAccountID *uuid.UUID
 }

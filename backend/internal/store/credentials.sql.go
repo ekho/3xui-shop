@@ -371,30 +371,30 @@ func (q *Queries) RevokeResetProofs(ctx context.Context, targetEmail string) err
 }
 
 const setAccountEmail = `-- name: SetAccountEmail :exec
-UPDATE accounts SET email_key=$2,verified_at=$3,credential_version=credential_version+1 WHERE id=$1
+UPDATE accounts SET email_key=$1::text,verified_at=$2::timestamptz,credential_version=credential_version+1 WHERE id=$3::uuid
 `
 
 type SetAccountEmailParams struct {
-	ID         uuid.UUID
 	EmailKey   string
 	VerifiedAt pgtype.Timestamptz
+	ID         uuid.UUID
 }
 
 func (q *Queries) SetAccountEmail(ctx context.Context, arg SetAccountEmailParams) error {
-	_, err := q.db.Exec(ctx, setAccountEmail, arg.ID, arg.EmailKey, arg.VerifiedAt)
+	_, err := q.db.Exec(ctx, setAccountEmail, arg.EmailKey, arg.VerifiedAt, arg.ID)
 	return err
 }
 
 const setAccountPassword = `-- name: SetAccountPassword :exec
-UPDATE accounts SET password_hash=$2,credential_version=credential_version+1 WHERE id=$1
+UPDATE accounts SET password_hash=$1::text,credential_version=credential_version+1 WHERE id=$2::uuid
 `
 
 type SetAccountPasswordParams struct {
-	ID           uuid.UUID
 	PasswordHash string
+	ID           uuid.UUID
 }
 
 func (q *Queries) SetAccountPassword(ctx context.Context, arg SetAccountPasswordParams) error {
-	_, err := q.db.Exec(ctx, setAccountPassword, arg.ID, arg.PasswordHash)
+	_, err := q.db.Exec(ctx, setAccountPassword, arg.PasswordHash, arg.ID)
 	return err
 }

@@ -72,6 +72,17 @@ func (p *panel) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		record["uuid"], record["id"] = c["id"], 1
 		reply(true, map[string]any{"client": record, "inboundIds": []int{1}, "usedTraffic": 0})
+	case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/panel/api/clients/traffic/"):
+		key := strings.TrimPrefix(r.URL.Path, "/panel/api/clients/traffic/")
+		c := p.clients[key]
+		email, _ := c["email"].(string)
+		id, _ := c["id"].(string)
+		subID, _ := c["subId"].(string)
+		if email != key || id == "" || subID == "" {
+			reply(false, nil)
+			return
+		}
+		reply(true, map[string]any{"email": email, "uuid": id, "subId": subID, "up": int64(0), "down": int64(0)})
 	case r.Method == "POST" && r.URL.Path == "/panel/api/clients/add":
 		var b struct {
 			Client     map[string]any `json:"client"`
@@ -103,6 +114,36 @@ func (p *panel) serve(w http.ResponseWriter, r *http.Request) {
 	default:
 		p.forbidden++
 		w.WriteHeader(405)
+	}
+}
+
+func TestPanelTrafficFixtureMatchesOwnedClient(t *testing.T) {
+	ownedID := uuid.New()
+	p := &panel{clients: map[string]map[string]any{
+		"acct_owned": {"email": "acct_owned", "id": ownedID.String(), "subId": "abcdefghijklmnop"},
+	}}
+	read := func(key string) (int, bool, map[string]json.RawMessage) {
+		t.Helper()
+		recorder := httptest.NewRecorder()
+		p.serve(recorder, httptest.NewRequest(http.MethodGet, "/panel/api/clients/traffic/"+key, nil))
+		var envelope struct {
+			Success bool                       `json:"success"`
+			Obj     map[string]json.RawMessage `json:"obj"`
+		}
+		if recorder.Code == http.StatusOK && json.Unmarshal(recorder.Body.Bytes(), &envelope) != nil {
+			t.Fatal("invalid fixture traffic response")
+		}
+		return recorder.Code, envelope.Success, envelope.Obj
+	}
+	status, found, row := read("acct_owned")
+	if status != http.StatusOK || !found || len(row) != 5 || string(row["email"]) != `"acct_owned"` ||
+		string(row["uuid"]) != `"`+ownedID.String()+`"` || string(row["subId"]) != `"abcdefghijklmnop"` ||
+		string(row["up"]) != "0" || string(row["down"]) != "0" {
+		t.Fatal("owned native traffic shape")
+	}
+	status, found, row = read("acct_foreign")
+	if status != http.StatusOK || found || row != nil || p.forbidden != 0 || p.adds != 0 {
+		t.Fatal("unknown client must not expose traffic or make writes")
 	}
 }
 

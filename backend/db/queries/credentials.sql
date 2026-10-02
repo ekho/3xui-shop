@@ -22,7 +22,7 @@ UPDATE credential_challenges SET failed_guesses=LEAST(failed_guesses+1,5) WHERE 
 -- name: ConsumeCredentialProof :exec
 UPDATE credential_challenges SET used_at=$2 WHERE id=$1;
 -- name: SetAccountPassword :exec
-UPDATE accounts SET password_hash=$2,credential_version=credential_version+1 WHERE id=$1;
+UPDATE accounts SET password_hash=sqlc.arg(password_hash)::text,credential_version=credential_version+1 WHERE id=sqlc.arg(id)::uuid;
 -- name: DeleteAccountSessions :exec
 DELETE FROM sessions WHERE account_id=$1;
 -- name: AddCredentialMail :exec
@@ -38,4 +38,4 @@ UPDATE credential_challenges SET confirmed_at=$2 WHERE id=$1;
 -- name: ClearCredentialMail :exec
 UPDATE mail_deliveries SET ciphertext=NULL WHERE credential_challenge_id=$1 AND kind='credential';
 -- name: SetAccountEmail :exec
-UPDATE accounts SET email_key=$2,verified_at=$3,credential_version=credential_version+1 WHERE id=$1;
+UPDATE accounts SET email_key=sqlc.arg(email_key)::text,verified_at=sqlc.arg(verified_at)::timestamptz,credential_version=credential_version+1 WHERE id=sqlc.arg(id)::uuid;

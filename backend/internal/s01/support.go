@@ -1,7 +1,6 @@
 package s01
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -78,6 +77,9 @@ func (s *Service) supportAccess(ctx context.Context, actor, target uuid.UUID, op
 		return failure(403, "ACCOUNT_RESTRICTED")
 	}
 	if operator {
+		if a.Kind != "web" || !a.VerifiedAt.Valid {
+			return failure(403, "INVALID_CREDENTIALS")
+		}
 		allowed, err := q.OperatorExists(ctx, actor)
 		if err != nil {
 			return unavailable()
@@ -104,31 +106,20 @@ func (s *Service) lockSupport(ctx context.Context, tx pgx.Tx, actor, target uuid
 		return empty, failure(404, "INVALID_INPUT")
 	}
 	q := store.New(tx)
-	first, second := actor, target
-	if bytes.Compare(actor[:], target[:]) > 0 {
-		first, second = target, actor
-	}
-	ids := []uuid.UUID{first}
-	if second != first {
-		ids = append(ids, second)
-	}
-	for _, id := range ids {
-		a, err := q.LockAccount(ctx, id)
+	if operator {
+		if _, err := s.lockOperatorPair(ctx, tx, actor, target); err != nil {
+			return empty, err
+		}
+	} else {
+		a, err := q.LockAccount(ctx, actor)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return empty, failure(404, "INVALID_INPUT")
 		}
 		if err != nil {
 			return empty, unavailable()
 		}
-		if id == actor && a.Restricted {
+		if a.Restricted {
 			return empty, failure(403, "ACCOUNT_RESTRICTED")
-		}
-	}
-	if operator {
-		if _, err := q.LockOperatorRole(ctx, actor); errors.Is(err, pgx.ErrNoRows) {
-			return empty, failure(403, "INVALID_CREDENTIALS")
-		} else if err != nil {
-			return empty, unavailable()
 		}
 	}
 	conv, err := q.LockSupportByAccount(ctx, target)
@@ -212,6 +203,9 @@ func (s *Service) RequireSupportOperator(ctx context.Context, actor uuid.UUID) e
 	}
 	if account.Restricted {
 		return failure(403, "ACCOUNT_RESTRICTED")
+	}
+	if account.Kind != "web" || !account.VerifiedAt.Valid {
+		return failure(403, "INVALID_CREDENTIALS")
 	}
 	allowed, err := q.OperatorExists(ctx, actor)
 	if err != nil {
@@ -307,10 +301,8 @@ func (s *Service) CreateSupportMessage(ctx context.Context, actor, target uuid.U
 	if err != nil {
 		return out, false, unavailable()
 	}
-	if c.Status == "closed" {
-		if err = q.UpdateSupportState(ctx, store.UpdateSupportStateParams{ID: c.ID, Status: "open", UpdatedAt: stamp(s.now())}); err != nil {
-			return out, false, unavailable()
-		}
+	if err = q.UpdateSupportState(ctx, store.UpdateSupportStateParams{ID: c.ID, Status: "open", UpdatedAt: stamp(s.now())}); err != nil {
+		return out, false, unavailable()
 	}
 	out = publicSupportMessage(m, c)
 	if err = s.supportAudit(ctx, q, "support_message", target, actor, operator, &m.ID, ""); err != nil {

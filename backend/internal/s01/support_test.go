@@ -297,6 +297,35 @@ func TestSupportTextNULRejectedBeforeStorage(t *testing.T) {
 	}
 }
 
+func TestSupportNewMessageRefreshesConversationTimestamp(t *testing.T) {
+	s, e, customer, _ := supportActors(t)
+	ctx := context.Background()
+	if _, _, err := s.CreateSupportMessage(ctx, customer, customer, false, uuid.New(), "first", "", nil); err != nil {
+		t.Fatal(err)
+	}
+	first, err := s.Support(ctx, customer, customer, false)
+	if err != nil || first.Conversation == nil {
+		t.Fatal("first conversation", err)
+	}
+	e.Advance(time.Minute)
+	key := uuid.New()
+	if _, _, err = s.CreateSupportMessage(ctx, customer, customer, false, key, "second", "", nil); err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.Support(ctx, customer, customer, false)
+	if err != nil || second.Conversation == nil || !second.Conversation.UpdatedAt.After(first.Conversation.UpdatedAt) {
+		t.Fatal("new message did not refresh updated_at", err)
+	}
+	e.Advance(time.Minute)
+	if _, created, err := s.CreateSupportMessage(ctx, customer, customer, false, key, "second", "", nil); err != nil || created {
+		t.Fatal("replay", err)
+	}
+	replayed, err := s.Support(ctx, customer, customer, false)
+	if err != nil || !replayed.Conversation.UpdatedAt.Equal(second.Conversation.UpdatedAt) {
+		t.Fatal("replay changed updated_at", err)
+	}
+}
+
 func waitSupportAccountLock(t *testing.T, s *Service) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)

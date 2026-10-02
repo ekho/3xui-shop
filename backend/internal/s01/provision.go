@@ -142,7 +142,7 @@ func (s *Service) Provision(parent context.Context, id uuid.UUID) error {
 	if e != nil {
 		return fail(false)
 	}
-	if a.Restricted || !a.VerifiedAt.Valid || !validSnapshot(op) || op.PanelID != s.cfg.PanelID {
+	if a.Restricted || !sourceEligible(a) || !validSnapshot(op) || op.PanelID != s.cfg.PanelID {
 		return fail(true)
 	}
 	p := NewPanelClient(s.cfg)
@@ -314,34 +314,43 @@ func (s *Service) ReconcileTrialOperation(ctx context.Context, id, key uuid.UUID
 	if prior, found, err := replay[wire.ReconcileResult](ctx, q, principal, "reconcileTrialOperation", key, hash); found || err != nil {
 		return prior, err
 	}
-	var locked bool
-	if tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock(hashtextextended('provision:'||$1::text,0))`, id.String()).Scan(&locked) != nil {
-		return out, unavailable()
-	}
-	op, e = q.OperationByID(ctx, id)
+	out, e = s.reconcileOperationLocked(ctx, tx, q, a, op, trialActor{telegramID: in.OperatorTgId}, in.Reason)
 	if e != nil {
-		return out, unavailable()
+		return out, e
 	}
-	if !locked || op.Status != "needs_review" {
-		return out, failure(409, "REQUEST_STATE_CONFLICT")
-	}
-	if a.Restricted {
-		return out, failure(403, "ACCOUNT_RESTRICTED")
-	}
-	if q.RequeueOperation(ctx, id) != nil {
-		return out, unavailable()
-	}
-	if _, e = s.queue.InsertTx(ctx, tx, ProvisionArgs{OperationID: id}, &river.InsertOpts{Queue: "provision", MaxAttempts: 5}); e != nil {
-		return out, unavailable()
-	}
-	if s.audit(ctx, q, "provision_reconcile_requested", a.ID, &op.RequestID, &id, in.OperatorTgId, in.Reason) != nil {
-		return out, unavailable()
-	}
-	out = wire.ReconcileResult{OperationId: id, Status: "provisioning"}
 	if s.saveIdempotency(ctx, q, principal, "reconcileTrialOperation", key, hash, out) != nil || tx.Commit(ctx) != nil {
 		return out, unavailable()
 	}
 	return out, nil
+}
+
+func (s *Service) reconcileOperationLocked(ctx context.Context, tx pgx.Tx, q *store.Queries, a store.Account, op store.TrialOperation, actor trialActor, reason string) (wire.ReconcileResult, error) {
+	var out wire.ReconcileResult
+	id := op.ID
+	var locked bool
+	if err := tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock(hashtextextended('provision:'||$1::text,0))`, id.String()).Scan(&locked); err != nil {
+		return out, unavailable()
+	}
+	current, err := q.OperationByID(ctx, id)
+	if err != nil {
+		return out, unavailable()
+	}
+	if !locked || current.Status != "needs_review" {
+		return out, failure(409, "REQUEST_STATE_CONFLICT")
+	}
+	if a.Restricted || !sourceEligible(a) {
+		return out, failure(403, "ACCOUNT_RESTRICTED")
+	}
+	if err = q.RequeueOperation(ctx, id); err != nil {
+		return out, unavailable()
+	}
+	if _, err = s.queue.InsertTx(ctx, tx, ProvisionArgs{OperationID: id}, &river.InsertOpts{Queue: "provision", MaxAttempts: 5}); err != nil {
+		return out, unavailable()
+	}
+	if err = s.trialActorAudit(ctx, q, "provision_reconcile_requested", a.ID, op.RequestID, &id, actor, reason); err != nil {
+		return out, err
+	}
+	return wire.ReconcileResult{OperationId: id, Status: "provisioning"}, nil
 }
 
 type ProvisionWorker struct {

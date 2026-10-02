@@ -133,8 +133,8 @@ func LoadConfig() (Config, error) {
 			return c, errors.New("invalid BOT_ADAPTER_TOKEN_FILE")
 		}
 	}
-	if c.TrialEnabled && (c.PanelID == "" || len(c.Operators) == 0) {
-		return c, errors.New("enabled trial requires panel and operators")
+	if c.TrialEnabled && c.PanelID == "" {
+		return c, errors.New("enabled trial requires panel")
 	}
 
 	for name, dest := range map[string]*string{"DATABASE_URL": &c.DatabaseURL, "REDIS_URL": &c.RedisURL} {

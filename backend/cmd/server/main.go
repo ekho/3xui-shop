@@ -6,6 +6,7 @@ import (
 	"example.com/cabinet/backend/db"
 	"example.com/cabinet/backend/internal/httpapi"
 	"example.com/cabinet/backend/internal/s01"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/riverqueue/river"
@@ -14,6 +15,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -25,8 +28,11 @@ func main() {
 	}
 }
 func run() error {
+	if len(os.Args) == 5 && os.Args[1] == "operator" {
+		return runOperatorCommand(os.Args[2], os.Args[3], os.Args[4])
+	}
 	if len(os.Args) != 2 || (os.Args[1] != "serve" && os.Args[1] != "migrate" && os.Args[1] != "reconcile") {
-		slog.Error("usage: server serve|migrate|reconcile")
+		slog.Error("usage: server serve|migrate|reconcile or server operator grant|revoke --account-file <absolute-path>")
 		return errors.New("invalid command")
 	}
 	cfg, err := s01.LoadConfig()
@@ -102,4 +108,40 @@ func run() error {
 		defer done()
 		return server.Shutdown(stop)
 	}
+}
+
+func runOperatorCommand(action, flag, path string) error {
+	if (action != "grant" && action != "revoke") || flag != "--account-file" || !filepath.IsAbs(path) {
+		return errors.New("invalid operator command")
+	}
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return errors.New("invalid operator account file")
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return errors.New("unreadable operator account file")
+	}
+	id, err := uuid.Parse(strings.TrimSpace(string(raw)))
+	if err != nil || id == uuid.Nil {
+		return errors.New("invalid operator account file")
+	}
+	databaseURL, err := s01.SecretFile("DATABASE_URL")
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		return errors.New("database unavailable")
+	}
+	defer pool.Close()
+	if err = pool.Ping(ctx); err != nil {
+		return errors.New("database unavailable")
+	}
+	if err = s01.NewService(pool, nil, nil, s01.Config{}).ChangeOperatorRole(ctx, id, action == "grant"); err != nil {
+		return errors.New("operator role change failed")
+	}
+	return nil
 }

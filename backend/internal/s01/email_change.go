@@ -28,7 +28,7 @@ func validEmailPair(proofs []store.CredentialChallenge, account store.Account, n
 		return false
 	}
 	for _, p := range proofs {
-		if p.AccountID == nil || *p.AccountID != account.ID || p.ChangeID == nil || *p.ChangeID != *first.ChangeID || p.OriginalEmail != account.EmailKey || p.TargetEmail != first.TargetEmail || p.CredentialVersion != account.CredentialVersion || p.Revoked || p.UsedAt.Valid || !now.Before(p.TokenExpiresAt.Time) || !p.CreatedAt.Time.Equal(first.CreatedAt.Time) || !p.TokenExpiresAt.Time.Equal(first.TokenExpiresAt.Time) || !p.CodeExpiresAt.Time.Equal(first.CodeExpiresAt.Time) {
+		if p.AccountID == nil || *p.AccountID != account.ID || p.ChangeID == nil || *p.ChangeID != *first.ChangeID || p.OriginalEmail != account.EmailKey.String || p.TargetEmail != first.TargetEmail || p.CredentialVersion != account.CredentialVersion || p.Revoked || p.UsedAt.Valid || !now.Before(p.TokenExpiresAt.Time) || !p.CreatedAt.Time.Equal(first.CreatedAt.Time) || !p.TokenExpiresAt.Time.Equal(first.TokenExpiresAt.Time) || !p.CodeExpiresAt.Time.Equal(first.CodeExpiresAt.Time) {
 			return false
 		}
 	}
@@ -77,7 +77,7 @@ func (s *Service) RequestEmailChange(ctx context.Context, raw string, in wire.Em
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return wire.EmailChangeAccepted{}, unavailable()
 	}
-	if err = s.limitMails(ctx, []string{account.EmailKey, target}); err != nil {
+	if err = s.limitMails(ctx, []string{account.EmailKey.String, target}); err != nil {
 		return wire.EmailChangeAccepted{}, err
 	}
 	if err = s.revokeEmailChange(ctx, tx, account.ID); err != nil {
@@ -87,7 +87,7 @@ func (s *Service) RequestEmailChange(ctx context.Context, raw string, in wire.Em
 	change := uuid.New()
 	out := wire.EmailChangeAccepted{ChangeId: change, ExpiresAt: now.Add(30 * time.Minute), ResendAfter: 60}
 	for _, purpose := range []string{"email_change_old", "email_change_new"} {
-		if err = s.addCredentialProof(ctx, tx, uuid.New(), purpose, &account.ID, &change, account.EmailKey, target, account.CredentialVersion, account.Locale, now); err != nil {
+		if err = s.addCredentialProof(ctx, tx, uuid.New(), purpose, &account.ID, &change, account.EmailKey.String, target, account.CredentialVersion, account.Locale, now); err != nil {
 			return wire.EmailChangeAccepted{}, err
 		}
 	}
@@ -191,7 +191,7 @@ func (s *Service) ConfirmEmailChange(ctx context.Context, in wire.EmailChangeCon
 	if q.DeleteAccountSessions(ctx, account.ID) != nil || s.revokeCredentialProofs(ctx, tx, account.ID) != nil || s.credentialAudit(ctx, tx, account.ID, "email_change") != nil {
 		return out, unavailable()
 	}
-	for _, email := range []string{account.EmailKey, proof.TargetEmail} {
+	for _, email := range []string{account.EmailKey.String, proof.TargetEmail} {
 		if err = s.enqueueSecurityNotice(ctx, tx, email, mailPayload{Type: "security_notice", Locale: account.Locale}); err != nil {
 			return out, err
 		}

@@ -16,7 +16,7 @@ x-backend: &backend
     MAIL_KEY_FILE: /run/secrets/mail_key
     CODE_KEY_FILE: /run/secrets/code_key
     BOT_ADAPTER_TOKEN_FILE: /run/secrets/adapter_token
-    BOT_OPERATOR_IDS: '${BOT_OPERATOR_IDS:?required}'
+    BOT_OPERATOR_IDS: '${BOT_OPERATOR_IDS:-}'
     SMTP_ADDRESS: '${SMTP_ADDRESS:?required}'
     SMTP_USER: '${SMTP_USER:?required}'
     SMTP_FROM: '${SMTP_FROM:?required}'
@@ -109,7 +109,7 @@ services:
     tmpfs: ['/tmp:mode=1777']
     environment:
       BOT_TOKEN_FILE: /run/secrets/bot_token
-      BOT_OPERATOR_IDS: '${BOT_OPERATOR_IDS:?required}'
+      BOT_OPERATOR_IDS: '${BOT_OPERATOR_IDS:-}'
       WEB_TRIAL_API_URL: https://gateway:9443
       WEB_TRIAL_API_TOKEN_FILE: /run/secrets/adapter_token
       WEB_TRIAL_API_CA_FILE: /run/secrets/adapter_ca

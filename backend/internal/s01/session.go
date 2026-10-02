@@ -67,14 +67,14 @@ func (s *Service) Login(ctx context.Context, in wire.LoginInput, ip string) (wir
 		return out, "", err
 	}
 	encoded := dummyHash
-	if found {
-		encoded = account.PasswordHash
+	if found && account.Kind == "web" && account.PasswordHash.Valid {
+		encoded = account.PasswordHash.String
 	}
 	matched, err := s.checkPassword(ctx, in.Password, encoded)
 	if err != nil {
 		return out, "", err
 	}
-	if !found || !matched {
+	if !found || account.Kind != "web" || !account.EmailKey.Valid || !account.PasswordHash.Valid || !account.VerifiedAt.Valid || !matched {
 		return out, "", failure(401, "INVALID_CREDENTIALS")
 	}
 	if account.Restricted {
@@ -93,7 +93,7 @@ func (s *Service) Login(ctx context.Context, in wire.LoginInput, ip string) (wir
 	if err != nil {
 		return out, "", unavailable()
 	}
-	if current.EmailKey != email || current.PasswordHash != account.PasswordHash || current.CredentialVersion != account.CredentialVersion {
+	if current.Kind != "web" || current.EmailKey.String != email || current.PasswordHash != account.PasswordHash || current.CredentialVersion != account.CredentialVersion {
 		return out, "", failure(401, "INVALID_CREDENTIALS")
 	}
 	if current.Restricted {
@@ -112,7 +112,7 @@ func (s *Service) Login(ctx context.Context, in wire.LoginInput, ip string) (wir
 	return wire.LoginResult{Account: publicAccount(account), CsrfToken: csrf}, raw, nil
 }
 func publicAccount(a store.Account) wire.Account {
-	return wire.Account{AccountId: a.ID, Email: openapi_types.Email(a.EmailKey), EmailVerified: true, Locale: wire.AccountLocale(a.Locale), TelegramLinked: false}
+	return wire.Account{AccountId: a.ID, Email: openapi_types.Email(a.EmailKey.String), EmailVerified: true, Locale: wire.AccountLocale(a.Locale), TelegramLinked: false}
 }
 func (s *Service) Authenticate(ctx context.Context, raw string) (wire.AccountResult, error) {
 	out := wire.AccountResult{}
@@ -124,6 +124,9 @@ func (s *Service) Authenticate(ctx context.Context, raw string) (wire.AccountRes
 	account, err := q.AccountByID(ctx, session.AccountID)
 	if err != nil {
 		return out, unavailable()
+	}
+	if account.Kind != "web" || !account.EmailKey.Valid || !account.PasswordHash.Valid || !account.VerifiedAt.Valid {
+		return out, failure(401, "INVALID_CREDENTIALS")
 	}
 	if account.Restricted {
 		return out, failure(403, "ACCOUNT_RESTRICTED")
@@ -145,6 +148,16 @@ func (s *Service) sessionByRaw(ctx context.Context, q *store.Queries, raw string
 	}
 	if err != nil {
 		return session, unavailable()
+	}
+	account, err := q.AccountByID(ctx, session.AccountID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return session, failure(401, "INVALID_CREDENTIALS")
+	}
+	if err != nil {
+		return session, unavailable()
+	}
+	if account.Kind != "web" || !account.EmailKey.Valid || !account.PasswordHash.Valid || !account.VerifiedAt.Valid {
+		return session, failure(401, "INVALID_CREDENTIALS")
 	}
 	return session, nil
 }

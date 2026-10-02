@@ -141,6 +141,15 @@ func New(svc *s01.Service, cfg s01.Config) *echo.Echo {
 	e.POST("/api/v1/operator/clients/:id/support/read", a.AcknowledgeOperatorSupport)
 	e.POST("/api/v1/operator/clients/:id/support/state", a.SetOperatorSupportState)
 	e.POST("/api/v1/operator/clients/:id/support/ban", a.SetOperatorSupportBan)
+	e.GET("/api/v1/operator/session", a.GetOperatorSession)
+	e.POST("/api/v1/operator/clients/search", a.SearchOperatorClients)
+	e.GET("/api/v1/operator/clients/:id", a.GetOperatorClient)
+	e.POST("/api/v1/operator/clients/:id/history", a.GetOperatorClientHistory)
+	e.GET("/api/v1/operator/clients/:id/key", a.GetOperatorClientKey)
+	e.POST("/api/v1/operator/trial-requests/:id/decision", a.DecideOperatorTrial)
+	e.POST("/api/v1/operator/trial-requests/:id/reconsider", a.ReconsiderOperatorTrial)
+	e.POST("/api/v1/operator/trial-operations/:id/reconcile", a.ReconcileOperatorTrial)
+	e.POST("/api/v1/operator/clients/trial", a.CreateOperatorTelegramTrial)
 	return e
 }
 func invalid() error { return &s01.Error{Status: 400, Code: "INVALID_INPUT"} }

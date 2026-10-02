@@ -59,8 +59,14 @@ DTO используют точный decimal string для Telegram ID и NULL 
 exhausted/unlimited/VPN-ban и stop/start панели прошли. Собственные client fields,
 membership/target/one Grant и прежний Docker VPN восстановлены; postflight
 подтвердил health/images/pinned digest. Runtime освобождён для С06.
-Общий Go-race подтвердил все service/HTTP/schema/CLI пакеты, но выявил устаревший
-TLS panel fixture в cross-language С01/С02: отсутствует новый traffic endpoint.
-Исправляется общий fixture, защиту product key не ослабляем. Исходный browser
-regression57/57 прошёл; карточка React-admin и обновление после решения требуют
-отдельных интеграционных исправлений и новой проверки.
+Общий Go-race подтвердил все service/HTTP/schema/CLI пакеты и выявил устаревший
+TLS panel fixture в cross-language С01/С02: отсутствовал новый traffic endpoint.
+Общий fixture исправлен; полный `go test -race ./tests -count=1` прошёл, защиту
+product key не ослабляли. Python suite:102 checks прошли, один contract check
+сначала не получил обязательные file inputs; с ними и исправленным fixture
+повтор этого check прошёл. Standard Go/wire/sqlc/TypeScript generation no-diff.
+React-admin action/card исправления подтверждены RED→GREEN: success refresh,
+полная подписка/ограничения/actor history, честное unknown для none. Browser
+regression58/58 прошёл до последнего none-case; focused С06 после него10/10.
+Перед runtime rebuild проверяется lock новых зависимостей; actual С05/С06
+browser/restore и свежий whole-branch review ещё открыты.

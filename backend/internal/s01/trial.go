@@ -36,7 +36,7 @@ func (s *Service) operatorAllowed(actor int64) bool {
 	return false
 }
 func validText(value string, min, max int) bool {
-	return utf8.ValidString(value) && utf8.RuneCountInString(value) <= max && utf8.RuneCountInString(strings.TrimSpace(value)) >= min
+	return utf8.ValidString(value) && !strings.ContainsRune(value, '\x00') && utf8.RuneCountInString(value) <= max && utf8.RuneCountInString(strings.TrimSpace(value)) >= min
 }
 func bodyHash(value any) []byte { b, _ := json.Marshal(value); return digest(string(b)) }
 func replay[T any](ctx context.Context, q *store.Queries, principal, operation string, key uuid.UUID, hash []byte) (T, bool, error) {
@@ -74,8 +74,11 @@ func publicTrial(r store.TrialRequest) wire.TrialRequest {
 	return wire.TrialRequest{RequestId: r.ID, Status: wire.TrialRequestStatus(r.Status), CreatedAt: r.CreatedAt.Time, DecidedAt: decided, OperationId: r.OperationID, PreviousRequestId: r.PreviousRequestID}
 }
 func (s *Service) trialEligibility(ctx context.Context, q *store.Queries, a store.Account) error {
-	if !a.VerifiedAt.Valid {
+	if a.Kind == "web" && (!a.VerifiedAt.Valid || !a.EmailKey.Valid || !a.PasswordHash.Valid) {
 		return failure(403, "EMAIL_VERIFICATION_REQUIRED")
+	}
+	if !sourceEligible(a) {
+		return failure(403, "INVALID_CREDENTIALS")
 	}
 	if a.Restricted {
 		return failure(403, "ACCOUNT_RESTRICTED")
@@ -91,6 +94,16 @@ func (s *Service) trialEligibility(ctx context.Context, q *store.Queries, a stor
 		return failure(403, "TRIAL_DISABLED")
 	}
 	return nil
+}
+func sourceEligible(a store.Account) bool {
+	switch a.Kind {
+	case "web":
+		return a.VerifiedAt.Valid && a.EmailKey.Valid && a.PasswordHash.Valid
+	case "telegram":
+		return a.TelegramID.Valid && a.TelegramID.Int64 > 0 && a.DisplayName.Valid
+	default:
+		return false
+	}
 }
 func (s *Service) audit(ctx context.Context, q *store.Queries, action string, account uuid.UUID, requestID, operationID *uuid.UUID, actor int64, reason string) error {
 	var operator pgtype.Int8
@@ -118,16 +131,23 @@ func (s *Service) payload(ctx context.Context, q *store.Queries, a store.Account
 		}
 	}
 	var email *openapi_types.Email
-	if a.EmailKey != "" {
-		value := openapi_types.Email(a.EmailKey)
+	if a.EmailKey.Valid {
+		value := openapi_types.Email(a.EmailKey.String)
 		email = &value
 	}
-	return wire.TelegramPayload{RequestId: r.ID, OperationId: r.OperationID, TargetMessageId: target, Email: email, Comment: r.Comment, CreatedAt: r.CreatedAt.Time, Status: wire.TelegramPayloadStatus(status)}, nil
+	out := wire.TelegramPayload{RequestId: r.ID, OperationId: r.OperationID, TargetMessageId: target, Email: email, Comment: r.Comment, CreatedAt: r.CreatedAt.Time, Status: wire.TelegramPayloadStatus(status)}
+	if a.Kind == "telegram" {
+		name := a.DisplayName.String
+		id := fmt.Sprintf("%d", a.TelegramID.Int64)
+		out.DisplayName = &name
+		out.TelegramId = &id
+	}
+	return out, nil
 }
 func (s *Service) notify(ctx context.Context, q *store.Queries, a store.Account, r store.TrialRequest, kind, status string) error {
 	seen := map[int64]bool{}
 	if len(s.cfg.Operators) == 0 {
-		return unavailable()
+		return nil
 	}
 	for _, actor := range s.cfg.Operators {
 		if actor <= 0 {
@@ -184,6 +204,15 @@ func (s *Service) CreateTrialRequest(ctx context.Context, accountID, key uuid.UU
 	if err = s.trialEligibility(ctx, q, a); err != nil {
 		return out, false, err
 	}
+	if len(s.cfg.Operators) == 0 {
+		available, err := q.AnyWebOperator(ctx)
+		if err != nil {
+			return out, false, unavailable()
+		}
+		if !available {
+			return out, false, unavailable()
+		}
+	}
 	current, err := q.CurrentTrial(ctx, accountID)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return out, false, unavailable()
@@ -238,6 +267,74 @@ func (s *Service) decisionResult(ctx context.Context, q *store.Queries, a store.
 		return wire.DecisionResult{}, unavailable()
 	}
 	return wire.DecisionResult{Request: publicTrial(r), OperationId: r.OperationID, Card: card, DeliveryState: wire.DecisionResultDeliveryState(state)}, nil
+}
+
+type trialActor struct {
+	telegramID int64
+	accountID  *uuid.UUID
+}
+
+func (s *Service) trialActorAudit(ctx context.Context, q *store.Queries, action string, account, request uuid.UUID, operation *uuid.UUID, actor trialActor, reason string) error {
+	if actor.accountID == nil {
+		return s.audit(ctx, q, action, account, &request, operation, actor.telegramID, reason)
+	}
+	var why pgtype.Text
+	if reason != "" {
+		why = pgtype.Text{String: reason, Valid: true}
+	}
+	if err := q.AddOperatorAudit(ctx, store.AddOperatorAuditParams{ID: uuid.New(), CreatedAt: stamp(s.now()), Action: action, AccountID: account, RequestID: &request, OperationID: operation, OperatorAccountID: actor.accountID, Reason: why}); err != nil {
+		return unavailable()
+	}
+	return nil
+}
+func (s *Service) decideTrialLocked(ctx context.Context, tx pgx.Tx, q *store.Queries, a store.Account, r store.TrialRequest, actor trialActor, decision, reason string) (store.TrialRequest, error) {
+	if r.Status != "pending" {
+		return r, nil
+	}
+	desired := "approved"
+	if decision == "reject" {
+		desired = "rejected"
+	}
+	var operation *uuid.UUID
+	if decision == "approve" {
+		if err := s.trialEligibility(ctx, q, a); err != nil {
+			return r, err
+		}
+		c := s.cfg
+		if c.PanelID == "" || c.TrialPeriodDays <= 0 || c.TrialPeriodDays > math.MaxInt64/int64(24*time.Hour) || c.TrialTrafficGB < 0 || c.TrialTrafficGB > math.MaxInt64/(1024*1024*1024) || c.TrialDevices < 0 || c.TrialDevices == math.MaxInt64 {
+			return r, unavailable()
+		}
+		op := uuid.New()
+		operation = &op
+		if err := q.AddOperation(ctx, store.AddOperationParams{ID: op, AccountID: a.ID, RequestID: r.ID, PeriodDays: c.TrialPeriodDays, TrafficGb: c.TrialTrafficGB, Devices: c.TrialDevices, PanelID: c.PanelID, CreatedAt: stamp(s.now())}); err != nil {
+			return r, unavailable()
+		}
+		if err := q.ReserveGrant(ctx, store.ReserveGrantParams{AccountID: a.ID, RequestID: r.ID, OperationID: op, CreatedAt: stamp(s.now())}); err != nil {
+			return r, unavailable()
+		}
+		if _, err := s.queue.InsertTx(ctx, tx, ProvisionArgs{OperationID: op}, &river.InsertOpts{Queue: "provision", MaxAttempts: 5}); err != nil {
+			return r, unavailable()
+		}
+	} else if reason == "" {
+		reason = "support_declined"
+	}
+	var err error
+	why := pgtype.Text{String: reason, Valid: reason != ""}
+	if actor.accountID == nil {
+		r, err = q.DecideTrial(ctx, store.DecideTrialParams{ID: r.ID, Status: desired, DecidedAt: stamp(s.now()), OperatorTgID: pgtype.Int8{Int64: actor.telegramID, Valid: true}, Reason: why, OperationID: operation})
+	} else {
+		r, err = q.DecideTrialWeb(ctx, store.DecideTrialWebParams{ID: r.ID, Status: desired, DecidedAt: stamp(s.now()), OperatorAccountID: actor.accountID, Reason: why, OperationID: operation})
+	}
+	if err != nil {
+		return r, unavailable()
+	}
+	if err = s.trialActorAudit(ctx, q, "trial_"+desired, a.ID, r.ID, operation, actor, reason); err != nil {
+		return r, err
+	}
+	if err = s.notify(ctx, q, a, r, "request_decided", desired); err != nil {
+		return r, err
+	}
+	return r, nil
 }
 func (s *Service) DecideTrialRequest(ctx context.Context, id uuid.UUID, in wire.DecisionInput) (wire.DecisionResult, error) {
 	out := wire.DecisionResult{}
@@ -304,35 +401,9 @@ func (s *Service) DecideTrialRequest(ctx context.Context, id uuid.UUID, in wire.
 		return out, &Error{Status: 409, Code: "REQUEST_STATE_CONFLICT", Message: "REQUEST_STATE_CONFLICT", Details: map[string]any{"current_request_status": r.Status, "operation_id": op}}
 	}
 	if r.Status == "pending" {
-		var operation *uuid.UUID
-		if in.Decision == "approve" {
-			if err = s.trialEligibility(ctx, q, a); err != nil {
-				return out, err
-			}
-			c := s.cfg
-			if c.PanelID == "" || c.TrialPeriodDays <= 0 || c.TrialPeriodDays > math.MaxInt64/int64(24*time.Hour) || c.TrialTrafficGB < 0 || c.TrialTrafficGB > math.MaxInt64/(1024*1024*1024) || c.TrialDevices < 0 || c.TrialDevices == math.MaxInt64 {
-				return out, unavailable()
-			}
-			op := uuid.New()
-			operation = &op
-			if q.AddOperation(ctx, store.AddOperationParams{ID: op, AccountID: a.ID, RequestID: id, PeriodDays: c.TrialPeriodDays, TrafficGb: c.TrialTrafficGB, Devices: c.TrialDevices, PanelID: c.PanelID, CreatedAt: stamp(s.now())}) != nil {
-				return out, unavailable()
-			}
-			if q.ReserveGrant(ctx, store.ReserveGrantParams{AccountID: a.ID, RequestID: id, OperationID: op, CreatedAt: stamp(s.now())}) != nil {
-				return out, unavailable()
-			}
-			if _, err = s.queue.InsertTx(ctx, tx, ProvisionArgs{OperationID: op}, &river.InsertOpts{Queue: "provision", MaxAttempts: 5}); err != nil {
-				return out, unavailable()
-			}
-		} else if reason == "" {
-			reason = "support_declined"
-		}
-		r, err = q.DecideTrial(ctx, store.DecideTrialParams{ID: id, Status: desired, DecidedAt: stamp(s.now()), OperatorTgID: pgtype.Int8{Int64: in.OperatorTgId, Valid: true}, Reason: pgtype.Text{String: reason, Valid: reason != ""}, OperationID: operation})
+		r, err = s.decideTrialLocked(ctx, tx, q, a, r, trialActor{telegramID: in.OperatorTgId}, string(in.Decision), reason)
 		if err != nil {
-			return out, unavailable()
-		}
-		if s.audit(ctx, q, "trial_"+desired, a.ID, &id, operation, in.OperatorTgId, reason) != nil || s.notify(ctx, q, a, r, "request_decided", desired) != nil {
-			return out, unavailable()
+			return out, err
 		}
 	}
 	out, err = s.decisionResult(ctx, q, a, r, in.OperatorTgId)
@@ -388,22 +459,9 @@ func (s *Service) ReconsiderTrialRequest(ctx context.Context, id, key uuid.UUID,
 	if prior, found, e := replay[wire.TrialRequest](ctx, q, principal, "reconsiderTrialRequest", key, hash); found || e != nil {
 		return prior, e
 	}
-	if err = s.trialEligibility(ctx, q, a); err != nil {
+	r, err := s.reconsiderTrialLocked(ctx, q, a, old, trialActor{telegramID: in.OperatorTgId}, in.Reason)
+	if err != nil {
 		return out, err
-	}
-	current, err := q.CurrentTrial(ctx, a.ID)
-	if err != nil {
-		return out, unavailable()
-	}
-	if old.Status != "rejected" || current.ID != id {
-		return out, failure(409, "REQUEST_STATE_CONFLICT")
-	}
-	r, err := q.AddTrial(ctx, store.AddTrialParams{ID: uuid.New(), AccountID: a.ID, Comment: old.Comment, CreatedAt: stamp(s.now()), PreviousRequestID: &id})
-	if err != nil {
-		return out, unavailable()
-	}
-	if s.audit(ctx, q, "trial_reconsidered", a.ID, &r.ID, nil, in.OperatorTgId, in.Reason) != nil || s.notify(ctx, q, a, r, "approval_card", "pending") != nil {
-		return out, unavailable()
 	}
 	out = publicTrial(r)
 	if err = s.saveIdempotency(ctx, q, principal, "reconsiderTrialRequest", key, hash, out); err != nil {
@@ -415,9 +473,39 @@ func (s *Service) ReconsiderTrialRequest(ctx context.Context, id, key uuid.UUID,
 	return out, nil
 }
 
+func (s *Service) reconsiderTrialLocked(ctx context.Context, q *store.Queries, a store.Account, old store.TrialRequest, actor trialActor, reason string) (store.TrialRequest, error) {
+	if err := s.trialEligibility(ctx, q, a); err != nil {
+		return old, err
+	}
+	current, err := q.CurrentTrial(ctx, a.ID)
+	if err != nil {
+		return old, unavailable()
+	}
+	if old.Status != "rejected" || current.ID != old.ID {
+		return old, failure(409, "REQUEST_STATE_CONFLICT")
+	}
+	r, err := q.AddTrial(ctx, store.AddTrialParams{ID: uuid.New(), AccountID: a.ID, Comment: old.Comment, CreatedAt: stamp(s.now()), PreviousRequestID: &old.ID})
+	if err != nil {
+		return old, unavailable()
+	}
+	if err = s.trialActorAudit(ctx, q, "trial_reconsidered", a.ID, r.ID, nil, actor, reason); err != nil {
+		return old, err
+	}
+	if err = s.notify(ctx, q, a, r, "approval_card", "pending"); err != nil {
+		return old, err
+	}
+	return r, nil
+}
+
 func (s *Service) canRequestTrial(ctx context.Context, q *store.Queries, account store.Account) (bool, error) {
 	if len(s.cfg.Operators) == 0 {
-		return false, nil
+		available, err := q.AnyWebOperator(ctx)
+		if err != nil {
+			return false, unavailable()
+		}
+		if !available {
+			return false, nil
+		}
 	}
 	if err := s.trialEligibility(ctx, q, account); err != nil {
 		var domain *Error

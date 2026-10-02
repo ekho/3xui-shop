@@ -52,7 +52,7 @@ func (s *Service) credentialEmails(ctx context.Context, tx pgx.Tx, account store
 	if err != nil {
 		return nil, unavailable()
 	}
-	return append(emails, account.EmailKey), nil
+	return append(emails, account.EmailKey.String), nil
 }
 func (s *Service) revokeCredentialProofs(ctx context.Context, tx pgx.Tx, accountID uuid.UUID) error {
 	q := store.New(tx)
@@ -119,7 +119,7 @@ func (s *Service) RequestPasswordReset(ctx context.Context, in wire.PasswordRese
 		if err != nil {
 			return out, unavailable()
 		}
-		if account.EmailKey == email {
+		if account.EmailKey.String == email {
 			accountID = &account.ID
 			version = account.CredentialVersion
 			emails, err = s.credentialEmails(ctx, tx, account)
@@ -179,7 +179,7 @@ func (s *Service) lookupCredential(ctx context.Context, token *string, id *uuid.
 }
 func (s *Service) checkCredentialProof(ctx context.Context, tx pgx.Tx, proof store.CredentialChallenge, account store.Account, byToken bool, code *string) error {
 	bad := failure(400, "INVALID_VERIFICATION")
-	if proof.AccountID == nil || *proof.AccountID != account.ID || proof.OriginalEmail != account.EmailKey || proof.CredentialVersion != account.CredentialVersion || proof.Revoked || proof.UsedAt.Valid || !s.now().Before(proof.TokenExpiresAt.Time) {
+	if proof.AccountID == nil || *proof.AccountID != account.ID || proof.OriginalEmail != account.EmailKey.String || proof.CredentialVersion != account.CredentialVersion || proof.Revoked || proof.UsedAt.Valid || !s.now().Before(proof.TokenExpiresAt.Time) {
 		return bad
 	}
 	if !byToken {
@@ -246,7 +246,7 @@ func (s *Service) CompletePasswordReset(ctx context.Context, in wire.PasswordRes
 	if err = s.credentialAudit(ctx, tx, account.ID, "password_reset"); err != nil {
 		return err
 	}
-	if err = s.enqueueSecurityNotice(ctx, tx, account.EmailKey, mailPayload{Type: "password_changed", Locale: account.Locale}); err != nil {
+	if err = s.enqueueSecurityNotice(ctx, tx, account.EmailKey.String, mailPayload{Type: "password_changed", Locale: account.Locale}); err != nil {
 		return err
 	}
 	if tx.Commit(ctx) != nil {
@@ -301,7 +301,7 @@ func (s *Service) authenticateCurrentPassword(ctx context.Context, raw, password
 	if err != nil {
 		return account, session, err
 	}
-	matched, err := s.checkPassword(ctx, password, account.PasswordHash)
+	matched, err := s.checkPassword(ctx, password, account.PasswordHash.String)
 	if err != nil {
 		return account, session, err
 	}
@@ -378,7 +378,7 @@ func (s *Service) rotateCredentialSession(ctx context.Context, raw string, snaps
 		if q.SetAccountPassword(ctx, store.SetAccountPasswordParams{ID: account.ID, PasswordHash: passwordHash}) != nil || s.revokeCredentialProofs(ctx, tx, account.ID) != nil {
 			return SessionRotation{}, unavailable()
 		}
-		if s.enqueueSecurityNotice(ctx, tx, account.EmailKey, mailPayload{Type: "security_notice", Locale: account.Locale}) != nil {
+		if s.enqueueSecurityNotice(ctx, tx, account.EmailKey.String, mailPayload{Type: "security_notice", Locale: account.Locale}) != nil {
 			return SessionRotation{}, unavailable()
 		}
 	}
@@ -420,5 +420,5 @@ func (s *Service) GetAccountSecurity(ctx context.Context, raw string) (wire.Acco
 	if err != nil {
 		return wire.AccountSecurity{}, err
 	}
-	return wire.AccountSecurity{Email: openapi_types.Email(account.EmailKey), HasOtherSessions: other, PendingEmailChange: pending}, nil
+	return wire.AccountSecurity{Email: openapi_types.Email(account.EmailKey.String), HasOtherSessions: other, PendingEmailChange: pending}, nil
 }

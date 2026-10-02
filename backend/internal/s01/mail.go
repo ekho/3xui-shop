@@ -89,7 +89,7 @@ func (s *Service) SendMail(ctx context.Context, id uuid.UUID) error {
 			if err != nil {
 				return unavailable()
 			}
-			credentialInvalid = proof.CredentialVersion != account.CredentialVersion || proof.OriginalEmail != account.EmailKey
+			credentialInvalid = proof.CredentialVersion != account.CredentialVersion || proof.OriginalEmail != account.EmailKey.String
 		}
 	}
 	delivery, err := q.MailByID(ctx, id)

@@ -1,5 +1,5 @@
 -- name: AccountByEmail :one
-SELECT * FROM accounts WHERE email_key = $1;
+SELECT * FROM accounts WHERE email_key = sqlc.arg(email_key)::text;
 -- name: AccountByID :one
 SELECT * FROM accounts WHERE id = $1;
 -- name: RevokeChallenges :exec
@@ -19,7 +19,10 @@ UPDATE registration_challenges SET failed_guesses = LEAST(failed_guesses+1,5) WH
 UPDATE registration_challenges SET revoked=true WHERE id=$1;
 -- name: AddAccount :exec
 INSERT INTO accounts(id,email_key,locale,password_hash,verified_at,vpn_id,sub_id,panel_key,terms_version,privacy_version)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10);
+VALUES(sqlc.arg(id)::uuid,sqlc.arg(email_key)::text,sqlc.arg(locale)::text,
+ sqlc.arg(password_hash)::text,sqlc.arg(verified_at)::timestamptz,
+ sqlc.arg(vpn_id)::uuid,sqlc.arg(sub_id)::text,sqlc.arg(panel_key)::text,
+ sqlc.arg(terms_version)::text,sqlc.arg(privacy_version)::text);
 -- name: AddMail :exec
 INSERT INTO mail_deliveries(id,challenge_id,email_key,ciphertext,created_at) VALUES($1,$2,$3,$4,$5);
 -- name: MailByID :one
