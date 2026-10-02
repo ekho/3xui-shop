@@ -1,5 +1,9 @@
 # С08/С41: локальная приёмка профилей, VPN-ban и месячного reset
 
+2026-10-02: общий финальный обзор, Important fixes и совместимость
+переименования завершены; [итоговая приёмка](access-management-acceptance.md).
+Ниже сохранён исходный evidence Task 3 на своей проверенной ревизии.
+
 **Результат Task 3 драйвера: 32/32 фактические строки PASS.** Root независимо
 проверил [postflight](../../.superpowers/sdd/2026-10-02-s48-s09-s07-s08/postflight-s08.json):
 те же images и primary VPN digest, health OK, probe/gate/bot/reconcile

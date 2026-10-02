@@ -80,6 +80,6 @@
 
 **Files:** `docs/evidence/s07-acceptance.md`, `s08-s41-acceptance.md`, aggregateprogress/roadmap, private ledger.
 
-- [ ] Root audits all31 scenario AC plus С41; exact current revision, command results, actual surface evidence and exclusions. Fix important findings with regression RED→GREEN, affected green suite.
-- [ ] One fresh read-only Astra/high whole-branch review of baseline32b0205→current revision, then one bounded important-fix pass. No per-task reviewer cycle.
-- [ ] Root commits Conventional Commits with Co-Authored; full source checks once after final changes. Retain worktree/branch. Mark objective complete only when accepted local scope fully achieved; production/push/MR/CI remain distinct and unclaimed.
+- [x] Root audited all31 scenario AC plus С41 and naming compatibility. [Итоговая карта и границы](../../evidence/access-management-acceptance.md) связывает exact revisions, команды, actual surfaces и сохранённые failed receipts.
+- [x] One fresh read-only Astra/high whole-branch review baseline32b0205→a0ddfe6, then one bounded Important-fix pass faa87fd. Three transition defects reproduced RED→GREEN, monthly common-path regression included; root verified fixes. No per-task reviewer cycle.
+- [x] Conventional Commits with Co-Authored retained locally; final full Go race/vet on faa87fd passed. Unchanged web105/Python105 checks retained by source-hash verification. Owned3X-UI3.7.0 schema14 migration/history/VPN and browser7/7 compatibility passed. Worktree/branch retained; local scope complete. Production/push/MR/CI/release not performed.
