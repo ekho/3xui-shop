@@ -1,7 +1,7 @@
 // Real S07 cabinet and native-panel acceptance. Run only against a root-approved S07 image.
 // Fixture credentials stay in private files; evidence contains booleans/counts/digests only.
 import {createRequire} from 'node:module';
-import {readFileSync,mkdirSync,openSync,writeSync,closeSync,chmodSync,existsSync} from 'node:fs';
+import {readFileSync,mkdirSync,openSync,writeSync,closeSync,chmodSync,existsSync,renameSync} from 'node:fs';
 import {createHash,randomUUID,X509Certificate} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import https from 'node:https';
@@ -131,8 +131,19 @@ async function approveTrial(actor,customer){
  throw Error('S07 native trial not active');
 }
 function sameNative(before,after,fields){return fields.every(key=>before[key]===after[key]);}
-function fixture(){if(!existsSync(fixturePath))throw Error('S07 private fixtures absent');return JSON.parse(readFileSync(fixturePath));}
+function fixture(){
+ if(!existsSync(fixturePath))throw Error('S07 private fixtures absent');
+ const value=JSON.parse(readFileSync(fixturePath));
+ if(value.setup_complete!==true)throw Error('S07 private setup incomplete');
+ return value;
+}
 function privateFixture(value){const out=openSync(fixturePath,'wx',0o600);try{writeSync(out,JSON.stringify(value));}finally{closeSync(out);}chmodSync(fixturePath,0o600);}
+function completeFixture(value){
+ const temporary=fixturePath+'.complete-'+randomUUID();
+ const out=openSync(temporary,'wx',0o600);
+ try{writeSync(out,JSON.stringify({...value,setup_complete:true}));}finally{closeSync(out);}
+ chmodSync(temporary,0o600);renameSync(temporary,fixturePath);
+}
 function faultState(){return existsSync(faultStatePath)?JSON.parse(readFileSync(faultStatePath)):{};}
 function privateFault(value){const out=openSync(faultStatePath,'w',0o600);try{writeSync(out,JSON.stringify(value));}finally{closeSync(out);}chmodSync(faultStatePath,0o600);}
 
@@ -174,13 +185,15 @@ try{
    if(response.status!==201||response.body?.revision!==1)throw Error('S07 plan fixture rejected');
    plans[name]={id:response.body.plan_id,revision:1,terms:makeTerms(devices,profile)};
   }
+  const checkpoint={actor:{id:actor.id,email:actor.email,password:actor.password},
+   accounts:Object.fromEntries(Object.entries(accounts).map(([name,a])=>[name,{id:a.id,email:a.email,password:a.password}])),
+   plans,baseline_vpn_digest:transport.vpn_config_digest,setup_complete:false};
+  privateFixture(checkpoint);
   const probe={};
   for(const name of ['active','banned','fault'])probe[name]=bridge('probe-config',
     {account:accounts[name].id,email:accounts[name].email,password:accounts[name].password});
   const faultTargets=bridge('fault-targets',{account:accounts.fault.id});
-  privateFixture({actor:{id:actor.id,email:actor.email,password:actor.password},
-   accounts:Object.fromEntries(Object.entries(accounts).map(([name,a])=>[name,{id:a.id,email:a.email,password:a.password}])),
-   plans,probe,faultTargets,baseline_vpn_digest:transport.vpn_config_digest});
+  completeFixture({...checkpoint,probe,faultTargets});
   record('AC3/4/8 S07 private setup','two hidden ordinary plans and three private probe configs; exact fault descriptor saved',
    {plans:Object.keys(plans).length,probe_configs:Object.keys(probe).length,
     private_files:existsSync(fixturePath)&&existsSync(faultTargets.descriptor)},

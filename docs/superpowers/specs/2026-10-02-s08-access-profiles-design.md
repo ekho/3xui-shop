@@ -71,6 +71,35 @@ Operator card и клиентский С03 показывают подтверж
 RU/EN, mobile375px, keyboard focus/labels, disabled inputs, confirmation
 для unlimited/ban/reset, сохранение reason при error обязательны.
 
+## Уточнения контракта для реализации
+
+Подтверждённый `Subscription.access_profile` обязателен: regular/euru/unlimited
+либо unknown для неподтверждённого legacy-состояния. VPN-ban передаётся отдельным
+обязательным `vpn_banned:boolean`, а не значением профиля. При отсутствии клиента
+status=none сохраняется, но известное будущее намерение профиля/ban видно.
+`AccessDesired.vpn_banned` описывает цель операции; pending не подменяет им
+подтверждённое состояние. Новые web-аккаунты имеют regular; неизвестный legacy
+профиль остаётся NULL в БД до подтверждения. Миграция не угадывает профиль
+назначенного клиента по конечному сроку.
+
+Повтор уже совпавшего состояния с новым ключом создаёт applied-операцию со
+шагом `state_unchanged`, без River job и panel write/reset. Для существующего
+клиента это допустимо только после совпавшего native readback identity,
+профиля, лимитов и ban; drift требует сверки. Сохранение намерения без клиента
+помечается `intent_saved`, не выдаёт подписку или первый trial grant.
+Ban без клиента сохраняет overlay для будущего provisioning. Unlimited требует
+ровно одного текущего неархивированного hidden unlimited-тарифа; неоднозначный
+выбор возвращает ACCESS_PLAN_CONFLICT.
+
+Системный месячный reset имеет read-only kind `monthly_reset`, отдельные
+nullable поля audit `system_actor` и `monthly_period`; HTTP input этот kind не
+принимает. Если до исполнения ban или profile изменились, операция становится
+`skipped` со шагом `eligibility_changed`, без записи панели; период остаётся
+занятым. Skipped не используется как источник подтверждённой подписки.
+Scheduler вызывается при startup в разрешённом grace и затем на следующей
+локальной границе месяца через stdlib timer; повторного сканирования каждый
+минутный тик в течение часа не требуется.
+
 ## Приёмка
 
 1. regular→euru→regular меняет только managed memberships/profile; native

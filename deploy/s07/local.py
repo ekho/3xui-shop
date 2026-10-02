@@ -272,7 +272,9 @@ def probe_config(account, email, password):
           'certificates': [{'certificateFile': '/run/secrets/public_cert', 'usage': 'verify'}]}}}]}
     path = write_private('probe-' + uuid4().hex + '.json', config)
     return {'config_path': str(path), 'config_digest': sha256(path.read_bytes()).hexdigest(),
-            'identity_digest': panel(account)['identity_digest']}
+            'allocated_identity_digest': sha256(json.dumps(
+                [a['panel_key'], a['vpn_id'], a['sub_id']],
+                separators=(',', ':')).encode()).hexdigest()}
 
 
 def probe_requests(count):
