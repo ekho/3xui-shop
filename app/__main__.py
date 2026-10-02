@@ -18,6 +18,7 @@ from app import logger, support_bot
 from app.bot import filters, middlewares, routers, services, tasks
 from app.bot.middlewares import MaintenanceMiddleware
 from app.bot.models import ServicesContainer
+from app.bot.services.web_trial import WebTrialAdapter
 from app.bot.payment_gateways import GatewayFactory
 from app.bot.utils import commands
 from app.bot.utils.py3xui_compat import apply_py3xui_patches
@@ -32,7 +33,9 @@ from app.config import DEFAULT_BOT_HOST, DEFAULT_LOCALES_DIR, Config, load_confi
 from app.db.database import Database
 
 
-async def on_shutdown(db: Database, bot: Bot, services: ServicesContainer) -> None:
+async def on_shutdown(db: Database, bot: Bot, services: ServicesContainer, web_trial: WebTrialAdapter | None = None) -> None:
+    if web_trial is not None:
+        await web_trial.close()
     await services.notification.notify_developer(BOT_STOPPED_TAG)
     await commands.delete(bot)
     await bot.delete_webhook()
@@ -41,7 +44,7 @@ async def on_shutdown(db: Database, bot: Bot, services: ServicesContainer) -> No
     logging.info("Bot stopped.")
 
 
-async def on_startup(
+async def _startup_bot(
     config: Config,
     bot: Bot,
     services: ServicesContainer,
@@ -256,9 +259,18 @@ async def main() -> None:
     if support_dispatcher is not None:
         support_dispatcher["gateway_factory"] = gateway_factory
 
+    web_trial = None
+    if config.bot.WEB_TRIAL_API_URL:
+        web_trial = WebTrialAdapter(
+            config.bot.WEB_TRIAL_API_URL, config.bot.WEB_TRIAL_API_TOKEN,
+            {actor for actor in [*config.bot.ADMINS, config.bot.DEV_ID] if actor > 0},
+            config.bot.WEB_TRIAL_API_CA_FILE,
+        )
+
     # Create the dispatcher
     dispatcher = Dispatcher(
         db=db,
+        web_trial=web_trial,
         storage=storage,
         config=config,
         bot=bot,
@@ -302,35 +314,44 @@ async def main() -> None:
         )
         support_task.add_done_callback(_log_support_task_done)
 
-    if config.bot.USE_WEBHOOK:
-        # Webhook: Telegram шлёт апдейты на /webhook (через ваш reverse-proxy, если используется).
-        # B7: secret_token заставляет aiogram сверять заголовок X-Telegram-Bot-Api-Secret-Token
-        #     (secrets.compare_digest) и возвращать 401 на подделки. None → проверка отключена.
-        webhook_requests_handler = SimpleRequestHandler(
-            dispatcher=dispatcher, bot=bot, secret_token=config.bot.WEBHOOK_SECRET or None
-        )
-        webhook_requests_handler.register(app, path=TELEGRAM_WEBHOOK)
+    try:
+        if config.bot.USE_WEBHOOK:
+            # Webhook: Telegram шлёт апдейты на /webhook (через ваш reverse-proxy, если используется).
+            # B7: secret_token заставляет aiogram сверять заголовок X-Telegram-Bot-Api-Secret-Token
+            #     (secrets.compare_digest) и возвращать 401 на подделки. None → проверка отключена.
+            webhook_requests_handler = SimpleRequestHandler(
+                dispatcher=dispatcher, bot=bot, secret_token=config.bot.WEBHOOK_SECRET or None
+            )
+            webhook_requests_handler.register(app, path=TELEGRAM_WEBHOOK)
 
-        # Set up application and run
-        setup_application(app, dispatcher, bot=bot)
-        try:
+            # Set up application and run
+            setup_application(app, dispatcher, bot=bot)
             await _run_app(app, host=DEFAULT_BOT_HOST, port=config.bot.PORT)
-        finally:
-            await _stop_support_task(support_task)
-    else:
-        # Long-polling: апдейты забираем через getUpdates — публичный вебхук/домен не нужны.
-        # Веб-сервер всё равно поднимаем для НЕ-Telegram роутов (Cryptomus-вебхук, редирект
-        # подключения); start_polling сам управляет startup/shutdown диспетчера и закрывает сессию.
-        runner = AppRunner(app)
-        await runner.setup()
-        site = TCPSite(runner, host=DEFAULT_BOT_HOST, port=config.bot.PORT)
-        await site.start()
-        try:
-            await dispatcher.start_polling(bot)
-        finally:
-            await _stop_support_task(support_task)
-            await runner.cleanup()
+        else:
+            # Long-polling: апдейты забираем через getUpdates — публичный вебхук/домен не нужны.
+            # Веб-сервер всё равно поднимаем для НЕ-Telegram роутов (Cryptomus-вебхук, редирект
+            # подключения); start_polling сам управляет startup/shutdown диспетчера и закрывает сессию.
+            runner = AppRunner(app)
+            try:
+                await runner.setup()
+                site = TCPSite(runner, host=DEFAULT_BOT_HOST, port=config.bot.PORT)
+                await site.start()
+                await dispatcher.start_polling(bot)
+            finally:
+                if web_trial is not None:
+                    await web_trial.close()
+                await _stop_support_task(support_task)
+                await runner.cleanup()
+    finally:
+        if web_trial is not None:
+            await web_trial.close()
+        await _stop_support_task(support_task)
 
+
+async def on_startup(config, bot, services, db, redis, i18n, web_trial=None):
+    await _startup_bot(config, bot, services, db, redis, i18n)
+    if web_trial is not None:
+        web_trial.start(bot)
 
 if __name__ == "__main__":
     try:

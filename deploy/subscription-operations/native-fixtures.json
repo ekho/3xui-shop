@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "inbounds": [
+    {"tag": "local-euru-vless", "port": 34444},
+    {"tag": "local-unlimited-vless", "port": 34445},
+    {"tag": "local-probe-vless", "port": 24444}
+  ]
+}

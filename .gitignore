@@ -175,3 +175,10 @@ plans.json
 .worktrees/
 
 tmp_test/
+
+# Local development artifacts
+backend/server
+web/node_modules/
+web/test-results/
+web/playwright-report/
+.superpowers/

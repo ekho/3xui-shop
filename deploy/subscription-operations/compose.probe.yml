@@ -1,0 +1,15 @@
+# Optional infrastructure for the owned Docker acceptance stack only.
+services:
+  gateway:
+    volumes:
+      - ../subscription-operations/Caddyfile.fault:/etc/caddy/Caddyfile:ro
+    environment:
+      FAULT_MODE: '${FAULT_MODE:-off}'
+      FAULT_PATH: '${FAULT_PATH:-/__fault_disabled__}'
+      FAULT_METHOD: '${FAULT_METHOD:-POST}'
+  vpn-probe:
+    extends:
+      file: ../acceptance/compose.local.yml
+      service: vpn-client
+    ports: !override ['127.0.0.1:59449:1080']
+    volumes: !override ['${PROBE_CONFIG:?required}:/run/secrets/vpn_config.json:ro']

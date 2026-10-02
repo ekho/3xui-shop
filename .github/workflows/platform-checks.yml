@@ -1,0 +1,64 @@
+name: Platform checks
+on:
+  pull_request:
+    paths: ['backend/**', 'web/**', 'docs/api/**', 'app/**', 'tests/**', 'pyproject.toml', 'poetry.lock', 'deploy/**', '.github/workflows/platform-checks.yml']
+  push:
+    branches: ['feature/**']
+    paths: ['backend/**', 'web/**', 'docs/api/**', 'app/**', 'tests/**', 'pyproject.toml', 'poetry.lock', 'deploy/**', '.github/workflows/platform-checks.yml']
+permissions:
+  contents: read
+concurrency:
+  group: platform-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # existing repository v4 pin
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version: '24.11.1'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: '3.13'
+      - name: Dependencies and isolated databases
+        run: |
+          python -m pip install poetry==2.5.1
+          poetry install --no-interaction
+          npm --prefix web ci --ignore-scripts
+          cd web && npx playwright install --with-deps chromium
+          cd ..
+          docker compose -f deploy/acceptance/compose.test.yml up -d --wait postgres redis
+          printf '%s' 'postgres://platform_test@127.0.0.1:55491/platform_test?sslmode=disable' > "$RUNNER_TEMP/database-url"
+          printf '%s' 'redis://127.0.0.1:56391/0' > "$RUNNER_TEMP/redis-url"
+          chmod 600 "$RUNNER_TEMP/database-url" "$RUNNER_TEMP/redis-url"
+          printf 'TEST_DATABASE_URL_FILE=%s/database-url\nTEST_REDIS_URL_FILE=%s/redis-url\n' "$RUNNER_TEMP" "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - name: Generated contract and static checks
+        run: |
+          python deploy/acceptance/check_names.py
+          make -C backend generate
+          npm --prefix web run api:generate
+          git diff --exit-code
+          go -C backend vet ./...
+          npm --prefix web run typecheck
+          npm --prefix web run build -- --mode test
+      - name: Behavior and connected consumers
+        run: |
+          RUN_BROWSER_TESTS=1 make -C backend test-integration
+          poetry run python -m unittest discover -s tests -v
+          npm --prefix web run test:e2e
+      - name: Container readiness (local images only)
+        run: |
+          docker compose --env-file deploy/acceptance/.env.example -f deploy/acceptance/compose.acceptance.yml config --quiet
+          docker compose --env-file deploy/acceptance/.env.example -f deploy/acceptance/compose.acceptance.yml build
+          python deploy/acceptance/smoke.py
+      - name: Cleanup
+        if: always()
+        run: docker compose -f deploy/acceptance/compose.test.yml down -v
