@@ -11,6 +11,22 @@ SCRIPT = Path(__file__).resolve().parents[1] / "deploy/s48/export_legacy_approva
 
 
 class LegacyApprovalExportTest(unittest.TestCase):
+    def test_nontext_timestamp_has_stable_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "corrupt.sqlite"
+            with sqlite3.connect(source) as db:
+                db.executescript("""
+                    CREATE TABLE users(id INTEGER PRIMARY KEY, tg_id INTEGER, approval_status TEXT,
+                      approval_requested_at, approval_decided_at, approval_decided_by INTEGER);
+                    INSERT INTO users VALUES(5,701,'rejected',123,NULL,NULL);
+                """)
+            before = source.read_bytes()
+            proc = subprocess.run([sys.executable, str(SCRIPT), str(source), "--timezone", "UTC"], capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 1)
+            self.assertEqual(proc.stderr.strip(), "EXPORT_FAILED")
+            self.assertEqual(proc.stdout, "")
+            self.assertEqual(source.read_bytes(), before)
+
     def test_readonly_original_events_and_explicit_timezone(self):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "legacy.sqlite"

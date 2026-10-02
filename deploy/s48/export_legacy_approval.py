@@ -62,7 +62,7 @@ def main():
     args = parser.parse_args()
     try:
         package = export(args.snapshot, ZoneInfo(args.timezone))
-    except (OSError, ValueError, sqlite3.Error, KeyError):
+    except (OSError, ValueError, TypeError, sqlite3.Error, KeyError):
         print("EXPORT_FAILED", file=sys.stderr)
         return 1
     json.dump(package, sys.stdout, ensure_ascii=False, separators=(",", ":"))
