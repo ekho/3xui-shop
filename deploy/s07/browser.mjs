@@ -277,13 +277,18 @@ try{
   const bonusDone=await waitOperation(actor,customers.missing.id,bonus.body.operation_id);
   const bonusReplay=await http(actor.context,base(customers.missing.id),'POST',bonusInput,actor.csrf,bonusKey);
   const missingAfter=bridge('snapshot',{account:customers.missing.id});
-  record('AC2 missing bonus once','one native bonus client, no first-trial grant, zero traffic cap, preserved allocated identity and idempotent replay',
+  record('AC2 missing bonus once','one native bonus client, no first-trial grant, zero traffic cap, allocated key/UUID/subId preserved, configured server newly assigned, idempotent replay',
    {codes:[bonus,bonusReplay].map(r=>r.status),applied:bonusDone.status==='applied',exists:missingAfter.panel.exists,
-    identity:missingAfter.panel.identity_digest===missingBefore.panel.identity_digest,
+    allocated_identity:missingAfter.panel.allocated_identity_digest===missingBefore.panel.allocated_identity_digest,
+    assigned_server:missingBefore.panel.assigned_server_digest===null&&
+      missingAfter.panel.assigned_server_digest===nativeBefore.active.panel.assigned_server_digest,
     traffic_limit:missingAfter.panel.traffic_limit_bytes,
     grants:missingAfter.trial_grants,operations:missingAfter.access_operations},
    bonus.status===202&&bonusReplay.status===202&&bonusDone.status==='applied'&&missingAfter.panel.exists&&
-   missingAfter.panel.identity_digest===missingBefore.panel.identity_digest&&missingAfter.panel.traffic_limit_bytes===0&&
+   missingAfter.panel.allocated_identity_digest===missingBefore.panel.allocated_identity_digest&&
+   missingBefore.panel.assigned_server_digest===null&&
+   missingAfter.panel.assigned_server_digest===nativeBefore.active.panel.assigned_server_digest&&
+   missingAfter.panel.traffic_limit_bytes===0&&
    missingAfter.trial_grants===0&&missingAfter.access_operations===1);
   step='stale and current assignment';
   const regular=data.plans.regular;

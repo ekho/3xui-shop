@@ -71,7 +71,13 @@ def account_row(account):
 
 def panel(account):
     a = account_row(account)
-    base = {'exists': False, 'identity_matches': None, 'identity_digest': sha256(
+    base = {'exists': False, 'identity_matches': None,
+      'allocated_identity_digest': sha256(json.dumps(
+        [a['panel_key'], a['vpn_id'], a['sub_id']],
+        separators=(',', ':')).encode()).hexdigest(),
+      'assigned_server_digest': sha256(a['assigned_panel_id'].encode()).hexdigest()
+        if a['assigned_panel_id'] else None,
+      'identity_digest': sha256(
         json.dumps([a['panel_key'], a['vpn_id'], a['sub_id'], a['assigned_panel_id']],
                    separators=(',', ':')).encode()).hexdigest()}
     opener, _ = local.login_panel()
