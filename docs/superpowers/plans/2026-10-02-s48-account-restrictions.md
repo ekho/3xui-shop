@@ -1,6 +1,6 @@
 # С48 — ограничения аккаунта: план реализации
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax for tracking. Пользователь принял С48 и разрешил документы и реализацию автономно; дополнительных согласований нет. Native specialist placement применяется по enabled TradeOS policy; один свежий обзор всей ветки после С48 → С09 → С07/С08.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans. Steps use checkbox (`- [x]`) syntax for tracking. Пользователь принял С48 и разрешил документы и реализацию автономно; дополнительных согласований нет. Native specialist placement применяется по enabled TradeOS policy; один свежий обзор всей ветки после С48 → С09 → С07/С08.
 
 **Goal:** Явное ограничение аккаунта с отзывом авторизации и сохранением старой истории регистрации, без изменения VPN.
 
@@ -37,11 +37,11 @@
 - Card adds optional legacy snapshot, `legacy_events`/`legacy_has_more`; history adds `kind:legacy` and separate decimal-string source-ID cursor, preserving existing UUID audit/trial cursor contracts.
 - CLI `server import-legacy-approvals --dry-run|--apply`; typed version1 users/events package; output only counts/stable codes. No HTTP import route.
 
-- [ ] Write `TestRestrictionRevokesAuthorizationWithoutChangingAccess`, `TestRestrictionReplayAndProtectedOperator`, `TestRestrictionRollbackAndConcurrentWrites` before their implementation. Assert restricted login/API, zero live sessions/proofs/ciphertext, unchanged VPN/subscription and one audit per actual transition. Replay original response, changed body409, no-op no event, protected/revoked role and invalid reasons rejected.
-- [ ] Run focused Go checks; observe missing behavior fail. Add `TestLegacyApprovalImportAtomicReplay` with approved/pending/rejected, nullable metadata, original events and 51+ same-time records; unknown/mismatched identity and changed duplicate roll back. Add read-only exporter unittest using temporary SQLite and explicit timezone; assert byte-identical input and exclusion of arbitrary payload/action.
-- [ ] Describe compatible OpenAPI additions first; regenerate Go. Implement migration/query/service/handlers/CLI/exporter using existing guards and one transaction. Revoke proofs/sessions only on actual first restricted transition, including rejected import; no panel/jobs.
-- [ ] Run `go tool sqlc generate`, `go tool oapi-codegen -config oapi-codegen.yaml ../docs/api/openapi.yaml`; run `go test -race ./... -count=1` and `go vet ./...` with existing file-backed test env. Run `poetry run python -m unittest discover -s tests -v`.
-- [ ] Root reviews diff and stages a Conventional Commit with Co-Authored footer after UI/integration passes; do not commit independently.
+- [x] Write `TestRestrictionRevokesAuthorizationWithoutChangingAccess`, `TestRestrictionReplayAndProtectedOperator`, `TestRestrictionRollbackAndConcurrentWrites` before their implementation. Assert restricted login/API, zero live sessions/proofs/ciphertext, unchanged VPN/subscription and one audit per actual transition. Replay original response, changed body409, no-op no event, protected/revoked role and invalid reasons rejected.
+- [x] Run focused Go checks; observe missing behavior fail. Add `TestLegacyApprovalImportAtomicReplay` with approved/pending/rejected, nullable metadata, original events and 51+ same-time records; unknown/mismatched identity and changed duplicate roll back. Add read-only exporter unittest using temporary SQLite and explicit timezone; assert byte-identical input and exclusion of arbitrary payload/action.
+- [x] Describe compatible OpenAPI additions first; regenerate Go. Implement migration/query/service/handlers/CLI/exporter using existing guards and one transaction. Revoke proofs/sessions only on actual first restricted transition, including rejected import; no panel/jobs.
+- [x] Run `go tool sqlc generate`, `go tool oapi-codegen -config oapi-codegen.yaml ../docs/api/openapi.yaml`; run `go test -race ./... -count=1` and `go vet ./...` with existing file-backed test env. Run `poetry run python -m unittest discover -s tests -v`.
+- [x] Root reviews diff and stages a Conventional Commit with Co-Authored footer after UI/integration passes; do not commit independently.
 
 ## Task 2: React-admin restriction and historical approval
 
@@ -49,9 +49,9 @@
 
 **Interfaces:** Consumes Task1 schemas and current client card; produces restriction action/form and paged read-only legacy history. Existing key/support/trial states remain separate.
 
-- [ ] Write browser cases for confirmed restrict/unrestrict, error→same-key retry with reason retained, disabled inputs, key cleared after success, protected target, legacy NULL/actor rendering and pagination, RU/EN/mobile/keyboard and stale-card isolation. Run focused file to see missing controls fail.
-- [ ] Regenerate `npm --prefix web run api:generate`. Implement one typed API wrapper, reuse existing reason/confirmation/abort patterns; no new frontend framework or persistent secret storage.
-- [ ] Run `npm --prefix web run test:e2e`; report all failures and test counts. Root stages commit only with integrated Task1.
+- [x] Write browser cases for confirmed restrict/unrestrict, error→same-key retry with reason retained, disabled inputs, key cleared after success, protected target, legacy NULL/actor rendering and pagination, RU/EN/mobile/keyboard and stale-card isolation. Run focused file to see missing controls fail.
+- [x] Regenerate `npm --prefix web run api:generate`. Implement one typed API wrapper, reuse existing reason/confirmation/abort patterns; no new frontend framework or persistent secret storage.
+- [x] Run `npm --prefix web run test:e2e`; report all failures and test counts. Root stages commit only with integrated Task1.
 
 ## Task 3: Local acceptance and cutover boundary
 
@@ -59,7 +59,7 @@
 
 **Interfaces:** Reuses own Compose project/private bridge from `deploy/s01/local.py` and `deploy/s06/local.py`; no live Telegram or installed VPN.
 
-- [ ] Record owned images, rollout/rollback and unchanged Docker VPN state. Rebuild only backend/gateway after guards pass. Use controlled disposable identities and readonly SQLite fixtures.
-- [ ] Run real web/API restrict→old-session denied→unrestrict→new login; verify panel identity/limits/counters unchanged. Run pipe dry-run/apply/replay/conflict; then backup/restore fixture verifying snapshots/events/restriction and auth cleanup procedure.
-- [ ] Document AC1–8 evidence and exact source revision. Runbook says registration reminders/approval middleware are stopped together only at future cutover; trial approval continues, current legacy code stays intact.
-- [ ] Root commits verified S48, updates ledger, then proceeds to S09 without another approval gate.
+- [x] Record owned images, rollout/rollback and unchanged Docker VPN state. Rebuild only backend/gateway after guards pass. Use controlled disposable identities and readonly SQLite fixtures.
+- [x] Run real web/API restrict→old-session denied→unrestrict→new login; verify panel identity/limits/counters unchanged. Run pipe dry-run/apply/replay/conflict; then backup/restore fixture verifying snapshots/events/restriction and auth cleanup procedure.
+- [x] Document AC1–8 evidence and exact source revision. Runbook says registration reminders/approval middleware are stopped together only at future cutover; trial approval continues, current legacy code stays intact.
+- [x] Root commits verified S48, updates ledger, then proceeds to S09 without another approval gate.

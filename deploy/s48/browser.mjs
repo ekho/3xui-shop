@@ -49,15 +49,21 @@ async function mailToken(email,purpose='/verify-email'){
 async function register(browser,lang='en'){
  const context=await browser.newContext({viewport:{width:375,height:812}}),page=await context.newPage();
  const email='s48-'+randomUUID()+'@example.test',password='Local S48 '+randomUUID();
+ step='register page '+lang;
  await page.goto(origin+'/register?lang='+lang);
- await page.getByLabel(lang==='en'?'Email':'Электронная почта',{exact:true}).fill(email);
+ step='register form '+lang;
+ await page.getByLabel('Email',{exact:true}).fill(email);
  await page.getByRole('checkbox').nth(0).check();await page.getByRole('checkbox').nth(1).check();
  await page.getByRole('button',{name:lang==='en'?'Continue':'Продолжить',exact:true}).click();
+ step='registration email '+lang;
  const token=await mailToken(email);
+ step='verify page '+lang;
  await page.goto(origin+'/verify-email?lang='+lang+'#token='+token);
+ step='verify form '+lang;
  await page.getByLabel(lang==='en'?'Password':'Пароль',{exact:true}).fill(password);
  await page.getByRole('button',{name:lang==='en'?'Verify email':'Подтвердить email',exact:true}).click();
  await expect(page.getByText(lang==='en'?'Email verified. You can now sign in.':'Email подтверждён. Теперь войдите.')).toBeVisible();
+ step='login form '+lang;
  await page.goto(origin+'/login?lang=en');await page.getByLabel('Email',{exact:true}).fill(email);
  await page.getByLabel('Password',{exact:true}).fill(password);
  await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page).toHaveURL(/cabinet/);
@@ -134,14 +140,46 @@ try{
  check('AC1 trial denial independence','real trial rejection does not restrict verified account',
   'trial HTTP '+trial.status+'/'+trialDeniedStatus+', restricted='+afterTrial.restricted,
   trial.status===201&&trialDeniedStatus===200&&!afterTrial.restricted);
+ step='fresh native subscriber';
+ const subscriber=await register(browser);
+ const subTrial=await http(subscriber.context,'/api/v1/trial-requests','POST',
+  {comment:'S48 own native invariant'},subscriber.csrf,randomUUID());
+ const approved=subTrial.status===201?await http(operator.context,
+  '/api/v1/operator/trial-requests/'+subTrial.body.request_id+'/decision','POST',
+  {decision:'approve',reason:''},operator.csrf,randomUUID()):{status:0};
+ let active=false;
+ for(let attempt=0;attempt<150;attempt++){
+  const current=await http(subscriber.context,'/api/v1/subscription');
+  if(current.status===200&&current.body?.status==='active'){active=true;break;}
+  await new Promise(resolve=>setTimeout(resolve,200));
+ }
+ const subCard=await http(operator.context,'/api/v1/operator/clients/'+subscriber.id);
+ const operation=subCard.body?.trial_requests?.find(row=>row.request_id===subTrial.body?.request_id)?.operation_id;
+ const nativeBefore=operation?bridge('native',{operation}):null;
+ const activeKey=await http(subscriber.context,'/api/v1/subscription/key');
+ check('AC2 native subscription precondition','fresh approved trial reaches own 3X-UI with one grant/job, native identity, limits and counters observable',
+  'trial/decision/key HTTP '+[subTrial,approved,activeKey].map(x=>x.status).join('/')+', active='+active+', native='+nativeBefore?.status+', grants/jobs='+nativeBefore?.grants+'/'+nativeBefore?.jobs+', counter fields='+nativeBefore?.counter_fields,
+  subTrial.status===201&&approved.status===200&&active&&activeKey.status===200&&
+  nativeBefore?.status==='applied'&&nativeBefore.grants===1&&nativeBefore.jobs===1&&
+  nativeBefore.panel_identity&&nativeBefore.counter_fields);
+ step='independent ban fixtures';
+ const supportMessage=await http(client.context,'/api/v1/support/messages','POST',
+  {text:'S48 owned invariant fixture'},client.csrf,randomUUID());
+ const supportBan=await http(operator.context,'/api/v1/operator/clients/'+client.id+'/support/ban','POST',
+  {banned:true,reason:'S48 independent support state'},operator.csrf);
+ const vpnBan=bridge('fixture_vpn_ban',{account:client.id});
+ const baseline=bridge('state',{account:client.id});
+ check('AC2 independent-state precondition','own client has real support ban and separate VPN-ban fixture before account restriction',
+  'support HTTP '+supportMessage.status+'/'+supportBan.status+', support banned='+baseline.support_banned+', VPN banned='+baseline.vpn_banned,
+  supportMessage.status===201&&supportBan.status===204&&vpnBan.banned&&baseline.support_banned&&baseline.vpn_banned&&baseline.support!=='none');
  step='active credential proof';
  while(Date.now()<client.registeredAt+61000)await new Promise(resolve=>setTimeout(resolve,500));
  const resetRequest=await http(anonymous,'/api/v1/auth/password-reset','POST',{email:client.email,locale:'en'});
  const resetToken=await mailToken(client.email,'/reset-password');
  const beforeProof=bridge('state',{account:client.id});
- check('AC2 credential proof precondition','real password-reset proof and encrypted mail exist before restriction',
-  'request HTTP '+resetRequest.status+', active proofs='+beforeProof.proofs+', encrypted mail='+beforeProof.proof_mail,
-  resetRequest.status===202&&beforeProof.proofs>0&&beforeProof.proof_mail>0);
+ check('AC2 credential proof precondition','real password-reset proof delivered to Mailpit; ciphertext already cleared on delivery',
+  'request HTTP '+resetRequest.status+', active proofs='+beforeProof.proofs+', ciphertext at rest='+beforeProof.proof_mail,
+  resetRequest.status===202&&beforeProof.proofs>0&&beforeProof.proof_mail===0&&typeof resetToken==='string');
  step='restrict and replay';
  const sameKey=randomUUID(),payload={restricted:true,reason:'S48 owned acceptance'};
  const once=await http(operator.context,route(client.id),'POST',payload,operator.csrf,sameKey);
@@ -163,9 +201,10 @@ try{
   'HTTP '+[oldMe,oldKey,login,oldProof].map(x=>x.status).join('/')+', proofs='+restricted.proofs+', encrypted mail='+restricted.proof_mail,
   [401,403].includes(oldMe.status)&&[401,403].includes(oldKey.status)&&login.status===403&&oldProof.status===400&&
   restricted.proofs===0&&restricted.proof_mail===0);
- check('AC2 independent account state','restriction preserves VPN ban, native identity, operations and support state',
-  'identity equal='+ (restricted.identity===before.identity)+', operations equal='+(restricted.operations===before.operations)+', VPN ban equal='+(restricted.vpn_banned===before.vpn_banned),
-  restricted.identity===before.identity&&restricted.operations===before.operations&&restricted.vpn_banned===before.vpn_banned);
+ check('AC2 independent account state','restriction preserves true VPN ban, native identity, operations and true support ban/state',
+  'identity equal='+ (restricted.identity===baseline.identity)+', operations equal='+(restricted.operations===baseline.operations)+', VPN ban='+restricted.vpn_banned+', support ban='+restricted.support_banned+', support digest equal='+(restricted.support===baseline.support),
+  restricted.identity===baseline.identity&&restricted.operations===baseline.operations&&restricted.vpn_banned===baseline.vpn_banned&&
+  restricted.support_banned===baseline.support_banned&&restricted.support===baseline.support);
  step='unrestrict and fresh login';
  const release=await http(operator.context,route(client.id),'POST',{restricted:false,reason:'S48 review complete'},operator.csrf,randomUUID());
  const open=bridge('state',{account:client.id});
@@ -174,7 +213,34 @@ try{
  check('AC2 explicit unrestrict','explicit release succeeds, old session stays revoked, new login succeeds with unchanged identity',
   'HTTP '+[release,stale,fresh].map(x=>x.status).join('/')+', audit count='+open.audit_unrestricted,
   release.status===200&&!open.restricted&&[401,403].includes(stale.status)&&fresh.status===200&&
-  open.identity===before.identity&&open.audit_unrestricted===before.audit_unrestricted+1);
+  open.identity===baseline.identity&&open.support===baseline.support&&open.audit_unrestricted===before.audit_unrestricted+1);
+ step='native restriction invariants';
+ const nativeStateBefore=bridge('state',{account:subscriber.id});
+ const nativeRestrict=await http(operator.context,route(subscriber.id),'POST',
+  {restricted:true,reason:'S48 native access review'},operator.csrf,randomUUID());
+ const nativeDuring=bridge('native',{operation});
+ const nativeStateDuring=bridge('state',{account:subscriber.id});
+ const nativeKeyDenied=await http(subscriber.context,'/api/v1/subscription/key');
+ const nativeLoginDenied=await http(anonymous,'/api/v1/auth/login','POST',
+  {email:subscriber.email,password:subscriber.password});
+ const nativeUnrestrict=await http(operator.context,route(subscriber.id),'POST',
+  {restricted:false,reason:'S48 native review complete'},operator.csrf,randomUUID());
+ const nativeAfter=bridge('native',{operation});
+ const nativeStateAfter=bridge('state',{account:subscriber.id});
+ const nativeFreshLogin=await http(anonymous,'/api/v1/auth/login','POST',
+  {email:subscriber.email,password:subscriber.password});
+ check('AC2 native identity and counters','restriction denies old key/login, then fresh login; panel identity, limit, counter and PG operation digests remain equal',
+  'HTTP '+[nativeRestrict,nativeKeyDenied,nativeLoginDenied,nativeUnrestrict,nativeFreshLogin].map(x=>x.status).join('/')+
+  ', panel/target/counter/operation equal='+[nativeBefore.panel_digest===nativeDuring.panel_digest&&nativeDuring.panel_digest===nativeAfter.panel_digest,
+   nativeBefore.target_digest===nativeDuring.target_digest&&nativeDuring.target_digest===nativeAfter.target_digest,
+   nativeBefore.counter_digest===nativeDuring.counter_digest&&nativeDuring.counter_digest===nativeAfter.counter_digest,
+   nativeStateBefore.operations===nativeStateDuring.operations&&nativeStateDuring.operations===nativeStateAfter.operations].join('/'),
+  nativeRestrict.status===200&&[401,403].includes(nativeKeyDenied.status)&&nativeLoginDenied.status===403&&
+  nativeUnrestrict.status===200&&nativeFreshLogin.status===200&&nativeDuring.panel_identity&&nativeAfter.panel_identity&&
+  nativeBefore.panel_digest===nativeDuring.panel_digest&&nativeDuring.panel_digest===nativeAfter.panel_digest&&
+  nativeBefore.target_digest===nativeDuring.target_digest&&nativeDuring.target_digest===nativeAfter.target_digest&&
+  nativeBefore.counter_digest===nativeDuring.counter_digest&&nativeDuring.counter_digest===nativeAfter.counter_digest&&
+  nativeStateBefore.operations===nativeStateDuring.operations&&nativeStateDuring.operations===nativeStateAfter.operations);
  step='browser operator controls';
  await operator.page.goto(origin+'/admin/clients/'+client.id+'/show?lang=en');
  await expect(operator.page.getByRole('heading',{name:client.email})).toBeVisible();
@@ -256,11 +322,13 @@ try{
    settle.status===200&&!bridge('state',{account:other.id}).restricted);
  }
  check('AC8 runtime postflight','no Telegram operator routing and Docker VPN state retained',
-  'no Telegram operators='+bridge('transport').no_telegram_operators+', bot stopped='+bridge('transport').bot_stopped+', VPN baseline equal='+(bridge('transport').vpn_connected===transport.vpn_connected),
+  'no Telegram operators='+bridge('transport').no_telegram_operators+', bot stopped='+bridge('transport').bot_stopped+', VPN baseline equal='+(bridge('transport').vpn_connected===transport.vpn_connected)+', VPN config digest equal='+(bridge('transport').vpn_config_digest===transport.vpn_config_digest),
   bridge('transport').no_telegram_operators&&bridge('transport').bot_stopped&&bridge('transport').reconcile_stopped&&
-  bridge('transport').vpn_connected===transport.vpn_connected);
+  bridge('transport').vpn_connected===transport.vpn_connected&&bridge('transport').vpn_config_digest===transport.vpn_config_digest);
 }catch(error){
+ const category=error?.message?.includes('mail token timeout')?'mail token timeout':
+  error?.name==='TimeoutError'?'browser timeout':error?.name==='AssertionError'?'assertion':'driver or runtime error';
  writeSync(fd,JSON.stringify({criterion:'S48 driver interruption at '+step,target,command,
-  expected:'all reached checks complete',actual:'interrupted; inspect private bounded run log',verdict:'BLOCKED',artifacts:[evidencePath]})+'\n');
+  expected:'all reached checks complete',actual:category+'; inspect private bounded run log',verdict:'BLOCKED',artifacts:[evidencePath]})+'\n');
  process.exitCode=1;
 }finally{if(browser)await browser.close();closeSync(fd);}
