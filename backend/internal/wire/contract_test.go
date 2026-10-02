@@ -40,7 +40,9 @@ func TestOperatorContractShapes(t *testing.T) {
 	}
 	for _, tc := range []struct{ schema, body string }{
 		{"OperatorClient", `{"account_id":"00000000-0000-4000-8000-000000000001","kind":"telegram","display_name":"Fixture","email":null,"telegram_id":"9223372036854775807","locale":"en","created_at":null,"restricted":false,"vpn_banned":false,"had_subscription":false}`},
-		{"OperatorHistoryResult", `{"kind":"trials","trial_requests":[],"audit_events":[],"has_more":false}`},
+		{"OperatorHistoryResult", `{"kind":"trials","trial_requests":[],"audit_events":[],"legacy_events":[],"has_more":false}`},
+		{"OperatorRestrictionResult", `{"restricted":true,"changed_at":null,"operator_account_id":null}`},
+		{"OperatorLegacyApprovalEvent", `{"source_id":"71","target_tg_id":"701","created_at":"2024-01-02T00:04:05Z","action":"approval.reject","actor_type":null,"actor_id":null,"actor_name":null,"source":null}`},
 		{"OperatorDecisionResult", `{"request":{"request_id":"00000000-0000-4000-8000-000000000002","status":"rejected","created_at":"2026-10-02T10:00:00Z","decided_at":"2026-10-02T10:01:00Z","operation_id":null,"previous_request_id":null},"operation_id":null}`},
 		{"TelegramPayload", `{"request_id":"00000000-0000-4000-8000-000000000002","operation_id":null,"target_message_id":null,"email":null,"display_name":"Fixture","telegram_id":"9223372036854775807","comment":"","created_at":"2026-10-02T10:00:00Z","status":"pending"}`},
 	} {

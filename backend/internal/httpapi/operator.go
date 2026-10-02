@@ -87,6 +87,21 @@ func (a *API) GetOperatorClientKey(c *echo.Context) error {
 	}
 	return c.JSON(200, out)
 }
+func (a *API) SetOperatorRestriction(c *echo.Context) error {
+	actor, id, key, err := a.operatorAction(c)
+	if err != nil {
+		return err
+	}
+	in, err := decode[wire.OperatorRestrictionInput](a, c, "OperatorRestrictionInput")
+	if err != nil {
+		return err
+	}
+	out, err := a.svc.SetOperatorRestriction(c.Request().Context(), actor, id, key, in)
+	if err != nil {
+		return err
+	}
+	return c.JSON(200, out)
+}
 func (a *API) operatorAction(c *echo.Context) (uuid.UUID, uuid.UUID, uuid.UUID, error) {
 	account, err := a.operatorAuth(c, true)
 	if err != nil {

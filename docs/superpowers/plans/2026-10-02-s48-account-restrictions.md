@@ -33,7 +33,7 @@
 
 **Interfaces:**
 - Consumes: `lockOperatorPair(ctx, tx, actor, target)`, existing `replay`/`saveIdempotency`, DeleteAccountSessions/RevokeCredentialProofs/ClearRevokedCredentialMail.
-- Produces: `SetOperatorRestriction(ctx context.Context, actor, target, key uuid.UUID, in wire.OperatorRestrictionInput) (wire.OperatorRestrictionResult, error)`; POST `/api/v1/operator/clients/{id}/restriction`, `{restricted,reason}`, result `{restricted,changed_at,operator_account_id}`.
+- Produces: `SetOperatorRestriction(ctx context.Context, actor, target, key uuid.UUID, in wire.OperatorRestrictionInput) (wire.OperatorRestrictionResult, error)`; POST `/api/v1/operator/clients/{id}/restriction`, `{restricted,reason}`, result `{restricted,changed_at,operator_account_id}`. Последние два поля nullable и описывают последний реальный ручной переход, не момент no-op или выдуманного импортного оператора.
 - Card adds optional legacy snapshot, `legacy_events`/`legacy_has_more`; history adds `kind:legacy` and separate decimal-string source-ID cursor, preserving existing UUID audit/trial cursor contracts.
 - CLI `server import-legacy-approvals --dry-run|--apply`; typed version1 users/events package; output only counts/stable codes. No HTTP import route.
 

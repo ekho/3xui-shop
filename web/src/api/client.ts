@@ -82,11 +82,14 @@ export type OperatorAuditEvent=components['schemas']['OperatorAuditEvent'];
 export type OperatorHistoryResult=components['schemas']['OperatorHistoryResult'];
 export type OperatorDecisionResult=components['schemas']['OperatorDecisionResult'];
 export type OperatorTelegramTrialResult=components['schemas']['OperatorTelegramTrialResult'];
+export type OperatorLegacyApprovalEvent=components['schemas']['OperatorLegacyApprovalEvent'];
+export type OperatorRestrictionResult=components['schemas']['OperatorRestrictionResult'];
 const operatorClientPath=(id:string)=>'operator/clients/'+encodeURIComponent(id);
 export async function getOperatorSession(signal?:AbortSignal){const out=await request<OperatorSession>('operator/session','GET',undefined,signal);csrf=out.csrf_token;return out;}
 export const searchOperatorClients=(q:string,page:number,signal?:AbortSignal)=>request<OperatorSearchResult>('operator/clients/search','POST',{q,page,per_page:50},signal,true);
 export const getOperatorClient=(id:string,signal?:AbortSignal)=>request<OperatorClientCard>(operatorClientPath(id),'GET',undefined,signal);
 export const getOperatorClientHistory=(id:string,input:components['schemas']['OperatorHistoryInput'],signal?:AbortSignal)=>request<OperatorHistoryResult>(operatorClientPath(id)+'/history','POST',input,signal,true);
+export const setOperatorRestriction=(id:string,input:components['schemas']['OperatorRestrictionInput'],key:string,signal?:AbortSignal)=>request<OperatorRestrictionResult>(operatorClientPath(id)+'/restriction','POST',input,signal,true,key);
 export const getOperatorClientKey=(id:string,signal?:AbortSignal)=>request<SubscriptionKey>(operatorClientPath(id)+'/key','GET',undefined,signal);
 export const decideOperatorTrial=(id:string,input:components['schemas']['OperatorDecisionInput'],key:string,signal?:AbortSignal)=>request<OperatorDecisionResult>('operator/trial-requests/'+encodeURIComponent(id)+'/decision','POST',input,signal,true,key);
 export const reconsiderOperatorTrial=(id:string,reason:string,key:string,signal?:AbortSignal)=>request<TrialRequest>('operator/trial-requests/'+encodeURIComponent(id)+'/reconsider','POST',{reason},signal,true,key);

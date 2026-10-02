@@ -10,26 +10,28 @@ import (
 )
 
 type Account struct {
-	ID                uuid.UUID
-	EmailKey          pgtype.Text
-	Locale            string
-	PasswordHash      pgtype.Text
-	VerifiedAt        pgtype.Timestamptz
-	Restricted        bool
-	VpnID             uuid.UUID
-	SubID             string
-	PanelKey          string
-	TermsVersion      pgtype.Text
-	PrivacyVersion    pgtype.Text
-	TelegramID        pgtype.Int8
-	LegacyUserID      pgtype.Int8
-	AssignedPanelID   pgtype.Text
-	HadSubscription   bool
-	CredentialVersion int64
-	VpnBanned         bool
-	Kind              string
-	DisplayName       pgtype.Text
-	CreatedAt         pgtype.Timestamptz
+	ID                           uuid.UUID
+	EmailKey                     pgtype.Text
+	Locale                       string
+	PasswordHash                 pgtype.Text
+	VerifiedAt                   pgtype.Timestamptz
+	Restricted                   bool
+	VpnID                        uuid.UUID
+	SubID                        string
+	PanelKey                     string
+	TermsVersion                 pgtype.Text
+	PrivacyVersion               pgtype.Text
+	TelegramID                   pgtype.Int8
+	LegacyUserID                 pgtype.Int8
+	AssignedPanelID              pgtype.Text
+	HadSubscription              bool
+	CredentialVersion            int64
+	VpnBanned                    bool
+	Kind                         string
+	DisplayName                  pgtype.Text
+	CreatedAt                    pgtype.Timestamptz
+	RestrictionChangedAt         pgtype.Timestamptz
+	RestrictionOperatorAccountID *uuid.UUID
 }
 
 type AuditEvent struct {
@@ -80,6 +82,28 @@ type IdempotencyRecord struct {
 	BodyHash  []byte
 	Result    []byte
 	CreatedAt pgtype.Timestamptz
+}
+
+type LegacyApprovalEvent struct {
+	SourceID   int64
+	AccountID  uuid.UUID
+	TargetTgID int64
+	CreatedAt  pgtype.Timestamptz
+	Action     string
+	ActorType  pgtype.Text
+	ActorID    pgtype.Int8
+	ActorName  pgtype.Text
+	Source     pgtype.Text
+}
+
+type LegacyApprovalSnapshot struct {
+	AccountID          uuid.UUID
+	SourceLegacyUserID int64
+	SourceTgID         int64
+	Status             string
+	RequestedAt        pgtype.Timestamptz
+	DecidedAt          pgtype.Timestamptz
+	DecidedBy          pgtype.Int8
 }
 
 type MailDelivery struct {

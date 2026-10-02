@@ -5781,6 +5781,156 @@
           }
         }
       }
+    },
+    "/api/v1/operator/clients/{id}/restriction": {
+      "post": {
+        "operationId": "setOperatorRestriction",
+        "description": "Verified unrestricted web operator session; actor from session. Origin, CSRF and Idempotency-Key required. Protected operator targets and self restriction denied. Reason trimmed 1-1000 Unicode characters, no NUL; JSON <=16 KiB. Private no-store response.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                },
+                "description": "Seconds before retry"
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatorRestrictionResult"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperatorRestrictionInput"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -6621,7 +6771,8 @@
               "OPERATION_NOT_READY",
               "IDEMPOTENCY_CONFLICT",
               "RATE_LIMITED",
-              "SERVICE_UNAVAILABLE"
+              "SERVICE_UNAVAILABLE",
+              "OPERATOR_ACCOUNT_PROTECTED"
             ]
           },
           "message": {
@@ -7594,6 +7745,24 @@
           },
           "audit_has_more": {
             "type": "boolean"
+          },
+          "legacy_approval": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OperatorLegacyApproval"
+              }
+            ],
+            "nullable": true
+          },
+          "legacy_events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OperatorLegacyApprovalEvent"
+            },
+            "maxItems": 50
+          },
+          "legacy_has_more": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -7604,7 +7773,10 @@
           "trial_requests",
           "trial_has_more",
           "audit_events",
-          "audit_has_more"
+          "audit_has_more",
+          "legacy_approval",
+          "legacy_events",
+          "legacy_has_more"
         ]
       },
       "OperatorHistoryInput": {
@@ -7615,7 +7787,8 @@
             "type": "string",
             "enum": [
               "trials",
-              "audit"
+              "audit",
+              "legacy"
             ]
           },
           "before_created_at": {
@@ -7625,12 +7798,17 @@
           "before_id": {
             "type": "string",
             "format": "uuid"
+          },
+          "before_source_id": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "maxLength": 19
           }
         },
         "required": [
           "kind"
         ],
-        "description": "Cursor fields must both be present or both absent. Fixed created_at DESC, id DESC order; server returns at most 50 rows."
+        "description": "For legacy, before_created_at and before_source_id must both be present or absent; for trials/audit use before_created_at and UUID before_id. Descending created_at/source_id or created_at/id order."
       },
       "OperatorHistoryResult": {
         "type": "object",
@@ -7640,7 +7818,8 @@
             "type": "string",
             "enum": [
               "trials",
-              "audit"
+              "audit",
+              "legacy"
             ]
           },
           "trial_requests": {
@@ -7659,13 +7838,21 @@
           },
           "has_more": {
             "type": "boolean"
+          },
+          "legacy_events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OperatorLegacyApprovalEvent"
+            },
+            "maxItems": 50
           }
         },
         "required": [
           "kind",
           "trial_requests",
           "audit_events",
-          "has_more"
+          "has_more",
+          "legacy_events"
         ]
       },
       "OperatorDecisionInput": {
@@ -7770,6 +7957,152 @@
           "client",
           "request",
           "operation_id"
+        ]
+      },
+      "OperatorRestrictionInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "restricted": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "restricted",
+          "reason"
+        ],
+        "description": "Reason is trimmed by server; 1-1000 Unicode characters after trim, NUL forbidden."
+      },
+      "OperatorRestrictionResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "restricted": {
+            "type": "boolean"
+          },
+          "changed_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "operator_account_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          }
+        },
+        "required": [
+          "restricted",
+          "changed_at",
+          "operator_account_id"
+        ],
+        "description": "Fields changed_at and operator_account_id describe the last actual manual restriction transition. They are null when no manual transition exists, including imported restrictions; no-op returns current stored metadata."
+      },
+      "OperatorLegacyApproval": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source_legacy_user_id": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "maxLength": 19
+          },
+          "source_tg_id": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "maxLength": 19
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ]
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "decided_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "decided_by": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "maxLength": 19,
+            "nullable": true
+          }
+        },
+        "required": [
+          "source_legacy_user_id",
+          "source_tg_id",
+          "status",
+          "requested_at",
+          "decided_at",
+          "decided_by"
+        ]
+      },
+      "OperatorLegacyApprovalEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "maxLength": 19
+          },
+          "target_tg_id": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "maxLength": 19
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "approval.approve",
+              "approval.reject"
+            ]
+          },
+          "actor_type": {
+            "type": "string",
+            "nullable": true
+          },
+          "actor_id": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "maxLength": 19,
+            "nullable": true
+          },
+          "actor_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "source": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "source_id",
+          "target_tg_id",
+          "created_at",
+          "action",
+          "actor_type",
+          "actor_id",
+          "actor_name",
+          "source"
         ]
       }
     }

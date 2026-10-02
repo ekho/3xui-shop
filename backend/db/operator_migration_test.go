@@ -48,6 +48,10 @@ func TestOperatorDowngradePreservesSourceAndActors(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// First step removes S48; the fail-closed downgrade guard belongs to S06.
+			if _, err = provider.Down(ctx); err != nil {
+				t.Fatal("down to operator migration", err)
+			}
 			if _, err = provider.Down(ctx); err == nil || !strings.Contains(err.Error(), "operator client downgrade blocked") {
 				t.Fatal("downgrade must fail closed")
 			}
@@ -76,6 +80,9 @@ func TestOperatorMigrationKeepsOldCreationDateUnknown(t *testing.T) {
 	provider, err := goose.NewProvider(goose.DialectPostgres, database, os.DirFS("migrations"))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if _, err = provider.Down(ctx); err != nil {
+		t.Fatal("down to operator migration", err)
 	}
 	if _, err = provider.Down(ctx); err != nil {
 		t.Fatal("down to original accounts schema", err)

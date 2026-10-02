@@ -11,7 +11,7 @@ const rejected:Model<'OperatorTrialRequest'>={...pending,request_id:'30000000-00
 const operation:Model<'OperatorOperation'>={operation_id:'40000000-0000-4000-8000-000000000001',status:'needs_review',created_at:'2026-10-02T09:40:00Z'};
 const withOperation:Model<'OperatorTrialRequest'>={...pending,request_id:'30000000-0000-4000-8000-000000000003',status:'approved',operation_id:operation.operation_id,operation};
 const audit:Model<'OperatorAuditEvent'>={id:'50000000-0000-4000-8000-000000000001',created_at:'2026-10-02T08:00:00Z',action:'trial.requested',request_id:pending.request_id,operation_id:null,operator_tg_id:'123456789',operator_account_id:null,reason:'Audited reason',support_message_id:null};
-const card:Model<'OperatorClientCard'>={client:tgClient,subscription,server:{panel_id:'configured-panel',enabled:true},support:null,trial_requests:[pending,rejected,withOperation],trial_has_more:true,audit_events:[audit],audit_has_more:true};
+const card:Model<'OperatorClientCard'>={client:tgClient,subscription,server:{panel_id:'configured-panel',enabled:true},support:null,trial_requests:[pending,rejected,withOperation],trial_has_more:true,audit_events:[audit],audit_has_more:true,legacy_approval:null,legacy_events:[],legacy_has_more:false};
 
 async function operatorRoutes(page:Page,extra?:(route:Route,path:string)=>Promise<boolean>,searches:{q:string;page:number;per_page:number}[]=[]){
  await page.route('**/api/v1/**',async route=>{const request=route.request(),path=new URL(request.url()).pathname;if(extra&&await extra(route,path))return;

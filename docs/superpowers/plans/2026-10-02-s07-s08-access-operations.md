@@ -40,6 +40,7 @@
 - POST `/api/v1/operator/clients/{id}/access-operations`202; GET `.../access-operations/{operation_id}`; POST same `/reconcile` with reason, idempotency and explicit reset-cost acknowledgement only when needed. Foreign client/operation mismatch refused.
 - Operation public DTO: operation_id,account_id,kind,status,created_at,updated_at,reason,operator_account_id (nullable for system), desired nonsecret conditions/plan revision, completed steps/review reason. No rawpanel/key/credentials.
 - AccessWorker consumes persisted target. Shared per-account PostgreSQL ownership applies to ProvisionWorker and every access kind; unresolved needs_review owns the account until explicit resolution.
+- Existing `audit_events.operation_id` FK points to trial_operations: preserve it. Add nullable `access_operation_id` FK and compatible audit DTO field for access events, without fake trial rows or dropping the old FK.
 - `CurrentSubscription` and operator card read last confirmed access conditions + pending operation while preserving trial grant history.
 
 - [ ] Write `TestAccessCompensationPreservesConditions` with now/expiry literals for active and expired clients; invalid0/366, banned/unlimited/perpetual/unreachable no effects; missing client one bonus grant. Write `TestAccessAssignmentAndResetPreserveIdentityAndBan`, `TestAccessReplayLostResponseAndTrialRace`, `TestAccessPartialWriteAndExplicitReconcile` and `TestCurrentSubscriptionAfterAccessOperation`.
@@ -62,9 +63,9 @@
 
 **Interfaces:**
 - Extend typed kinds `set_profile {profile:regular|euru|unlimited}` and `set_vpn_ban {vpn_banned:boolean}` on same operation API/executor; save no-client profile for future trial/bonus.
-- `PanelClient.ProfileInboundIDs(ctx,profile)` resolves exact managed tag segments; unlimited includes regular, reject empty/unknown. Preserve all unrelated memberships/raw fields; native3.7.0 format from existing code, no arbitrary editor.
+- `PanelClient.ProfileInboundIDs(ctx,profile)` resolves exact managed tag segments; unlimited includes regular, reject empty/unknown. Preserve all unrelated memberships/raw fields; native3.7.0 uses full client payload at `clients/update/{email}`, attach/detach and bulkEnable/bulkDisable/resetTraffic. Existing positive devices uses native limitIp=devices+1; preserve this convention everywhere.
 - `Service.EnqueueMonthlyResets(ctx context.Context, now time.Time) error` computes current eligible period from configured timezone and queues same-executor jobs with system actor. Startup plus bounded timer from server, period uniqueness in DB; recheck banned/profile immediately before effect.
-- Config `ACCESS_RESET_TIMEZONE` defaultUTC, Go LoadLocation; timezone data available in delivered image (stdlib embed if image lacks it). No separate scheduler framework.
+- Config `ACCESS_RESET_TIMEZONE` defaultUTC, Go LoadLocation. Existing delivered image is scratch: embed stdlib `time/tzdata` so named zones work in the container. No separate scheduler framework.
 
 - [ ] RED `TestAccessProfilePreservesConditionsAndUnmanagedMembership`, `TestAccessUnlimitedAndRevoke`, `TestAccessBanPersistsThroughEveryReset`, `TestAccessNoClientProfileAndProvisioning`, `TestMonthlyResetTimezoneGraceAndUniquePeriod`, `TestMonthlyResetRechecksAndLostResponse`. Include UTC and Europe/Moscow month boundary, exact3600s/3601s, double process, banned skip, leave-unlimited skip, no overdue-month reset/expiry extension.
 - [ ] Implement extension and schedule atop Task1 with explicit system audit. Do not enable unlimited if its hidden plan or scheduler prerequisite is invalid. Regular/euru changes preserve limits/expiry/counters; unlimited revoke uses configured trial/reset; no-client nonunlimited only saves intent. Matching desired-state new-key no duplicate effect.

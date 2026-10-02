@@ -142,6 +142,48 @@ func operatorAuditRows(rows []store.AuditEvent) ([]wire.OperatorAuditEvent, bool
 	}
 	return out, more
 }
+func legacySnapshot(r store.LegacyApprovalSnapshot) *wire.OperatorLegacyApproval {
+	out := &wire.OperatorLegacyApproval{SourceLegacyUserId: strconv.FormatInt(r.SourceLegacyUserID, 10), SourceTgId: strconv.FormatInt(r.SourceTgID, 10), Status: wire.OperatorLegacyApprovalStatus(r.Status)}
+	if r.RequestedAt.Valid {
+		out.RequestedAt = &r.RequestedAt.Time
+	}
+	if r.DecidedAt.Valid {
+		out.DecidedAt = &r.DecidedAt.Time
+	}
+	if r.DecidedBy.Valid {
+		id := strconv.FormatInt(r.DecidedBy.Int64, 10)
+		out.DecidedBy = &id
+	}
+	return out
+}
+func legacyEvent(r store.LegacyApprovalEvent) wire.OperatorLegacyApprovalEvent {
+	out := wire.OperatorLegacyApprovalEvent{SourceId: strconv.FormatInt(r.SourceID, 10), TargetTgId: strconv.FormatInt(r.TargetTgID, 10), CreatedAt: r.CreatedAt.Time, Action: wire.OperatorLegacyApprovalEventAction(r.Action)}
+	if r.Source.Valid {
+		out.Source = &r.Source.String
+	}
+	if r.ActorType.Valid {
+		out.ActorType = &r.ActorType.String
+	}
+	if r.ActorID.Valid {
+		id := strconv.FormatInt(r.ActorID.Int64, 10)
+		out.ActorId = &id
+	}
+	if r.ActorName.Valid {
+		out.ActorName = &r.ActorName.String
+	}
+	return out
+}
+func legacyEventRows(rows []store.LegacyApprovalEvent) ([]wire.OperatorLegacyApprovalEvent, bool) {
+	more := len(rows) > 50
+	if more {
+		rows = rows[:50]
+	}
+	out := make([]wire.OperatorLegacyApprovalEvent, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, legacyEvent(r))
+	}
+	return out, more
+}
 
 func (s *Service) SearchOperatorClients(ctx context.Context, actor uuid.UUID, in wire.OperatorSearchInput) (wire.OperatorSearchResult, error) {
 	out := wire.OperatorSearchResult{Clients: []wire.OperatorClient{}, Page: in.Page, PerPage: in.PerPage}
@@ -187,11 +229,35 @@ func (s *Service) operatorClientAccount(ctx context.Context, actor, target uuid.
 }
 
 func (s *Service) OperatorClientHistory(ctx context.Context, actor, target uuid.UUID, in wire.OperatorHistoryInput) (wire.OperatorHistoryResult, error) {
-	out := wire.OperatorHistoryResult{Kind: wire.OperatorHistoryResultKind(in.Kind), TrialRequests: []wire.OperatorTrialRequest{}, AuditEvents: []wire.OperatorAuditEvent{}}
+	out := wire.OperatorHistoryResult{Kind: wire.OperatorHistoryResultKind(in.Kind), TrialRequests: []wire.OperatorTrialRequest{}, AuditEvents: []wire.OperatorAuditEvent{}, LegacyEvents: []wire.OperatorLegacyApprovalEvent{}}
 	if _, err := s.operatorClientAccount(ctx, actor, target); err != nil {
 		return out, err
 	}
-	if in.Kind != "trials" && in.Kind != "audit" || (in.BeforeCreatedAt == nil) != (in.BeforeId == nil) {
+	if in.Kind != "trials" && in.Kind != "audit" && in.Kind != "legacy" {
+		return out, failure(400, "INVALID_INPUT")
+	}
+	if in.Kind == "legacy" {
+		if in.BeforeId != nil || (in.BeforeCreatedAt == nil) != (in.BeforeSourceId == nil) {
+			return out, failure(400, "INVALID_INPUT")
+		}
+		var before pgtype.Timestamptz
+		var sourceID int64
+		if in.BeforeCreatedAt != nil {
+			before = stamp(*in.BeforeCreatedAt)
+			var err error
+			sourceID, err = parseTelegramID(*in.BeforeSourceId)
+			if err != nil {
+				return out, err
+			}
+		}
+		rows, err := store.New(s.pool).LegacyApprovalPage(ctx, store.LegacyApprovalPageParams{AccountID: target, BeforeCreatedAt: before, BeforeSourceID: sourceID})
+		if err != nil {
+			return out, unavailable()
+		}
+		out.LegacyEvents, out.HasMore = legacyEventRows(rows)
+		return out, nil
+	}
+	if in.BeforeSourceId != nil || (in.BeforeCreatedAt == nil) != (in.BeforeId == nil) {
 		return out, failure(400, "INVALID_INPUT")
 	}
 	var before pgtype.Timestamptz
@@ -227,6 +293,17 @@ func (s *Service) OperatorClient(ctx context.Context, actor, target uuid.UUID) (
 		return out, err
 	}
 	q := store.New(s.pool)
+	legacy, err := q.LegacyApprovalByAccount(ctx, target)
+	if err == nil {
+		out.LegacyApproval = legacySnapshot(legacy)
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return out, unavailable()
+	}
+	legacyRows, err := q.LegacyApprovalPage(ctx, store.LegacyApprovalPageParams{AccountID: target})
+	if err != nil {
+		return out, unavailable()
+	}
+	out.LegacyEvents, out.LegacyHasMore = legacyEventRows(legacyRows)
 	trials, err := q.OperatorTrialPage(ctx, store.OperatorTrialPageParams{AccountID: target})
 	if err != nil {
 		return out, unavailable()

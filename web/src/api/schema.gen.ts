@@ -769,6 +769,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/operator/clients/{id}/restriction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Verified unrestricted web operator session; actor from session. Origin, CSRF and Idempotency-Key required. Protected operator targets and self restriction denied. Reason trimmed 1-1000 Unicode characters, no NUL; JSON <=16 KiB. Private no-store response. */
+        post: operations["setOperatorRestriction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -983,7 +1000,7 @@ export interface components {
         };
         ErrorBody: {
             /** @enum {string} */
-            code: "INVALID_INPUT" | "INVALID_CREDENTIALS" | "EMAIL_VERIFICATION_REQUIRED" | "ACCOUNT_RESTRICTED" | "TRIAL_DISABLED" | "TRIAL_ALREADY_USED" | "TRIAL_RECONSIDERATION_REQUIRED" | "REQUEST_STATE_CONFLICT" | "OPERATION_NOT_READY" | "IDEMPOTENCY_CONFLICT" | "RATE_LIMITED" | "SERVICE_UNAVAILABLE";
+            code: "INVALID_INPUT" | "INVALID_CREDENTIALS" | "EMAIL_VERIFICATION_REQUIRED" | "ACCOUNT_RESTRICTED" | "TRIAL_DISABLED" | "TRIAL_ALREADY_USED" | "TRIAL_RECONSIDERATION_REQUIRED" | "REQUEST_STATE_CONFLICT" | "OPERATION_NOT_READY" | "IDEMPOTENCY_CONFLICT" | "RATE_LIMITED" | "SERVICE_UNAVAILABLE" | "OPERATOR_ACCOUNT_PROTECTED";
             message: string;
             /** Format: uuid */
             request_id: string;
@@ -1221,22 +1238,27 @@ export interface components {
             trial_has_more: boolean;
             audit_events: components["schemas"]["OperatorAuditEvent"][];
             audit_has_more: boolean;
+            legacy_approval: components["schemas"]["OperatorLegacyApproval"] | null;
+            legacy_events: components["schemas"]["OperatorLegacyApprovalEvent"][];
+            legacy_has_more: boolean;
         };
-        /** @description Cursor fields must both be present or both absent. Fixed created_at DESC, id DESC order; server returns at most 50 rows. */
+        /** @description For legacy, before_created_at and before_source_id must both be present or absent; for trials/audit use before_created_at and UUID before_id. Descending created_at/source_id or created_at/id order. */
         OperatorHistoryInput: {
             /** @enum {string} */
-            kind: "trials" | "audit";
+            kind: "trials" | "audit" | "legacy";
             /** Format: date-time */
             before_created_at?: string;
             /** Format: uuid */
             before_id?: string;
+            before_source_id?: string;
         };
         OperatorHistoryResult: {
             /** @enum {string} */
-            kind: "trials" | "audit";
+            kind: "trials" | "audit" | "legacy";
             trial_requests: components["schemas"]["OperatorTrialRequest"][];
             audit_events: components["schemas"]["OperatorAuditEvent"][];
             has_more: boolean;
+            legacy_events: components["schemas"]["OperatorLegacyApprovalEvent"][];
         };
         /** @description Reject requires a nonblank reason; approve permits an empty reason. Actor is only the authenticated operator session. */
         OperatorDecisionInput: {
@@ -1264,6 +1286,42 @@ export interface components {
             request: components["schemas"]["TrialRequest"];
             /** Format: uuid */
             operation_id: string;
+        };
+        /** @description Reason is trimmed by server; 1-1000 Unicode characters after trim, NUL forbidden. */
+        OperatorRestrictionInput: {
+            restricted: boolean;
+            reason: string;
+        };
+        /** @description Fields changed_at and operator_account_id describe the last actual manual restriction transition. They are null when no manual transition exists, including imported restrictions; no-op returns current stored metadata. */
+        OperatorRestrictionResult: {
+            restricted: boolean;
+            /** Format: date-time */
+            changed_at: string | null;
+            /** Format: uuid */
+            operator_account_id: string | null;
+        };
+        OperatorLegacyApproval: {
+            source_legacy_user_id: string;
+            source_tg_id: string;
+            /** @enum {string} */
+            status: "pending" | "approved" | "rejected";
+            /** Format: date-time */
+            requested_at: string | null;
+            /** Format: date-time */
+            decided_at: string | null;
+            decided_by: string | null;
+        };
+        OperatorLegacyApprovalEvent: {
+            source_id: string;
+            target_tg_id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** @enum {string} */
+            action: "approval.approve" | "approval.reject";
+            actor_type: string | null;
+            actor_id: string | null;
+            actor_name: string | null;
+            source: string | null;
         };
     };
     responses: never;
@@ -5405,6 +5463,101 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OperatorTelegramTrialResult"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    /** @description Seconds before retry */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    setOperatorRestriction: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token": string;
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OperatorRestrictionInput"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorRestrictionResult"];
                 };
             };
             /** @description Safe error */

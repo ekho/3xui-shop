@@ -146,6 +146,7 @@ func New(svc *s01.Service, cfg s01.Config) *echo.Echo {
 	e.GET("/api/v1/operator/clients/:id", a.GetOperatorClient)
 	e.POST("/api/v1/operator/clients/:id/history", a.GetOperatorClientHistory)
 	e.GET("/api/v1/operator/clients/:id/key", a.GetOperatorClientKey)
+	e.POST("/api/v1/operator/clients/:id/restriction", a.SetOperatorRestriction)
 	e.POST("/api/v1/operator/trial-requests/:id/decision", a.DecideOperatorTrial)
 	e.POST("/api/v1/operator/trial-requests/:id/reconsider", a.ReconsiderOperatorTrial)
 	e.POST("/api/v1/operator/trial-operations/:id/reconcile", a.ReconcileOperatorTrial)

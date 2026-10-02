@@ -28,6 +28,9 @@ func main() {
 	}
 }
 func run() error {
+	if len(os.Args) == 3 && os.Args[1] == "import-legacy-approvals" {
+		return runLegacyApprovalImport(os.Args[2])
+	}
 	if len(os.Args) == 5 && os.Args[1] == "operator" {
 		return runOperatorCommand(os.Args[2], os.Args[3], os.Args[4])
 	}

@@ -100,7 +100,10 @@ counts и error code, без source IDs/имён/email/тел токенов и�
 
 POST `/api/v1/operator/clients/{id}/restriction`:
 `{restricted: boolean, reason: string}` и `Idempotency-Key` UUID.
-Ответ — эффективное состояние, время изменения и web actor UUID.
+Ответ — эффективное состояние и метаданные последнего реального ручного
+изменения: `changed_at`, `operator_account_id`. Они nullable для исходного
+состояния и импортированного ограничения с неизвестными метаданными.
+No-op возвращает прежние метаданные, не выдумывает время или web-оператора.
 Actor берётся только из сессии. JSON до16 KiB, unknown fields запрещены,
 reason после trim от1 до1000 Unicode-символов, без NUL, origin/CSRF обязательны.
 Существующие OpenAPI operations и DTO не меняются; новые поля карточки
