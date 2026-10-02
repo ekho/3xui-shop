@@ -230,3 +230,31 @@ func TestCatalogueExactPricesAndVisibility(t *testing.T) {
 		t.Fatal("exact client price", err)
 	}
 }
+
+func TestCatalogueRestrictedReaderAndLiveOperator(t *testing.T) {
+	s, customer, actor := operatorActors(t)
+	ctx := context.Background()
+	created, err := s.CreateCataloguePlan(ctx, actor, uuid.New(), wire.CataloguePlanCreateInput{Terms: catalogueTerms(1), Reason: "before restriction"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.pool.Exec(ctx, "UPDATE accounts SET restricted=true WHERE id=$1 OR id=$2", customer, actor); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Catalogue(ctx, customer); !catalogueCode(err, "ACCOUNT_RESTRICTED") {
+		t.Fatalf("restricted reader: %v", err)
+	}
+	if _, err = s.OperatorCatalogue(ctx, actor, 1, 50); !catalogueCode(err, "ACCOUNT_RESTRICTED") {
+		t.Fatalf("restricted operator read: %v", err)
+	}
+	if _, err = s.CreateCataloguePlan(ctx, actor, uuid.New(), wire.CataloguePlanCreateInput{Terms: catalogueTerms(2), Reason: "denied"}); !catalogueCode(err, "ACCOUNT_RESTRICTED") {
+		t.Fatalf("restricted operator create: %v", err)
+	}
+	if _, err = s.ReviseCataloguePlan(ctx, actor, created.PlanId, uuid.New(), wire.CataloguePlanRevisionInput{Terms: catalogueTerms(2), ExpectedRevision: 1, Reason: "denied"}); !catalogueCode(err, "ACCOUNT_RESTRICTED") {
+		t.Fatalf("restricted operator revision: %v", err)
+	}
+	var revisions int
+	if err = s.pool.QueryRow(ctx, "SELECT count(*) FROM catalogue_revisions WHERE plan_id=$1", created.PlanId).Scan(&revisions); err != nil || revisions != 1 {
+		t.Fatalf("restricted write changed revisions: count=%d err=%v", revisions, err)
+	}
+}
