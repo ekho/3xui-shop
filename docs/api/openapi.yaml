@@ -3227,7 +3227,10 @@
               "provisioning",
               "needs_review",
               "active",
-              "expired"
+              "expired",
+              "banned",
+              "disabled",
+              "exhausted"
             ]
           },
           "expires_at": {
@@ -3258,6 +3261,54 @@
           },
           "data_stale": {
             "type": "boolean"
+          },
+          "traffic_upload_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true
+          },
+          "traffic_download_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true
+          },
+          "traffic_remaining_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true
+          },
+          "unlimited_traffic": {
+            "type": "boolean"
+          },
+          "unlimited_devices": {
+            "type": "boolean"
+          },
+          "connection_available": {
+            "type": "boolean"
+          },
+          "access_profile": {
+            "type": "string",
+            "enum": [
+              "regular",
+              "euru",
+              "unlimited",
+              "banned",
+              "unknown"
+            ]
+          },
+          "panel_error": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "unavailable",
+              "identity_mismatch",
+              "unknown_membership",
+              "invalid_traffic",
+              null
+            ]
           }
         },
         "required": [

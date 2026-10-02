@@ -8,6 +8,7 @@ import (
 	"errors"
 	"github.com/google/uuid"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -47,6 +48,9 @@ type PanelClient struct {
 }
 
 var errPanel = errors.New("panel unavailable or unconfirmed response")
+var errPanelIdentity = errors.New("panel identity mismatch")
+var errPanelMembership = errors.New("unknown panel membership")
+var errPanelTraffic = errors.New("invalid panel traffic")
 
 func NewPanelClient(c Config) *PanelClient {
 	jar, _ := cookiejar.New(nil)
@@ -203,7 +207,10 @@ func (p *PanelClient) GetClient(ctx context.Context, key string) (*PanelClientVi
 			return nil, errPanel
 		}
 	}
-	if v.PanelKey != key || v.VPNID == uuid.Nil || v.SubID == "" || v.ExpiryTimeMS <= 0 || v.LimitIP < 0 || v.TrafficLimitBytes < 0 || v.UsedTraffic != nil && *v.UsedTraffic < 0 {
+	if v.PanelKey != key || v.VPNID == uuid.Nil || v.SubID == "" {
+		return nil, errPanelIdentity
+	}
+	if v.ExpiryTimeMS < 0 || v.LimitIP < 0 || v.TrafficLimitBytes < 0 || v.UsedTraffic != nil && *v.UsedTraffic < 0 {
 		return nil, errPanel
 	}
 	for _, id := range v.InboundIDs {
@@ -212,6 +219,91 @@ func (p *PanelClient) GetClient(ctx context.Context, key string) (*PanelClientVi
 		}
 	}
 	return v, nil
+}
+func (p *PanelClient) Traffic(ctx context.Context, key string, id uuid.UUID, subID string) (int64, int64, error) {
+	if p.auth(ctx) != nil {
+		return 0, 0, errPanel
+	}
+	out, e := p.call(ctx, "GET", "panel/api/clients/traffic/"+url.PathEscape(key), nil)
+	if e != nil || !*out.Success {
+		return 0, 0, errPanel
+	}
+	var row struct {
+		Email string    `json:"email"`
+		UUID  uuid.UUID `json:"uuid"`
+		SubID string    `json:"subId"`
+		Up    int64     `json:"up"`
+		Down  int64     `json:"down"`
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(out.Obj, &fields) != nil || json.Unmarshal(out.Obj, &row) != nil {
+		return 0, 0, errPanelTraffic
+	}
+	for _, name := range []string{"email", "uuid", "subId", "up", "down"} {
+		if len(fields[name]) == 0 || string(fields[name]) == "null" {
+			return 0, 0, errPanelTraffic
+		}
+	}
+	if row.Email != key || row.UUID != id || row.SubID != subID {
+		return 0, 0, errPanelIdentity
+	}
+	if row.Up < 0 || row.Down < 0 || row.Up > math.MaxInt64-row.Down {
+		return 0, 0, errPanelTraffic
+	}
+	return row.Up, row.Down, nil
+}
+func (p *PanelClient) AccessProfile(ctx context.Context, ids []int64) (string, error) {
+	if p.auth(ctx) != nil {
+		return "", errPanel
+	}
+	out, e := p.call(ctx, "GET", "panel/api/inbounds/list", nil)
+	if e != nil || !*out.Success {
+		return "", errPanel
+	}
+	var rows []struct {
+		ID  int64  `json:"id"`
+		Tag string `json:"tag"`
+	}
+	if json.Unmarshal(out.Obj, &rows) != nil || rows == nil {
+		return "", errPanel
+	}
+	tags := make(map[int64]string, len(rows))
+	for _, r := range rows {
+		if r.ID <= 0 || tags[r.ID] != "" {
+			return "", errPanelMembership
+		}
+		tags[r.ID] = r.Tag
+	}
+	if len(ids) == 0 {
+		return "", errPanelMembership
+	}
+	groups := map[string]bool{}
+	for _, id := range ids {
+		tag, ok := tags[id]
+		if !ok {
+			return "", errPanelMembership
+		}
+		known := false
+		for _, segment := range strings.Split(tag, "-") {
+			switch segment {
+			case "regular", "euru", "unlimited":
+				groups[segment] = true
+				known = true
+			}
+		}
+		if !known {
+			return "", errPanelMembership
+		}
+	}
+	if groups["euru"] && (groups["regular"] || groups["unlimited"]) {
+		return "", errPanelMembership
+	}
+	for _, profile := range []string{"unlimited", "euru", "regular"} {
+		if groups[profile] {
+			return profile, nil
+		}
+	}
+	return "", errPanelMembership
 }
 func (p *PanelClient) AddClient(ctx context.Context, t ProvisionTarget) error {
 	if p.auth(ctx) != nil {

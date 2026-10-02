@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"net/url"
 	"strings"
 	"time"
@@ -28,25 +29,148 @@ func (s *Service) accountOperation(ctx context.Context, account uuid.UUID) (stor
 	}
 	return q.AccountOperation(ctx, account)
 }
-func (s *Service) confirmedView(ctx context.Context, op store.TrialOperation) (ProvisionTarget, *PanelClientView, error) {
-	var target ProvisionTarget
-	if json.Unmarshal(op.Target, &target) != nil || target.OperationID != op.ID || target.PanelID != op.PanelID || op.PanelID != s.cfg.PanelID {
-		return target, nil, errPanel
+
+type profileRead struct {
+	target     ProvisionTarget
+	client     *PanelClientView
+	profile    string
+	up, down   int64
+	trafficErr error
+}
+
+func (s *Service) readProfile(ctx context.Context, op store.TrialOperation) (profileRead, error) {
+	var out profileRead
+	if json.Unmarshal(op.Target, &out.target) != nil || out.target.OperationID != op.ID || out.target.PanelID != op.PanelID || op.PanelID != s.cfg.PanelID {
+		return out, errPanelIdentity
+	}
+	q := store.New(s.pool)
+	a, e := q.AccountByID(ctx, op.AccountID)
+	if errors.Is(e, pgx.ErrNoRows) {
+		return out, errPanelIdentity
+	}
+	if e != nil {
+		return out, errPanel
+	}
+	if a.Restricted || !a.AssignedPanelID.Valid || a.AssignedPanelID.String != op.PanelID || a.PanelKey != out.target.PanelKey || a.VpnID != out.target.VPNID || a.SubID != out.target.SubID {
+		return out, errPanelIdentity
+	}
+	var grant string
+	e = s.pool.QueryRow(ctx, `SELECT status FROM trial_grants WHERE operation_id=$1 AND account_id=$2`, op.ID, op.AccountID).Scan(&grant)
+	if e != nil && !errors.Is(e, pgx.ErrNoRows) {
+		return out, errPanel
+	}
+	if e != nil || grant != "granted" {
+		return out, errPanelIdentity
 	}
 	p := NewPanelClient(s.cfg)
 	defer p.Close()
-	v, e := p.GetClient(ctx, target.PanelKey)
+	out.client, e = p.GetClient(ctx, out.target.PanelKey)
 	if e != nil {
-		return target, nil, e
+		return out, e
 	}
-	if !panelMatches(v, target, s.now()) || len(missingInbounds(v, target)) > 0 {
-		if s.reviewOperation(ctx, op, nil, true) != nil {
-			return target, nil, unavailable()
-		}
-		return target, nil, failure(409, "OPERATION_NOT_READY")
+	if out.client == nil || out.client.PanelKey != out.target.PanelKey || out.client.VPNID != out.target.VPNID || out.client.SubID != out.target.SubID {
+		return out, errPanelIdentity
 	}
-	return target, v, nil
+	out.profile, e = p.AccessProfile(ctx, out.client.InboundIDs)
+	if e != nil {
+		return out, e
+	}
+	out.up, out.down, out.trafficErr = p.Traffic(ctx, out.target.PanelKey, out.target.VPNID, out.target.SubID)
+	return out, nil
 }
+
+type profileSnapshot struct {
+	ExpiryTimeMS      *int64 `json:"expiry_time_ms"`
+	LimitIP           *int64 `json:"limit_ip"`
+	TrafficLimitBytes *int64 `json:"traffic_limit_bytes"`
+	Enabled           *bool  `json:"enabled"`
+	Profile           string `json:"profile"`
+}
+
+func observeProfileTraffic(ctx context.Context, pool *pgxpool.Pool, id uuid.UUID, up, down int64, at time.Time, snapshot profileSnapshot) error {
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		return err
+	}
+	return store.New(pool).ObserveProfileTraffic(ctx, store.ObserveProfileTrafficParams{ID: id, TrafficUpBytes: pgtype.Int8{Int64: up, Valid: true}, TrafficDownBytes: pgtype.Int8{Int64: down, Valid: true}, ObservedAt: stamp(at), Snapshot: raw})
+}
+
+func cachedTraffic(out *wire.Subscription, op store.TrialOperation) {
+	if !op.TrafficUpBytes.Valid || !op.TrafficDownBytes.Valid || !op.TrafficUsedBytes.Valid || !op.ObservedAt.Valid {
+		return
+	}
+	out.TrafficUploadBytes = &op.TrafficUpBytes.Int64
+	out.TrafficDownloadBytes = &op.TrafficDownBytes.Int64
+	out.TrafficUsedBytes = &op.TrafficUsedBytes.Int64
+	out.ObservedAt = &op.ObservedAt.Time
+}
+func cachedProfile(out *wire.Subscription, op store.TrialOperation, banned bool, now time.Time) bool {
+	if out.TrafficUsedBytes == nil || len(op.ProfileSnapshot) == 0 {
+		return false
+	}
+	var snapshot profileSnapshot
+	if json.Unmarshal(op.ProfileSnapshot, &snapshot) != nil || snapshot.ExpiryTimeMS == nil || snapshot.LimitIP == nil || snapshot.TrafficLimitBytes == nil || snapshot.Enabled == nil || *snapshot.ExpiryTimeMS < 0 || *snapshot.LimitIP < 0 || *snapshot.TrafficLimitBytes < 0 {
+		return false
+	}
+	switch snapshot.Profile {
+	case "regular", "euru", "unlimited":
+	default:
+		return false
+	}
+	profileLimits(out, *snapshot.ExpiryTimeMS, *snapshot.LimitIP, *snapshot.TrafficLimitBytes)
+	profile := wire.SubscriptionAccessProfile(snapshot.Profile)
+	out.AccessProfile = &profile
+	profileStatus(out, banned, *snapshot.Enabled, now)
+	return true
+}
+func profileLimits(out *wire.Subscription, expiryMS, limitIP, trafficLimit int64) {
+	out.Devices = max(0, limitIP-1)
+	devicesUnlimited, trafficUnlimited := limitIP == 0, trafficLimit == 0
+	out.UnlimitedDevices, out.UnlimitedTraffic = &devicesUnlimited, &trafficUnlimited
+	out.TrafficLimitBytes = trafficLimit
+	if expiryMS == 0 {
+		out.ExpiresAt = nil
+	} else {
+		expiry := time.UnixMilli(expiryMS)
+		out.ExpiresAt = &expiry
+	}
+}
+func profileStatus(out *wire.Subscription, banned, enabled bool, now time.Time) {
+	out.TrafficRemainingBytes = nil
+	if out.TrafficLimitBytes > 0 && out.TrafficUsedBytes != nil {
+		remaining := max(0, out.TrafficLimitBytes-*out.TrafficUsedBytes)
+		out.TrafficRemainingBytes = &remaining
+	}
+	switch {
+	case banned:
+		out.Status = "banned"
+	case out.ExpiresAt != nil && !now.Before(*out.ExpiresAt):
+		out.Status = "expired"
+	case out.TrafficLimitBytes > 0 && out.TrafficUsedBytes != nil && *out.TrafficUsedBytes >= out.TrafficLimitBytes:
+		out.Status = "exhausted"
+	case !enabled:
+		out.Status = "disabled"
+	default:
+		out.Status = "active"
+	}
+	available := out.Status == "active" || out.Status == "expired"
+	out.ConnectionAvailable = &available
+}
+func panelError(err error) *wire.SubscriptionPanelError {
+	var value wire.SubscriptionPanelError
+	switch {
+	case errors.Is(err, errPanelIdentity):
+		value = wire.IdentityMismatch
+	case errors.Is(err, errPanelMembership):
+		value = wire.UnknownMembership
+	case errors.Is(err, errPanelTraffic):
+		value = wire.InvalidTraffic
+	default:
+		value = wire.Unavailable
+	}
+	return &value
+}
+
 func (s *Service) Subscription(ctx context.Context, account uuid.UUID) (wire.Subscription, error) {
 	out := wire.Subscription{Status: "none", DataStale: true}
 	op, e := s.accountOperation(ctx, account)
@@ -59,15 +183,10 @@ func (s *Service) Subscription(ctx context.Context, account uuid.UUID) (wire.Sub
 	out.Devices = op.Devices
 	out.TrafficLimitBytes = op.TrafficGb * 1024 * 1024 * 1024
 	if op.FirstStartedAt.Valid {
-		expires := op.FirstStartedAt.Time.Add(time.Duration(op.PeriodDays) * 24 * time.Hour)
-		out.ExpiresAt = &expires
+		expiry := op.FirstStartedAt.Time.Add(time.Duration(op.PeriodDays) * 24 * time.Hour)
+		out.ExpiresAt = &expiry
 	}
-	if op.ObservedAt.Valid {
-		out.ObservedAt = &op.ObservedAt.Time
-	}
-	if op.TrafficUsedBytes.Valid {
-		out.TrafficUsedBytes = &op.TrafficUsedBytes.Int64
-	}
+	cachedTraffic(&out, op)
 	if op.Status == "needs_review" {
 		out.Status = "needs_review"
 		return out, nil
@@ -76,29 +195,59 @@ func (s *Service) Subscription(ctx context.Context, account uuid.UUID) (wire.Sub
 		out.Status = "provisioning"
 		return out, nil
 	}
-	out.Status = "active"
-	if out.ExpiresAt != nil && !s.now().Before(*out.ExpiresAt) {
-		out.Status = "expired"
-	}
-	_, v, e := s.confirmedView(ctx, op)
+	banned, e := store.New(s.pool).AccountVPNBan(ctx, account)
 	if e != nil {
-		var domain *Error
-		if errors.As(e, &domain) && domain.Status == 409 {
-			out.Status = "needs_review"
+		return out, unavailable()
+	}
+	if !cachedProfile(&out, op, banned, s.now()) {
+		out.Status = "active"
+		if banned {
+			out.Status = "banned"
+		} else if out.ExpiresAt != nil && !s.now().Before(*out.ExpiresAt) {
+			out.Status = "expired"
 		}
+	}
+	observedAt := s.now()
+	read, e := s.readProfile(ctx, op)
+	if e != nil {
+		out.PanelError = panelError(e)
+		if errors.Is(e, errPanelIdentity) || errors.Is(e, errPanelMembership) {
+			out.Status = "needs_review"
+			if errors.Is(e, errPanelMembership) {
+				profile := wire.SubscriptionAccessProfileUnknown
+				out.AccessProfile = &profile
+			}
+		}
+		available := false
+		out.ConnectionAvailable = &available
 		return out, nil
 	}
-	if v.UsedTraffic != nil {
-		now := s.now()
-		if store.New(s.pool).ObserveTraffic(ctx, store.ObserveTrafficParams{ID: op.ID, TrafficUsedBytes: pgtype.Int8{Int64: *v.UsedTraffic, Valid: true}, ObservedAt: stamp(now)}) != nil {
-			return out, unavailable()
+	v := read.client
+	if read.trafficErr != nil {
+		out.PanelError = panelError(read.trafficErr)
+		if errors.Is(read.trafficErr, errPanelIdentity) {
+			out.Status = "needs_review"
 		}
-		out.TrafficUsedBytes = v.UsedTraffic
-		out.ObservedAt = &now
-		out.DataStale = false
+		available := false
+		out.ConnectionAvailable = &available
+		return out, nil
 	}
+	snapshot := profileSnapshot{ExpiryTimeMS: &v.ExpiryTimeMS, LimitIP: &v.LimitIP, TrafficLimitBytes: &v.TrafficLimitBytes, Enabled: &v.Enabled, Profile: read.profile}
+	if observeProfileTraffic(ctx, s.pool, op.ID, read.up, read.down, observedAt, snapshot) != nil {
+		return out, unavailable()
+	}
+	current, e := store.New(s.pool).OperationByID(ctx, op.ID)
+	if e != nil {
+		return out, unavailable()
+	}
+	cachedTraffic(&out, current)
+	if !cachedProfile(&out, current, banned, s.now()) {
+		return out, unavailable()
+	}
+	out.DataStale = false
 	return out, nil
 }
+
 func (s *Service) SubscriptionKey(ctx context.Context, account uuid.UUID) (wire.SubscriptionKey, error) {
 	out := wire.SubscriptionKey{}
 	op, e := s.accountOperation(ctx, account)
@@ -111,15 +260,33 @@ func (s *Service) SubscriptionKey(ctx context.Context, account uuid.UUID) (wire.
 	if op.Status != "applied" {
 		return out, failure(409, "OPERATION_NOT_READY")
 	}
-	target, _, e := s.confirmedView(ctx, op)
+	banned, e := store.New(s.pool).AccountVPNBan(ctx, account)
 	if e != nil {
+		return out, unavailable()
+	}
+	if banned {
+		return out, failure(403, "OPERATION_NOT_READY")
+	}
+	read, e := s.readProfile(ctx, op)
+	if e != nil {
+		return out, failure(409, "OPERATION_NOT_READY")
+	}
+	if read.trafficErr != nil {
+		return out, failure(409, "OPERATION_NOT_READY")
+	}
+	v := read.client
+	used := read.up + read.down
+	view := wire.Subscription{TrafficLimitBytes: v.TrafficLimitBytes, TrafficUsedBytes: &used}
+	profileLimits(&view, v.ExpiryTimeMS, v.LimitIP, v.TrafficLimitBytes)
+	profileStatus(&view, false, v.Enabled, s.now())
+	if view.Status != "active" && view.Status != "expired" {
 		return out, failure(409, "OPERATION_NOT_READY")
 	}
 	base, e := url.Parse(s.cfg.SubscriptionBaseURL)
 	if e != nil || base.Scheme != "https" || base.Host == "" || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
 		return out, unavailable()
 	}
-	base.Path = strings.TrimRight(base.Path, "/") + "/" + target.SubID
+	base.Path = strings.TrimRight(base.Path, "/") + "/" + read.target.SubID
 	base.RawPath = ""
 	out.SubscriptionUrl = base.String()
 	return out, nil

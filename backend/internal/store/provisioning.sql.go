@@ -13,7 +13,7 @@ import (
 )
 
 const accountOperation = `-- name: AccountOperation :one
-SELECT id, account_id, request_id, status, trial_enabled, period_days, traffic_gb, devices, panel_id, created_at, first_started_at, target, write_started, attempts, lease_hash, lease_expires_at, worker_pid, traffic_used_bytes, observed_at FROM trial_operations WHERE account_id=$1 ORDER BY created_at DESC LIMIT 1
+SELECT id, account_id, request_id, status, trial_enabled, period_days, traffic_gb, devices, panel_id, created_at, first_started_at, target, write_started, attempts, lease_hash, lease_expires_at, worker_pid, traffic_used_bytes, observed_at, traffic_up_bytes, traffic_down_bytes, profile_snapshot FROM trial_operations WHERE account_id=$1 ORDER BY created_at DESC LIMIT 1
 `
 
 func (q *Queries) AccountOperation(ctx context.Context, accountID uuid.UUID) (TrialOperation, error) {
@@ -39,8 +39,22 @@ func (q *Queries) AccountOperation(ctx context.Context, accountID uuid.UUID) (Tr
 		&i.WorkerPid,
 		&i.TrafficUsedBytes,
 		&i.ObservedAt,
+		&i.TrafficUpBytes,
+		&i.TrafficDownBytes,
+		&i.ProfileSnapshot,
 	)
 	return i, err
+}
+
+const accountVPNBan = `-- name: AccountVPNBan :one
+SELECT vpn_banned FROM accounts WHERE id=$1
+`
+
+func (q *Queries) AccountVPNBan(ctx context.Context, id uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, accountVPNBan, id)
+	var vpn_banned bool
+	err := row.Scan(&vpn_banned)
+	return vpn_banned, err
 }
 
 const applyOperation = `-- name: ApplyOperation :execrows
@@ -89,7 +103,7 @@ func (q *Queries) GrantApplied(ctx context.Context, arg GrantAppliedParams) erro
 }
 
 const leaseOperation = `-- name: LeaseOperation :one
-UPDATE trial_operations SET status='provisioning',first_started_at=coalesce(first_started_at,$2),attempts=attempts+1,lease_hash=$3,lease_expires_at=clock_timestamp()+interval '3 minutes',worker_pid=pg_backend_pid() WHERE id=$1 AND status IN ('pending','provisioning') RETURNING id, account_id, request_id, status, trial_enabled, period_days, traffic_gb, devices, panel_id, created_at, first_started_at, target, write_started, attempts, lease_hash, lease_expires_at, worker_pid, traffic_used_bytes, observed_at
+UPDATE trial_operations SET status='provisioning',first_started_at=coalesce(first_started_at,$2),attempts=attempts+1,lease_hash=$3,lease_expires_at=clock_timestamp()+interval '3 minutes',worker_pid=pg_backend_pid() WHERE id=$1 AND status IN ('pending','provisioning') RETURNING id, account_id, request_id, status, trial_enabled, period_days, traffic_gb, devices, panel_id, created_at, first_started_at, target, write_started, attempts, lease_hash, lease_expires_at, worker_pid, traffic_used_bytes, observed_at, traffic_up_bytes, traffic_down_bytes, profile_snapshot
 `
 
 type LeaseOperationParams struct {
@@ -121,6 +135,9 @@ func (q *Queries) LeaseOperation(ctx context.Context, arg LeaseOperationParams) 
 		&i.WorkerPid,
 		&i.TrafficUsedBytes,
 		&i.ObservedAt,
+		&i.TrafficUpBytes,
+		&i.TrafficDownBytes,
+		&i.ProfileSnapshot,
 	)
 	return i, err
 }
@@ -142,6 +159,31 @@ func (q *Queries) MarkPanelWrite(ctx context.Context, arg MarkPanelWriteParams) 
 	return result.RowsAffected(), nil
 }
 
+const observeProfileTraffic = `-- name: ObserveProfileTraffic :exec
+UPDATE trial_operations
+SET traffic_up_bytes=$2,traffic_down_bytes=$3,traffic_used_bytes=$2::bigint+$3::bigint,observed_at=$4,profile_snapshot=$5::jsonb
+WHERE id=$1 AND status='applied' AND (traffic_up_bytes IS NULL OR observed_at <= $4::timestamptz)
+`
+
+type ObserveProfileTrafficParams struct {
+	ID               uuid.UUID
+	TrafficUpBytes   pgtype.Int8
+	TrafficDownBytes pgtype.Int8
+	ObservedAt       pgtype.Timestamptz
+	Snapshot         []byte
+}
+
+func (q *Queries) ObserveProfileTraffic(ctx context.Context, arg ObserveProfileTrafficParams) error {
+	_, err := q.db.Exec(ctx, observeProfileTraffic,
+		arg.ID,
+		arg.TrafficUpBytes,
+		arg.TrafficDownBytes,
+		arg.ObservedAt,
+		arg.Snapshot,
+	)
+	return err
+}
+
 const observeTraffic = `-- name: ObserveTraffic :exec
 UPDATE trial_operations SET traffic_used_bytes=$2,observed_at=$3 WHERE id=$1 AND status='applied'
 `
@@ -158,7 +200,7 @@ func (q *Queries) ObserveTraffic(ctx context.Context, arg ObserveTrafficParams) 
 }
 
 const operationByID = `-- name: OperationByID :one
-SELECT id, account_id, request_id, status, trial_enabled, period_days, traffic_gb, devices, panel_id, created_at, first_started_at, target, write_started, attempts, lease_hash, lease_expires_at, worker_pid, traffic_used_bytes, observed_at FROM trial_operations WHERE id=$1
+SELECT id, account_id, request_id, status, trial_enabled, period_days, traffic_gb, devices, panel_id, created_at, first_started_at, target, write_started, attempts, lease_hash, lease_expires_at, worker_pid, traffic_used_bytes, observed_at, traffic_up_bytes, traffic_down_bytes, profile_snapshot FROM trial_operations WHERE id=$1
 `
 
 func (q *Queries) OperationByID(ctx context.Context, id uuid.UUID) (TrialOperation, error) {
@@ -184,6 +226,9 @@ func (q *Queries) OperationByID(ctx context.Context, id uuid.UUID) (TrialOperati
 		&i.WorkerPid,
 		&i.TrafficUsedBytes,
 		&i.ObservedAt,
+		&i.TrafficUpBytes,
+		&i.TrafficDownBytes,
+		&i.ProfileSnapshot,
 	)
 	return i, err
 }

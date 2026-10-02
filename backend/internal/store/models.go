@@ -26,6 +26,7 @@ type Account struct {
 	AssignedPanelID   pgtype.Text
 	HadSubscription   bool
 	CredentialVersion int64
+	VpnBanned         bool
 }
 
 type AuditEvent struct {
@@ -160,6 +161,9 @@ type TrialOperation struct {
 	WorkerPid        pgtype.Int4
 	TrafficUsedBytes pgtype.Int8
 	ObservedAt       pgtype.Timestamptz
+	TrafficUpBytes   pgtype.Int8
+	TrafficDownBytes pgtype.Int8
+	ProfileSnapshot  []byte
 }
 
 type TrialRequest struct {

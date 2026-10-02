@@ -13,7 +13,7 @@ import (
 )
 
 const accountByEmail = `-- name: AccountByEmail :one
-SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version FROM accounts WHERE email_key = $1
+SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned FROM accounts WHERE email_key = $1
 `
 
 func (q *Queries) AccountByEmail(ctx context.Context, emailKey string) (Account, error) {
@@ -36,12 +36,13 @@ func (q *Queries) AccountByEmail(ctx context.Context, emailKey string) (Account,
 		&i.AssignedPanelID,
 		&i.HadSubscription,
 		&i.CredentialVersion,
+		&i.VpnBanned,
 	)
 	return i, err
 }
 
 const accountByID = `-- name: AccountByID :one
-SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version FROM accounts WHERE id = $1
+SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned FROM accounts WHERE id = $1
 `
 
 func (q *Queries) AccountByID(ctx context.Context, id uuid.UUID) (Account, error) {
@@ -64,6 +65,7 @@ func (q *Queries) AccountByID(ctx context.Context, id uuid.UUID) (Account, error
 		&i.AssignedPanelID,
 		&i.HadSubscription,
 		&i.CredentialVersion,
+		&i.VpnBanned,
 	)
 	return i, err
 }

@@ -87,6 +87,16 @@ func (p *fakePanel) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		record["uuid"], record["id"] = p.client["id"], 1
 		reply(map[string]any{"success": true, "obj": map[string]any{"client": record, "inboundIds": p.ids, "usedTraffic": int64(1234)}})
+	case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/panel/api/clients/traffic/"):
+		if p.failRead {
+			w.WriteHeader(503)
+			return
+		}
+		if p.client == nil {
+			w.WriteHeader(404)
+			return
+		}
+		reply(map[string]any{"success": true, "obj": map[string]any{"email": p.client["email"], "uuid": p.client["id"], "subId": p.client["subId"], "up": int64(1234), "down": int64(0)}})
 	case r.Method == "POST" && r.URL.Path == "/panel/api/clients/add":
 		p.adds++
 		var body struct {
@@ -476,7 +486,7 @@ func TestSubscriptionPrivacyErrorContract(t *testing.T) {
 }
 
 func TestSubscriptionPrivacyForeignTargets(t *testing.T) {
-	for _, field := range []string{"id", "subId", "expiryTime", "totalGB", "limitIp"} {
+	for _, field := range []string{"id", "subId"} {
 		t.Run(field, func(t *testing.T) {
 			s, e := fixture(t)
 			p := panelFixture(t, s)
@@ -486,13 +496,10 @@ func TestSubscriptionPrivacyForeignTargets(t *testing.T) {
 				t.Fatal(err)
 			}
 			p.mu.Lock()
-			switch field {
-			case "id":
+			if field == "id" {
 				p.client[field] = uuid.NewString()
-			case "subId":
+			} else {
 				p.client[field] = "foreignfixture000"
-			default:
-				p.client[field] = json.Number("99")
 			}
 			p.mu.Unlock()
 			_, err := s.SubscriptionKey(ctx, account)
@@ -500,8 +507,8 @@ func TestSubscriptionPrivacyForeignTargets(t *testing.T) {
 				t.Fatal("conflicting target exposed or rewritten", err)
 			}
 			op, err := store.New(e.Pool).OperationByID(ctx, id)
-			if err != nil || op.Status != "needs_review" {
-				t.Fatal("conflict not visible to support", err)
+			if err != nil || op.Status != "applied" {
+				t.Fatal("profile read changed operation", err)
 			}
 		})
 	}

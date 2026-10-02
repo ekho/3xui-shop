@@ -499,7 +499,7 @@ export interface components {
         };
         Subscription: {
             /** @enum {string} */
-            status: "none" | "provisioning" | "needs_review" | "active" | "expired";
+            status: "none" | "provisioning" | "needs_review" | "active" | "expired" | "banned" | "disabled" | "exhausted";
             /** Format: date-time */
             expires_at: string | null;
             /** Format: int64 */
@@ -511,6 +511,19 @@ export interface components {
             /** Format: date-time */
             observed_at: string | null;
             data_stale: boolean;
+            /** Format: int64 */
+            traffic_upload_bytes?: number | null;
+            /** Format: int64 */
+            traffic_download_bytes?: number | null;
+            /** Format: int64 */
+            traffic_remaining_bytes?: number | null;
+            unlimited_traffic?: boolean;
+            unlimited_devices?: boolean;
+            connection_available?: boolean;
+            /** @enum {string} */
+            access_profile?: "regular" | "euru" | "unlimited" | "banned" | "unknown";
+            /** @enum {string|null} */
+            panel_error?: "unavailable" | "identity_mismatch" | "unknown_membership" | "invalid_traffic" | null;
         };
         SubscriptionKey: {
             /** Format: uri */
