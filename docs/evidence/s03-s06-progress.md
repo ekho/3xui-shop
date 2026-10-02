@@ -13,7 +13,7 @@
 | С03 | Готовы | Backend `f710935`, UI `41a2ade`; focused GREEN | Native acceptance Pending |
 | С04 | Готовы | UI `41a2ade`; 39 browser checks GREEN | Native acceptance Pending |
 | С05 | Готовы | Backend и client UI готовы; focused Go-race и browser10 GREEN | Two-actor/native acceptance Pending |
-| С06 | Готовы | API/generated/compile bridge готовы; backend и React-admin в работе | Pending |
+| С06 | Готовы | API и backend готовы; React-admin передан, интеграционные исправления карточки/refresh в работе | Pending |
 
 Discovery: сохранены профильные split/unlimited/ban случаи, платформы + QR,
 Telegram-only создание триала и shared /info card. Старый support не хранит
@@ -54,3 +54,13 @@ TelegramPayload nullable email + optional real identity адаптированы
 и bot formatter; wire contract/typecheck и12 adapter tests GREEN. Новые operator
 DTO используют точный decimal string для Telegram ID и NULL для неизвестной
 исторической даты регистрации. Native backend/frontend работают по frozen contract.
+
+Расширенная native приёмка С03/С04: два реальных владельца, disabled/expired/
+exhausted/unlimited/VPN-ban и stop/start панели прошли. Собственные client fields,
+membership/target/one Grant и прежний Docker VPN восстановлены; postflight
+подтвердил health/images/pinned digest. Runtime освобождён для С06.
+Общий Go-race подтвердил все service/HTTP/schema/CLI пакеты, но выявил устаревший
+TLS panel fixture в cross-language С01/С02: отсутствует новый traffic endpoint.
+Исправляется общий fixture, защиту product key не ослабляем. Исходный browser
+regression57/57 прошёл; карточка React-admin и обновление после решения требуют
+отдельных интеграционных исправлений и новой проверки.
