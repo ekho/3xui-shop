@@ -97,6 +97,11 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 			if e != nil || n != 1 {
 				return unavailable()
 			}
+			if op.Kind == "purchase" {
+				if _, e = s.pool.Exec(other, "UPDATE purchase_orders SET fulfillment_status='needs_review',review_required=true,review_reason=$2 WHERE access_operation_id=$1", id, code); e != nil {
+					return unavailable()
+				}
+			}
 			return nil
 		}
 		n, e := store.New(s.pool).AccessRetry(other, store.AccessRetryParams{ID: id, LeaseHash: lease, UpdatedAt: stamp(s.now())})
@@ -131,11 +136,26 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	if err != nil || a.PanelKey != t.PanelKey || a.VpnID != t.VPNID || a.SubID != t.SubID || a.VpnBanned != expectedBan || (a.AssignedPanelID.Valid && a.AssignedPanelID.String != t.PanelID) {
 		return cleanup("identity_changed", true)
 	}
+	if op.Kind == "purchase" {
+		if a.Restricted || a.VpnBanned || op.PurchaseOrderID == nil {
+			return cleanup("purchase_guard_changed", true)
+		}
+		var paid bool
+		if err = s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE id=$1 AND account_id=$2 AND payment_status='paid' AND access_operation_id=$3)", *op.PurchaseOrderID, op.AccountID, op.ID).Scan(&paid); err != nil || !paid {
+			return cleanup("purchase_provenance_invalid", true)
+		}
+		if err = s.pool.QueryRow(ctx, purchaseFundingCheck, *op.PurchaseOrderID).Scan(&paid); err != nil || !paid {
+			return cleanup("purchase_funding_invalid", true)
+		}
+	}
 	executor := op.ExecutionActorID
-	if executor == nil && op.Kind != "monthly_reset" {
+	if op.Kind == "purchase" {
+		executor = nil
+	}
+	if executor == nil && op.Kind != "monthly_reset" && op.Kind != "purchase" {
 		executor = op.OperatorAccountID // Operations written before migration 13.
 	}
-	if executor == nil && op.Kind != "monthly_reset" {
+	if executor == nil && op.Kind != "monthly_reset" && op.Kind != "purchase" {
 		return cleanup("actor_missing", true)
 	}
 	if executor != nil && s.RequireSupportOperator(ctx, *executor) != nil {
@@ -170,8 +190,14 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		if executor != nil && s.RequireSupportOperator(ctx, *executor) != nil {
 			return false
 		}
+		if op.Kind == "purchase" {
+			var funded bool
+			if op.PurchaseOrderID == nil || s.pool.QueryRow(ctx, purchaseFundingCheck, *op.PurchaseOrderID).Scan(&funded) != nil || !funded {
+				return false
+			}
+		}
 		current, e := store.New(s.pool).AccountByID(ctx, op.AccountID)
-		if e != nil || current.PanelKey != t.PanelKey || current.VpnID != t.VPNID || current.SubID != t.SubID || current.VpnBanned != expectedBan || op.Kind == "monthly_reset" && (!current.AccessProfile.Valid || current.AccessProfile.String != "unlimited") {
+		if e != nil || current.PanelKey != t.PanelKey || current.VpnID != t.VPNID || current.SubID != t.SubID || current.VpnBanned != expectedBan || op.Kind == "purchase" && current.Restricted || op.Kind == "monthly_reset" && (!current.AccessProfile.Valid || current.AccessProfile.String != "unlimited") {
 			return false
 		}
 		n, e := store.New(s.pool).MarkAccessWrite(ctx, store.MarkAccessWriteParams{ID: id, LeaseHash: lease, UpdatedAt: stamp(s.now())})
@@ -339,6 +365,13 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		tx.Rollback(ctx)
 		return cleanup("identity_changed", true)
 	}
+	if op.Kind == "purchase" {
+		var funded bool
+		if op.PurchaseOrderID == nil || tx.QueryRow(ctx, purchaseFundingCheck, *op.PurchaseOrderID).Scan(&funded) != nil || !funded {
+			tx.Rollback(ctx)
+			return cleanup("purchase_funding_invalid", true)
+		}
+	}
 	n, err := final.AccessApplied(ctx, store.AccessAppliedParams{ID: id, LeaseHash: lease, UpdatedAt: stamp(s.now())})
 	if err != nil || n != 1 {
 		tx.Rollback(ctx)
@@ -353,6 +386,15 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	if _, err = tx.Exec(ctx, "UPDATE accounts SET access_profile=$2,vpn_banned=$3 WHERE id=$1", a.ID, t.Profile, t.Banned); err != nil {
 		tx.Rollback(ctx)
 		return cleanup("profile_save_failed", true)
+	}
+	if op.Kind == "purchase" {
+		if _, err = tx.Exec(ctx, `UPDATE purchase_orders p SET fulfillment_status='applied',
+			review_required=EXISTS(SELECT 1 FROM purchase_receipts r WHERE r.order_id=p.id AND r.review_reason IS NOT NULL),
+			review_reason=(SELECT r.review_reason FROM purchase_receipts r WHERE r.order_id=p.id AND r.review_reason IS NOT NULL ORDER BY r.created_at,r.operation_id LIMIT 1)
+			WHERE p.access_operation_id=$1 AND p.payment_status='paid'`, id); err != nil {
+			tx.Rollback(ctx)
+			return cleanup("purchase_status_failed", true)
+		}
 	}
 	if op.Kind == "monthly_reset" {
 		err = monthlyAudit(ctx, tx, a.ID, op.MonthlyPeriod.String, "monthly_reset_applied", &id, s.now())

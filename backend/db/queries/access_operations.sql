@@ -32,4 +32,4 @@ UPDATE access_operations SET status='pending',lease_hash=NULL,lease_expires_at=N
 UPDATE access_operations SET status='applied',lease_hash=NULL,lease_expires_at=NULL,review_reason=NULL,completed_steps=completed_steps||'["readback_confirmed"]'::jsonb,updated_at=$3
 WHERE id=$1 AND lease_hash=$2 AND status='provisioning' AND lease_expires_at>clock_timestamp();
 -- name: RequeueAccess :execrows
-UPDATE access_operations SET status='pending',attempts=0,reset_acknowledged=$2,execution_actor_id=sqlc.arg(execution_actor_id)::uuid,review_reason=NULL,updated_at=$3 WHERE id=$1 AND status='needs_review';
+UPDATE access_operations SET status='pending',attempts=0,reset_acknowledged=$2,execution_actor_id=CASE WHEN kind='purchase' THEN NULL ELSE sqlc.arg(execution_actor_id)::uuid END,review_reason=NULL,updated_at=$3 WHERE id=$1 AND status='needs_review';

@@ -91,6 +91,7 @@ const (
 	AccessOperationKindAssignPlan   AccessOperationKind = "assign_plan"
 	AccessOperationKindCompensate   AccessOperationKind = "compensate"
 	AccessOperationKindMonthlyReset AccessOperationKind = "monthly_reset"
+	AccessOperationKindPurchase     AccessOperationKind = "purchase"
 	AccessOperationKindResetTraffic AccessOperationKind = "reset_traffic"
 	AccessOperationKindSetProfile   AccessOperationKind = "set_profile"
 	AccessOperationKindSetVpnBan    AccessOperationKind = "set_vpn_ban"
@@ -105,6 +106,8 @@ func (e AccessOperationKind) Valid() bool {
 	case AccessOperationKindCompensate:
 		return true
 	case AccessOperationKindMonthlyReset:
+		return true
+	case AccessOperationKindPurchase:
 		return true
 	case AccessOperationKindResetTraffic:
 		return true
@@ -253,19 +256,19 @@ func (e CataloguePlanSnapshotProfile) Valid() bool {
 
 // Defines values for CataloguePriceCurrency.
 const (
-	RUB CataloguePriceCurrency = "RUB"
-	USD CataloguePriceCurrency = "USD"
-	XTR CataloguePriceCurrency = "XTR"
+	CataloguePriceCurrencyRUB CataloguePriceCurrency = "RUB"
+	CataloguePriceCurrencyUSD CataloguePriceCurrency = "USD"
+	CataloguePriceCurrencyXTR CataloguePriceCurrency = "XTR"
 )
 
 // Valid indicates whether the value is a known member of the CataloguePriceCurrency enum.
 func (e CataloguePriceCurrency) Valid() bool {
 	switch e {
-	case RUB:
+	case CataloguePriceCurrencyRUB:
 		return true
-	case USD:
+	case CataloguePriceCurrencyUSD:
 		return true
-	case XTR:
+	case CataloguePriceCurrencyXTR:
 		return true
 	default:
 		return false
@@ -698,6 +701,213 @@ func (e PasswordResetInputLocale) Valid() bool {
 	}
 }
 
+// Defines values for PaymentMethodCurrency.
+const (
+	PaymentMethodCurrencyRUB PaymentMethodCurrency = "RUB"
+)
+
+// Valid indicates whether the value is a known member of the PaymentMethodCurrency enum.
+func (e PaymentMethodCurrency) Valid() bool {
+	switch e {
+	case PaymentMethodCurrencyRUB:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PaymentMethodId.
+const (
+	PaymentMethodIdYoomoney PaymentMethodId = "yoomoney"
+)
+
+// Valid indicates whether the value is a known member of the PaymentMethodId enum.
+func (e PaymentMethodId) Valid() bool {
+	switch e {
+	case PaymentMethodIdYoomoney:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PurchaseOrderAction.
+const (
+	PurchaseOrderActionPurchase PurchaseOrderAction = "purchase"
+)
+
+// Valid indicates whether the value is a known member of the PurchaseOrderAction enum.
+func (e PurchaseOrderAction) Valid() bool {
+	switch e {
+	case PurchaseOrderActionPurchase:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PurchaseOrderFulfillmentStatus.
+const (
+	PurchaseOrderFulfillmentStatusApplied     PurchaseOrderFulfillmentStatus = "applied"
+	PurchaseOrderFulfillmentStatusNeedsReview PurchaseOrderFulfillmentStatus = "needs_review"
+	PurchaseOrderFulfillmentStatusNotStarted  PurchaseOrderFulfillmentStatus = "not_started"
+	PurchaseOrderFulfillmentStatusQueued      PurchaseOrderFulfillmentStatus = "queued"
+	PurchaseOrderFulfillmentStatusRunning     PurchaseOrderFulfillmentStatus = "running"
+)
+
+// Valid indicates whether the value is a known member of the PurchaseOrderFulfillmentStatus enum.
+func (e PurchaseOrderFulfillmentStatus) Valid() bool {
+	switch e {
+	case PurchaseOrderFulfillmentStatusApplied:
+		return true
+	case PurchaseOrderFulfillmentStatusNeedsReview:
+		return true
+	case PurchaseOrderFulfillmentStatusNotStarted:
+		return true
+	case PurchaseOrderFulfillmentStatusQueued:
+		return true
+	case PurchaseOrderFulfillmentStatusRunning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PurchaseOrderPaymentMethod.
+const (
+	PurchaseOrderPaymentMethodYoomoney PurchaseOrderPaymentMethod = "yoomoney"
+)
+
+// Valid indicates whether the value is a known member of the PurchaseOrderPaymentMethod enum.
+func (e PurchaseOrderPaymentMethod) Valid() bool {
+	switch e {
+	case PurchaseOrderPaymentMethodYoomoney:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PurchaseOrderPaymentStatus.
+const (
+	PurchaseOrderPaymentStatusCanceled PurchaseOrderPaymentStatus = "canceled"
+	PurchaseOrderPaymentStatusPaid     PurchaseOrderPaymentStatus = "paid"
+	PurchaseOrderPaymentStatusPending  PurchaseOrderPaymentStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the PurchaseOrderPaymentStatus enum.
+func (e PurchaseOrderPaymentStatus) Valid() bool {
+	switch e {
+	case PurchaseOrderPaymentStatusCanceled:
+		return true
+	case PurchaseOrderPaymentStatusPaid:
+		return true
+	case PurchaseOrderPaymentStatusPending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PurchaseOrderPaymentType.
+const (
+	PurchaseOrderPaymentTypeAC PurchaseOrderPaymentType = "AC"
+	PurchaseOrderPaymentTypePC PurchaseOrderPaymentType = "PC"
+)
+
+// Valid indicates whether the value is a known member of the PurchaseOrderPaymentType enum.
+func (e PurchaseOrderPaymentType) Valid() bool {
+	switch e {
+	case PurchaseOrderPaymentTypeAC:
+		return true
+	case PurchaseOrderPaymentTypePC:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PurchaseOrderInputAction.
+const (
+	PurchaseOrderInputActionPurchase PurchaseOrderInputAction = "purchase"
+)
+
+// Valid indicates whether the value is a known member of the PurchaseOrderInputAction enum.
+func (e PurchaseOrderInputAction) Valid() bool {
+	switch e {
+	case PurchaseOrderInputActionPurchase:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PurchaseOrderInputPaymentMethod.
+const (
+	PurchaseOrderInputPaymentMethodYoomoney PurchaseOrderInputPaymentMethod = "yoomoney"
+)
+
+// Valid indicates whether the value is a known member of the PurchaseOrderInputPaymentMethod enum.
+func (e PurchaseOrderInputPaymentMethod) Valid() bool {
+	switch e {
+	case PurchaseOrderInputPaymentMethodYoomoney:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PurchaseOrderInputPaymentType.
+const (
+	PurchaseOrderInputPaymentTypeAC PurchaseOrderInputPaymentType = "AC"
+	PurchaseOrderInputPaymentTypePC PurchaseOrderInputPaymentType = "PC"
+)
+
+// Valid indicates whether the value is a known member of the PurchaseOrderInputPaymentType enum.
+func (e PurchaseOrderInputPaymentType) Valid() bool {
+	switch e {
+	case PurchaseOrderInputPaymentTypeAC:
+		return true
+	case PurchaseOrderInputPaymentTypePC:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PurchaseQuoteCurrency.
+const (
+	PurchaseQuoteCurrencyRUB PurchaseQuoteCurrency = "RUB"
+)
+
+// Valid indicates whether the value is a known member of the PurchaseQuoteCurrency enum.
+func (e PurchaseQuoteCurrency) Valid() bool {
+	switch e {
+	case PurchaseQuoteCurrencyRUB:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PurchaseQuoteProfile.
+const (
+	PurchaseQuoteProfileEuru    PurchaseQuoteProfile = "euru"
+	PurchaseQuoteProfileRegular PurchaseQuoteProfile = "regular"
+)
+
+// Valid indicates whether the value is a known member of the PurchaseQuoteProfile enum.
+func (e PurchaseQuoteProfile) Valid() bool {
+	switch e {
+	case PurchaseQuoteProfileEuru:
+		return true
+	case PurchaseQuoteProfileRegular:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ReconcileResultStatus.
 const (
 	ReconcileResultStatusApplied      ReconcileResultStatus = "applied"
@@ -1079,6 +1289,69 @@ func (e VerifyResultVerified) Valid() bool {
 	}
 }
 
+// Defines values for YooMoneyCheckoutAction.
+const (
+	HttpsyoomoneyRuquickpayconfirm YooMoneyCheckoutAction = "https://yoomoney.ru/quickpay/confirm"
+)
+
+// Valid indicates whether the value is a known member of the YooMoneyCheckoutAction enum.
+func (e YooMoneyCheckoutAction) Valid() bool {
+	switch e {
+	case HttpsyoomoneyRuquickpayconfirm:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for YooMoneyCheckoutMethod.
+const (
+	POST YooMoneyCheckoutMethod = "POST"
+)
+
+// Valid indicates whether the value is a known member of the YooMoneyCheckoutMethod enum.
+func (e YooMoneyCheckoutMethod) Valid() bool {
+	switch e {
+	case POST:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for YooMoneyCheckoutFieldsPaymentType.
+const (
+	YooMoneyCheckoutFieldsPaymentTypeAC YooMoneyCheckoutFieldsPaymentType = "AC"
+	YooMoneyCheckoutFieldsPaymentTypePC YooMoneyCheckoutFieldsPaymentType = "PC"
+)
+
+// Valid indicates whether the value is a known member of the YooMoneyCheckoutFieldsPaymentType enum.
+func (e YooMoneyCheckoutFieldsPaymentType) Valid() bool {
+	switch e {
+	case YooMoneyCheckoutFieldsPaymentTypeAC:
+		return true
+	case YooMoneyCheckoutFieldsPaymentTypePC:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for YooMoneyCheckoutFieldsQuickpayForm.
+const (
+	Button YooMoneyCheckoutFieldsQuickpayForm = "button"
+)
+
+// Valid indicates whether the value is a known member of the YooMoneyCheckoutFieldsQuickpayForm enum.
+func (e YooMoneyCheckoutFieldsQuickpayForm) Valid() bool {
+	switch e {
+	case Button:
+		return true
+	default:
+		return false
+	}
+}
+
 // APIError defines model for APIError.
 type APIError struct {
 	Error ErrorBody `json:"error"`
@@ -1269,6 +1542,11 @@ type CompleteResult = map[string]interface{}
 // CurrentPasswordInput defines model for CurrentPasswordInput.
 type CurrentPasswordInput struct {
 	CurrentPassword string `json:"current_password"`
+}
+
+// CurrentPurchaseOrder defines model for CurrentPurchaseOrder.
+type CurrentPurchaseOrder struct {
+	Order *PurchaseOrder `json:"order"`
 }
 
 // CurrentTrialRequest defines model for CurrentTrialRequest.
@@ -1644,12 +1922,109 @@ type PasswordResetInput struct {
 // PasswordResetInputLocale defines model for PasswordResetInput.Locale.
 type PasswordResetInputLocale string
 
+// PaymentMethod defines model for PaymentMethod.
+type PaymentMethod struct {
+	Currency PaymentMethodCurrency `json:"currency"`
+	Id       PaymentMethodId       `json:"id"`
+}
+
+// PaymentMethodCurrency defines model for PaymentMethod.Currency.
+type PaymentMethodCurrency string
+
+// PaymentMethodId defines model for PaymentMethod.Id.
+type PaymentMethodId string
+
+// PaymentMethods defines model for PaymentMethods.
+type PaymentMethods struct {
+	Methods []PaymentMethod `json:"methods"`
+}
+
 // PendingEmailChange defines model for PendingEmailChange.
 type PendingEmailChange struct {
 	CurrentEmailConfirmed bool                `json:"current_email_confirmed"`
 	ExpiresAt             time.Time           `json:"expires_at"`
 	NewEmail              openapi_types.Email `json:"new_email"`
 	NewEmailConfirmed     bool                `json:"new_email_confirmed"`
+}
+
+// PurchaseCancelInput defines model for PurchaseCancelInput.
+type PurchaseCancelInput = map[string]interface{}
+
+// PurchaseOrder defines model for PurchaseOrder.
+type PurchaseOrder struct {
+	AccessOperationId *openapi_types.UUID            `json:"access_operation_id"`
+	Action            PurchaseOrderAction            `json:"action"`
+	CanCancel         bool                           `json:"can_cancel"`
+	CanPay            bool                           `json:"can_pay"`
+	Checkout          *YooMoneyCheckout              `json:"checkout"`
+	CreatedAt         time.Time                      `json:"created_at"`
+	Expired           bool                           `json:"expired"`
+	ExpiresAt         time.Time                      `json:"expires_at"`
+	FulfillmentStatus PurchaseOrderFulfillmentStatus `json:"fulfillment_status"`
+	OrderId           openapi_types.UUID             `json:"order_id"`
+	PaymentMethod     PurchaseOrderPaymentMethod     `json:"payment_method"`
+	PaymentStatus     PurchaseOrderPaymentStatus     `json:"payment_status"`
+	PaymentType       PurchaseOrderPaymentType       `json:"payment_type"`
+	Quote             PurchaseQuote                  `json:"quote"`
+	ReviewRequired    bool                           `json:"review_required"`
+}
+
+// PurchaseOrderAction defines model for PurchaseOrder.Action.
+type PurchaseOrderAction string
+
+// PurchaseOrderFulfillmentStatus defines model for PurchaseOrder.FulfillmentStatus.
+type PurchaseOrderFulfillmentStatus string
+
+// PurchaseOrderPaymentMethod defines model for PurchaseOrder.PaymentMethod.
+type PurchaseOrderPaymentMethod string
+
+// PurchaseOrderPaymentStatus defines model for PurchaseOrder.PaymentStatus.
+type PurchaseOrderPaymentStatus string
+
+// PurchaseOrderPaymentType defines model for PurchaseOrder.PaymentType.
+type PurchaseOrderPaymentType string
+
+// PurchaseOrderInput defines model for PurchaseOrderInput.
+type PurchaseOrderInput struct {
+	Action        PurchaseOrderInputAction        `json:"action"`
+	PaymentMethod PurchaseOrderInputPaymentMethod `json:"payment_method"`
+	PaymentType   PurchaseOrderInputPaymentType   `json:"payment_type"`
+	PeriodDays    int64                           `json:"period_days"`
+	PlanId        openapi_types.UUID              `json:"plan_id"`
+	Revision      int64                           `json:"revision"`
+}
+
+// PurchaseOrderInputAction defines model for PurchaseOrderInput.Action.
+type PurchaseOrderInputAction string
+
+// PurchaseOrderInputPaymentMethod defines model for PurchaseOrderInput.PaymentMethod.
+type PurchaseOrderInputPaymentMethod string
+
+// PurchaseOrderInputPaymentType defines model for PurchaseOrderInput.PaymentType.
+type PurchaseOrderInputPaymentType string
+
+// PurchaseQuote defines model for PurchaseQuote.
+type PurchaseQuote struct {
+	// AmountMinor Exact integer minor units within signed int64; no floating point.
+	AmountMinor string                `json:"amount_minor"`
+	Currency    PurchaseQuoteCurrency `json:"currency"`
+	Devices     int64                 `json:"devices"`
+	PeriodDays  int64                 `json:"period_days"`
+	PlanId      openapi_types.UUID    `json:"plan_id"`
+	Profile     PurchaseQuoteProfile  `json:"profile"`
+	Revision    int64                 `json:"revision"`
+	TrafficGb   int64                 `json:"traffic_gb"`
+}
+
+// PurchaseQuoteCurrency defines model for PurchaseQuote.Currency.
+type PurchaseQuoteCurrency string
+
+// PurchaseQuoteProfile defines model for PurchaseQuote.Profile.
+type PurchaseQuoteProfile string
+
+// PurchaseReconcileInput defines model for PurchaseReconcileInput.
+type PurchaseReconcileInput struct {
+	Reason string `json:"reason"`
 }
 
 // ReconcileInput defines model for ReconcileInput.
@@ -1931,6 +2306,35 @@ type VerifyResult struct {
 // VerifyResultVerified defines model for VerifyResult.Verified.
 type VerifyResultVerified bool
 
+// YooMoneyCheckout defines model for YooMoneyCheckout.
+type YooMoneyCheckout struct {
+	Action YooMoneyCheckoutAction `json:"action"`
+	Fields YooMoneyCheckoutFields `json:"fields"`
+	Method YooMoneyCheckoutMethod `json:"method"`
+}
+
+// YooMoneyCheckoutAction defines model for YooMoneyCheckout.Action.
+type YooMoneyCheckoutAction string
+
+// YooMoneyCheckoutMethod defines model for YooMoneyCheckout.Method.
+type YooMoneyCheckoutMethod string
+
+// YooMoneyCheckoutFields defines model for YooMoneyCheckoutFields.
+type YooMoneyCheckoutFields struct {
+	Label        openapi_types.UUID                 `json:"label"`
+	PaymentType  YooMoneyCheckoutFieldsPaymentType  `json:"paymentType"`
+	QuickpayForm YooMoneyCheckoutFieldsQuickpayForm `json:"quickpay-form"`
+	Receiver     string                             `json:"receiver"`
+	SuccessURL   string                             `json:"successURL"`
+	Sum          string                             `json:"sum"`
+}
+
+// YooMoneyCheckoutFieldsPaymentType defines model for YooMoneyCheckoutFields.PaymentType.
+type YooMoneyCheckoutFieldsPaymentType string
+
+// YooMoneyCheckoutFieldsQuickpayForm defines model for YooMoneyCheckoutFields.QuickpayForm.
+type YooMoneyCheckoutFieldsQuickpayForm string
+
 // ConfirmEmailChangeParams defines parameters for ConfirmEmailChange.
 type ConfirmEmailChangeParams struct {
 	Origin string `json:"Origin"`
@@ -2056,6 +2460,13 @@ type GetOperatorClientHistoryParams struct {
 	XCSRFToken string `json:"X-CSRF-Token"`
 }
 
+// ReconcilePurchaseOrderParams defines parameters for ReconcilePurchaseOrder.
+type ReconcilePurchaseOrderParams struct {
+	Origin         string             `json:"Origin"`
+	XCSRFToken     string             `json:"X-CSRF-Token"`
+	IdempotencyKey openapi_types.UUID `json:"Idempotency-Key"`
+}
+
 // SetOperatorRestrictionParams defines parameters for SetOperatorRestriction.
 type SetOperatorRestrictionParams struct {
 	Origin         string             `json:"Origin"`
@@ -2115,6 +2526,20 @@ type ReconsiderOperatorTrialRequestParams struct {
 	IdempotencyKey openapi_types.UUID `json:"Idempotency-Key"`
 }
 
+// CreatePurchaseOrderParams defines parameters for CreatePurchaseOrder.
+type CreatePurchaseOrderParams struct {
+	Origin         string             `json:"Origin"`
+	XCSRFToken     string             `json:"X-CSRF-Token"`
+	IdempotencyKey openapi_types.UUID `json:"Idempotency-Key"`
+}
+
+// CancelPurchaseOrderParams defines parameters for CancelPurchaseOrder.
+type CancelPurchaseOrderParams struct {
+	Origin         string             `json:"Origin"`
+	XCSRFToken     string             `json:"X-CSRF-Token"`
+	IdempotencyKey openapi_types.UUID `json:"Idempotency-Key"`
+}
+
 // GetSupportHistoryParams defines parameters for GetSupportHistory.
 type GetSupportHistoryParams struct {
 	Origin     string `json:"Origin"`
@@ -2155,6 +2580,23 @@ type ReconcileTrialOperationParams struct {
 // ReconsiderTrialRequestParams defines parameters for ReconsiderTrialRequest.
 type ReconsiderTrialRequestParams struct {
 	IdempotencyKey openapi_types.UUID `json:"Idempotency-Key"`
+}
+
+// ReceiveYooMoneyNotificationFormdataBody defines parameters for ReceiveYooMoneyNotification.
+type ReceiveYooMoneyNotificationFormdataBody struct {
+	Amount               *string           `form:"amount,omitempty" json:"amount,omitempty"`
+	Codepro              *string           `form:"codepro,omitempty" json:"codepro,omitempty"`
+	Currency             *string           `form:"currency,omitempty" json:"currency,omitempty"`
+	Datetime             *time.Time        `form:"datetime,omitempty" json:"datetime,omitempty"`
+	Label                *string           `form:"label,omitempty" json:"label,omitempty"`
+	NotificationType     *string           `form:"notification_type,omitempty" json:"notification_type,omitempty"`
+	OperationId          *string           `form:"operation_id,omitempty" json:"operation_id,omitempty"`
+	Sender               *string           `form:"sender,omitempty" json:"sender,omitempty"`
+	Sign                 string            `form:"sign" json:"sign"`
+	TestNotification     *string           `form:"test_notification,omitempty" json:"test_notification,omitempty"`
+	Unaccepted           *string           `form:"unaccepted,omitempty" json:"unaccepted,omitempty"`
+	WithdrawAmount       *string           `form:"withdraw_amount,omitempty" json:"withdraw_amount,omitempty"`
+	AdditionalProperties map[string]string `json:"-"`
 }
 
 // ConfirmEmailChangeJSONRequestBody defines body for ConfirmEmailChange for application/json ContentType.
@@ -2211,6 +2653,9 @@ type ReconcileAccessOperationJSONRequestBody = AccessReconcileInput
 // GetOperatorClientHistoryJSONRequestBody defines body for GetOperatorClientHistory for application/json ContentType.
 type GetOperatorClientHistoryJSONRequestBody = OperatorHistoryInput
 
+// ReconcilePurchaseOrderJSONRequestBody defines body for ReconcilePurchaseOrder for application/json ContentType.
+type ReconcilePurchaseOrderJSONRequestBody = PurchaseReconcileInput
+
 // SetOperatorRestrictionJSONRequestBody defines body for SetOperatorRestriction for application/json ContentType.
 type SetOperatorRestrictionJSONRequestBody = OperatorRestrictionInput
 
@@ -2240,6 +2685,12 @@ type DecideOperatorTrialRequestJSONRequestBody = OperatorDecisionInput
 
 // ReconsiderOperatorTrialRequestJSONRequestBody defines body for ReconsiderOperatorTrialRequest for application/json ContentType.
 type ReconsiderOperatorTrialRequestJSONRequestBody = OperatorReasonInput
+
+// CreatePurchaseOrderJSONRequestBody defines body for CreatePurchaseOrder for application/json ContentType.
+type CreatePurchaseOrderJSONRequestBody = PurchaseOrderInput
+
+// CancelPurchaseOrderJSONRequestBody defines body for CancelPurchaseOrder for application/json ContentType.
+type CancelPurchaseOrderJSONRequestBody = PurchaseCancelInput
 
 // GetSupportHistoryJSONRequestBody defines body for GetSupportHistory for application/json ContentType.
 type GetSupportHistoryJSONRequestBody = SupportHistoryInput
@@ -2273,6 +2724,240 @@ type DecideTrialRequestJSONRequestBody = DecisionInput
 
 // ReconsiderTrialRequestJSONRequestBody defines body for ReconsiderTrialRequest for application/json ContentType.
 type ReconsiderTrialRequestJSONRequestBody = ReconsiderInput
+
+// ReceiveYooMoneyNotificationFormdataRequestBody defines body for ReceiveYooMoneyNotification for application/x-www-form-urlencoded ContentType.
+type ReceiveYooMoneyNotificationFormdataRequestBody ReceiveYooMoneyNotificationFormdataBody
+
+// Getter for additional properties for ReceiveYooMoneyNotificationFormdataBody. Returns the specified
+// element and whether it was found
+func (a ReceiveYooMoneyNotificationFormdataBody) Get(fieldName string) (value string, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for ReceiveYooMoneyNotificationFormdataBody
+func (a *ReceiveYooMoneyNotificationFormdataBody) Set(fieldName string, value string) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]string)
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for ReceiveYooMoneyNotificationFormdataBody to handle AdditionalProperties
+func (a *ReceiveYooMoneyNotificationFormdataBody) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["amount"]; found {
+		err = json.Unmarshal(raw, &a.Amount)
+		if err != nil {
+			return fmt.Errorf("error reading 'amount': %w", err)
+		}
+		delete(object, "amount")
+	}
+
+	if raw, found := object["codepro"]; found {
+		err = json.Unmarshal(raw, &a.Codepro)
+		if err != nil {
+			return fmt.Errorf("error reading 'codepro': %w", err)
+		}
+		delete(object, "codepro")
+	}
+
+	if raw, found := object["currency"]; found {
+		err = json.Unmarshal(raw, &a.Currency)
+		if err != nil {
+			return fmt.Errorf("error reading 'currency': %w", err)
+		}
+		delete(object, "currency")
+	}
+
+	if raw, found := object["datetime"]; found {
+		err = json.Unmarshal(raw, &a.Datetime)
+		if err != nil {
+			return fmt.Errorf("error reading 'datetime': %w", err)
+		}
+		delete(object, "datetime")
+	}
+
+	if raw, found := object["label"]; found {
+		err = json.Unmarshal(raw, &a.Label)
+		if err != nil {
+			return fmt.Errorf("error reading 'label': %w", err)
+		}
+		delete(object, "label")
+	}
+
+	if raw, found := object["notification_type"]; found {
+		err = json.Unmarshal(raw, &a.NotificationType)
+		if err != nil {
+			return fmt.Errorf("error reading 'notification_type': %w", err)
+		}
+		delete(object, "notification_type")
+	}
+
+	if raw, found := object["operation_id"]; found {
+		err = json.Unmarshal(raw, &a.OperationId)
+		if err != nil {
+			return fmt.Errorf("error reading 'operation_id': %w", err)
+		}
+		delete(object, "operation_id")
+	}
+
+	if raw, found := object["sender"]; found {
+		err = json.Unmarshal(raw, &a.Sender)
+		if err != nil {
+			return fmt.Errorf("error reading 'sender': %w", err)
+		}
+		delete(object, "sender")
+	}
+
+	if raw, found := object["sign"]; found {
+		err = json.Unmarshal(raw, &a.Sign)
+		if err != nil {
+			return fmt.Errorf("error reading 'sign': %w", err)
+		}
+		delete(object, "sign")
+	}
+
+	if raw, found := object["test_notification"]; found {
+		err = json.Unmarshal(raw, &a.TestNotification)
+		if err != nil {
+			return fmt.Errorf("error reading 'test_notification': %w", err)
+		}
+		delete(object, "test_notification")
+	}
+
+	if raw, found := object["unaccepted"]; found {
+		err = json.Unmarshal(raw, &a.Unaccepted)
+		if err != nil {
+			return fmt.Errorf("error reading 'unaccepted': %w", err)
+		}
+		delete(object, "unaccepted")
+	}
+
+	if raw, found := object["withdraw_amount"]; found {
+		err = json.Unmarshal(raw, &a.WithdrawAmount)
+		if err != nil {
+			return fmt.Errorf("error reading 'withdraw_amount': %w", err)
+		}
+		delete(object, "withdraw_amount")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]string)
+		for fieldName, fieldBuf := range object {
+			var fieldVal string
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for ReceiveYooMoneyNotificationFormdataBody to handle AdditionalProperties
+func (a ReceiveYooMoneyNotificationFormdataBody) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Amount != nil {
+		object["amount"], err = json.Marshal(a.Amount)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'amount': %w", err)
+		}
+	}
+
+	if a.Codepro != nil {
+		object["codepro"], err = json.Marshal(a.Codepro)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'codepro': %w", err)
+		}
+	}
+
+	if a.Currency != nil {
+		object["currency"], err = json.Marshal(a.Currency)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'currency': %w", err)
+		}
+	}
+
+	if a.Datetime != nil {
+		object["datetime"], err = json.Marshal(a.Datetime)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'datetime': %w", err)
+		}
+	}
+
+	if a.Label != nil {
+		object["label"], err = json.Marshal(a.Label)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'label': %w", err)
+		}
+	}
+
+	if a.NotificationType != nil {
+		object["notification_type"], err = json.Marshal(a.NotificationType)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'notification_type': %w", err)
+		}
+	}
+
+	if a.OperationId != nil {
+		object["operation_id"], err = json.Marshal(a.OperationId)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'operation_id': %w", err)
+		}
+	}
+
+	if a.Sender != nil {
+		object["sender"], err = json.Marshal(a.Sender)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'sender': %w", err)
+		}
+	}
+
+	object["sign"], err = json.Marshal(a.Sign)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'sign': %w", err)
+	}
+
+	if a.TestNotification != nil {
+		object["test_notification"], err = json.Marshal(a.TestNotification)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'test_notification': %w", err)
+		}
+	}
+
+	if a.Unaccepted != nil {
+		object["unaccepted"], err = json.Marshal(a.Unaccepted)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'unaccepted': %w", err)
+		}
+	}
+
+	if a.WithdrawAmount != nil {
+		object["withdraw_amount"], err = json.Marshal(a.WithdrawAmount)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'withdraw_amount': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
 
 // AsEmailChangeConfirmInput0 returns the union data inside the EmailChangeConfirmInput as a EmailChangeConfirmInput0
 func (t EmailChangeConfirmInput) AsEmailChangeConfirmInput0() (EmailChangeConfirmInput0, error) {
@@ -2776,147 +3461,169 @@ func (t *VerifyInput) UnmarshalJSON(b []byte) error {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

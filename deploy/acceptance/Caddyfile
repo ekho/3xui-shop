@@ -8,7 +8,7 @@
   defer
   Referrer-Policy no-referrer
   X-Content-Type-Options nosniff
-  Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-PgqzSxMpLRBzUhg2SooHKWZ2oAc0yWVxeNMrpG5YqoM='; style-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+  Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-PgqzSxMpLRBzUhg2SooHKWZ2oAc0yWVxeNMrpG5YqoM='; style-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self' https://yoomoney.ru; frame-ancestors 'none'"
   Cache-Control no-store
  }
 }
@@ -23,6 +23,9 @@ https://{$CABINET_HOST}:8443 {
   respond 404
  }
  handle /api/* {
+  reverse_proxy backend:8080
+ }
+ handle /webhooks/yoomoney {
   reverse_proxy backend:8080
  }
  handle /healthz {

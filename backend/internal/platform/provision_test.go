@@ -24,6 +24,7 @@ import (
 type fakePanel struct {
 	blockRead                                                                        bool
 	afterAdd                                                                         func()
+	afterRead                                                                        func()
 	failAfterAdd                                                                     bool
 	dropAdd                                                                          bool
 	mu                                                                               sync.Mutex
@@ -94,6 +95,11 @@ func (p *fakePanel) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if p.client == nil {
+			if p.afterRead != nil {
+				callback := p.afterRead
+				p.afterRead = nil
+				callback()
+			}
 			reply(map[string]any{"success": false, "msg": "Obtain (record not found)", "obj": nil})
 			return
 		}

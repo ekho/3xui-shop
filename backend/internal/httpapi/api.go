@@ -77,7 +77,7 @@ func New(svc *platform.Service, cfg platform.Config) *echo.Echo {
 			c.Response().Header().Set("Cache-Control", "no-store")
 			c.Response().Header().Set("X-Content-Type-Options", "nosniff")
 			c.Response().Header().Set("Referrer-Policy", "no-referrer")
-			if c.Request().URL.RawQuery != "" && c.Path() != "" && !(c.Request().Method == "GET" && c.Path() == "/api/v1/operator/catalogue") {
+			if c.Request().URL.RawQuery != "" && !(c.Request().Method == "GET" && c.Request().URL.Path == "/api/v1/operator/catalogue") {
 				return invalid()
 			}
 			if c.Request().Method == "POST" && len(c.Path()) >= 4 && c.Path()[:4] == "/api" && c.Request().Header.Get("Origin") != cfg.CabinetOrigin {
@@ -143,6 +143,14 @@ func New(svc *platform.Service, cfg platform.Config) *echo.Echo {
 	e.POST("/api/v1/operator/clients/:id/support/ban", a.SetOperatorSupportBan)
 	e.GET("/api/v1/operator/session", a.GetOperatorSession)
 	e.GET("/api/v1/catalogue", a.GetCatalogue)
+	e.GET("/api/v1/payment-methods", a.GetPaymentMethods)
+	e.POST("/api/v1/orders", a.CreatePurchaseOrder)
+	e.GET("/api/v1/orders/current", a.GetCurrentPurchaseOrder)
+	e.GET("/api/v1/orders/:id", a.GetPurchaseOrder)
+	e.POST("/api/v1/orders/:id/cancel", a.CancelPurchaseOrder)
+	e.GET("/api/v1/operator/clients/:id/orders/current", a.GetOperatorPurchaseOrder)
+	e.POST("/api/v1/operator/clients/:id/orders/:order_id/reconcile", a.ReconcilePurchaseOrder)
+	e.POST("/webhooks/yoomoney", a.ReceiveYooMoney)
 	e.GET("/api/v1/operator/catalogue", a.GetOperatorCatalogue)
 	e.POST("/api/v1/operator/catalogue/plans", a.CreateCataloguePlan)
 	e.POST("/api/v1/operator/catalogue/plans/:id/revision", a.ReviseCataloguePlan)

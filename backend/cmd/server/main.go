@@ -76,6 +76,7 @@ func run() error {
 	workers := river.NewWorkers()
 	river.AddWorker(workers, &platform.ProvisionWorker{Service: svc})
 	river.AddWorker(workers, &platform.AccessWorker{Service: svc})
+	river.AddWorker(workers, &platform.PurchaseWorker{Service: svc})
 	river.AddWorker(workers, &platform.MonthlyResetWorker{Service: svc})
 	queues := map[string]river.QueueConfig{"provision": {MaxWorkers: 2}}
 	if os.Args[1] == "serve" {

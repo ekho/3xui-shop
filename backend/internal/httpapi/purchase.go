@@ -1,0 +1,161 @@
+package httpapi
+
+import (
+	"example.com/cabinet/backend/internal/wire"
+	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
+	"io"
+	"mime"
+	"net/url"
+	"strings"
+	"unicode/utf8"
+)
+
+func (a *API) GetPaymentMethods(c *echo.Context) error {
+	account, err := a.auth(c, false)
+	if err != nil {
+		return err
+	}
+	out, err := a.svc.PaymentMethods(c.Request().Context(), account.Account.AccountId)
+	if err != nil {
+		return err
+	}
+	return c.JSON(200, out)
+}
+
+func (a *API) CreatePurchaseOrder(c *echo.Context) error {
+	account, err := a.auth(c, true)
+	if err != nil {
+		return err
+	}
+	key, err := idempotencyKey(c)
+	if err != nil {
+		return err
+	}
+	in, err := decode[wire.PurchaseOrderInput](a, c, "PurchaseOrderInput")
+	if err != nil {
+		return err
+	}
+	out, err := a.svc.CreatePurchaseOrder(c.Request().Context(), account.Account.AccountId, key, in)
+	if err != nil {
+		return err
+	}
+	return c.JSON(201, out)
+}
+
+func (a *API) GetCurrentPurchaseOrder(c *echo.Context) error {
+	account, err := a.auth(c, false)
+	if err != nil {
+		return err
+	}
+	out, err := a.svc.CurrentPurchaseOrder(c.Request().Context(), account.Account.AccountId)
+	if err != nil {
+		return err
+	}
+	return c.JSON(200, out)
+}
+
+func (a *API) GetPurchaseOrder(c *echo.Context) error {
+	account, err := a.auth(c, false)
+	if err != nil {
+		return err
+	}
+	id, err := resourceID(c)
+	if err != nil {
+		return err
+	}
+	out, err := a.svc.PurchaseOrder(c.Request().Context(), account.Account.AccountId, id)
+	if err != nil {
+		return err
+	}
+	return c.JSON(200, out)
+}
+
+func (a *API) CancelPurchaseOrder(c *echo.Context) error {
+	account, err := a.auth(c, true)
+	if err != nil {
+		return err
+	}
+	id, err := resourceID(c)
+	if err != nil {
+		return err
+	}
+	key, err := idempotencyKey(c)
+	if err != nil {
+		return err
+	}
+	_, err = decode[wire.PurchaseCancelInput](a, c, "PurchaseCancelInput")
+	if err != nil {
+		return err
+	}
+	out, err := a.svc.CancelPurchaseOrder(c.Request().Context(), account.Account.AccountId, id, key)
+	if err != nil {
+		return err
+	}
+	return c.JSON(200, out)
+}
+
+func (a *API) GetOperatorPurchaseOrder(c *echo.Context) error {
+	actor, err := a.operatorAuth(c, false)
+	if err != nil {
+		return err
+	}
+	target, err := resourceID(c)
+	if err != nil {
+		return err
+	}
+	out, err := a.svc.OperatorPurchaseOrder(c.Request().Context(), actor.Account.AccountId, target)
+	if err != nil {
+		return err
+	}
+	return c.JSON(200, out)
+}
+
+func (a *API) ReconcilePurchaseOrder(c *echo.Context) error {
+	actor, target, key, err := a.operatorAction(c)
+	if err != nil {
+		return err
+	}
+	id, err := uuid.Parse(c.Param("order_id"))
+	if err != nil || id == uuid.Nil {
+		return invalid()
+	}
+	in, err := decode[wire.PurchaseReconcileInput](a, c, "PurchaseReconcileInput")
+	if err != nil {
+		return err
+	}
+	out, err := a.svc.ReconcilePurchaseOrder(c.Request().Context(), actor, target, id, key, in)
+	if err != nil {
+		return err
+	}
+	return c.JSON(202, out)
+}
+
+func (a *API) ReceiveYooMoney(c *echo.Context) error {
+	media, params, err := mime.ParseMediaType(c.Request().Header.Get("Content-Type"))
+	if err != nil || media != "application/x-www-form-urlencoded" || params["charset"] != "" && !strings.EqualFold(params["charset"], "utf-8") {
+		return invalid()
+	}
+	data, err := io.ReadAll(io.LimitReader(c.Request().Body, 16385))
+	if err != nil || len(data) == 0 || len(data) > 16384 || !utf8.Valid(data) || strings.ContainsRune(string(data), '\x00') {
+		return invalid()
+	}
+	for _, field := range strings.Split(string(data), "&") {
+		if field == "" || !strings.Contains(field, "=") || strings.HasPrefix(field, "=") {
+			return invalid()
+		}
+	}
+	fields, err := url.ParseQuery(string(data))
+	if err != nil {
+		return invalid()
+	}
+	for key, values := range fields {
+		if key == "" || !utf8.ValidString(key) || len(values) != 1 || !utf8.ValidString(values[0]) || strings.ContainsRune(key, '\x00') || strings.ContainsRune(values[0], '\x00') {
+			return invalid()
+		}
+	}
+	if err = a.svc.ReceiveYooMoney(c.Request().Context(), fields); err != nil {
+		return err
+	}
+	return c.NoContent(200)
+}

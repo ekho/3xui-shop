@@ -574,6 +574,14 @@ func (s *Service) ReconcileAccessOperation(ctx context.Context, actor, target, i
 	if _, err = s.queue.InsertTx(ctx, tx, AccessArgs{OperationID: id}, &river.InsertOpts{Queue: "provision", MaxAttempts: 5}); err != nil {
 		return out, unavailable()
 	}
+	if r.Kind == "purchase" {
+		if _, err = tx.Exec(ctx, `UPDATE purchase_orders p SET fulfillment_status='queued',
+			review_required=EXISTS(SELECT 1 FROM purchase_receipts r WHERE r.order_id=p.id AND r.review_reason IS NOT NULL),
+			review_reason=(SELECT r.review_reason FROM purchase_receipts r WHERE r.order_id=p.id AND r.review_reason IS NOT NULL ORDER BY r.created_at,r.operation_id LIMIT 1)
+			WHERE p.access_operation_id=$1`, id); err != nil {
+			return out, unavailable()
+		}
+	}
 	if _, err = tx.Exec(ctx, "INSERT INTO audit_events(id,created_at,action,account_id,operator_account_id,reason,access_operation_id) VALUES($1,$2,$3,$4,$5,$6,$7)", uuid.New(), now, "access_reconcile_requested", target, actor, strings.TrimSpace(in.Reason), id); err != nil {
 		return out, unavailable()
 	}

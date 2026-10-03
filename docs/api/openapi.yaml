@@ -7003,6 +7003,969 @@
           }
         }
       }
+    },
+    "/api/v1/payment-methods": {
+      "get": {
+        "operationId": "getPaymentMethods",
+        "description": "Verified web session and order ownership; private no-store. Unknown query/JSON fields rejected; writes require Origin, CSRF and UUID Idempotency-Key. Strict JSON <=16 KiB.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                },
+                "description": "Seconds before retry"
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentMethods"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders": {
+      "post": {
+        "operationId": "createPurchaseOrder",
+        "description": "Verified web session and order ownership; private no-store. Unknown query/JSON fields rejected; writes require Origin, CSRF and UUID Idempotency-Key. Strict JSON <=16 KiB.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                },
+                "description": "Seconds before retry"
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrder"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseOrderInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders/current": {
+      "get": {
+        "operationId": "getCurrentPurchaseOrder",
+        "description": "Verified web session and order ownership; private no-store. Unknown query/JSON fields rejected; writes require Origin, CSRF and UUID Idempotency-Key. Strict JSON <=16 KiB.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                },
+                "description": "Seconds before retry"
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentPurchaseOrder"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders/{id}": {
+      "get": {
+        "operationId": "getPurchaseOrder",
+        "description": "Verified web session and order ownership; private no-store. Unknown query/JSON fields rejected; writes require Origin, CSRF and UUID Idempotency-Key. Strict JSON <=16 KiB.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                },
+                "description": "Seconds before retry"
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrder"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders/{id}/cancel": {
+      "post": {
+        "operationId": "cancelPurchaseOrder",
+        "description": "Verified web session and order ownership; private no-store. Unknown query/JSON fields rejected; writes require Origin, CSRF and UUID Idempotency-Key. Strict JSON <=16 KiB.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                },
+                "description": "Seconds before retry"
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrder"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseCancelInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/operator/clients/{id}/orders/current": {
+      "get": {
+        "operationId": "getOperatorPurchaseOrder",
+        "description": "Verified unrestricted support operator; private no-store. Unknown query/JSON fields rejected; writes require Origin, CSRF and UUID Idempotency-Key. Strict JSON <=16 KiB.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                },
+                "description": "Seconds before retry"
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentPurchaseOrder"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/operator/clients/{id}/orders/{order_id}/reconcile": {
+      "post": {
+        "operationId": "reconcilePurchaseOrder",
+        "description": "Verified unrestricted support operator; private no-store. Unknown query/JSON fields rejected; writes require Origin, CSRF and UUID Idempotency-Key. Strict JSON <=16 KiB.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                },
+                "description": "Seconds before retry"
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrder"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseReconcileInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/webhooks/yoomoney": {
+      "post": {
+        "operationId": "receiveYooMoneyNotification",
+        "description": "HMAC-SHA256 sign over every form field except sign, sorted and RFC3986 encoded; SHA1 alone is rejected. No session cookies or Origin needed. UTF-8 form <=16 KiB, no duplicate fields or query parameters. Signed gross withdraw_amount compared against quote; net amount kept separately. Unknown authenticated label and test notification acknowledged without access.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "required": [
+                  "sign"
+                ],
+                "properties": {
+                  "sign": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "notification_type": {
+                    "type": "string"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "amount": {
+                    "type": "string"
+                  },
+                  "withdraw_amount": {
+                    "type": "string"
+                  },
+                  "currency": {
+                    "type": "string"
+                  },
+                  "datetime": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "sender": {
+                    "type": "string"
+                  },
+                  "codepro": {
+                    "type": "string"
+                  },
+                  "unaccepted": {
+                    "type": "string"
+                  },
+                  "test_notification": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Acknowledged; does not imply fulfillment."
+          },
+          "400": {
+            "description": "Malformed form or fields."
+          },
+          "403": {
+            "description": "Invalid HMAC signature."
+          },
+          "503": {
+            "description": "Persistence temporarily unavailable; retry safely."
+          }
+        }
+      }
     }
   },
   "components": {
@@ -9628,7 +10591,11 @@
           },
           "profile": {
             "type": "string",
-            "enum": ["regular", "euru", "unlimited"]
+            "enum": [
+              "regular",
+              "euru",
+              "unlimited"
+            ]
           },
           "vpn_banned": {
             "type": "boolean"
@@ -9741,7 +10708,8 @@
               "reset_traffic",
               "set_profile",
               "set_vpn_ban",
-              "monthly_reset"
+              "monthly_reset",
+              "purchase"
             ]
           },
           "status": {
@@ -9811,6 +10779,360 @@
           "desired",
           "completed_steps",
           "review_reason"
+        ]
+      },
+      "PaymentMethod": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "yoomoney"
+            ]
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "RUB"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "currency"
+        ]
+      },
+      "PaymentMethods": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "methods": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PaymentMethod"
+            },
+            "maxItems": 1
+          }
+        },
+        "required": [
+          "methods"
+        ]
+      },
+      "PurchaseOrderInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "purchase"
+            ]
+          },
+          "plan_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "period_days": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 106751
+          },
+          "payment_method": {
+            "type": "string",
+            "enum": [
+              "yoomoney"
+            ]
+          },
+          "payment_type": {
+            "type": "string",
+            "enum": [
+              "AC",
+              "PC"
+            ]
+          }
+        },
+        "required": [
+          "action",
+          "plan_id",
+          "revision",
+          "period_days",
+          "payment_method",
+          "payment_type"
+        ]
+      },
+      "PurchaseQuote": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "devices": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "period_days": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 106751
+          },
+          "traffic_gb": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "maximum": 100000
+          },
+          "profile": {
+            "type": "string",
+            "enum": [
+              "regular",
+              "euru"
+            ]
+          },
+          "amount_minor": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]{0,18})$",
+            "maxLength": 19,
+            "description": "Exact integer minor units within signed int64; no floating point."
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "RUB"
+            ]
+          }
+        },
+        "required": [
+          "plan_id",
+          "revision",
+          "devices",
+          "period_days",
+          "traffic_gb",
+          "profile",
+          "amount_minor",
+          "currency"
+        ]
+      },
+      "YooMoneyCheckoutFields": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "receiver": {
+            "type": "string",
+            "pattern": "^[0-9]{10,20}$"
+          },
+          "quickpay-form": {
+            "type": "string",
+            "enum": [
+              "button"
+            ]
+          },
+          "paymentType": {
+            "type": "string",
+            "enum": [
+              "AC",
+              "PC"
+            ]
+          },
+          "sum": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]{2}$"
+          },
+          "label": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "successURL": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "required": [
+          "receiver",
+          "quickpay-form",
+          "paymentType",
+          "sum",
+          "label",
+          "successURL"
+        ]
+      },
+      "YooMoneyCheckout": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "https://yoomoney.ru/quickpay/confirm"
+            ]
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "POST"
+            ]
+          },
+          "fields": {
+            "$ref": "#/components/schemas/YooMoneyCheckoutFields"
+          }
+        },
+        "required": [
+          "action",
+          "method",
+          "fields"
+        ]
+      },
+      "PurchaseOrder": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "order_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "purchase"
+            ]
+          },
+          "quote": {
+            "$ref": "#/components/schemas/PurchaseQuote"
+          },
+          "payment_method": {
+            "type": "string",
+            "enum": [
+              "yoomoney"
+            ]
+          },
+          "payment_type": {
+            "type": "string",
+            "enum": [
+              "AC",
+              "PC"
+            ]
+          },
+          "payment_status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "paid",
+              "canceled"
+            ]
+          },
+          "fulfillment_status": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "queued",
+              "running",
+              "applied",
+              "needs_review"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expired": {
+            "type": "boolean"
+          },
+          "can_pay": {
+            "type": "boolean"
+          },
+          "can_cancel": {
+            "type": "boolean"
+          },
+          "review_required": {
+            "type": "boolean"
+          },
+          "access_operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "checkout": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/YooMoneyCheckout"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "order_id",
+          "action",
+          "quote",
+          "payment_method",
+          "payment_type",
+          "payment_status",
+          "fulfillment_status",
+          "created_at",
+          "expires_at",
+          "expired",
+          "can_pay",
+          "can_cancel",
+          "review_required",
+          "access_operation_id",
+          "checkout"
+        ]
+      },
+      "CurrentPurchaseOrder": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "order": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PurchaseOrder"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "order"
+        ]
+      },
+      "PurchaseCancelInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+      },
+      "PurchaseReconcileInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "reason"
         ]
       }
     }
