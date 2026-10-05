@@ -1,0 +1,49 @@
+# Встроенный Telegram: М01
+
+Native-профиль запускает один backend для HTTP, River jobs, scheduler и
+Telegram. Python bot и отдельный `reconcile` здесь не запускаются. М01 переносит
+только Telegram-апрув web-триалов; остальные команды старого бота ещё не перенесены.
+Не переключайте действующий production bot token на этот частичный модуль.
+
+Из корня checkout с Docker, Go и OpenSSL:
+
+```sh
+python3 deploy/acceptance/local.py up
+python3 deploy/acceptance/local.py check
+python3 deploy/acceptance/local.py down
+```
+
+По умолчанию используется собственный проект `cabinet-native`, private state
+`.superpowers/acceptance/native-docker` и loopback HTTPS на `58443`.
+Панель закреплена на 3X-UI **3.7.0**, почта — Mailpit с TLS и authentication.
+Публичные условия и поддержка задаются при запуске gateway. Системное доверие
+сертификатам, Happ и production не меняются. Legacy-стенд нужно остановить
+перед запуском: он использует те же loopback-порты.
+
+`check` запускает Go HTTP/jobs/Telegram integration с simulated Bot API и
+настоящими SMTP/панелью. Затем публичное web-решение создаёт отложенную job,
+compiled backend останавливается и запускается с той же БД. Проверяются
+исходная Operation, один Grant, прежние ключи и readback панели. В этой проверке
+физического рестарта Telegram выключен; его повтор callback и реконструкция
+полного lifecycle проверяются отдельно Go integration. Private log — `native-go.log`.
+
+Для отдельного **тестового** бота в private `public.env` задайте
+`TELEGRAM_ENABLED=true`, путь `BOT_TOKEN_FILE` и реальные `BOT_OPERATOR_IDS`.
+Токен должен быть файлом, операторы должны начать личный чат; webhook должен
+отсутствовать. Пересоздайте только backend через те же три Compose-файла и
+`--env-file`; не включайте профиль Python `telegram`. Native overlay задаёт
+`LEGACY_BOT_API_ENABLED=false`; одновременное включение двух транспортов
+backend отклоняет. При `TELEGRAM_ENABLED=false` токен не читается.
+
+401/409, настроенный webhook или неподдержанный payment update останавливают
+Telegram-модуль с безопасным кодом в логах. HTTP и workers продолжают работу.
+Для смены transport: остановить старый poller, установить native configuration,
+запустить один backend. Обратный переход: остановить native backend, выключить
+его Telegram-модуль, включить legacy API и запустить прежний adapter. БД, pending
+deliveries и callbacks сохраняются. Не запускайте два poller с одним токеном.
+
+Причина ещё не подтверждённого пересмотра хранится в памяти. После рестарта
+оператор начинает диалог заново; подтверждённые решения и jobs уже в БД.
+Неоднозначная отправка Telegram может оставить повторную карточку, но не вторую
+выдачу. Неоднозначная запись панели требует сверки, автоматический create retry
+на 3.7.0 остаётся выключенным.

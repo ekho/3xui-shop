@@ -99,6 +99,7 @@ services:
       default: {ipv4_address: '${APP_GATEWAY_IP:-172.31.98.14}'}
     depends_on: [backend]
   bot:
+    profiles: [legacy]
     image: cabinet-bot:local
     build: {context: ../.., dockerfile: deploy/acceptance/Dockerfile.bot}
     user: '${APP_RUNTIME_UID:-10001}:${APP_RUNTIME_GID:-10001}'
@@ -135,4 +136,4 @@ secrets:
   adapter_cert: {file: '${ADAPTER_CERT_FILE:?required}'}
   adapter_key: {file: '${ADAPTER_KEY_FILE:?required}'}
   adapter_ca: {file: '${WEB_TRIAL_API_CA_FILE:?required}'}
-  bot_token: {file: '${BOT_TOKEN_FILE:?required}'}
+  bot_token: {file: '${BOT_TOKEN_FILE:-/dev/null}'}

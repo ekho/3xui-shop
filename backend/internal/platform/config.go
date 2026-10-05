@@ -135,6 +135,15 @@ func LoadConfig() (Config, error) {
 			}
 			c.Operators = append(c.Operators, id)
 		}
+	}
+	legacyBotAPIEnabled := true
+	if value := os.Getenv("LEGACY_BOT_API_ENABLED"); value != "" {
+		legacyBotAPIEnabled, err = strconv.ParseBool(value)
+		if err != nil {
+			return c, errors.New("invalid LEGACY_BOT_API_ENABLED")
+		}
+	}
+	if len(c.Operators) > 0 && legacyBotAPIEnabled {
 		c.AdapterToken, err = SecretFile("BOT_ADAPTER_TOKEN")
 		if err != nil || len(c.AdapterToken) < 32 {
 			return c, errors.New("invalid BOT_ADAPTER_TOKEN_FILE")

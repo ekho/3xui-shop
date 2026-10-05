@@ -156,12 +156,17 @@ type fixture struct {
 	panel               *panel
 	workers             *river.Client[pgx.Tx]
 	root, ca, tokenFile string
+	native              bool
 }
 
 func open(t *testing.T) *fixture {
+	return openMode(t, false)
+}
+
+func openMode(t *testing.T, native bool) *fixture {
 	t.Helper()
 	e := testkit.Open(t)
-	f := &fixture{env: e, mail: testkit.MailServer(t), panel: &panel{clients: map[string]map[string]any{}, loseReply: true}}
+	f := &fixture{env: e, mail: testkit.MailServer(t), panel: &panel{clients: map[string]map[string]any{}, loseReply: true}, native: native}
 	f.root, _ = filepath.Abs("../..")
 	ps := httptest.NewTLSServer(http.HandlerFunc(f.panel.serve))
 	t.Cleanup(ps.Close)
@@ -172,6 +177,11 @@ func open(t *testing.T) *fixture {
 	f.cfg = platform.Config{TermsVersion: "1", PrivacyVersion: "1", MailKey: bytes.Repeat([]byte{3}, 32), CodeKey: bytes.Repeat([]byte{4}, 32), RateNamespace: uuid.NewString(), Operators: []int64{101}, AdapterToken: strings.Repeat("f", 43), PanelID: "dedicated-test", TrialEnabled: true, TrialPeriodDays: 3, TrialTrafficGB: 15, TrialDevices: 1, PanelURL: ps.URL, PanelToken: "fixture-panel", SubscriptionBaseURL: "https://subscriptions.example.test/sub/", SMTPAddress: f.mail.Address, SMTPRootCAs: f.mail.Roots, SMTPFrom: "sender@example.test"}
 	f.cfg.PanelRootCAs = x509.NewCertPool()
 	f.cfg.PanelRootCAs.AddCert(ps.Certificate())
+	if native {
+		f.cfg.Operators = []int64{101, 202}
+		f.cfg.AdapterToken = ""
+		configureNativeDocker(t, f)
+	}
 	var handler http.Handler
 	f.public = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/config.json" {
@@ -197,16 +207,22 @@ func open(t *testing.T) *fixture {
 	f.cfg.CabinetOrigin = f.public.URL
 	f.svc = platform.NewService(e.Pool, e.Redis, queue, f.cfg)
 	handler = httpapi.New(f.svc, f.cfg)
-	f.internal = httptest.NewTLSServer(handler)
-	t.Cleanup(f.internal.Close)
-	dir := t.TempDir()
-	f.ca = filepath.Join(dir, "ca.pem")
-	f.tokenFile = filepath.Join(dir, "adapter-token")
-	os.WriteFile(f.ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f.internal.Certificate().Raw}), 0600)
-	os.WriteFile(f.tokenFile, []byte(f.cfg.AdapterToken), 0600)
+	if !native {
+		f.internal = httptest.NewTLSServer(handler)
+		t.Cleanup(f.internal.Close)
+		dir := t.TempDir()
+		f.ca = filepath.Join(dir, "ca.pem")
+		f.tokenFile = filepath.Join(dir, "adapter-token")
+		os.WriteFile(f.ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f.internal.Certificate().Raw}), 0600)
+		os.WriteFile(f.tokenFile, []byte(f.cfg.AdapterToken), 0600)
+	}
 	workers := river.NewWorkers()
 	river.AddWorker(workers, &platform.MailWorker{Service: f.svc})
 	river.AddWorker(workers, &platform.ProvisionWorker{Service: f.svc})
+	if native {
+		river.AddWorker(workers, &platform.AccessWorker{Service: f.svc})
+		river.AddWorker(workers, &platform.MonthlyResetWorker{Service: f.svc})
+	}
 	f.workers, err = river.NewClient(riverpgxv5.New(e.Pool), &river.Config{Workers: workers, Queues: map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: 2}, "provision": {MaxWorkers: 2}}, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	if err != nil {
 		t.Fatal(err)
@@ -283,11 +299,22 @@ func (f *fixture) signup(t *testing.T, email string) (*http.Client, string, wire
 	json.Unmarshal(b, &out)
 	var delivery uuid.UUID
 	f.env.Pool.QueryRow(context.Background(), `SELECT id FROM mail_deliveries WHERE challenge_id=$1`, out.ChallengeId).Scan(&delivery)
-	if f.svc.SendMail(context.Background(), delivery) != nil {
-		t.Fatal("TLS SMTP send")
+	if !f.native {
+		if f.svc.SendMail(context.Background(), delivery) != nil {
+			t.Fatal("TLS SMTP send")
+		}
+	} else {
+		wait(t, func() bool {
+			for _, letter := range f.letters(t, email) {
+				if strings.Contains(letter, "To: "+email) {
+					return true
+				}
+			}
+			return false
+		})
 	}
 	var token string
-	for _, letter := range f.mail.Letters() {
+	for _, letter := range f.letters(t, email) {
 		if strings.Contains(letter, "To: "+email) {
 			match := regexp.MustCompile(`#token=([A-Za-z0-9_-]{43})`).FindStringSubmatch(letter)
 			if len(match) == 2 {

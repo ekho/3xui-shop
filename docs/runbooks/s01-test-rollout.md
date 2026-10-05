@@ -64,12 +64,15 @@ project. Базы `compose.test.yml` и будущего acceptance project со
 Из корня feature-worktree, с Docker, OpenSSL, Python и установленным web Playwright:
 
 ```sh
-python3 deploy/acceptance/local.py up
-python3 deploy/acceptance/local.py check
+LOCAL_PROFILE=legacy python3 deploy/acceptance/local.py up
+LOCAL_PROFILE=legacy python3 deploy/acceptance/local.py check
 node deploy/acceptance/browser.mjs
 ```
 
-`up` собирает backend/web/adapter и поднимает только проект `cabinet-s01-local`:
+Это прежняя приёмка с Python-адаптером. Для М01 используйте
+[native-профиль](m01-embedded-telegram.md); `local.py` теперь выбирает его по умолчанию.
+Legacy `up` собирает backend/web/adapter и поднимает только свой проект `cabinet-local`
+(или имя из сохранённого `runtime.json`):
 PG/Redis, 3X-UI **3.7.0**, Mailpit **1.31.1**, HTTPS gateway и тестовый origin.
 Images панели/почты закреплены digest в `compose.local.yml`; panel и VPN-client
 используют один multi-platform image3.7.0, index digest
@@ -126,7 +129,7 @@ Native attach сохранил credentials/expiry/limits и добавил то�
 Остановить только этот стенд, сохранив volumes/private state:
 
 ```sh
-python3 deploy/acceptance/local.py down
+LOCAL_PROFILE=legacy python3 deploy/acceptance/local.py down
 ```
 
 По умолчанию test bot выключен профилем `telegram`. Для настоящего апрува владелец предоставляет
