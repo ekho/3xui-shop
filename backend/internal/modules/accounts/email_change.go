@@ -1,14 +1,12 @@
-package platform
+package accounts
 
 import (
 	"context"
 	"errors"
-	"example.com/cabinet/backend/internal/store"
-	"example.com/cabinet/backend/internal/wire"
+	"example.com/cabinet/backend/internal/modules/accounts/internal/store"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	"time"
 )
 
@@ -34,7 +32,7 @@ func validEmailPair(proofs []store.CredentialChallenge, account store.Account, n
 	}
 	return true
 }
-func (s *Service) pendingEmailChange(ctx context.Context, q *store.Queries, account store.Account) (*wire.PendingEmailChange, error) {
+func (s *Service) pendingEmailChange(ctx context.Context, q *store.Queries, account store.Account) (*PendingEmailChange, error) {
 	proofs, err := q.ActiveEmailChange(ctx, store.ActiveEmailChangeParams{AccountID: &account.ID, Now: stamp(s.now())})
 	if err != nil {
 		return nil, unavailable()
@@ -42,62 +40,62 @@ func (s *Service) pendingEmailChange(ctx context.Context, q *store.Queries, acco
 	if !validEmailPair(proofs, account, s.now()) {
 		return nil, nil
 	}
-	return &wire.PendingEmailChange{NewEmail: openapi_types.Email(proofs[0].TargetEmail), ExpiresAt: proofs[0].TokenExpiresAt.Time, CurrentEmailConfirmed: proofs[1].ConfirmedAt.Valid, NewEmailConfirmed: proofs[0].ConfirmedAt.Valid}, nil
+	return &PendingEmailChange{NewEmail: string(proofs[0].TargetEmail), ExpiresAt: proofs[0].TokenExpiresAt.Time, CurrentEmailConfirmed: proofs[1].ConfirmedAt.Valid, NewEmailConfirmed: proofs[0].ConfirmedAt.Valid}, nil
 }
-func (s *Service) RequestEmailChange(ctx context.Context, raw string, in wire.EmailChangeInput, ip string) (wire.EmailChangeAccepted, error) {
+func (s *Service) RequestEmailChange(ctx context.Context, raw string, in EmailChangeInput, ip string) (EmailChangeAccepted, error) {
 	account, _, err := s.authenticateCurrentPassword(ctx, raw, in.CurrentPassword, ip)
 	if err != nil {
-		return wire.EmailChangeAccepted{}, err
+		return EmailChangeAccepted{}, err
 	}
 	target, err := normalizeEmail(string(in.NewEmail))
 	if err != nil {
-		return wire.EmailChangeAccepted{}, err
+		return EmailChangeAccepted{}, err
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return wire.EmailChangeAccepted{}, unavailable()
+		return EmailChangeAccepted{}, unavailable()
 	}
 	defer tx.Rollback(ctx)
 	q := store.New(tx)
 	account, _, err = s.revalidateCredentialSession(ctx, q, raw, account)
 	if err != nil {
-		return wire.EmailChangeAccepted{}, err
+		return EmailChangeAccepted{}, err
 	}
 	emails, err := s.credentialEmails(ctx, tx, account)
 	if err != nil {
-		return wire.EmailChangeAccepted{}, err
+		return EmailChangeAccepted{}, err
 	}
 	if err = s.lockCredentialEmails(ctx, tx, append(emails, target)); err != nil {
-		return wire.EmailChangeAccepted{}, err
+		return EmailChangeAccepted{}, err
 	}
 	_, err = q.AccountByEmail(ctx, target)
 	if err == nil {
-		return wire.EmailChangeAccepted{}, failure(409, "EMAIL_CHANGE_UNAVAILABLE")
+		return EmailChangeAccepted{}, failure(409, "EMAIL_CHANGE_UNAVAILABLE")
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return wire.EmailChangeAccepted{}, unavailable()
+		return EmailChangeAccepted{}, unavailable()
 	}
 	if err = s.limitMails(ctx, []string{account.EmailKey.String, target}); err != nil {
-		return wire.EmailChangeAccepted{}, err
+		return EmailChangeAccepted{}, err
 	}
 	if err = s.revokeEmailChange(ctx, tx, account.ID); err != nil {
-		return wire.EmailChangeAccepted{}, err
+		return EmailChangeAccepted{}, err
 	}
 	now := s.now()
 	change := uuid.New()
-	out := wire.EmailChangeAccepted{ChangeId: change, ExpiresAt: now.Add(30 * time.Minute), ResendAfter: 60}
+	out := EmailChangeAccepted{ChangeId: change, ExpiresAt: now.Add(30 * time.Minute), ResendAfter: 60}
 	for _, purpose := range []string{"email_change_old", "email_change_new"} {
 		if err = s.addCredentialProof(ctx, tx, uuid.New(), purpose, &account.ID, &change, account.EmailKey.String, target, account.CredentialVersion, account.Locale, now); err != nil {
-			return wire.EmailChangeAccepted{}, err
+			return EmailChangeAccepted{}, err
 		}
 	}
 	if tx.Commit(ctx) != nil {
-		return wire.EmailChangeAccepted{}, unavailable()
+		return EmailChangeAccepted{}, unavailable()
 	}
 	return out, nil
 }
-func (s *Service) ConfirmEmailChange(ctx context.Context, in wire.EmailChangeConfirmInput, ip string) (wire.EmailChangeResult, error) {
-	out := wire.EmailChangeResult{}
+func (s *Service) ConfirmEmailChange(ctx context.Context, in EmailChangeConfirmInput, ip string) (EmailChangeResult, error) {
+	out := EmailChangeResult{}
 	if err := s.limitCredentialIP(ctx, ip); err != nil {
 		return out, err
 	}
@@ -158,7 +156,7 @@ func (s *Service) ConfirmEmailChange(ctx context.Context, in wire.EmailChangeCon
 		}
 		return out, nil
 	}
-	conflict := func() (wire.EmailChangeResult, error) {
+	conflict := func() (EmailChangeResult, error) {
 		if s.revokeEmailChange(ctx, tx, account.ID) != nil || tx.Commit(ctx) != nil {
 			return out, unavailable()
 		}

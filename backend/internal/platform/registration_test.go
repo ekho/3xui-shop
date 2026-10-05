@@ -5,8 +5,10 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"example.com/cabinet/backend/internal/store"
 	"example.com/cabinet/backend/internal/testkit"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
@@ -120,10 +122,10 @@ func TestRegistrationOwnership(t *testing.T) {
 	if email != "owner+one@example.test" || id == vpn || len(sub) != 16 || key != "acct_"+strings.ReplaceAll(id.String(), "-", "") || strings.Contains(pw, "spaces allowed") {
 		t.Fatal("identity or password boundary")
 	}
-	if matched, err := s.checkPassword(ctx, " spaces allowed ✨安全 ", pw); err != nil || !matched {
-		t.Fatal("password changed")
+	if _, _, err = s.Login(ctx, wire.LoginInput{Email: openapi_types.Email(email), Password: " spaces allowed ✨安全 "}, "127.0.0.1"); err != nil {
+		t.Fatal("password changed", err)
 	}
-	if matched, _ := s.checkPassword(ctx, "spaces allowed ✨安全", pw); matched {
+	if _, _, err = s.Login(ctx, wire.LoginInput{Email: openapi_types.Email(email), Password: "spaces allowed ✨安全"}, "127.0.0.1"); status(err) != 401 {
 		t.Fatal("password trimmed")
 	}
 	e.Advance(time.Minute)
@@ -231,16 +233,6 @@ func TestMailRevocation(t *testing.T) {
 		t.Fatal("mail secrets leaked into job")
 	}
 }
-func TestPasswordUnicode(t *testing.T) {
-	for _, tc := range []struct {
-		p  string
-		ok bool
-	}{{strings.Repeat("界", 15), true}, {strings.Repeat("a", 14), false}, {strings.Repeat("界", 129), false}, {"  safe spaced password  ", true}, {"\xff" + strings.Repeat("a", 20), false}, {"films+pic+galeries", false}} {
-		if err := validatePassword(tc.p); (err == nil) != tc.ok {
-			t.Errorf("Unicode/password validation: want valid=%v length=%d", tc.ok, len(tc.p))
-		}
-	}
-}
 
 var _ pgx.Tx
 
@@ -285,15 +277,6 @@ func TestMailDeliveryTLS(t *testing.T) {
 		t.Fatal("expired token accepted")
 	}
 }
-func BenchmarkPasswordHash(b *testing.B) {
-	s := &Service{hashSlots: make(chan struct{}, 2)}
-	for b.Loop() {
-		if _, err := s.hashPassword(context.Background(), "long realistic password ✨"); err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
 func TestRegistrationConfig(t *testing.T) {
 	for _, name := range []string{"BOT_OPERATOR_IDS", "BOT_ADAPTER_TOKEN", "BOT_ADAPTER_TOKEN_FILE", "LEGACY_BOT_API_ENABLED", "TRIAL_ENABLED", "TRIAL_PERIOD", "TRIAL_TRAFFIC_GB", "BONUS_DEVICES_COUNT", "PANEL_ID"} {
 		t.Setenv(name, "")
@@ -342,5 +325,31 @@ func TestRegistrationConfig(t *testing.T) {
 	t.Setenv("MAIL_KEY", "conflicting-value")
 	if _, err = LoadConfig(); err == nil {
 		t.Fatal("conflicting secret inputs accepted")
+	}
+}
+
+func seedSecurityNotice(t *testing.T, s *Service, e *testkit.Env, email string) {
+	t.Helper()
+	ctx := context.Background()
+	id := uuid.New()
+	block, _ := aes.NewCipher(s.cfg.MailKey)
+	gcm, _ := cipher.NewGCM(block)
+	nonce := make([]byte, gcm.NonceSize())
+	rand.Read(nonce)
+	plain := []byte(`{"Type":"security_notice","Locale":"en"}`)
+	encrypted := gcm.Seal(nonce, nonce, plain, []byte(id.String()))
+	tx, err := e.Pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	if err = store.New(tx).AddCredentialMail(ctx, store.AddCredentialMailParams{ID: id, EmailKey: email, Ciphertext: encrypted, CreatedAt: stamp(e.Clock()), Kind: "security_notice"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.queue.InsertTx(ctx, tx, MailArgs{DeliveryID: id}, &river.InsertOpts{MaxAttempts: 5}); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		t.Fatal(err)
 	}
 }

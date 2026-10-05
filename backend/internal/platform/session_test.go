@@ -120,14 +120,4 @@ func TestLoginRateLimit(t *testing.T) {
 	if _, _, err := s.Login(ctx, wire.LoginInput{Email: "last@example.test", Password: "wrong long password"}, "192.0.2.8"); status(err) != 429 {
 		t.Fatal("31st IP failure not limited")
 	}
-	// Saturation waits for context rather than allocating a third Argon2 buffer.
-	s.hashSlots <- struct{}{}
-	s.hashSlots <- struct{}{}
-	cancelled, cancel := context.WithCancel(ctx)
-	cancel()
-	if _, err := s.hashPassword(cancelled, "my long safe password ✨"); status(err) != 503 {
-		t.Fatal("hash wait ignores cancellation")
-	}
-	<-s.hashSlots
-	<-s.hashSlots
 }

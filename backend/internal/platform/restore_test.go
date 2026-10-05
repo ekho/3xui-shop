@@ -35,14 +35,7 @@ func TestAccountSecurityRestore(t *testing.T) {
 	if _, err := s.Register(ctx, signup("restore-registration@example.test")); err != nil {
 		t.Fatal("registration mail fixture")
 	}
-	tx, err := e.Pool.Begin(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback(ctx)
-	if s.enqueueSecurityNotice(ctx, tx, string(login.Email), mailPayload{Type: "security_notice", Locale: "en"}) != nil || tx.Commit(ctx) != nil {
-		t.Fatal("notice fixture")
-	}
+	seedSecurityNotice(t, s, e, string(login.Email))
 	// An old backup can reintroduce a cookie that was revoked after that backup.
 	if _, err := e.Pool.Exec(ctx, `CREATE TABLE fixture_saved_sessions AS TABLE sessions`); err != nil {
 		t.Fatal("backup sessions")

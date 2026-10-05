@@ -2,7 +2,7 @@ package platform
 
 import (
 	"context"
-	"github.com/google/uuid"
+	"example.com/cabinet/backend/internal/modules/accounts"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -22,22 +22,20 @@ func failure(status int, code string) error { return &Error{Status: status, Code
 func unavailable() error                    { return failure(503, "SERVICE_UNAVAILABLE") }
 
 type Service struct {
-	pool      *pgxpool.Pool
-	limiter   *redis.Client
-	queue     *river.Client[pgx.Tx]
-	cfg       Config
-	now       func() time.Time
-	hashSlots chan struct{}
+	pool     *pgxpool.Pool
+	limiter  *redis.Client
+	queue    *river.Client[pgx.Tx]
+	cfg      Config
+	now      func() time.Time
+	accounts *accounts.Service
 }
 
 func NewService(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[pgx.Tx], cfg Config) *Service {
-	return &Service{pool: pool, limiter: limiter, queue: queue, cfg: cfg, now: time.Now, hashSlots: make(chan struct{}, 2)}
+	s := &Service{pool: pool, limiter: limiter, queue: queue, cfg: cfg, now: time.Now}
+	s.accounts = accounts.New(pool, limiter, queue, accounts.Config{CabinetOrigin: cfg.CabinetOrigin, TermsVersion: cfg.TermsVersion, PrivacyVersion: cfg.PrivacyVersion, RateNamespace: cfg.RateNamespace, MailKey: cfg.MailKey, CodeKey: cfg.CodeKey, Operators: cfg.Operators, Now: func() time.Time { return s.now() }}, s.smtpSend)
+	return s
 }
 
-type MailArgs struct {
-	DeliveryID uuid.UUID `json:"delivery_id"`
-}
-
-func (MailArgs) Kind() string { return "mail_delivery" }
+type MailArgs = accounts.MailArgs
 
 func (s *Service) Health(ctx context.Context) bool { return s.pool.Ping(ctx) == nil }
