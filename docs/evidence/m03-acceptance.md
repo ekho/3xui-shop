@@ -26,6 +26,7 @@ HTTP/OpenAPI, web, schema, identifiers и зависимости сохране�
 | `python3 deploy/acceptance/smoke.py` | PASS: 22.451s. HTTPS, runtime public config, public/private routing, secret files, повторные migrations, bounded rollback и provision-only restore. |
 | `python3 deploy/acceptance/local.py up --reuse-images`, `check`, `down` | PASS: 7.663s / 44.133s / 1.168s. 3X-UI **3.7.0**, TLS Mailpit, HTTP/jobs/Telegram с simulated Bot API. Физический stop/start compiled backend сохраняет ту же Operation, один Grant, keys и настоящий panel readback; в restart-проверке Telegram выключен. Стенд остановлен. |
 | Свежий whole-branch review | Astra/high проверил `c780927..bfbcd14`: Critical/Important/Minor 0. Исходники и logs всех 18 этапов прочитаны, переход `ed52c2b..bfbcd14` меняет только документы. Fix pass и повторное review не требовались. |
+| Последующая стабилизация CI-теста | Первый CI `c5759f9` прошёл Go race/connected browser и Python105, но дал Playwright109/110: существующий operator-cabinet тест сравнивал retry keys до прихода второго запроса. CI RED → focused GREEN1/1 (4.9s) → полный Playwright GREEN110/110, команда 70.158s. Три действия этого теста теперь ждут ровно два строковых ключа, затем по-прежнему проверяют их равенство. Код приложения не менялся; CI нового source проверяется отдельно. |
 
 Все **18 этапов** полной локальной матрицы завершились с exit 0;
 сумма измеренных длительностей — **346.532s**. Private logs не публикуются.
@@ -60,6 +61,7 @@ Native ledger: исправлялись тестовые consent/sub_id seeds, �
 | Совместимость полной покупки PR #5 оставить для интеграции С10 после М04 | Ревьюер её не оценивал: исходный PR не включён в эту ветку; адаптация ports записана в #17/#59. | Без адаптации raw SQL и account calls покупка не пройдёт новую module boundary. |
 | Real providers, внешний SMTP и production проверять отдельно | Ревьюер их не оценивал; текущая приёмка использует собственный локальный стенд и simulated Telegram. | Условия внешних сервисов и production могут потребовать исправлений перед развёртыванием. |
 | М04–М06 и удаление Python оставить следующими этапами | Ревьюер не оценивал завершённость всей архитектуры; М03 закрывает только catalogue. | Ошибочное признание всей миграции завершённой скроет оставшуюся функциональность и связи platform. |
+| Исправить ожидание трёх retry в существующем Playwright-тесте в рамках М03 | Прямой CI RED показал второй key ещё undefined; ожидание captured запросов устраняет гонку без изменения приложения и без ослабления проверки одинаковых keys. | Ошибочная проверка могла бы пропустить нарушение идемпотентности; теперь обязательны два строковых key и их равенство. |
 
 Отложенных Minor нет. Все три пункта `Declined to judge` финального review
 рассмотрены и отражены в последних трёх решениях таблицы.
@@ -67,7 +69,12 @@ Native ledger: исправлялись тестовые consent/sub_id seeds, �
 ## Доставка и границы
 
 Локальная реализация, приёмка и свежий whole-branch review выполнены.
-PR CI пока ожидается. М03 не слит в `v2`, production не менялся.
+[PR #63](https://github.com/ekho/3xui-shop/pull/63) открыт в `v2`.
+[Первый PR CI](https://github.com/ekho/3xui-shop/actions/runs/37379195997)
+выявил описанную гонку теста; три image builds прошли. CI после исправления
+ожидается. Whole-branch review предшествовал этой test-only правке; покрывающий
+тест и полный Playwright прогон прошли, повторный review не выполнялся.
+М03 не слит в `v2`, production не менялся.
 М02 отдельно доставлен через [PR #62](https://github.com/ekho/3xui-shop/pull/62);
 [2.0.0-dev.9](https://github.com/ekho/3xui-shop/releases/tag/2.0.0-dev.9)
 опубликован с проверенными source/version manifests amd64/arm64.
