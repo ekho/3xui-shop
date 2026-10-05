@@ -75,3 +75,13 @@ type OperatorResult struct {
 	Plans   []OperatorPlan `json:"plans"`
 	Total   int64          `json:"total"`
 }
+
+// CurrentPlan separates the current index from its persisted terms.
+type CurrentPlan struct {
+	ID       uuid.UUID
+	Revision int64
+	Archived bool
+	Hidden   bool
+	Profile  string
+	Terms    Terms
+}

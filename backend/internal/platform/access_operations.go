@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"example.com/cabinet/backend/internal/modules/catalogue"
 	"example.com/cabinet/backend/internal/store"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
@@ -50,11 +51,14 @@ type accessTarget struct {
 type unlimitedPlan struct {
 	ID       uuid.UUID
 	Revision int64
-	Terms    wire.CatalogueTerms
+	Terms    catalogue.Terms
 }
 
-func (s *Service) unlimitedAccessPlan(ctx context.Context, q *store.Queries) (unlimitedPlan, error) {
-	rows, err := q.CatalogueUnlimited(ctx)
+func (s *Service) unlimitedAccessPlan(ctx context.Context, tx pgx.Tx) (unlimitedPlan, error) {
+	rows, err := s.catalogue.UnlimitedPlansTx(ctx, tx)
+	if errors.Is(err, catalogue.ErrInvalidTerms) {
+		return unlimitedPlan{}, failure(409, "ACCESS_PLAN_CONFLICT")
+	}
 	if err != nil {
 		return unlimitedPlan{}, unavailable()
 	}
@@ -65,10 +69,11 @@ func (s *Service) unlimitedAccessPlan(ctx context.Context, q *store.Queries) (un
 			continue
 		}
 		count++
-		if json.Unmarshal(row.Terms, &out.Terms) != nil || !row.CurrentHidden || out.Terms.Profile != "unlimited" || !out.Terms.Hidden || out.Terms.Devices < 1 || out.Terms.Devices > 10000 || out.Terms.TrafficGb < 1 || out.Terms.TrafficGb > 100000 {
+		out.Terms = row.Terms
+		if !row.Hidden || out.Terms.Profile != "unlimited" || !out.Terms.Hidden || out.Terms.Devices < 1 || out.Terms.Devices > 10000 || out.Terms.TrafficGb < 1 || out.Terms.TrafficGb > 100000 {
 			return unlimitedPlan{}, failure(409, "ACCESS_PLAN_CONFLICT")
 		}
-		out.ID, out.Revision = row.ID, row.CurrentRevision
+		out.ID, out.Revision = row.ID, row.Revision
 	}
 	if count != 1 {
 		return unlimitedPlan{}, failure(409, "ACCESS_PLAN_CONFLICT")
@@ -269,20 +274,20 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 		}
 		t.ExpiryTimeMS = base + added
 	case "assign_plan":
-		plan, err := q.CatalogueByID(ctx, *in.PlanId)
-		if errors.Is(err, pgx.ErrNoRows) {
+		plan, err := s.catalogue.CurrentPlanTx(ctx, tx, *in.PlanId)
+		if errors.Is(err, catalogue.ErrNotFound) {
+			return out, failure(409, "ACCESS_PLAN_CONFLICT")
+		}
+		if err != nil && !errors.Is(err, catalogue.ErrInvalidTerms) {
+			return out, unavailable()
+		}
+		if plan.Archived || plan.Revision != *in.Revision || plan.Profile == "unlimited" {
 			return out, failure(409, "ACCESS_PLAN_CONFLICT")
 		}
 		if err != nil {
 			return out, unavailable()
 		}
-		if plan.Archived || plan.CurrentRevision != *in.Revision || plan.CurrentProfile == "unlimited" {
-			return out, failure(409, "ACCESS_PLAN_CONFLICT")
-		}
-		var terms wire.CatalogueTerms
-		if json.Unmarshal(plan.Terms, &terms) != nil {
-			return out, unavailable()
-		}
+		terms := plan.Terms
 		found := false
 		for _, days := range terms.Periods {
 			if days == *in.PeriodDays {
@@ -331,7 +336,7 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 			if _, e := tx.Exec(ctx, "SELECT 1 FROM monthly_reset_periods LIMIT 0"); e != nil {
 				return out, unavailable()
 			}
-			plan, e := s.unlimitedAccessPlan(ctx, q)
+			plan, e := s.unlimitedAccessPlan(ctx, tx)
 			if e != nil {
 				return out, e
 			}

@@ -49,6 +49,11 @@ func TestAccountsSQLBoundary(t *testing.T) {
 	if ownsAccountSQL(`SELECT account_id FROM trial_requests`) {
 		t.Fatal("foreign owner rejected")
 	}
+	checkSQLBoundary(t, "accounts", ownsAccountSQL)
+}
+
+func checkSQLBoundary(t *testing.T, owner string, ownsSQL func(string) bool) {
+	t.Helper()
 	err := filepath.WalkDir("../..", func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -60,10 +65,10 @@ func TestAccountsSQLBoundary(t *testing.T) {
 		rel = filepath.ToSlash(rel)
 		// Shared schema and the reviewed restore procedure are operational
 		// exceptions. Test-only SQL fixtures never run in the application.
-		if entry.IsDir() && (rel == "internal/modules/accounts" || rel == "db/migrations" || rel == "internal/testkit") {
+		if entry.IsDir() && (rel == "internal/modules/"+owner || rel == "db/migrations" || rel == "internal/testkit") {
 			return filepath.SkipDir
 		}
-		if entry.IsDir() || strings.HasSuffix(rel, "_test.go") || rel == "db/maintenance/post_restore_auth.sql" {
+		if entry.IsDir() || strings.HasSuffix(rel, "_test.go") || (owner == "accounts" && rel == "db/maintenance/post_restore_auth.sql") {
 			return nil
 		}
 		switch filepath.Ext(path) {
@@ -72,8 +77,8 @@ func TestAccountsSQLBoundary(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			if ownsAccountSQL(string(body)) {
-				t.Errorf("account SQL outside owner: %s", rel)
+			if ownsSQL(string(body)) {
+				t.Errorf("%s SQL outside owner: %s", owner, rel)
 			}
 		case ".go":
 			file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
@@ -86,8 +91,8 @@ func TestAccountsSQLBoundary(t *testing.T) {
 					return true
 				}
 				text, err := strconv.Unquote(literal.Value)
-				if err == nil && ownsAccountSQL(text) {
-					t.Errorf("account SQL outside owner: %s", rel)
+				if err == nil && ownsSQL(text) {
+					t.Errorf("%s SQL outside owner: %s", owner, rel)
 				}
 				return true
 			})
@@ -149,4 +154,26 @@ func TestModuleBoundaries(t *testing.T) {
 			t.Fatal("public/owned dependency rejected")
 		}
 	}
+}
+
+var catalogueSQL = regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:catalogue_plans|catalogue_revisions)\b`)
+
+func ownsCatalogueSQL(text string) bool {
+	return catalogueSQL.MatchString(strings.ReplaceAll(text, `"`, ""))
+}
+
+func TestCatalogueSQLBoundary(t *testing.T) {
+	for _, sql := range []string{
+		`SELECT * FROM catalogue_plans`, `UPDATE catalogue_revisions SET archived=true`,
+		`INSERT INTO catalogue_plans VALUES ($1)`, `DELETE FROM public.catalogue_revisions`,
+		`WITH p AS (SELECT * FROM "public"."catalogue_plans") SELECT * FROM p`,
+	} {
+		if !ownsCatalogueSQL(sql) {
+			t.Fatal("negative fixture bypassed catalogue ownership", sql)
+		}
+	}
+	if ownsCatalogueSQL(`SELECT plan_id FROM access_operations`) {
+		t.Fatal("foreign owner rejected")
+	}
+	checkSQLBoundary(t, "catalogue", ownsCatalogueSQL)
 }
