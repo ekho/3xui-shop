@@ -25,6 +25,7 @@ HTTP/OpenAPI, web, schema, identifiers и зависимости сохране�
 | Compose config и build backend/gateway/bot | PASS: 0.190s / 17.049s. Только собственные локальные контейнеры. |
 | `python3 deploy/acceptance/smoke.py` | PASS: 22.451s. HTTPS, runtime public config, public/private routing, secret files, повторные migrations, bounded rollback и provision-only restore. |
 | `python3 deploy/acceptance/local.py up --reuse-images`, `check`, `down` | PASS: 7.663s / 44.133s / 1.168s. 3X-UI **3.7.0**, TLS Mailpit, HTTP/jobs/Telegram с simulated Bot API. Физический stop/start compiled backend сохраняет ту же Operation, один Grant, keys и настоящий panel readback; в restart-проверке Telegram выключен. Стенд остановлен. |
+| Свежий whole-branch review | Astra/high проверил `c780927..bfbcd14`: Critical/Important/Minor 0. Исходники и logs всех 18 этапов прочитаны, переход `ed52c2b..bfbcd14` меняет только документы. Fix pass и повторное review не требовались. |
 
 Все **18 этапов** полной локальной матрицы завершились с exit 0;
 сумма измеренных длительностей — **346.532s**. Private logs не публикуются.
@@ -56,11 +57,17 @@ Native ledger: исправлялись тестовые consent/sub_id seeds, �
 | Слить PR #62 без PR CI по прямому указанию владельца | Сохранены точные source/tree, локальные проверки и review М02. Это решение относится к #62. | Дефект, выявляемый только PR CI, мог попасть в preview `v2`. |
 | Вернуть metadata вместе с `ErrInvalidTerms`, archived unlimited пропускать до decode refusal | Сохраняет прежний порядок availability guards и работу valid unlimited при повреждённой archived строке. | Иной failure code или блокировка корректной выдачи unlimited. |
 | Закрыть Task 3 через полный прогон до записи evidence | Результаты нельзя честно записать до проверки; после неё меняются только документы. | Документация может неверно описать факты; исполняемые доказательства привязаны к `ed52c2b`. |
+| Совместимость полной покупки PR #5 оставить для интеграции С10 после М04 | Ревьюер её не оценивал: исходный PR не включён в эту ветку; адаптация ports записана в #17/#59. | Без адаптации raw SQL и account calls покупка не пройдёт новую module boundary. |
+| Real providers, внешний SMTP и production проверять отдельно | Ревьюер их не оценивал; текущая приёмка использует собственный локальный стенд и simulated Telegram. | Условия внешних сервисов и production могут потребовать исправлений перед развёртыванием. |
+| М04–М06 и удаление Python оставить следующими этапами | Ревьюер не оценивал завершённость всей архитектуры; М03 закрывает только catalogue. | Ошибочное признание всей миграции завершённой скроет оставшуюся функциональность и связи platform. |
+
+Отложенных Minor нет. Все три пункта `Declined to judge` финального review
+рассмотрены и отражены в последних трёх решениях таблицы.
 
 ## Доставка и границы
 
-Локальная реализация и приёмка выполнены. Свежий whole-branch review и PR CI
-пока ожидаются. М03 не слит в `v2`, production не менялся.
+Локальная реализация, приёмка и свежий whole-branch review выполнены.
+PR CI пока ожидается. М03 не слит в `v2`, production не менялся.
 М02 отдельно доставлен через [PR #62](https://github.com/ekho/3xui-shop/pull/62);
 [2.0.0-dev.9](https://github.com/ekho/3xui-shop/releases/tag/2.0.0-dev.9)
 опубликован с проверенными source/version manifests amd64/arm64.
