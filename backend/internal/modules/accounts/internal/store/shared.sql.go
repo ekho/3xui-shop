@@ -41,6 +41,55 @@ func (q *Queries) AddAudit(ctx context.Context, arg AddAuditParams) error {
 	return err
 }
 
+const addIdempotency = `-- name: AddIdempotency :exec
+INSERT INTO idempotency_records(principal,operation,key,body_hash,result,created_at) VALUES($1,$2,$3,$4,$5,$6)
+`
+
+type AddIdempotencyParams struct {
+	Principal string
+	Operation string
+	Key       uuid.UUID
+	BodyHash  []byte
+	Result    []byte
+	CreatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) AddIdempotency(ctx context.Context, arg AddIdempotencyParams) error {
+	_, err := q.db.Exec(ctx, addIdempotency,
+		arg.Principal,
+		arg.Operation,
+		arg.Key,
+		arg.BodyHash,
+		arg.Result,
+		arg.CreatedAt,
+	)
+	return err
+}
+
+const idempotencyByKey = `-- name: IdempotencyByKey :one
+SELECT principal, operation, key, body_hash, result, created_at FROM idempotency_records WHERE principal=$1 AND operation=$2 AND key=$3
+`
+
+type IdempotencyByKeyParams struct {
+	Principal string
+	Operation string
+	Key       uuid.UUID
+}
+
+func (q *Queries) IdempotencyByKey(ctx context.Context, arg IdempotencyByKeyParams) (IdempotencyRecord, error) {
+	row := q.db.QueryRow(ctx, idempotencyByKey, arg.Principal, arg.Operation, arg.Key)
+	var i IdempotencyRecord
+	err := row.Scan(
+		&i.Principal,
+		&i.Operation,
+		&i.Key,
+		&i.BodyHash,
+		&i.Result,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const lockAccount = `-- name: LockAccount :one
 SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id, access_profile FROM accounts WHERE id=$1 FOR UPDATE
 `
@@ -74,4 +123,19 @@ func (q *Queries) LockAccount(ctx context.Context, id uuid.UUID) (Account, error
 		&i.AccessProfile,
 	)
 	return i, err
+}
+
+const lockIdempotency = `-- name: LockIdempotency :exec
+SELECT pg_advisory_xact_lock(hashtextextended('idem:'||$1::text||':'||$2::text||':'||$3::uuid::text,0))
+`
+
+type LockIdempotencyParams struct {
+	Principal string
+	Operation string
+	Key       uuid.UUID
+}
+
+func (q *Queries) LockIdempotency(ctx context.Context, arg LockIdempotencyParams) error {
+	_, err := q.db.Exec(ctx, lockIdempotency, arg.Principal, arg.Operation, arg.Key)
+	return err
 }

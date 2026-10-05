@@ -23,18 +23,9 @@ type ProvisionArgs struct {
 	OperationID uuid.UUID `json:"operation_id"`
 }
 
-func (ProvisionArgs) Kind() string { return "trial_provision" }
-func (s *Service) operatorAllowed(actor int64) bool {
-	if actor <= 0 {
-		return false
-	}
-	for _, id := range s.cfg.Operators {
-		if id == actor {
-			return true
-		}
-	}
-	return false
-}
+func (ProvisionArgs) Kind() string                  { return "trial_provision" }
+func (s *Service) operatorAllowed(actor int64) bool { return s.accounts.OperatorAllowed(actor) }
+
 func validText(value string, min, max int) bool {
 	return utf8.ValidString(value) && !strings.ContainsRune(value, '\x00') && utf8.RuneCountInString(value) <= max && utf8.RuneCountInString(strings.TrimSpace(value)) >= min
 }

@@ -54,6 +54,37 @@ type CredentialChallenge struct {
 	Revoked           bool
 }
 
+type IdempotencyRecord struct {
+	Principal string
+	Operation string
+	Key       uuid.UUID
+	BodyHash  []byte
+	Result    []byte
+	CreatedAt pgtype.Timestamptz
+}
+
+type LegacyApprovalEvent struct {
+	SourceID   int64
+	AccountID  uuid.UUID
+	TargetTgID int64
+	CreatedAt  pgtype.Timestamptz
+	Action     string
+	ActorType  pgtype.Text
+	ActorID    pgtype.Int8
+	ActorName  pgtype.Text
+	Source     pgtype.Text
+}
+
+type LegacyApprovalSnapshot struct {
+	AccountID          uuid.UUID
+	SourceLegacyUserID int64
+	SourceTgID         int64
+	Status             string
+	RequestedAt        pgtype.Timestamptz
+	DecidedAt          pgtype.Timestamptz
+	DecidedBy          pgtype.Int8
+}
+
 type MailDelivery struct {
 	ID                    uuid.UUID
 	ChallengeID           *uuid.UUID

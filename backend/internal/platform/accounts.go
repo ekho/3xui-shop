@@ -115,3 +115,17 @@ func legacyTime(v *time.Time) pgtype.Timestamptz {
 	}
 	return stamp(*v)
 }
+
+func legacyInt(id *int64) pgtype.Int8 {
+	if id == nil {
+		return pgtype.Int8{}
+	}
+	return pgtype.Int8{Int64: *id, Valid: true}
+}
+
+func legacyText(v *string) pgtype.Text {
+	if v == nil {
+		return pgtype.Text{}
+	}
+	return pgtype.Text{String: *v, Valid: true}
+}

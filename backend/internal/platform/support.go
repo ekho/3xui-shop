@@ -190,32 +190,9 @@ func (s *Service) Support(ctx context.Context, actor, target uuid.UUID, operator
 	return s.supportPage(ctx, actor, target, operator, 0)
 }
 func (s *Service) RequireSupportOperator(ctx context.Context, actor uuid.UUID) error {
-	if actor == uuid.Nil {
-		return failure(401, "INVALID_CREDENTIALS")
-	}
-	q := store.New(s.pool)
-	account, err := q.AccountByID(ctx, actor)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return failure(401, "INVALID_CREDENTIALS")
-	}
-	if err != nil {
-		return unavailable()
-	}
-	if account.Restricted {
-		return failure(403, "ACCOUNT_RESTRICTED")
-	}
-	if account.Kind != "web" || !account.VerifiedAt.Valid {
-		return failure(403, "INVALID_CREDENTIALS")
-	}
-	allowed, err := q.OperatorExists(ctx, actor)
-	if err != nil {
-		return unavailable()
-	}
-	if !allowed {
-		return failure(403, "INVALID_CREDENTIALS")
-	}
-	return nil
+	return accountError(s.accounts.RequireOperator(ctx, actor))
 }
+
 func (s *Service) SupportHistory(ctx context.Context, actor, target uuid.UUID, operator bool, before int64) (wire.SupportResult, error) {
 	if before < 1 {
 		return wire.SupportResult{}, failure(400, "INVALID_INPUT")

@@ -1,17 +1,16 @@
 package platform
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"errors"
+	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/store"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
-	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -22,46 +21,8 @@ import (
 // Every web-operator mutation takes account locks in UUID order, then the role.
 // The CLI revoker takes its account lock before deleting that same role.
 func (s *Service) lockOperatorPair(ctx context.Context, tx pgx.Tx, actor, target uuid.UUID) (store.Account, error) {
-	var empty store.Account
-	if actor == uuid.Nil || target == uuid.Nil {
-		return empty, failure(400, "INVALID_INPUT")
-	}
-	first, second := actor, target
-	if bytes.Compare(actor[:], target[:]) > 0 {
-		first, second = target, actor
-	}
-	ids := []uuid.UUID{first}
-	if second != first {
-		ids = append(ids, second)
-	}
-	q := store.New(tx)
-	var targetAccount store.Account
-	for _, id := range ids {
-		a, err := q.LockAccount(ctx, id)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return empty, failure(404, "INVALID_INPUT")
-		}
-		if err != nil {
-			return empty, unavailable()
-		}
-		if id == actor {
-			if a.Restricted {
-				return empty, failure(403, "ACCOUNT_RESTRICTED")
-			}
-			if a.Kind != "web" || !a.VerifiedAt.Valid || !a.EmailKey.Valid || !a.PasswordHash.Valid {
-				return empty, failure(403, "INVALID_CREDENTIALS")
-			}
-		}
-		if id == target {
-			targetAccount = a
-		}
-	}
-	if _, err := q.LockOperatorRole(ctx, actor); errors.Is(err, pgx.ErrNoRows) {
-		return empty, failure(403, "INVALID_CREDENTIALS")
-	} else if err != nil {
-		return empty, unavailable()
-	}
-	return targetAccount, nil
+	out, err := s.accounts.LockOperatorPair(ctx, tx, actor, target)
+	return legacyAccount(out), accountError(err)
 }
 
 func operatorClient(a store.Account) wire.OperatorClient {
@@ -192,28 +153,12 @@ func legacyEventRows(rows []store.LegacyApprovalEvent) ([]wire.OperatorLegacyApp
 }
 
 func (s *Service) SearchOperatorClients(ctx context.Context, actor uuid.UUID, in wire.OperatorSearchInput) (wire.OperatorSearchResult, error) {
-	out := wire.OperatorSearchResult{Clients: []wire.OperatorClient{}, Page: in.Page, PerPage: in.PerPage}
-	if err := s.RequireSupportOperator(ctx, actor); err != nil {
-		return out, err
+	result, err := s.accounts.SearchClients(ctx, actor, accounts.OperatorSearchInput(in))
+	out := wire.OperatorSearchResult{Clients: []wire.OperatorClient{}, Page: result.Page, PerPage: result.PerPage, Total: result.Total}
+	for _, a := range result.Clients {
+		out.Clients = append(out.Clients, operatorClient(legacyAccount(a)))
 	}
-	if !utf8.ValidString(in.Q) || strings.ContainsRune(in.Q, '\x00') || utf8.RuneCountInString(in.Q) > 256 ||
-		in.Page < 1 || in.Page > math.MaxInt32 || in.PerPage < 1 || in.PerPage > 50 {
-		return out, failure(400, "INVALID_INPUT")
-	}
-	q := store.New(s.pool)
-	count, err := q.CountOperatorClients(ctx, in.Q)
-	if err != nil {
-		return out, unavailable()
-	}
-	rows, err := q.SearchOperatorClients(ctx, store.SearchOperatorClientsParams{Query: in.Q, PageLimit: int32(in.PerPage), PageOffset: int64(in.Page-1) * int64(in.PerPage)})
-	if err != nil {
-		return out, unavailable()
-	}
-	out.Total = count
-	for _, a := range rows {
-		out.Clients = append(out.Clients, operatorClient(a))
-	}
-	return out, nil
+	return out, accountError(err)
 }
 
 func (s *Service) operatorClientAccount(ctx context.Context, actor, target uuid.UUID) (store.Account, error) {
@@ -419,47 +364,7 @@ func (s *Service) OperatorClientKey(ctx context.Context, actor, target uuid.UUID
 }
 
 func (s *Service) ChangeOperatorRole(ctx context.Context, target uuid.UUID, grant bool) error {
-	if target == uuid.Nil {
-		return failure(400, "INVALID_INPUT")
-	}
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return unavailable()
-	}
-	defer tx.Rollback(ctx)
-	q := store.New(tx)
-	a, err := q.LockAccount(ctx, target)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return failure(404, "INVALID_INPUT")
-	}
-	if err != nil {
-		return unavailable()
-	}
-	if grant && (a.Kind != "web" || !a.VerifiedAt.Valid || !a.EmailKey.Valid || !a.PasswordHash.Valid || a.Restricted) {
-		return failure(403, "INVALID_CREDENTIALS")
-	}
-	var changed int64
-	if grant {
-		changed, err = q.GrantOperator(ctx, store.GrantOperatorParams{AccountID: target, GrantedAt: stamp(s.now())})
-	} else {
-		changed, err = q.RevokeOperator(ctx, target)
-	}
-	if err != nil {
-		return unavailable()
-	}
-	if changed > 0 {
-		action := "operator_revoked"
-		if grant {
-			action = "operator_granted"
-		}
-		if err = q.AddOperatorAudit(ctx, store.AddOperatorAuditParams{ID: uuid.New(), CreatedAt: stamp(s.now()), Action: action, AccountID: target}); err != nil {
-			return unavailable()
-		}
-	}
-	if err = tx.Commit(ctx); err != nil {
-		return unavailable()
-	}
-	return nil
+	return accountError(s.accounts.ChangeOperatorRole(ctx, target, grant))
 }
 
 func validOperatorName(name string) bool {

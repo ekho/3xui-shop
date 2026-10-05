@@ -85,3 +85,27 @@ type EmailChangeConfirmInput struct {
 	Code, Token *string
 }
 type EmailChangeResult struct{ Completed bool }
+
+// Tags preserve the persisted restriction idempotency contract.
+type OperatorRestrictionInput struct {
+	Reason     string `json:"reason"`
+	Restricted bool   `json:"restricted"`
+}
+type OperatorRestrictionResult struct {
+	ChangedAt         *time.Time `json:"changed_at"`
+	OperatorAccountId *uuid.UUID `json:"operator_account_id"`
+	Restricted        bool       `json:"restricted"`
+}
+type OperatorSearchInput struct {
+	Page, PerPage int
+	Q             string
+}
+type OperatorSearchResult struct {
+	Clients       []Snapshot
+	Page, PerPage int
+	Total         int64
+}
+type TelegramInput struct {
+	TelegramID          int64
+	DisplayName, Locale string
+}
