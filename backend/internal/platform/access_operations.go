@@ -23,31 +23,6 @@ type AccessArgs struct {
 
 func (AccessArgs) Kind() string { return "access_operation" }
 
-// The private persisted target is fixed before any panel write. It is never returned by HTTP.
-type accessTarget struct {
-	OperationID               uuid.UUID `json:"operation_id"`
-	PanelID                   string    `json:"panel_id"`
-	PanelKey                  string    `json:"panel_key"`
-	VPNID                     uuid.UUID `json:"vpn_id"`
-	SubID                     string    `json:"sub_id"`
-	ExpiryTimeMS              int64     `json:"expiry_time_ms"`
-	DeviceCount               int64     `json:"device_count"`
-	TrafficLimitBytes         int64     `json:"traffic_limit_bytes"`
-	Profile                   string    `json:"profile"`
-	InboundIDs                []int64   `json:"inbound_ids"`
-	Missing                   bool      `json:"missing"`
-	Reset                     bool      `json:"reset"`
-	Banned                    bool      `json:"banned"`
-	PreviousBanned            bool      `json:"previous_banned"`
-	Enable                    bool      `json:"enable"`
-	NoClientIntent            bool      `json:"no_client_intent"`
-	RestoreEnabled            bool      `json:"restore_enabled"`
-	PreviousExpiryMS          int64     `json:"previous_expiry_ms"`
-	PreviousLimitIP           int64     `json:"previous_limit_ip"`
-	PreviousTrafficLimitBytes int64     `json:"previous_traffic_limit_bytes"`
-	PreviousInboundIDs        []int64   `json:"previous_inbound_ids"`
-}
-
 type unlimitedPlan struct {
 	ID       uuid.UUID
 	Revision int64
