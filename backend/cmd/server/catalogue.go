@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"example.com/cabinet/backend/internal/app"
 	"example.com/cabinet/backend/internal/platform"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"io"
@@ -51,7 +52,7 @@ func runCatalogueCommand(args []string) error {
 		return importError("IMPORT_DATABASE_UNAVAILABLE")
 	}
 	defer pool.Close()
-	svc := platform.NewService(pool, nil, nil, platform.Config{})
+	svc := app.NewService(pool, nil, nil, platform.Config{})
 	if args[0] == "seed-unlimited" {
 		plan, created, e := svc.SeedUnlimitedCatalogue(ctx)
 		if e != nil {

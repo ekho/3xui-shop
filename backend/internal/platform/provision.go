@@ -65,7 +65,7 @@ func (s *Service) reviewOperation(ctx context.Context, op store.TrialOperation, 
 	}
 	defer tx.Rollback(ctx)
 	q := store.New(tx)
-	a, e := q.LockAccount(ctx, op.AccountID)
+	a, e := s.lockAccount(ctx, tx, op.AccountID)
 	if e != nil {
 		return unavailable()
 	}
@@ -145,7 +145,7 @@ func (s *Service) Provision(parent context.Context, id uuid.UUID) error {
 		}
 		return unavailable()
 	}
-	a, e := store.New(s.pool).AccountByID(ctx, op.AccountID)
+	a, e := s.accountByID(ctx, op.AccountID)
 	if e != nil {
 		return fail(false)
 	}
@@ -203,7 +203,7 @@ func (s *Service) Provision(parent context.Context, id uuid.UUID) error {
 			return false
 		}
 		// Recheck account restrictions immediately before each external write.
-		current, err := store.New(s.pool).AccountByID(ctx, a.ID)
+		current, err := s.accountByID(ctx, a.ID)
 		if err != nil || current.Restricted || current.VpnBanned != target.Banned || target.Profile != "" && (!current.AccessProfile.Valid || current.AccessProfile.String != target.Profile) {
 			return false
 		}
@@ -283,7 +283,7 @@ func (s *Service) Provision(parent context.Context, id uuid.UUID) error {
 	defer tx.Rollback(ctx)
 	finalFailure := func() error { tx.Rollback(context.Background()); return fail(true) }
 	q = store.New(tx)
-	a, e = q.LockAccount(ctx, a.ID)
+	a, e = s.lockAccount(ctx, tx, a.ID)
 	if e != nil || a.Restricted {
 		return finalFailure()
 	}
@@ -291,7 +291,7 @@ func (s *Service) Provision(parent context.Context, id uuid.UUID) error {
 	if e != nil || n != 1 {
 		return finalFailure()
 	}
-	if q.GrantApplied(ctx, store.GrantAppliedParams{OperationID: id, GrantedAt: stamp(s.now())}) != nil || q.AssignPanel(ctx, store.AssignPanelParams{ID: a.ID, AssignedPanelID: pgtype.Text{String: op.PanelID, Valid: true}}) != nil {
+	if q.GrantApplied(ctx, store.GrantAppliedParams{OperationID: id, GrantedAt: stamp(s.now())}) != nil || s.accounts.AssignPanel(ctx, tx, a.ID, op.PanelID) != nil {
 		return finalFailure()
 	}
 	if v.UsedTraffic != nil && q.ObserveTraffic(ctx, store.ObserveTrafficParams{ID: id, TrafficUsedBytes: pgtype.Int8{Int64: *v.UsedTraffic, Valid: true}, ObservedAt: stamp(s.now())}) != nil {
@@ -338,7 +338,7 @@ func (s *Service) ReconcileTrialOperation(ctx context.Context, id, key uuid.UUID
 	if e != nil {
 		return out, unavailable()
 	}
-	a, e := q.LockAccount(ctx, op.AccountID)
+	a, e := s.lockAccount(ctx, tx, op.AccountID)
 	if e != nil {
 		return out, unavailable()
 	}

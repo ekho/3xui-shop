@@ -1,4 +1,4 @@
-package platform
+package accounts
 
 import (
 	"context"
@@ -6,11 +6,9 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
-	"example.com/cabinet/backend/internal/store"
-	"example.com/cabinet/backend/internal/wire"
+	"example.com/cabinet/backend/internal/modules/accounts/internal/store"
 	"fmt"
 	"github.com/jackc/pgx/v5"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/argon2"
 	"time"
@@ -43,8 +41,8 @@ func (s *Service) loginKeys(identity, ip string) []string {
 	prefix := "{" + s.cfg.RateNamespace + "}:login:"
 	return []string{prefix + "account:" + hash(identity), prefix + "ip:" + hash(ip)}
 }
-func (s *Service) Login(ctx context.Context, in wire.LoginInput, ip string) (wire.LoginResult, string, error) {
-	out := wire.LoginResult{}
+func (s *Service) Login(ctx context.Context, in LoginInput, ip string) (LoginResult, string, error) {
+	out := LoginResult{}
 	email, err := normalizeEmail(string(in.Email))
 	if err != nil {
 		return out, "", err
@@ -109,13 +107,10 @@ func (s *Service) Login(ctx context.Context, in wire.LoginInput, ip string) (wir
 	if err = tx.Commit(ctx); err != nil {
 		return out, "", unavailable()
 	}
-	return wire.LoginResult{Account: publicAccount(account), CsrfToken: csrf}, raw, nil
+	return LoginResult{Account: snapshot(account), CsrfToken: csrf}, raw, nil
 }
-func publicAccount(a store.Account) wire.Account {
-	return wire.Account{AccountId: a.ID, Email: openapi_types.Email(a.EmailKey.String), EmailVerified: true, Locale: wire.AccountLocale(a.Locale), TelegramLinked: false}
-}
-func (s *Service) Authenticate(ctx context.Context, raw string) (wire.AccountResult, error) {
-	out := wire.AccountResult{}
+func (s *Service) Authenticate(ctx context.Context, raw string) (Authentication, error) {
+	out := Authentication{}
 	q := store.New(s.pool)
 	session, err := s.sessionByRaw(ctx, q, raw)
 	if err != nil {
@@ -131,11 +126,7 @@ func (s *Service) Authenticate(ctx context.Context, raw string) (wire.AccountRes
 	if account.Restricted {
 		return out, failure(403, "ACCOUNT_RESTRICTED")
 	}
-	available, err := s.canRequestTrial(ctx, q, account)
-	if err != nil {
-		return out, err
-	}
-	return wire.AccountResult{Account: publicAccount(account), CsrfToken: session.CsrfToken, Capabilities: wire.Capabilities{TrialAvailable: available}}, nil
+	return Authentication{Account: snapshot(account), CsrfToken: session.CsrfToken}, nil
 }
 func (s *Service) sessionByRaw(ctx context.Context, q *store.Queries, raw string) (store.Session, error) {
 	decoded, err := base64.RawURLEncoding.DecodeString(raw)

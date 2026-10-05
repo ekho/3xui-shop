@@ -1,16 +1,14 @@
-package platform
+package accounts
 
 import (
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"errors"
-	"example.com/cabinet/backend/internal/store"
-	"example.com/cabinet/backend/internal/wire"
+	"example.com/cabinet/backend/internal/modules/accounts/internal/store"
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/redis/go-redis/v9"
 	"math/big"
 	"slices"
@@ -85,8 +83,8 @@ func (s *Service) addCredentialProof(ctx context.Context, tx pgx.Tx, id uuid.UUI
 	return s.enqueueCredentialMail(ctx, tx, email, id, mailPayload{Type: purpose, Locale: locale, Token: token, Code: code})
 }
 
-func (s *Service) RequestPasswordReset(ctx context.Context, in wire.PasswordResetInput, ip string) (wire.PasswordResetAccepted, error) {
-	out := wire.PasswordResetAccepted{ChallengeId: uuid.New(), ResendAfter: 60}
+func (s *Service) RequestPasswordReset(ctx context.Context, in PasswordResetInput, ip string) (PasswordResetAccepted, error) {
+	out := PasswordResetAccepted{ChallengeId: uuid.New(), ResendAfter: 60}
 	email, err := normalizeEmail(string(in.Email))
 	if err != nil {
 		return out, err
@@ -195,7 +193,7 @@ func (s *Service) checkCredentialProof(ctx context.Context, tx pgx.Tx, proof sto
 	}
 	return nil
 }
-func (s *Service) CompletePasswordReset(ctx context.Context, in wire.PasswordResetCompleteInput, ip string) error {
+func (s *Service) CompletePasswordReset(ctx context.Context, in PasswordResetCompleteInput, ip string) error {
 	if err := s.limitCredentialIP(ctx, ip); err != nil {
 		return err
 	}
@@ -332,7 +330,7 @@ func (s *Service) revalidateCredentialSession(ctx context.Context, q *store.Quer
 	}
 	return account, session, nil
 }
-func (s *Service) ChangePassword(ctx context.Context, raw string, in wire.PasswordChangeInput, ip string) (SessionRotation, error) {
+func (s *Service) ChangePassword(ctx context.Context, raw string, in PasswordChangeInput, ip string) (SessionRotation, error) {
 	account, _, err := s.authenticateCurrentPassword(ctx, raw, in.CurrentPassword, ip)
 	if err != nil {
 		return SessionRotation{}, err
@@ -349,7 +347,7 @@ func (s *Service) ChangePassword(ctx context.Context, raw string, in wire.Passwo
 	}
 	return s.rotateCredentialSession(ctx, raw, account, hash, "password_change")
 }
-func (s *Service) RevokeOtherSessions(ctx context.Context, raw string, in wire.CurrentPasswordInput, ip string) (SessionRotation, error) {
+func (s *Service) RevokeOtherSessions(ctx context.Context, raw string, in CurrentPasswordInput, ip string) (SessionRotation, error) {
 	account, _, err := s.authenticateCurrentPassword(ctx, raw, in.CurrentPassword, ip)
 	if err != nil {
 		return SessionRotation{}, err
@@ -392,33 +390,33 @@ func (s *Service) rotateCredentialSession(ctx context.Context, raw string, snaps
 	}
 	return rotation, nil
 }
-func (s *Service) GetSessionContext(ctx context.Context, raw string) (wire.SessionContext, error) {
+func (s *Service) GetSessionContext(ctx context.Context, raw string) (SessionContext, error) {
 	session, err := s.sessionByRaw(ctx, store.New(s.pool), raw)
 	if err != nil {
-		return wire.SessionContext{}, err
+		return SessionContext{}, err
 	}
-	return wire.SessionContext{CsrfToken: session.CsrfToken}, nil
+	return SessionContext{CsrfToken: session.CsrfToken}, nil
 }
-func (s *Service) GetAccountSecurity(ctx context.Context, raw string) (wire.AccountSecurity, error) {
+func (s *Service) GetAccountSecurity(ctx context.Context, raw string) (AccountSecurity, error) {
 	q := store.New(s.pool)
 	session, err := s.sessionByRaw(ctx, q, raw)
 	if err != nil {
-		return wire.AccountSecurity{}, err
+		return AccountSecurity{}, err
 	}
 	account, err := q.AccountByID(ctx, session.AccountID)
 	if err != nil {
-		return wire.AccountSecurity{}, unavailable()
+		return AccountSecurity{}, unavailable()
 	}
 	if account.Restricted {
-		return wire.AccountSecurity{}, failure(403, "ACCOUNT_RESTRICTED")
+		return AccountSecurity{}, failure(403, "ACCOUNT_RESTRICTED")
 	}
 	other, err := q.HasOtherSessions(ctx, store.HasOtherSessionsParams{AccountID: account.ID, IDHash: digest(raw), Now: stamp(s.now())})
 	if err != nil {
-		return wire.AccountSecurity{}, unavailable()
+		return AccountSecurity{}, unavailable()
 	}
 	pending, err := s.pendingEmailChange(ctx, q, account)
 	if err != nil {
-		return wire.AccountSecurity{}, err
+		return AccountSecurity{}, err
 	}
-	return wire.AccountSecurity{Email: openapi_types.Email(account.EmailKey.String), HasOtherSessions: other, PendingEmailChange: pending}, nil
+	return AccountSecurity{Email: string(account.EmailKey.String), HasOtherSessions: other, PendingEmailChange: pending}, nil
 }

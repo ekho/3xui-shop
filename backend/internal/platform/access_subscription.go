@@ -61,7 +61,7 @@ func (s *Service) readAccess(ctx context.Context, op store.AccessOperation) (acc
 	if json.Unmarshal(op.Target, &target) != nil || target.OperationID != op.ID || target.PanelID != s.cfg.PanelID {
 		return target, nil, 0, 0, errPanelIdentity
 	}
-	a, err := store.New(s.pool).AccountByID(ctx, op.AccountID)
+	a, err := s.accountByID(ctx, op.AccountID)
 	if err != nil || !a.AssignedPanelID.Valid || a.AssignedPanelID.String != target.PanelID || a.PanelKey != target.PanelKey || a.VpnID != target.VPNID || a.SubID != target.SubID {
 		return target, nil, 0, 0, errPanelIdentity
 	}
@@ -119,7 +119,7 @@ func (s *Service) accessSubscription(ctx context.Context, op store.AccessOperati
 
 func (s *Service) accessKey(ctx context.Context, op store.AccessOperation) (wire.SubscriptionKey, error) {
 	var out wire.SubscriptionKey
-	a, err := store.New(s.pool).AccountByID(ctx, op.AccountID)
+	a, err := s.accountByID(ctx, op.AccountID)
 	if err != nil || a.Restricted || a.VpnBanned {
 		return out, failure(403, "OPERATION_NOT_READY")
 	}

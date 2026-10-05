@@ -62,21 +62,7 @@ func (s *Service) EnqueueMonthlyResets(ctx context.Context, at time.Time) (int, 
 	if at.Before(boundary) || at.Sub(boundary) > time.Hour {
 		return 0, nil
 	}
-	rows, err := s.pool.Query(ctx, "SELECT id FROM accounts WHERE access_profile='unlimited' ORDER BY id")
-	if err != nil {
-		return 0, unavailable()
-	}
-	ids := []uuid.UUID{}
-	for rows.Next() {
-		var id uuid.UUID
-		if err = rows.Scan(&id); err != nil {
-			rows.Close()
-			return 0, unavailable()
-		}
-		ids = append(ids, id)
-	}
-	err = rows.Err()
-	rows.Close()
+	ids, err := s.accounts.UnlimitedAccounts(ctx)
 	if err != nil {
 		return 0, unavailable()
 	}
@@ -86,7 +72,7 @@ func (s *Service) EnqueueMonthlyResets(ctx context.Context, at time.Time) (int, 
 		if err != nil {
 			return created, unavailable()
 		}
-		a, err := store.New(tx).LockAccount(ctx, id)
+		a, err := s.lockAccount(ctx, tx, id)
 		if err != nil || !a.AccessProfile.Valid || a.AccessProfile.String != "unlimited" {
 			tx.Rollback(ctx)
 			if err != nil {
@@ -169,7 +155,7 @@ func (s *Service) ApplyMonthlyReset(ctx context.Context, account uuid.UUID, peri
 	}
 	defer tx.Rollback(ctx)
 	q := store.New(tx)
-	a, err := q.LockAccount(ctx, account)
+	a, err := s.lockAccount(ctx, tx, account)
 	if err != nil {
 		return unavailable()
 	}

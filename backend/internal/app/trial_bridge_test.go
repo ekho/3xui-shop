@@ -24,7 +24,7 @@ func bridgeFixture(t *testing.T) (*TrialBridge, *platform.Service, *testkit.Env,
 		t.Fatal(err)
 	}
 	cfg := platform.Config{CabinetOrigin: "https://cabinet.example.test", TermsVersion: "1", PrivacyVersion: "1", MailKey: bytes.Repeat([]byte{1}, 32), CodeKey: bytes.Repeat([]byte{2}, 32), RateNamespace: uuid.NewString(), Operators: []int64{101, 202}, PanelID: "dedicated-test", TrialEnabled: true, TrialPeriodDays: 3, TrialTrafficGB: 15, TrialDevices: 1}
-	svc := platform.NewService(e.Pool, e.Redis, queue, cfg)
+	svc := NewService(e.Pool, e.Redis, queue, cfg)
 	id := uuid.New()
 	_, err = e.Pool.Exec(context.Background(), `INSERT INTO accounts (id,email_key,locale,password_hash,verified_at,vpn_id,sub_id,panel_key,terms_version,privacy_version) VALUES ($1,'trial@example.test','ru','fixture',now(),$2,'0123456789abcdef',$3,'1','1')`, id, uuid.New(), uuid.NewString())
 	if err != nil {

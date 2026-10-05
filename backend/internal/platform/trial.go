@@ -23,18 +23,9 @@ type ProvisionArgs struct {
 	OperationID uuid.UUID `json:"operation_id"`
 }
 
-func (ProvisionArgs) Kind() string { return "trial_provision" }
-func (s *Service) operatorAllowed(actor int64) bool {
-	if actor <= 0 {
-		return false
-	}
-	for _, id := range s.cfg.Operators {
-		if id == actor {
-			return true
-		}
-	}
-	return false
-}
+func (ProvisionArgs) Kind() string                  { return "trial_provision" }
+func (s *Service) operatorAllowed(actor int64) bool { return s.accounts.OperatorAllowed(actor) }
+
 func validText(value string, min, max int) bool {
 	return utf8.ValidString(value) && !strings.ContainsRune(value, '\x00') && utf8.RuneCountInString(value) <= max && utf8.RuneCountInString(strings.TrimSpace(value)) >= min
 }
@@ -191,7 +182,7 @@ func (s *Service) CreateTrialRequest(ctx context.Context, accountID, key uuid.UU
 	if q.LockIdempotency(ctx, store.LockIdempotencyParams{Principal: principal, Operation: "createTrialRequest", Key: key}) != nil {
 		return out, false, unavailable()
 	}
-	a, err := q.LockAccount(ctx, accountID)
+	a, err := s.lockAccount(ctx, tx, accountID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return out, false, failure(404, "INVALID_INPUT")
 	}
@@ -205,7 +196,7 @@ func (s *Service) CreateTrialRequest(ctx context.Context, accountID, key uuid.UU
 		return out, false, err
 	}
 	if len(s.cfg.Operators) == 0 {
-		available, err := q.AnyWebOperator(ctx)
+		available, err := s.accounts.AnyWebOperator(ctx, tx)
 		if err != nil {
 			return out, false, unavailable()
 		}
@@ -373,7 +364,7 @@ func (s *Service) DecideTrialRequest(ctx context.Context, id uuid.UUID, in wire.
 	if err != nil {
 		return out, unavailable()
 	}
-	a, err := q.LockAccount(ctx, r.AccountID)
+	a, err := s.lockAccount(ctx, tx, r.AccountID)
 	if err != nil {
 		return out, unavailable()
 	}
@@ -453,7 +444,7 @@ func (s *Service) ReconsiderTrialRequest(ctx context.Context, id, key uuid.UUID,
 	if err != nil {
 		return out, unavailable()
 	}
-	a, err := q.LockAccount(ctx, old.AccountID)
+	a, err := s.lockAccount(ctx, tx, old.AccountID)
 	if err != nil {
 		return out, unavailable()
 	}
@@ -504,7 +495,7 @@ func (s *Service) reconsiderTrialLocked(ctx context.Context, q *store.Queries, a
 
 func (s *Service) canRequestTrial(ctx context.Context, q *store.Queries, account store.Account) (bool, error) {
 	if len(s.cfg.Operators) == 0 {
-		available, err := q.AnyWebOperator(ctx)
+		available, err := s.accounts.AnyWebOperator(ctx, nil)
 		if err != nil {
 			return false, unavailable()
 		}

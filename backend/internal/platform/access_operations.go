@@ -415,7 +415,7 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 	}
 	if immediate {
 		if t.NoClientIntent && step != "state_unchanged" {
-			if _, err = tx.Exec(ctx, "UPDATE accounts SET access_profile=$2,vpn_banned=$3 WHERE id=$1", target, t.Profile, t.Banned); err != nil {
+			if err = s.accounts.SetAccessMetadata(ctx, tx, target, t.Profile, t.Banned); err != nil {
 				return out, unavailable()
 			}
 		}

@@ -46,17 +46,6 @@ func (q *Queries) AccountOperation(ctx context.Context, accountID uuid.UUID) (Tr
 	return i, err
 }
 
-const accountVPNBan = `-- name: AccountVPNBan :one
-SELECT vpn_banned FROM accounts WHERE id=$1
-`
-
-func (q *Queries) AccountVPNBan(ctx context.Context, id uuid.UUID) (bool, error) {
-	row := q.db.QueryRow(ctx, accountVPNBan, id)
-	var vpn_banned bool
-	err := row.Scan(&vpn_banned)
-	return vpn_banned, err
-}
-
 const applyOperation = `-- name: ApplyOperation :execrows
 UPDATE trial_operations SET status='applied',lease_hash=NULL,lease_expires_at=NULL,worker_pid=NULL WHERE id=$1 AND lease_hash=$2 AND lease_expires_at>clock_timestamp() AND status='provisioning'
 `
@@ -72,20 +61,6 @@ func (q *Queries) ApplyOperation(ctx context.Context, arg ApplyOperationParams) 
 		return 0, err
 	}
 	return result.RowsAffected(), nil
-}
-
-const assignPanel = `-- name: AssignPanel :exec
-UPDATE accounts SET assigned_panel_id=$2,had_subscription=true WHERE id=$1
-`
-
-type AssignPanelParams struct {
-	ID              uuid.UUID
-	AssignedPanelID pgtype.Text
-}
-
-func (q *Queries) AssignPanel(ctx context.Context, arg AssignPanelParams) error {
-	_, err := q.db.Exec(ctx, assignPanel, arg.ID, arg.AssignedPanelID)
-	return err
 }
 
 const grantApplied = `-- name: GrantApplied :exec

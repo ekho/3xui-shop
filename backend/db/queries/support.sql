@@ -1,7 +1,3 @@
--- name: OperatorExists :one
-SELECT EXISTS(SELECT 1 FROM operator_accounts WHERE account_id=$1);
--- name: LockOperatorRole :one
-SELECT account_id FROM operator_accounts WHERE account_id=$1 FOR SHARE;
 -- name: SupportByAccount :one
 SELECT * FROM support_conversations WHERE account_id=$1;
 -- name: LockSupportByAccount :one

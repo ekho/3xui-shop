@@ -139,7 +139,7 @@ func (s *Service) Catalogue(ctx context.Context, actor uuid.UUID) (wire.Catalogu
 		return out, failure(401, "INVALID_CREDENTIALS")
 	}
 	q := store.New(s.pool)
-	a, err := q.AccountByID(ctx, actor)
+	a, err := s.accountByID(ctx, actor)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return out, failure(401, "INVALID_CREDENTIALS")
 	}

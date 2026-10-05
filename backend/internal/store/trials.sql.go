@@ -334,41 +334,6 @@ func (q *Queries) LatestTelegramState(ctx context.Context, arg LatestTelegramSta
 	return state, err
 }
 
-const lockAccount = `-- name: LockAccount :one
-SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id, access_profile FROM accounts WHERE id=$1 FOR UPDATE
-`
-
-func (q *Queries) LockAccount(ctx context.Context, id uuid.UUID) (Account, error) {
-	row := q.db.QueryRow(ctx, lockAccount, id)
-	var i Account
-	err := row.Scan(
-		&i.ID,
-		&i.EmailKey,
-		&i.Locale,
-		&i.PasswordHash,
-		&i.VerifiedAt,
-		&i.Restricted,
-		&i.VpnID,
-		&i.SubID,
-		&i.PanelKey,
-		&i.TermsVersion,
-		&i.PrivacyVersion,
-		&i.TelegramID,
-		&i.LegacyUserID,
-		&i.AssignedPanelID,
-		&i.HadSubscription,
-		&i.CredentialVersion,
-		&i.VpnBanned,
-		&i.Kind,
-		&i.DisplayName,
-		&i.CreatedAt,
-		&i.RestrictionChangedAt,
-		&i.RestrictionOperatorAccountID,
-		&i.AccessProfile,
-	)
-	return i, err
-}
-
 const lockDecisionCallback = `-- name: LockDecisionCallback :exec
 SELECT pg_advisory_xact_lock(hashtextextended('callback:'||$1::text,0))
 `

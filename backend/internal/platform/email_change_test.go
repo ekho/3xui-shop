@@ -2,7 +2,6 @@ package platform
 
 import (
 	"context"
-	"example.com/cabinet/backend/internal/store"
 	"example.com/cabinet/backend/internal/testkit"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
@@ -286,7 +285,7 @@ func TestEmailChangeConcurrency(t *testing.T) {
 				t.Fatal(err)
 			}
 			short, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
-			_, err = store.New(probe).LockAccount(short, id)
+			_, err = s.accounts.Lock(short, probe, id)
 			cancel()
 			probe.Rollback(ctx)
 			if err != nil {

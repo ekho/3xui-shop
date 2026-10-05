@@ -1,5 +1,3 @@
--- name: LockAccount :one
-SELECT * FROM accounts WHERE id=$1 FOR UPDATE;
 -- name: TrialByID :one
 SELECT * FROM trial_requests WHERE id=$1;
 -- name: LockTrial :one

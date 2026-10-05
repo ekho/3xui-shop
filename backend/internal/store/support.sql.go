@@ -136,17 +136,6 @@ func (q *Queries) CreateSupportConversation(ctx context.Context, arg CreateSuppo
 	return i, err
 }
 
-const lockOperatorRole = `-- name: LockOperatorRole :one
-SELECT account_id FROM operator_accounts WHERE account_id=$1 FOR SHARE
-`
-
-func (q *Queries) LockOperatorRole(ctx context.Context, accountID uuid.UUID) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, lockOperatorRole, accountID)
-	var account_id uuid.UUID
-	err := row.Scan(&account_id)
-	return account_id, err
-}
-
 const lockSupportByAccount = `-- name: LockSupportByAccount :one
 SELECT id, account_id, status, support_banned, created_at, updated_at, customer_received_sequence, operator_received_sequence FROM support_conversations WHERE account_id=$1 FOR UPDATE
 `
@@ -165,17 +154,6 @@ func (q *Queries) LockSupportByAccount(ctx context.Context, accountID uuid.UUID)
 		&i.OperatorReceivedSequence,
 	)
 	return i, err
-}
-
-const operatorExists = `-- name: OperatorExists :one
-SELECT EXISTS(SELECT 1 FROM operator_accounts WHERE account_id=$1)
-`
-
-func (q *Queries) OperatorExists(ctx context.Context, accountID uuid.UUID) (bool, error) {
-	row := q.db.QueryRow(ctx, operatorExists, accountID)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
 }
 
 const supportAttachmentLookup = `-- name: SupportAttachmentLookup :one

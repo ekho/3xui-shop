@@ -17,7 +17,7 @@ import (
 
 func (s *Service) accountOperation(ctx context.Context, account uuid.UUID) (store.TrialOperation, error) {
 	q := store.New(s.pool)
-	a, e := q.AccountByID(ctx, account)
+	a, e := s.accountByID(ctx, account)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return store.TrialOperation{}, failure(404, "INVALID_INPUT")
 	}
@@ -51,8 +51,7 @@ func (s *Service) readProfile(ctx context.Context, op store.TrialOperation) (pro
 	if json.Unmarshal(op.Target, &out.target) != nil || out.target.OperationID != op.ID || out.target.PanelID != op.PanelID || op.PanelID != s.cfg.PanelID {
 		return out, errPanelIdentity
 	}
-	q := store.New(s.pool)
-	a, e := q.AccountByID(ctx, op.AccountID)
+	a, e := s.accountByID(ctx, op.AccountID)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return out, errPanelIdentity
 	}
@@ -196,7 +195,7 @@ func panelError(err error) *wire.SubscriptionPanelError {
 }
 
 func (s *Service) Subscription(ctx context.Context, account uuid.UUID) (out wire.Subscription, retErr error) {
-	a, err := store.New(s.pool).AccountByID(ctx, account)
+	a, err := s.accountByID(ctx, account)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return wire.Subscription{}, failure(404, "INVALID_INPUT")
 	}
@@ -294,7 +293,7 @@ func (s *Service) trialSubscription(ctx context.Context, account uuid.UUID) (wir
 		out.Status = "provisioning"
 		return out, nil
 	}
-	banned, e := store.New(s.pool).AccountVPNBan(ctx, account)
+	banned, e := s.accountVPNBan(ctx, account)
 	if e != nil {
 		return out, unavailable()
 	}
@@ -349,7 +348,7 @@ func (s *Service) trialSubscription(ctx context.Context, account uuid.UUID) (wir
 
 func (s *Service) SubscriptionKey(ctx context.Context, account uuid.UUID) (wire.SubscriptionKey, error) {
 	out := wire.SubscriptionKey{}
-	a, authErr := store.New(s.pool).AccountByID(ctx, account)
+	a, authErr := s.accountByID(ctx, account)
 	if errors.Is(authErr, pgx.ErrNoRows) {
 		return out, failure(404, "INVALID_INPUT")
 	}
@@ -381,7 +380,7 @@ func (s *Service) SubscriptionKey(ctx context.Context, account uuid.UUID) (wire.
 	if op.Status != "applied" {
 		return out, failure(409, "OPERATION_NOT_READY")
 	}
-	banned, e := store.New(s.pool).AccountVPNBan(ctx, account)
+	banned, e := s.accountVPNBan(ctx, account)
 	if e != nil {
 		return out, unavailable()
 	}

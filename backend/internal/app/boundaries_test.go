@@ -3,8 +3,16 @@ package app
 import (
 	"bytes"
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
+	"io/fs"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -20,6 +28,75 @@ func forbiddenImport(owner, dependency string) bool {
 	}
 	peer := strings.TrimPrefix(dependency, moduleRoot)
 	return strings.Contains(peer, "/") && !strings.HasPrefix(dependency, owner+"/")
+}
+
+var accountSQL = regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:accounts|operator_accounts|sessions|registration_challenges|credential_challenges|mail_deliveries|legacy_approval_snapshots|legacy_approval_events)\b`)
+
+func ownsAccountSQL(text string) bool {
+	return accountSQL.MatchString(strings.ReplaceAll(text, `"`, ""))
+}
+
+func TestAccountsSQLBoundary(t *testing.T) {
+	for _, sql := range []string{
+		`SELECT * FROM accounts`, `UPDATE accounts SET restricted=true`,
+		`INSERT INTO sessions VALUES ($1)`, `DELETE FROM public.operator_accounts`,
+		`WITH p AS (SELECT * FROM "public"."credential_challenges") SELECT * FROM p`,
+	} {
+		if !ownsAccountSQL(sql) {
+			t.Fatal("negative fixture bypassed account ownership", sql)
+		}
+	}
+	if ownsAccountSQL(`SELECT account_id FROM trial_requests`) {
+		t.Fatal("foreign owner rejected")
+	}
+	err := filepath.WalkDir("../..", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel("../..", path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		// Shared schema and the reviewed restore procedure are operational
+		// exceptions. Test-only SQL fixtures never run in the application.
+		if entry.IsDir() && (rel == "internal/modules/accounts" || rel == "db/migrations" || rel == "internal/testkit") {
+			return filepath.SkipDir
+		}
+		if entry.IsDir() || strings.HasSuffix(rel, "_test.go") || rel == "db/maintenance/post_restore_auth.sql" {
+			return nil
+		}
+		switch filepath.Ext(path) {
+		case ".sql":
+			body, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			if ownsAccountSQL(string(body)) {
+				t.Errorf("account SQL outside owner: %s", rel)
+			}
+		case ".go":
+			file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+			if err != nil {
+				return err
+			}
+			ast.Inspect(file, func(node ast.Node) bool {
+				literal, ok := node.(*ast.BasicLit)
+				if !ok || literal.Kind != token.STRING {
+					return true
+				}
+				text, err := strconv.Unquote(literal.Value)
+				if err == nil && ownsAccountSQL(text) {
+					t.Errorf("account SQL outside owner: %s", rel)
+				}
+				return true
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 func TestModuleBoundaries(t *testing.T) {
 	// Only the existing app bridge and legacy HTTP consumers may import

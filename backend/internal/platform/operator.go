@@ -1,17 +1,15 @@
 package platform
 
 import (
-	"bytes"
 	"context"
-	"crypto/rand"
 	"errors"
+	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/store"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
-	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -22,46 +20,8 @@ import (
 // Every web-operator mutation takes account locks in UUID order, then the role.
 // The CLI revoker takes its account lock before deleting that same role.
 func (s *Service) lockOperatorPair(ctx context.Context, tx pgx.Tx, actor, target uuid.UUID) (store.Account, error) {
-	var empty store.Account
-	if actor == uuid.Nil || target == uuid.Nil {
-		return empty, failure(400, "INVALID_INPUT")
-	}
-	first, second := actor, target
-	if bytes.Compare(actor[:], target[:]) > 0 {
-		first, second = target, actor
-	}
-	ids := []uuid.UUID{first}
-	if second != first {
-		ids = append(ids, second)
-	}
-	q := store.New(tx)
-	var targetAccount store.Account
-	for _, id := range ids {
-		a, err := q.LockAccount(ctx, id)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return empty, failure(404, "INVALID_INPUT")
-		}
-		if err != nil {
-			return empty, unavailable()
-		}
-		if id == actor {
-			if a.Restricted {
-				return empty, failure(403, "ACCOUNT_RESTRICTED")
-			}
-			if a.Kind != "web" || !a.VerifiedAt.Valid || !a.EmailKey.Valid || !a.PasswordHash.Valid {
-				return empty, failure(403, "INVALID_CREDENTIALS")
-			}
-		}
-		if id == target {
-			targetAccount = a
-		}
-	}
-	if _, err := q.LockOperatorRole(ctx, actor); errors.Is(err, pgx.ErrNoRows) {
-		return empty, failure(403, "INVALID_CREDENTIALS")
-	} else if err != nil {
-		return empty, unavailable()
-	}
-	return targetAccount, nil
+	out, err := s.accounts.LockOperatorPair(ctx, tx, actor, target)
+	return legacyAccount(out), accountError(err)
 }
 
 func operatorClient(a store.Account) wire.OperatorClient {
@@ -148,38 +108,38 @@ func operatorAuditRows(rows []store.AuditEvent) ([]wire.OperatorAuditEvent, bool
 	}
 	return out, more
 }
-func legacySnapshot(r store.LegacyApprovalSnapshot) *wire.OperatorLegacyApproval {
+func legacySnapshot(r accounts.LegacyApprovalUser) *wire.OperatorLegacyApproval {
 	out := &wire.OperatorLegacyApproval{SourceLegacyUserId: strconv.FormatInt(r.SourceLegacyUserID, 10), SourceTgId: strconv.FormatInt(r.SourceTgID, 10), Status: wire.OperatorLegacyApprovalStatus(r.Status)}
-	if r.RequestedAt.Valid {
-		out.RequestedAt = &r.RequestedAt.Time
+	if r.RequestedAt != nil {
+		out.RequestedAt = r.RequestedAt
 	}
-	if r.DecidedAt.Valid {
-		out.DecidedAt = &r.DecidedAt.Time
+	if r.DecidedAt != nil {
+		out.DecidedAt = r.DecidedAt
 	}
-	if r.DecidedBy.Valid {
-		id := strconv.FormatInt(r.DecidedBy.Int64, 10)
+	if r.DecidedBy != nil {
+		id := strconv.FormatInt(*r.DecidedBy, 10)
 		out.DecidedBy = &id
 	}
 	return out
 }
-func legacyEvent(r store.LegacyApprovalEvent) wire.OperatorLegacyApprovalEvent {
-	out := wire.OperatorLegacyApprovalEvent{SourceId: strconv.FormatInt(r.SourceID, 10), TargetTgId: strconv.FormatInt(r.TargetTgID, 10), CreatedAt: r.CreatedAt.Time, Action: wire.OperatorLegacyApprovalEventAction(r.Action)}
-	if r.Source.Valid {
-		out.Source = &r.Source.String
+func legacyEvent(r accounts.LegacyApprovalSourceEvent) wire.OperatorLegacyApprovalEvent {
+	out := wire.OperatorLegacyApprovalEvent{SourceId: strconv.FormatInt(r.SourceID, 10), TargetTgId: strconv.FormatInt(r.TargetTgID, 10), CreatedAt: r.CreatedAt, Action: wire.OperatorLegacyApprovalEventAction(r.Action)}
+	if r.Source != nil {
+		out.Source = r.Source
 	}
-	if r.ActorType.Valid {
-		out.ActorType = &r.ActorType.String
+	if r.ActorType != nil {
+		out.ActorType = r.ActorType
 	}
-	if r.ActorID.Valid {
-		id := strconv.FormatInt(r.ActorID.Int64, 10)
+	if r.ActorID != nil {
+		id := strconv.FormatInt(*r.ActorID, 10)
 		out.ActorId = &id
 	}
-	if r.ActorName.Valid {
-		out.ActorName = &r.ActorName.String
+	if r.ActorName != nil {
+		out.ActorName = r.ActorName
 	}
 	return out
 }
-func legacyEventRows(rows []store.LegacyApprovalEvent) ([]wire.OperatorLegacyApprovalEvent, bool) {
+func legacyEventRows(rows []accounts.LegacyApprovalSourceEvent) ([]wire.OperatorLegacyApprovalEvent, bool) {
 	more := len(rows) > 50
 	if more {
 		rows = rows[:50]
@@ -192,28 +152,12 @@ func legacyEventRows(rows []store.LegacyApprovalEvent) ([]wire.OperatorLegacyApp
 }
 
 func (s *Service) SearchOperatorClients(ctx context.Context, actor uuid.UUID, in wire.OperatorSearchInput) (wire.OperatorSearchResult, error) {
-	out := wire.OperatorSearchResult{Clients: []wire.OperatorClient{}, Page: in.Page, PerPage: in.PerPage}
-	if err := s.RequireSupportOperator(ctx, actor); err != nil {
-		return out, err
+	result, err := s.accounts.SearchClients(ctx, actor, accounts.OperatorSearchInput(in))
+	out := wire.OperatorSearchResult{Clients: []wire.OperatorClient{}, Page: result.Page, PerPage: result.PerPage, Total: result.Total}
+	for _, a := range result.Clients {
+		out.Clients = append(out.Clients, operatorClient(legacyAccount(a)))
 	}
-	if !utf8.ValidString(in.Q) || strings.ContainsRune(in.Q, '\x00') || utf8.RuneCountInString(in.Q) > 256 ||
-		in.Page < 1 || in.Page > math.MaxInt32 || in.PerPage < 1 || in.PerPage > 50 {
-		return out, failure(400, "INVALID_INPUT")
-	}
-	q := store.New(s.pool)
-	count, err := q.CountOperatorClients(ctx, in.Q)
-	if err != nil {
-		return out, unavailable()
-	}
-	rows, err := q.SearchOperatorClients(ctx, store.SearchOperatorClientsParams{Query: in.Q, PageLimit: int32(in.PerPage), PageOffset: int64(in.Page-1) * int64(in.PerPage)})
-	if err != nil {
-		return out, unavailable()
-	}
-	out.Total = count
-	for _, a := range rows {
-		out.Clients = append(out.Clients, operatorClient(a))
-	}
-	return out, nil
+	return out, accountError(err)
 }
 
 func (s *Service) operatorClientAccount(ctx context.Context, actor, target uuid.UUID) (store.Account, error) {
@@ -224,7 +168,7 @@ func (s *Service) operatorClientAccount(ctx context.Context, actor, target uuid.
 	if target == uuid.Nil {
 		return empty, failure(400, "INVALID_INPUT")
 	}
-	a, err := store.New(s.pool).AccountByID(ctx, target)
+	a, err := s.accountByID(ctx, target)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return empty, failure(404, "INVALID_INPUT")
 	}
@@ -246,17 +190,15 @@ func (s *Service) OperatorClientHistory(ctx context.Context, actor, target uuid.
 		if in.BeforeId != nil || (in.BeforeCreatedAt == nil) != (in.BeforeSourceId == nil) {
 			return out, failure(400, "INVALID_INPUT")
 		}
-		var before pgtype.Timestamptz
 		var sourceID int64
 		if in.BeforeCreatedAt != nil {
-			before = stamp(*in.BeforeCreatedAt)
 			var err error
 			sourceID, err = parseTelegramID(*in.BeforeSourceId)
 			if err != nil {
 				return out, err
 			}
 		}
-		rows, err := store.New(s.pool).LegacyApprovalPage(ctx, store.LegacyApprovalPageParams{AccountID: target, BeforeCreatedAt: before, BeforeSourceID: sourceID})
+		rows, err := s.accounts.LegacyEvents(ctx, target, in.BeforeCreatedAt, sourceID)
 		if err != nil {
 			return out, unavailable()
 		}
@@ -299,13 +241,13 @@ func (s *Service) OperatorClient(ctx context.Context, actor, target uuid.UUID) (
 		return out, err
 	}
 	q := store.New(s.pool)
-	legacy, err := q.LegacyApprovalByAccount(ctx, target)
+	legacy, err := s.accounts.LegacyApproval(ctx, target)
 	if err == nil {
 		out.LegacyApproval = legacySnapshot(legacy)
-	} else if !errors.Is(err, pgx.ErrNoRows) {
+	} else if !errors.Is(err, accounts.ErrNotFound) {
 		return out, unavailable()
 	}
-	legacyRows, err := q.LegacyApprovalPage(ctx, store.LegacyApprovalPageParams{AccountID: target})
+	legacyRows, err := s.accounts.LegacyEvents(ctx, target, nil, 0)
 	if err != nil {
 		return out, unavailable()
 	}
@@ -419,47 +361,7 @@ func (s *Service) OperatorClientKey(ctx context.Context, actor, target uuid.UUID
 }
 
 func (s *Service) ChangeOperatorRole(ctx context.Context, target uuid.UUID, grant bool) error {
-	if target == uuid.Nil {
-		return failure(400, "INVALID_INPUT")
-	}
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return unavailable()
-	}
-	defer tx.Rollback(ctx)
-	q := store.New(tx)
-	a, err := q.LockAccount(ctx, target)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return failure(404, "INVALID_INPUT")
-	}
-	if err != nil {
-		return unavailable()
-	}
-	if grant && (a.Kind != "web" || !a.VerifiedAt.Valid || !a.EmailKey.Valid || !a.PasswordHash.Valid || a.Restricted) {
-		return failure(403, "INVALID_CREDENTIALS")
-	}
-	var changed int64
-	if grant {
-		changed, err = q.GrantOperator(ctx, store.GrantOperatorParams{AccountID: target, GrantedAt: stamp(s.now())})
-	} else {
-		changed, err = q.RevokeOperator(ctx, target)
-	}
-	if err != nil {
-		return unavailable()
-	}
-	if changed > 0 {
-		action := "operator_revoked"
-		if grant {
-			action = "operator_granted"
-		}
-		if err = q.AddOperatorAudit(ctx, store.AddOperatorAuditParams{ID: uuid.New(), CreatedAt: stamp(s.now()), Action: action, AccountID: target}); err != nil {
-			return unavailable()
-		}
-	}
-	if err = tx.Commit(ctx); err != nil {
-		return unavailable()
-	}
-	return nil
+	return accountError(s.accounts.ChangeOperatorRole(ctx, target, grant))
 }
 
 func validOperatorName(name string) bool {
@@ -658,18 +560,6 @@ func (s *Service) ReconcileOperatorTrial(ctx context.Context, actor, id, key uui
 	return out, true, nil
 }
 
-func newOperatorSubID() (string, error) {
-	random := make([]byte, 16)
-	if _, err := rand.Read(random); err != nil {
-		return "", unavailable()
-	}
-	const alphabet = "0123456789abcdefghijklmnopqrstuvwxyz"
-	for i, b := range random {
-		random[i] = alphabet[int(b)%len(alphabet)]
-	}
-	return string(random), nil
-}
-
 func (s *Service) CreateTelegramTrial(ctx context.Context, actor, key uuid.UUID, in wire.OperatorTelegramTrialInput) (wire.OperatorTelegramTrialResult, bool, error) {
 	var out wire.OperatorTelegramTrialResult
 	if err := s.RequireSupportOperator(ctx, actor); err != nil {
@@ -698,17 +588,8 @@ func (s *Service) CreateTelegramTrial(ctx context.Context, actor, key uuid.UUID,
 	if prior, found, replayErr := replay[wire.OperatorTelegramTrialResult](ctx, q, principal, "createTelegramTrial", key, hash); found || replayErr != nil {
 		return prior, false, replayErr
 	}
-	var locked bool
-	if err = tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock(hashtextextended('telegram-account:'||$1::text,0))`, in.TelegramId).Scan(&locked); err != nil {
-		return out, false, unavailable()
-	}
-	if !locked {
-		return out, false, failure(409, "REQUEST_STATE_CONFLICT")
-	}
-	if _, err = q.AccountByTelegramID(ctx, pgtype.Int8{Int64: telegramID, Valid: true}); err == nil {
-		return out, false, failure(409, "TRIAL_ALREADY_USED")
-	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return out, false, unavailable()
+	if err = s.accounts.CheckTelegramAvailable(ctx, tx, telegramID); err != nil {
+		return out, false, accountError(err)
 	}
 	if !s.cfg.TrialEnabled {
 		return out, false, failure(403, "TRIAL_DISABLED")
@@ -716,18 +597,12 @@ func (s *Service) CreateTelegramTrial(ctx context.Context, actor, key uuid.UUID,
 	if s.cfg.PanelID == "" {
 		return out, false, unavailable()
 	}
-	sub, err := newOperatorSubID()
+	identity, err := s.accounts.CreateTelegram(ctx, tx, accounts.TelegramInput{TelegramID: telegramID, DisplayName: in.DisplayName, Locale: string(in.Locale)})
 	if err != nil {
-		return out, false, err
+		return out, false, accountError(err)
 	}
-	id := uuid.New()
-	if err = q.AddTelegramAccount(ctx, store.AddTelegramAccountParams{ID: id, DisplayName: pgtype.Text{String: in.DisplayName, Valid: true}, TelegramID: pgtype.Int8{Int64: telegramID, Valid: true}, Locale: string(in.Locale), VpnID: uuid.New(), SubID: sub, PanelKey: "acct_" + strings.ReplaceAll(id.String(), "-", "")}); err != nil {
-		return out, false, unavailable()
-	}
-	a, err := q.AccountByID(ctx, id)
-	if err != nil {
-		return out, false, unavailable()
-	}
+	a := legacyAccount(identity)
+	id := a.ID
 	r, err := q.AddTrial(ctx, store.AddTrialParams{ID: uuid.New(), AccountID: id, Comment: "", CreatedAt: stamp(s.now())})
 	if err != nil {
 		return out, false, unavailable()
