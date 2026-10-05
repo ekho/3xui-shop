@@ -27,7 +27,7 @@
 | Container smoke | PASS: HTTPS, runtime public config, public/private routing, secret files, повторные migrations, rollback и provision-only restore. |
 | Native Docker с 3X-UI **3.7.0** и TLS Mailpit | PASS: HTTP/jobs/Telegram, auth SMTP, approve/reject/reconsider/replay/outage; Bot API simulated. |
 | Физический stop/start compiled backend | PASS: одна Operation/Grant, прежние keys и настоящие panel readback/expiry/limits/membership. Telegram disabled; DB и данные сохранены. |
-| Свежий whole-branch review | Ожидается; PR/CI ещё не выполнены. |
+| Свежий whole-branch review | Astra/high проверил `896a883..b97ff52`: новых Critical/Important/Minor 0. Узкий race run accounts 6.580s, app 4.329s, platform 11.138s. Повторное review и fix pass не требовались. |
 
 Полная локальная команда Task 4 завершилась с exit 0 за **341.878s**.
 Исполняемые проверки:
@@ -60,13 +60,18 @@
 | Включить CLI catalogue/import и `LookupTx` в перевод composition | Все production entry points используют одного владельца; Telegram claim сохраняет транзакцию. | Возможная CLI/claim регрессия требует проверки; текущие проверки прошли. |
 | Восстановить prerelease М01 через CLI из merge896 и трёх проверенных multiarch images | После двух отмен из-за отсутствия hosted runner бюджет одного failed-only rerun исчерпан; release job не выполнялся. | При ошибке потребуется исправление release metadata; tag/source guards проверены. Production не менялся. |
 | Task 4 ledger закрывает local implementation, review/PR остаются finishing phase | Устраняет цикл между task completion и финальным review без пропуска review/delivery. | Task completion отдельно не доказывает review, CI или delivery; состояния остаются раздельными. |
+| Оставить совместимость PR #5 для интеграции С10 | Ревьюер её не оценивал; открытый PR не включён в эту ветку, адаптация принята в #56/#59. | При пропуске адаптации account calls С10 не скомпилируются. |
+| Оставить М03–М06 и удаление Python для следующих этапов | Ревьюер не оценивал их завершённость; М02 переносит владельца, сохраняет нынешние SMTP gates. | Ошибочное признание всей архитектуры завершённой скроет оставшуюся связь platform/notifications. |
+| Унаследованный stale deliveryCode учитывать отдельно | Ревьюер не пересматривал путь М01; diff М02 его не меняет, HTTP/выдача не блокируются. | Состояние канала может оставаться устаревшим до следующей доставки; нельзя использовать его как достоверный health. |
+| Не распространять local acceptance на production/Happ/real providers/внешний SMTP/benchmark | Ревьюер не оценивал их; они исключены принятой границей и текущим разрешением. | Непроверенные условия развёртывания или внешних сервисов могут потребовать исправлений до production. |
+| Сохранить запрет повторного uncertain panel create | Ревьюер не оценивал все 3X-UI failures; native readback и прежние fault tests покрывают локальный сценарий. | Новая vendor failure потребует отдельной диагностики; нельзя автоматически дублировать клиента. |
 
 М01: [PR #61](https://github.com/ekho/3xui-shop/pull/61) слит в baseline;
 [2.0.0-dev.7](https://github.com/ekho/3xui-shop/releases/tag/2.0.0-dev.7)
 опубликован. Версионные/source manifests всех трёх образов совпадают и содержат
 linux/amd64 и linux/arm64. Workflow
 [37363120914](https://github.com/ekho/3xui-shop/actions/runs/37363120914)
-остался failure из-за необретённого runner; CLI recovery не делает этот run зелёным.
+остался failure из-за непредоставленного runner; CLI recovery не делает этот run зелёным.
 #55 закрыт только в принятой локальной границе; весь v2 и production остаются открытыми.
 
 ## Отложенные замечания и границы
@@ -85,5 +90,12 @@ PR #5/С10 сохраняется на `afaeacf652964453ddd61883aa6da6a0d285783c
 не менялись. Полное удаление Python входит в С47. Новые зависимости, схема,
 event bus и пустые будущие модули не добавлены.
 
-М02: локальная реализация проверена; fresh review, delivery и CI ожидаются.
+М02: локальная реализация и fresh review завершены. Review проверил account/role
+locks, старые password/session/mail форматы, replay и SQL/DTO boundaries; все пять
+Review Focus разобраны. Между проверенной реализацией `856b4ea` и review HEAD
+`b97ff52` менялись только документы. Исполнитель подтвердил принятые границы
+каждого пункта Declined to judge; они полностью перечислены в таблице решений.
+
+PR, финальная ревизия и exact-head CI фиксируются в
+[М02 #56](https://github.com/ekho/3xui-shop/issues/56).
 Слияние М02 и production отдельно. Следующий этап — М03/#57 (catalogue).
