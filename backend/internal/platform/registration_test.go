@@ -295,7 +295,7 @@ func BenchmarkPasswordHash(b *testing.B) {
 }
 
 func TestRegistrationConfig(t *testing.T) {
-	for _, name := range []string{"BOT_OPERATOR_IDS", "BOT_ADAPTER_TOKEN", "BOT_ADAPTER_TOKEN_FILE", "TRIAL_ENABLED", "TRIAL_PERIOD", "TRIAL_TRAFFIC_GB", "BONUS_DEVICES_COUNT", "PANEL_ID"} {
+	for _, name := range []string{"BOT_OPERATOR_IDS", "BOT_ADAPTER_TOKEN", "BOT_ADAPTER_TOKEN_FILE", "LEGACY_BOT_API_ENABLED", "TRIAL_ENABLED", "TRIAL_PERIOD", "TRIAL_TRAFFIC_GB", "BONUS_DEVICES_COUNT", "PANEL_ID"} {
 		t.Setenv(name, "")
 	}
 	dir := t.TempDir()
@@ -316,6 +316,23 @@ func TestRegistrationConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal("file-only config", err)
 	}
+	t.Run("native-operators", func(t *testing.T) {
+		t.Setenv("BOT_OPERATOR_IDS", "101,202")
+		t.Setenv("LEGACY_BOT_API_ENABLED", "false")
+		native, err := LoadConfig()
+		if err != nil || native.AdapterToken != "" || len(native.Operators) != 2 {
+			t.Fatal("native operators require legacy secret", err)
+		}
+		t.Setenv("LEGACY_BOT_API_ENABLED", "true")
+		if _, err = LoadConfig(); err == nil {
+			t.Fatal("legacy transport accepted missing secret")
+		}
+		t.Setenv("LEGACY_BOT_API_ENABLED", "false")
+		t.Setenv("BOT_OPERATOR_IDS", "101,bad")
+		if _, err = LoadConfig(); err == nil {
+			t.Fatal("bad allowlist accepted")
+		}
+	})
 	for _, origin := range []string{"http://example.test", "https://example.test/path", "https://example.test?query=1", "https://user@example.test", "https://example.test#fragment"} {
 		cfg.CabinetOrigin = origin
 		if cfg.Validate() == nil {

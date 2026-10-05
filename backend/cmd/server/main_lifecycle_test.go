@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"example.com/cabinet/backend/internal/app"
 	"net"
 	"net/http"
 	"testing"
@@ -47,7 +48,7 @@ func TestSchedulerCompletionOnCancelDrainsHTTP(t *testing.T) {
 		monthlyResult <- nil
 		cancel()
 		done := make(chan error, 1)
-		go func() { done <- serveUntilStopped(ctx, server, serveResult, monthlyResult) }()
+		go func() { done <- app.Serve(ctx, server, serveResult, monthlyResult, nil) }()
 		early := false
 		select {
 		case <-done:

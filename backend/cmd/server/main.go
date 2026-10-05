@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"example.com/cabinet/backend/db"
+	"example.com/cabinet/backend/internal/app"
 	"example.com/cabinet/backend/internal/httpapi"
+	"example.com/cabinet/backend/internal/modules/telegram"
 	"example.com/cabinet/backend/internal/platform"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -73,6 +75,20 @@ func run() error {
 		return err
 	}
 	svc := platform.NewService(pool, limiter, queue, cfg)
+	var tg *telegram.Runtime
+	if os.Args[1] == "serve" {
+		tgConfig, e := telegram.LoadConfig(cfg.Operators)
+		if e != nil {
+			return e
+		}
+		if tgConfig.Enabled && cfg.AdapterToken != "" {
+			return errors.New("disable legacy bot API before enabling native Telegram")
+		}
+		tg, e = app.NewTelegram(tgConfig, svc, nil)
+		if e != nil {
+			return e
+		}
+	}
 	workers := river.NewWorkers()
 	river.AddWorker(workers, &platform.ProvisionWorker{Service: svc})
 	river.AddWorker(workers, &platform.AccessWorker{Service: svc})
@@ -107,26 +123,7 @@ func run() error {
 	server := &http.Server{Addr: address, Handler: httpapi.New(svc, cfg), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 	result := make(chan error, 1)
 	go func() { result <- server.ListenAndServe() }()
-	return serveUntilStopped(ctx, server, result, monthlyResult)
-}
-
-func serveUntilStopped(ctx context.Context, server *http.Server, result, monthlyResult <-chan error) error {
-	var err error
-	select {
-	case err = <-monthlyResult:
-	case err = <-result:
-		if errors.Is(err, http.ErrServerClosed) {
-			err = nil
-		}
-	case <-ctx.Done():
-	}
-	stop, done := context.WithTimeout(context.Background(), 20*time.Second)
-	defer done()
-	shutdownErr := server.Shutdown(stop)
-	if err != nil {
-		return err
-	}
-	return shutdownErr
+	return app.Serve(ctx, server, result, monthlyResult, tg)
 }
 
 func runOperatorCommand(action, flag, path string) error {
