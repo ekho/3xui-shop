@@ -182,10 +182,13 @@ func (*Client) ClearKeyboard(ctx context.Context, chatID, messageID int64) error
   context timeout=10 секунд; long polling timeout=30 секунд, limit=1,
   allowed_updates `message,callback_query`, HTTP timeout=40 секунд. Ответ
   ограничен 1 MiB. Нет автоматического deleteWebhook/drop_pending_updates.
-- [ ] **Step 3:** `TestPollingAcknowledgesAfterHandling` проверяет offset:
+- [ ] **Step 3:** В задаче 4, где появляется polling loop,
+  `TestPollingAcknowledgesAfterHandling` проверяет offset:
   следующий запрос подтверждает update только после успешной доменной записи
   или безопасного отказа. Transient ошибка записи оставляет offset прежним.
-  Webhook conflict не переключает транспорт автоматически. PASS focused;
+  Webhook conflict не переключает транспорт автоматически. Здесь проверяется
+  HTTP polling contract; подтверждение update проверяется вместе с обработчиком
+  в задаче 4. PASS focused;
   commit `feat: add bounded Telegram transport`.
 
 Long polling используется только для начального операторского test-пути М01.
