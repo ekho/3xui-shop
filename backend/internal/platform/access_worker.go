@@ -87,7 +87,7 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 			if e == nil && expired {
 				return s.finishMonthlyWithoutWrite(other, op, lease, "period_elapsed_unserved")
 			}
-			current, e := store.New(s.pool).AccountByID(other, op.AccountID)
+			current, e := s.accountByID(other, op.AccountID)
 			if e == nil && (current.VpnBanned || !current.AccessProfile.Valid || current.AccessProfile.String != "unlimited") {
 				return s.finishMonthlyWithoutWrite(other, op, lease, "eligibility_changed")
 			}
@@ -123,7 +123,7 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	if op.Kind == "set_vpn_ban" {
 		expectedBan = t.PreviousBanned
 	}
-	a, err := store.New(s.pool).AccountByID(ctx, op.AccountID)
+	a, err := s.accountByID(ctx, op.AccountID)
 	if op.Kind == "monthly_reset" && !op.WriteStarted && !op.ResetStarted && err == nil && (a.VpnBanned || !a.AccessProfile.Valid || a.AccessProfile.String != "unlimited") {
 		stop()
 		return s.finishMonthlyWithoutWrite(ctx, op, lease, "eligibility_changed")
@@ -170,7 +170,7 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		if executor != nil && s.RequireSupportOperator(ctx, *executor) != nil {
 			return false
 		}
-		current, e := store.New(s.pool).AccountByID(ctx, op.AccountID)
+		current, e := s.accountByID(ctx, op.AccountID)
 		if e != nil || current.PanelKey != t.PanelKey || current.VpnID != t.VPNID || current.SubID != t.SubID || current.VpnBanned != expectedBan || op.Kind == "monthly_reset" && (!current.AccessProfile.Valid || current.AccessProfile.String != "unlimited") {
 			return false
 		}
@@ -207,7 +207,7 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		if t.Banned || op.Kind != "compensate" || s.now().UnixMilli() >= t.ExpiryTimeMS || t.TrafficLimitBytes > 0 && (view.UsedTraffic == nil || *view.UsedTraffic >= t.TrafficLimitBytes) {
 			return cleanup("activation_unsafe", true)
 		}
-		banned, e := store.New(s.pool).AccountVPNBan(ctx, op.AccountID)
+		banned, e := s.accountVPNBan(ctx, op.AccountID)
 		if e != nil || banned {
 			return cleanup("ban_changed", true)
 		}
@@ -334,7 +334,7 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	}
 	defer tx.Rollback(ctx)
 	final := store.New(tx)
-	a, err = final.LockAccount(ctx, op.AccountID)
+	a, err = s.lockAccount(ctx, tx, op.AccountID)
 	if err != nil || a.PanelKey != t.PanelKey || a.VpnID != t.VPNID || a.SubID != t.SubID || a.VpnBanned != expectedBan {
 		tx.Rollback(ctx)
 		return cleanup("identity_changed", true)
@@ -345,12 +345,12 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		return cleanup("final_write_failed", true)
 	}
 	if t.Missing {
-		if err = final.AssignPanel(ctx, store.AssignPanelParams{ID: a.ID, AssignedPanelID: pgtype.Text{String: t.PanelID, Valid: true}}); err != nil {
+		if err = s.accounts.AssignPanel(ctx, tx, a.ID, t.PanelID); err != nil {
 			tx.Rollback(ctx)
 			return cleanup("assign_failed", true)
 		}
 	}
-	if _, err = tx.Exec(ctx, "UPDATE accounts SET access_profile=$2,vpn_banned=$3 WHERE id=$1", a.ID, t.Profile, t.Banned); err != nil {
+	if err = s.accounts.SetAccessMetadata(ctx, tx, a.ID, t.Profile, t.Banned); err != nil {
 		tx.Rollback(ctx)
 		return cleanup("profile_save_failed", true)
 	}

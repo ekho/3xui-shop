@@ -74,7 +74,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	svc := platform.NewService(pool, limiter, queue, cfg)
+	svc := app.NewService(pool, limiter, queue, cfg)
 	var tg *telegram.Runtime
 	if os.Args[1] == "serve" {
 		tgConfig, e := telegram.LoadConfig(cfg.Operators)
@@ -156,7 +156,7 @@ func runOperatorCommand(action, flag, path string) error {
 	if err = pool.Ping(ctx); err != nil {
 		return errors.New("database unavailable")
 	}
-	if err = platform.NewService(pool, nil, nil, platform.Config{}).ChangeOperatorRole(ctx, id, action == "grant"); err != nil {
+	if err = app.NewService(pool, nil, nil, platform.Config{}).ChangeOperatorRole(ctx, id, action == "grant"); err != nil {
 		return errors.New("operator role change failed")
 	}
 	return nil

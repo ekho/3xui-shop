@@ -111,7 +111,7 @@ func TestOperatorTelegramOriginHasNoWebCredentials(t *testing.T) {
 	if _, _, err = s.CreateTelegramTrial(ctx, operator, uuid.New(), wire.OperatorTelegramTrialInput{TelegramId: "9223372036854775805", DisplayName: "Another Person", Locale: "ru"}); status(err) != 403 {
 		t.Fatal("disabled Telegram trial", err)
 	}
-	a, err := store.New(s.pool).AccountByID(ctx, out.Client.AccountId)
+	a, err := s.accountByID(ctx, out.Client.AccountId)
 	if err != nil || a.Kind != "telegram" || a.EmailKey.Valid || a.PasswordHash.Valid || a.VerifiedAt.Valid || a.TermsVersion.Valid || a.PrivacyVersion.Valid || !sourceEligible(a) {
 		t.Fatal("invented web credentials", err)
 	}
@@ -121,7 +121,7 @@ func TestOperatorTelegramOriginHasNoWebCredentials(t *testing.T) {
 	}
 	raw := opaque()
 	now := s.now()
-	if err = store.New(s.pool).AddSession(ctx, store.AddSessionParams{IDHash: digest(raw), AccountID: a.ID, CsrfToken: opaque(), CreatedAt: stamp(now), LastSeen: stamp(now), AbsoluteExpiresAt: stamp(now.Add(time.Hour))}); err != nil {
+	if _, err = s.pool.Exec(ctx, `INSERT INTO sessions(id_hash,account_id,csrf_token,created_at,last_seen,absolute_expires_at) VALUES($1,$2,$3,$4,$4,$5)`, digest(raw), a.ID, opaque(), now, now.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.Authenticate(ctx, raw); status(err) != 401 {

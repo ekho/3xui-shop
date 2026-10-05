@@ -65,8 +65,7 @@ func (s *Service) supportAccess(ctx context.Context, actor, target uuid.UUID, op
 	if !operator && actor != target {
 		return failure(404, "INVALID_INPUT")
 	}
-	q := store.New(s.pool)
-	a, err := q.AccountByID(ctx, actor)
+	a, err := s.accountByID(ctx, actor)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return failure(401, "INVALID_CREDENTIALS")
 	}
@@ -77,17 +76,10 @@ func (s *Service) supportAccess(ctx context.Context, actor, target uuid.UUID, op
 		return failure(403, "ACCOUNT_RESTRICTED")
 	}
 	if operator {
-		if a.Kind != "web" || !a.VerifiedAt.Valid {
-			return failure(403, "INVALID_CREDENTIALS")
+		if err := s.RequireSupportOperator(ctx, actor); err != nil {
+			return err
 		}
-		allowed, err := q.OperatorExists(ctx, actor)
-		if err != nil {
-			return unavailable()
-		}
-		if !allowed {
-			return failure(403, "INVALID_CREDENTIALS")
-		}
-		if _, err = q.AccountByID(ctx, target); errors.Is(err, pgx.ErrNoRows) {
+		if _, err = s.accountByID(ctx, target); errors.Is(err, pgx.ErrNoRows) {
 			return failure(404, "INVALID_INPUT")
 		} else if err != nil {
 			return unavailable()
@@ -111,7 +103,7 @@ func (s *Service) lockSupport(ctx context.Context, tx pgx.Tx, actor, target uuid
 			return empty, err
 		}
 	} else {
-		a, err := q.LockAccount(ctx, actor)
+		a, err := s.lockAccount(ctx, tx, actor)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return empty, failure(404, "INVALID_INPUT")
 		}

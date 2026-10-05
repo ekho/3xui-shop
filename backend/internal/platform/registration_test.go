@@ -8,7 +8,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
-	"example.com/cabinet/backend/internal/store"
 	"example.com/cabinet/backend/internal/testkit"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
@@ -343,7 +342,7 @@ func seedSecurityNotice(t *testing.T, s *Service, e *testkit.Env, email string) 
 		t.Fatal(err)
 	}
 	defer tx.Rollback(ctx)
-	if err = store.New(tx).AddCredentialMail(ctx, store.AddCredentialMailParams{ID: id, EmailKey: email, Ciphertext: encrypted, CreatedAt: stamp(e.Clock()), Kind: "security_notice"}); err != nil {
+	if _, err = tx.Exec(ctx, `INSERT INTO mail_deliveries(id,email_key,ciphertext,created_at,kind) VALUES($1,$2,$3,$4,'security_notice')`, id, email, encrypted, e.Clock()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.queue.InsertTx(ctx, tx, MailArgs{DeliveryID: id}, &river.InsertOpts{MaxAttempts: 5}); err != nil {

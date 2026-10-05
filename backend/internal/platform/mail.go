@@ -18,18 +18,21 @@ func (s *Service) SendMail(ctx context.Context, id uuid.UUID) error {
 	return accountError(s.accounts.SendMail(ctx, id))
 }
 func (s *Service) smtpSend(ctx context.Context, to, subject, body string) error {
-	from, e := mail.ParseAddress(s.cfg.SMTPFrom)
-	if e != nil || from.Address != s.cfg.SMTPFrom || strings.ContainsAny(s.cfg.SMTPFrom, "\r\n") {
+	return SendSMTP(ctx, s.cfg, to, subject, body)
+}
+func SendSMTP(ctx context.Context, cfg Config, to, subject, body string) error {
+	from, e := mail.ParseAddress(cfg.SMTPFrom)
+	if e != nil || from.Address != cfg.SMTPFrom || strings.ContainsAny(cfg.SMTPFrom, "\r\n") {
 		return unavailable()
 	}
-	host, _, e := net.SplitHostPort(s.cfg.SMTPAddress)
+	host, _, e := net.SplitHostPort(cfg.SMTPAddress)
 	if e != nil {
 		return unavailable()
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	dialer := &tls.Dialer{NetDialer: &net.Dialer{Timeout: 10 * time.Second}, Config: &tls.Config{MinVersion: tls.VersionTLS12, ServerName: host, RootCAs: s.cfg.SMTPRootCAs}}
-	conn, e := dialer.DialContext(ctx, "tcp", s.cfg.SMTPAddress)
+	dialer := &tls.Dialer{NetDialer: &net.Dialer{Timeout: 10 * time.Second}, Config: &tls.Config{MinVersion: tls.VersionTLS12, ServerName: host, RootCAs: cfg.SMTPRootCAs}}
+	conn, e := dialer.DialContext(ctx, "tcp", cfg.SMTPAddress)
 	if e != nil {
 		return unavailable()
 	}
@@ -43,8 +46,8 @@ func (s *Service) smtpSend(ctx context.Context, to, subject, body string) error 
 		return unavailable()
 	}
 	defer client.Close()
-	if s.cfg.SMTPUser != "" {
-		if e = client.Auth(smtp.PlainAuth("", s.cfg.SMTPUser, s.cfg.SMTPPassword, host)); e != nil {
+	if cfg.SMTPUser != "" {
+		if e = client.Auth(smtp.PlainAuth("", cfg.SMTPUser, cfg.SMTPPassword, host)); e != nil {
 			return unavailable()
 		}
 	}

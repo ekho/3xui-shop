@@ -36,7 +36,7 @@ func (s *Service) ClaimTelegramJobs(ctx context.Context, in wire.ClaimInput) (wi
 	if e != nil {
 		return out, unavailable()
 	}
-	a, e := q.AccountByID(ctx, r.AccountID)
+	a, e := s.accountByIDTx(ctx, tx, r.AccountID)
 	if e != nil {
 		return out, unavailable()
 	}

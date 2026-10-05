@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"example.com/cabinet/backend/internal/app"
 	"example.com/cabinet/backend/internal/platform"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"io"
@@ -47,7 +48,7 @@ func runLegacyApprovalImport(flag string) error {
 		return importError("IMPORT_DATABASE_UNAVAILABLE")
 	}
 	defer pool.Close()
-	result, err := platform.NewService(pool, nil, nil, platform.Config{}).ImportLegacyApprovals(ctx, packageData, flag == "--dry-run")
+	result, err := app.NewService(pool, nil, nil, platform.Config{}).ImportLegacyApprovals(ctx, packageData, flag == "--dry-run")
 	if err != nil {
 		var domain *platform.Error
 		if errors.As(err, &domain) {
