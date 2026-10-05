@@ -17,8 +17,8 @@ Telegram HTTP-клиент использует `net/http` и `encoding/json`; �
 **Spec:** [Принятая архитектура](../specs/2026-10-05-modular-monolith-design.md),
 [поведение С01](../specs/2026-10-01-s01-web-trial-design.md).
 
-Дата: 2026-10-05. Статус: автономное исполнение Native; подготовка окружения
-и публикация общего решения перед первой задачей. Отдельное повторное одобрение
+Дата: 2026-10-05. Статус: автономное исполнение Native; задачи 1–4 выполнены, задача 5 проходит приёмку
+и финальное ревью. Отдельное повторное одобрение
 плана не запрашивается: действует ранее выданное разрешение на остальные
 документы и реализацию.
 Метод Native уже выбран владельцем и сохраняется. План покрывает только М01;
@@ -94,8 +94,8 @@ PR #5 открыт на `afaeacf652964453ddd61883aa6da6a0d285783c` и не вк�
 | `backend/internal/app/telegram.go`, `lifecycle.go`, `lifecycle_test.go` | Связывание и lifecycle одного процесса; задача 4 |
 | `backend/cmd/server/main.go`, `main_lifecycle_test.go` | Подключение runtime и сохранение graceful HTTP drain; задача 4 |
 | `backend/internal/platform/config.go`, `config_test.go` | Разделение операторской allowlist и временного HTTP adapter secret; задача 4 |
-| `backend/internal/app/native_trial_integration_test.go`, `boundaries_test.go` | Полный путь, рестарт и запрет legacy-imports; задача 5 |
-| `deploy/acceptance/local.py`, `compose.local.yml`, `compose.acceptance.yml` | Native local-профиль и запуск проверки без Python-адаптера; задача 5 |
+| `backend/tests/native_trial_integration_test.go`, `backend/internal/app/boundaries_test.go` | Полный путь с существующими HTTP/SMTP/panel fixtures и запрет legacy-imports; задача 5 |
+| `deploy/acceptance/local.py`, `compose.native.yml`, `compose.local.yml`, `compose.acceptance.yml` | Native local-профиль и запуск проверки без Python-адаптера; задача 5 |
 | `.github/workflows/platform-checks.yml`, `docs/evidence/m01-acceptance.md` | CI и точные границы локальной приёмки; задача 5 |
 
 HTTP/OpenAPI/web-схемы и правила С10 не меняются в М01. Временные endpoints
@@ -139,20 +139,20 @@ ChatID/MessageID int64, Code из существующих TelegramFailureCode.
 `ActionError`: Code string и CurrentRequestStatus string; не содержит raw HTTP
 body, токенов или статуса транспорта. `nil` Claim означает пустую очередь.
 
-- [ ] **Step 1:** В `TestTrialBridgeDecisionReplay` через `testkit.Open(t)` и
+- [x] **Step 1:** В `TestTrialBridgeDecisionReplay` через `testkit.Open(t)` и
   существующий `platform.NewService` создать подтверждённый аккаунт/заявку.
   Два локальных `Decide` с одним callback ID должны вернуть одну Operation;
   count trial_grants=1. В `TestTrialBridgeUnauthorized` ActorID вне allowlist
   получает `INVALID_CREDENTIALS`, count trial_grants=0. В
   `TestTrialBridgeLeaseMapping` повторяется result, неверный lease отклоняется.
-- [ ] **Step 2:** С тестовыми URL-файлами выполнить
+- [x] **Step 2:** С тестовыми URL-файлами выполнить
   `go test ./internal/app -run 'TestTrialBridge' -count=1`; ожидать RED по
   отсутствующему bridge, затем реализовать указанные DTO и методы.
-- [ ] **Step 3:** Bridge преобразует вызовы в существующие DecideTrialRequest,
+- [x] **Step 3:** Bridge преобразует вызовы в существующие DecideTrialRequest,
   ReconsiderTrialRequest, ReconcileTrialOperation, ClaimTelegramJobs и
   CompleteTelegramJob. Он не вычисляет eligibility и не открывает новую
   транзакцию вокруг этих методов. Ошибки переводятся в ActionError.
-- [ ] **Step 4:** Повторить focused команду: PASS; сохранить assertions
+- [x] **Step 4:** Повторить focused команду: PASS; сохранить assertions
   существующих `platform` trial/telegram tests. Commit `refactor: add local trial contracts`.
 
 ### Task 2: минимальный Telegram HTTP-клиент
@@ -172,17 +172,17 @@ func (*Client) AnswerCallback(ctx context.Context, callbackID, text string, aler
 func (*Client) ClearKeyboard(ctx context.Context, chatID, messageID int64) error
 ```
 
-- [ ] **Step 1:** `TestClientBoundaries` на httptest/подменённом RoundTripper:
+- [x] **Step 1:** `TestClientBoundaries` на httptest/подменённом RoundTripper:
   неверный JSON, ответ >1 MiB, неверные message/chat IDs, redirect, 401, 409,
   429 с retry_after и timeout возвращают типизированную ошибку. Проверить,
   что error/log не содержат token/URL/body. Run
   `go test ./internal/modules/telegram/internal/botapi -count=1`: RED.
-- [ ] **Step 2:** Реализовать только перечисленные методы. Production origin
+- [x] **Step 2:** Реализовать только перечисленные методы. Production origin
   `https://api.telegram.org`; client не следует redirect. Send/edit имеют
   context timeout=10 секунд; long polling timeout=30 секунд, limit=1,
   allowed_updates `message,callback_query`, HTTP timeout=40 секунд. Ответ
   ограничен 1 MiB. Нет автоматического deleteWebhook/drop_pending_updates.
-- [ ] **Step 3:** В задаче 4, где появляется polling loop,
+- [x] **Step 3:** В задаче 4, где появляется polling loop,
   `TestPollingAcknowledgesAfterHandling` проверяет offset:
   следующий запрос подтверждает update только после успешной доменной записи
   или безопасного отказа. Transient ошибка записи оставляет offset прежним.
@@ -204,22 +204,22 @@ Long polling используется только для начального �
 и `(*dispatcher).handle(ctx context.Context, update botapi.Update) error`.
 Dispatcher создаётся в `Runtime` задачи 4; события обрабатываются последовательно.
 
-- [ ] **Step 1:** `TestApprovalActorAndPayload` — allowlist + настоящий from.id,
+- [x] **Step 1:** `TestApprovalActorAndPayload` — allowlist + настоящий from.id,
   is_bot=false, private chat.id=actor, корректный UUID и `wt1:a/r/s/c/y/x:<id>`;
   malformed, inline/inaccessible callback и чужой чат не вызывают TrialActions.
   `TestApprovalCardEscapesHTML` проверяет comment/name/email и отсутствие ключа
   VPN; statuses/buttons повторяют render_card старого С01. Run
   `go test ./internal/modules/telegram -run 'TestApproval' -count=1`: RED.
-- [ ] **Step 2:** Сохранить callback prefix `wt1` и существующие действия:
+- [x] **Step 2:** Сохранить callback prefix `wt1` и существующие действия:
   approve/reject, пересмотр rejected, reconcile needs_review, причина,
   подтверждение/отмена. Карточки меняет только Outbox delivery; handler не
   создаёт вторую копию процесса обновления карточки. Причина 1–1000 Unicode
   code points, HTML escaping; APIError не выдаёт сырые сообщения пользователю.
-- [ ] **Step 3:** `TestApprovalConfirmationIsolation` — pending подтверждение
+- [x] **Step 3:** `TestApprovalConfirmationIsolation` — pending подтверждение
   связано с actor+private chat+target+message_id подтверждения. Кнопка старого
   диалога/другого оператора не подтверждает новую причину. Idempotency Key
   сохраняется после потерянного ответа; повтор вызывает ту же команду.
-- [ ] **Step 4:** Диалог хранится в памяти, как нынешний FSM. После restart
+- [x] **Step 4:** Диалог хранится в памяти, как нынешний FSM. После restart
   старое подтверждение объявляется устаревшим; незаписанное действие не
   исполняется. Добавить `ponytail:` комментарий с пределом: при необходимости
   продолжать незавершённый диалог после restart потребуется устойчивое хранение.
@@ -244,31 +244,31 @@ func NewTelegram(cfg telegram.Config, svc *platform.Service, client *http.Client
 func Serve(ctx context.Context, server *http.Server, httpResult, schedulerResult <-chan error, tg *telegram.Runtime) error
 ```
 
-- [ ] **Step 1:** `TestNativeLifecycleTelegramFailure` — runtime error 401/409
+- [x] **Step 1:** `TestNativeLifecycleTelegramFailure` — runtime error 401/409
   не завершает Serve; HTTP отвечает, web-решение вызывает прежний сервис.
   `TestNativeLifecycleDrain` переносит existing HTTP drain assertions и
   добавляет отмену getUpdates/send при shutdown. Focused app/module tests: RED.
-- [ ] **Step 2:** `TELEGRAM_ENABLED` default=false; включённый модуль читает
+- [x] **Step 2:** `TELEGRAM_ENABLED` default=false; включённый модуль читает
   `BOT_TOKEN_FILE`, выключенный не читает его. Operator allowlist — существующий
   `BOT_OPERATOR_IDS`. Platform.LoadConfig больше не требует adapter secret
   только из-за списка операторов: обязательность определяется включённым
   legacy HTTP transport. Для перехода `LEGACY_BOT_API_ENABLED` default=true;
   native-профиль задаёт false, internal routes при отсутствии token отказывают.
   Проверить disabled/missing-secret/malformed-allowlist и пустой bearer.
-- [ ] **Step 3:** Run имеет polling и delivery loops с общей отменой модуля.
+- [x] **Step 3:** Run имеет polling и delivery loops с общей отменой модуля.
   Claim=1; render/send/edit/Complete сохраняют lease=60 секунд. После timeout
   send результат неизвестен: lease истекает, успешный ack не выдумывается.
   `message is not modified` считается успехом; другой edit failure допускает
   одну отправку новой карточки. 429 учитывает retry_after; 401/409 прекращают
   модуль с degraded status, HTTP/River остаются. Transient backoff 1/2/4/…/30
   секунд, idle delivery poll=5 секунд, ожидания прерываются context.
-- [ ] **Step 4:** Запустить Telegram из существующего `server serve` через
+- [x] **Step 4:** Запустить Telegram из существующего `server serve` через
   app.NewTelegram/app.Serve. Domain workers и scheduler используют прежний
   путь; их fatal ошибки сохраняют существующее поведение. Shutdown cancel
   прерывает Telegram, HTTP drain/River Stop сохраняют предел 20 секунд.
   `TestUnsupportedPaymentNotAcknowledged`: обнаруженный payment event в
   частичном М01 не подтверждается/не теряется, poller останавливается degraded.
-- [ ] **Step 5:** `TestDeliveryUnknownResult` и `TestDeliveryLateLease` закрепляют
+- [x] **Step 5:** `TestDeliveryUnknownResult` и `TestDeliveryLateLease` закрепляют
   RF3; `TestTelegramDisabledWithoutToken` закрепляет независимый кабинет.
   PASS `go test -race ./internal/app ./internal/modules/telegram/... -count=1`
   и existing main/config tests. Commit `feat: run Telegram with HTTP and workers`.
@@ -281,30 +281,31 @@ modify native acceptance profile/runner и platform-checks workflow.
 существующие Docker панели/SMTP и HTTP/browser regression.
 **Produces:** Проверенный М01 и evidence точной ревизии; не приёмка М02–М06/С47.
 
-- [ ] **Step 1:** `TestNativeTrialFlow` запускает HTTP/River/Telegram одного
+- [x] **Step 1:** `TestNativeTrialFlow` запускает HTTP/River/Telegram одного
   приложения с fake Bot API и собственными Docker зависимостями. Проверить
   регистрацию/письмо/подтверждение, request, карточку двум операторам,
   approve/reject, конкуренцию кнопок, пересмотр с причиной и reconcile.
   Assertions: одна TrialGrant/Operation/панельная запись, прежние IDs,
   actor/reason/audit, web-профиль/ключ только владельцу; RF1–RF3.
-- [ ] **Step 2:** `TestNativeTrialTelegramOutage` принимает решение, блокирует
+- [x] **Step 2:** `TestNativeTrialTelegramOutage` принимает решение, блокирует
   fake Bot API, проверяет выдачу и web-решение второй заявки. Повторить с
-  `TELEGRAM_ENABLED=false`. `TestNativeTrialRestart` останавливает весь процесс
-  после commit, запускает снова с той же DB и проверяет исходную Operation,
-  прежние ключи и отсутствие второй выдачи; RF4/RF5. Fake transport внедряется
+  `TELEGRAM_ENABLED=false`. `TestNativeTrialRestart` пересоздаёт весь
+  application lifecycle после commit с той же DB. `local.py native_restart()`
+  дополнительно останавливает compiled Go-процесс и запускает снова; проверяются
+  исходная Operation, прежние ключи и отсутствие второй выдачи; RF4/RF5. Fake transport внедряется
   через `*http.Client`; дополнительный production URL/HTTP endpoint не создаётся.
-- [ ] **Step 3:** `TestModuleBoundaries` проверяет `go list -json` для новых
+- [x] **Step 3:** `TestModuleBoundaries` проверяет `go list -json` для новых
   modules: запрещены imports platform, store, wire, httpapi, app и чужой
   приватной реализации. Добавить отрицательный fixture импортов в тесте.
   Временные app bridge/httpapi исключения перечислены явно; CI не считает
   общую platform/store структуру уже удалённой.
-- [ ] **Step 4:** Native local-профиль содержит один backend процесс; в нём
+- [x] **Step 4:** Native local-профиль содержит один backend процесс; в нём
   не запускаются Python bot/reconcile service. `local.py` вызывает Go native
   integration вместо импорта app/WebTrialAdapter; для реального test Telegram
   токен передаётся файлом отдельному backend профилю. Старый acceptance runner
   обозначается legacy и не считается проверкой М01. Оба профиля не работают
   одновременно с одним токеном/DB. Проверить Compose parser и compiled Go image.
-- [ ] **Step 5:** С поднятыми собственными test PG/Redis выполнить из backend:
+- [x] **Step 5:** С поднятыми собственными test PG/Redis выполнить из backend:
   `go test -race ./... -count=1`, `go vet ./...`, `make generate` и проверить
   отсутствие generated drift. Сохранить existing browser/Python checks по CI;
   в native flow нет импорта app или доставки отдельным Python-процессом.

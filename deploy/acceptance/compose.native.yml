@@ -1,0 +1,15 @@
+# M01: HTTP, jobs and optional Telegram share the backend process.
+services:
+  backend:
+    environment:
+      LEGACY_BOT_API_ENABLED: 'false'
+      TELEGRAM_ENABLED: '${TELEGRAM_ENABLED:-false}'
+      BOT_TOKEN_FILE: /run/secrets/bot_token
+    secrets: [bot_token, native_operator_account]
+  migrate:
+    environment:
+      LEGACY_BOT_API_ENABLED: 'false'
+  mailpit:
+    ports: ['127.0.0.1:59447:1025']
+secrets:
+  native_operator_account: {file: '${LOCAL_STATE_DIR:?required}/native-operator-account'}

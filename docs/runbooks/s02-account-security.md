@@ -67,7 +67,7 @@ Backup не содержит смены пароля/email, сделанной �
 
 ```sh
 go -C backend test ./internal/platform -run '^TestAccountSecurityRestore$' -count=1
-python3 deploy/acceptance/local.py restore
+LOCAL_PROFILE=legacy python3 deploy/acceptance/local.py restore
 ```
 
 Go проверяет maintenance дважды на изолированной БД с sessions, reset,

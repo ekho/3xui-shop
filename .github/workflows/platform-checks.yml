@@ -58,8 +58,16 @@ jobs:
       - name: Container readiness (local images only)
         run: |
           docker compose --env-file deploy/acceptance/.env.example -f deploy/acceptance/compose.acceptance.yml config --quiet
-          docker compose --env-file deploy/acceptance/.env.example -f deploy/acceptance/compose.acceptance.yml build
+          docker compose --env-file deploy/acceptance/.env.example -f deploy/acceptance/compose.acceptance.yml build backend gateway bot
           python deploy/acceptance/smoke.py
+      - name: Native process with 3X-UI 3.7.0 and TLS SMTP
+        run: |
+          python deploy/acceptance/local.py up --reuse-images
+          python deploy/acceptance/local.py check
       - name: Cleanup
         if: always()
-        run: docker compose -f deploy/acceptance/compose.test.yml down -v
+        run: |
+          if [ -f .superpowers/acceptance/native-docker/public.env ]; then
+            python deploy/acceptance/local.py down
+          fi
+          docker compose -f deploy/acceptance/compose.test.yml down -v

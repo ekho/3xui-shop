@@ -59,16 +59,10 @@ services:
       MP_SMTP_DISABLE_RDNS: 'true'
     secrets: [public_cert, public_key, smtp_auth]
   origin:
-    image: cabinet-bot:local
-    entrypoint: [python, -c]
-    command:
-      - |
-        from http.server import BaseHTTPRequestHandler, HTTPServer
-        class Handler(BaseHTTPRequestHandler):
-            def do_GET(self):
-                self.send_response(200); self.end_headers(); self.wfile.write(b'cabinet-local-vpn-ok')
-            def log_message(self, *args): pass
-        HTTPServer(('0.0.0.0',8000), Handler).serve_forever()
+    image: cabinet-web:local
+    entrypoint: [/usr/bin/caddy]
+    command: [file-server, --root, /srv/origin, --listen, ':8000']
+    volumes: ['${LOCAL_STATE_DIR:?required}/origin:/srv/origin:ro']
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]

@@ -1,5 +1,6 @@
 """Own Docker acceptance stack. Secrets stay in private files; Telegram is opt-in."""
 import base64
+import argparse
 import http.cookiejar
 from ipaddress import IPv4Address
 import json
@@ -17,10 +18,12 @@ from urllib.parse import urlsplit, parse_qs, urlencode
 from uuid import UUID, uuid4
 
 ROOT = Path(__file__).resolve().parents[2]
-STATE = Path(os.environ.get('LOCAL_STATE_DIR', ROOT / '.superpowers/acceptance/local-docker'))
+PROFILE = os.environ.get('LOCAL_PROFILE', 'native')
+assert PROFILE in ('native', 'legacy'), 'invalid local profile'
+STATE = Path(os.environ.get('LOCAL_STATE_DIR', ROOT / '.superpowers/acceptance' / ('native-docker' if PROFILE == 'native' else 'local-docker')))
 ENV = STATE / 'public.env'
 METADATA = json.loads((STATE / 'runtime.json').read_text()) if (STATE / 'runtime.json').exists() else {}
-PROJECT = METADATA.get('project', 'cabinet-local')
+PROJECT = METADATA.get('project', 'cabinet-native' if PROFILE == 'native' else 'cabinet-local')
 PG_USER = METADATA.get('postgres_user', 'cabinet')
 BASE_DATABASE = METADATA.get('base_database', 'cabinet')
 VPN_ORIGIN_MARKER = b'cabinet-local-vpn-ok'
@@ -62,9 +65,11 @@ def command(args, *, stdin=None):
     return result.stdout
 
 def compose(*args, stdin=None):
-    return command(['docker','compose','--project-name',PROJECT,'--profile','restore',
-                    '--env-file',str(ENV),'-f','deploy/acceptance/compose.acceptance.yml',
-                    '-f','deploy/acceptance/compose.local.yml',*args], stdin=stdin)
+    files=['-f','deploy/acceptance/compose.acceptance.yml','-f','deploy/acceptance/compose.local.yml']
+    if PROFILE == 'native':files+=['-f','deploy/acceptance/compose.native.yml']
+    return command(['docker','compose','--project-name',PROJECT,
+                    *(['--profile','restore'] if PROFILE == 'legacy' else []),
+                    '--env-file',str(ENV),*files,*args], stdin=stdin)
 
 def prepare():
     STATE.mkdir(parents=True, exist_ok=True)
@@ -72,6 +77,9 @@ def prepare():
     if not (STATE / 'runtime.json').exists():
         write('runtime.json', json.dumps({'project': PROJECT, 'postgres_user': PG_USER,
               'base_database': BASE_DATABASE, 'fixture_prefixes': {}}))
+    (STATE / 'origin').mkdir(exist_ok=True)
+    (STATE / 'origin/index.html').write_bytes(VPN_ORIGIN_MARKER)
+    if not (STATE/'native-operator-account').exists():write('native-operator-account','')
     if ENV.exists():
         return
     (STATE / 'panel-db').mkdir(mode=0o700)
@@ -96,7 +104,8 @@ def prepare():
     config.update(PG_USER=PG_USER,BASE_DATABASE=BASE_DATABASE,CABINET_HOST='localhost',CABINET_ORIGIN='https://localhost:58443',
                   TERMS_URL='https://localhost:58443/terms',PRIVACY_URL='https://localhost:58443/privacy',
                   APP_RUNTIME_UID=str(os.getuid()),APP_RUNTIME_GID=str(os.getgid()),
-                  APP_NETWORK_SUBNET='172.31.99.0/28',APP_GATEWAY_IP='172.31.99.14',
+                  APP_NETWORK_SUBNET='172.31.96.0/28' if PROFILE == 'native' else '172.31.99.0/28',
+                  APP_GATEWAY_IP='172.31.96.14' if PROFILE == 'native' else '172.31.99.14',
                   SUBSCRIPTION_BASE_URL='https://localhost:59445/sub/',LOCAL_STATE_DIR=str(STATE),
                   PANEL_PASSWORD_FILE=str(STATE/'panel-password'),SMTP_AUTH_FILE=str(STATE/'smtp-auth'))
     mapping={'PG_PASSWORD_FILE':'pg-password','DATABASE_URL_FILE':'database-url','REDIS_URL_FILE':'redis-url',
@@ -159,12 +168,12 @@ def allow_test_origin(opener, csrf):
     with opener.open(req,timeout=15) as response:
         assert response.status==200 and json.loads(response.read()).get('success') is True, 'test origin rule rejected'
 
-def up():
+def up(reuse_images=False):
     prepare()
     write('public.env',ENV.read_text().replace('TRIAL_ENABLED=true','TRIAL_ENABLED=false'))
     compose('config','--quiet')
-    # Public legal/support values are embedded in this local build; no secrets are build args.
-    compose('build','backend','gateway','bot')
+    # Public legal/support values are runtime configuration; secrets remain files.
+    if not reuse_images:compose('build','backend','gateway',*(['bot'] if PROFILE == 'legacy' else []))
     compose('up','--pull','missing','--no-build','-d','backend','gateway','origin')
     deadline=time.monotonic()+30
     while True:
@@ -194,7 +203,7 @@ def up():
     write('public.env',data)
     compose('up','--no-build','-d','backend')
     wait_until(ready)
-    print('PASS: local 3X-UI3.7.0, TLS Mailpit, cabinet HTTPS; Telegram profile disabled')
+    print('PASS: local 3X-UI3.7.0, TLS Mailpit, cabinet HTTPS; '+PROFILE+' process profile',flush=True)
 
 def api(opener, path, body=None, csrf=None, key=None):
     headers={'Origin':ORIGIN}
@@ -204,6 +213,7 @@ def api(opener, path, body=None, csrf=None, key=None):
     return status, headers, json.loads(raw) if raw else None
 
 def actor(path, body, key=None):
+    assert PROFILE == 'legacy', 'Python adapter is restricted to legacy acceptance'
     # This uses the shipped Python adapter, but does not contact Telegram.
     script='''import asyncio,json,sys
 from pathlib import Path
@@ -369,6 +379,7 @@ def vpn_connected():
     except OSError:return False
 
 def restore():
+    assert PROFILE == 'legacy', 'legacy restore requires LOCAL_PROFILE=legacy'
     opener,trial,credentials=signup()
     _,_,owner=api(opener,'/api/v1/me')
     csrf=owner['csrf_token']
@@ -470,6 +481,9 @@ def rollback():
     print('PASS: bounded ingress rollback; PG data, panel and existing VPN retained')
 
 def check():
+    if PROFILE == 'native':
+        native_check()
+        return
     opener,trial,_=signup()
     operation=approve(trial)['operation_id']
     subscription=wait_until(lambda:active(opener))
@@ -480,17 +494,78 @@ def check():
     restore()
     rollback()
 
+def native_restart():
+    opener,trial,credentials=signup()
+    account=sql("SELECT account_id FROM trial_requests WHERE id=:'op'::uuid;",operation=trial['request_id'])
+    write('native-operator-account',str(UUID(account)))
+    compose('exec','-T','backend','/server','operator','grant','--account-file','/run/secrets/native_operator_account')
+    _,_,login=api(opener,'/api/v1/auth/login',credentials)
+    # Hold only this owned fixture's provisioning insert, without a sleeping transaction.
+    sql("""CREATE FUNCTION native_hold_provision() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.kind='trial_provision' THEN NEW.state='scheduled';
+        NEW.scheduled_at=clock_timestamp()+interval '1 hour'; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER native_hold_provision BEFORE INSERT ON river_job FOR EACH ROW EXECUTE FUNCTION native_hold_provision();""")
+    try:
+        status,_,decision=api(opener,'/api/v1/operator/trial-requests/'+trial['request_id']+'/decision',
+                             {'decision':'approve','reason':''},login['csrf_token'],str(uuid4()))
+        assert status==200, 'native web decision failed'
+        operation=decision['operation_id']
+        before=snapshot(operation)
+        assert before['status']=='pending' and before['grant']=='reserved' and before['grants']==1 and before['job']=='scheduled'
+        identity_query="SELECT vpn_id::text||':'||sub_id||':'||panel_key FROM accounts WHERE id=(SELECT account_id FROM trial_operations WHERE id=:'op');"
+        identity=sql(identity_query,operation=operation)
+        compose('stop','backend')
+        sql('DROP TRIGGER native_hold_provision ON river_job; DROP FUNCTION native_hold_provision();')
+        sql("UPDATE river_job SET state='available',scheduled_at=clock_timestamp() WHERE kind='trial_provision' AND args->>'operation_id'=:'op';",operation=operation)
+        compose('up','--no-build','--pull','never','-d','backend')
+        wait_until(ready)
+        wait_until(lambda:snapshot(operation)['status']=='applied')
+        after=snapshot(operation)
+        assert after['grant']=='granted' and after['grants']==1 and sql(identity_query,operation=operation)==identity
+        assert sql("SELECT count(*) FROM trial_operations WHERE request_id=(SELECT request_id FROM trial_operations WHERE id=:'op');",operation=operation)=='1'
+        panel_readback(after['target'])
+        assert active(opener) is not None
+        print('PASS: compiled Go process stopped after commit and restarted; same operation, grant, keys and real panel readback; Telegram disabled',flush=True)
+    finally:
+        sql('DROP TRIGGER IF EXISTS native_hold_provision ON river_job; DROP FUNCTION IF EXISTS native_hold_provision();')
+        write('native-operator-account','')
+        compose('up','--no-build','--pull','never','-d','backend')
+
+def native_check():
+    running=set(compose('ps','--services','--status','running').decode().splitlines())
+    assert 'backend' in running and not running.intersection({'bot','reconcile'}), 'native profile must have one application process'
+    config=json.loads(compose('config','--format','json'))
+    assert config['services']['backend']['environment']['TELEGRAM_ENABLED']=='false', 'automated check requires simulated Telegram'
+    environment=os.environ.copy()
+    if not environment.get('TEST_DATABASE_URL_FILE') or not environment.get('TEST_REDIS_URL_FILE'):
+        command(['docker','compose','-f','deploy/acceptance/compose.test.yml','up','-d','--wait','postgres','redis'])
+        environment['TEST_DATABASE_URL_FILE']=write('test-database-url','postgres://platform_test@127.0.0.1:55491/platform_test?sslmode=disable')
+        environment['TEST_REDIS_URL_FILE']=write('test-redis-url','redis://127.0.0.1:56391/0')
+    environment['NATIVE_DOCKER_STATE']=str(STATE)
+    log=STATE/'native-go.log'
+    with log.open('w') as output:
+        log.chmod(0o600)
+        result=subprocess.run(['go','test','-race','./tests','-run','TestNativeTrial','-count=1'],
+                              cwd=ROOT/'backend',env=environment,stdout=output,stderr=subprocess.STDOUT,timeout=180)
+    assert result.returncode==0, 'native Go integration failed; see private native-go.log'
+    print('PASS: native Go HTTP/jobs/Telegram integration with real TLS SMTP and 3X-UI3.7.0; Bot API simulated',flush=True)
+    native_restart()
+
 def main():
-    if len(sys.argv)!=2 or sys.argv[1] not in ('up','check','restore','down'):
-        raise SystemExit('usage: local.py up|check|restore|down')
-    if sys.argv[1]=='up':up()
-    elif sys.argv[1]=='check':check()
-    elif sys.argv[1]=='restore':restore()
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action',choices=('up','check','restore','down'))
+    parser.add_argument('--reuse-images',action='store_true')
+    args=parser.parse_args()
+    if args.reuse_images and args.action!='up':parser.error('--reuse-images is only for up')
+    if args.action=='up':up(args.reuse_images)
+    elif args.action=='check':check()
+    elif args.action=='restore':restore()
     else:compose('--profile','vpn','--profile','telegram','down')
 
 if __name__=='__main__':
     try:main()
     except Exception as error:
         # Never print raw provider responses or tracebacks containing registration/key data.
-        print(type(error).__name__+': local acceptance step failed; inspect private state/runbook')
+        status=' (HTTP '+str(error.code)+')' if isinstance(error,HTTPError) else ''
+        print(type(error).__name__+': local acceptance step failed'+status+'; inspect private state/runbook')
         raise SystemExit(1)
