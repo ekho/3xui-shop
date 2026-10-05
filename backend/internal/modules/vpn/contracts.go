@@ -3,6 +3,8 @@ package vpn
 import (
 	"crypto/x509"
 	"encoding/json"
+	"time"
+
 	"github.com/google/uuid"
 )
 
@@ -58,4 +60,17 @@ type AccessTarget struct {
 	PreviousLimitIP           int64     `json:"previous_limit_ip"`
 	PreviousTrafficLimitBytes int64     `json:"previous_traffic_limit_bytes"`
 	PreviousInboundIDs        []int64   `json:"previous_inbound_ids"`
+}
+
+// Desired access is part of the persisted operation contract.
+type AccessDesired struct {
+	Devices           int64      `json:"devices"`
+	ExpiresAt         *time.Time `json:"expires_at"`
+	PeriodDays        *int64     `json:"period_days"`
+	PlanId            *uuid.UUID `json:"plan_id"`
+	Profile           string     `json:"profile"`
+	ResetTraffic      bool       `json:"reset_traffic"`
+	Revision          *int64     `json:"revision"`
+	TrafficLimitBytes int64      `json:"traffic_limit_bytes"`
+	VpnBanned         bool       `json:"vpn_banned"`
 }

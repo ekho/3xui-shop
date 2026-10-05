@@ -6,12 +6,6 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
-	"example.com/cabinet/backend/internal/store"
-	"example.com/cabinet/backend/internal/testkit"
-	"example.com/cabinet/backend/internal/wire"
-	"github.com/google/uuid"
-	"github.com/riverqueue/river"
-	"github.com/riverqueue/river/rivertype"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +13,12 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"example.com/cabinet/backend/internal/testkit"
+	"example.com/cabinet/backend/internal/wire"
+	"github.com/google/uuid"
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/rivertype"
 )
 
 type fakePanel struct {
@@ -384,7 +384,7 @@ func TestProvisionReconciliationRecovery(t *testing.T) {
 	if err := s.Provision(ctx, id); err != nil {
 		t.Fatal(err)
 	}
-	op, err := store.New(e.Pool).OperationByID(ctx, id)
+	op, err := testProvisionRow(ctx, e.Pool, id)
 	if err != nil || op.Status != "needs_review" || !op.WriteStarted || len(op.Target) == 0 {
 		t.Fatal("ambiguous write lost reservation/intent", err)
 	}
@@ -404,7 +404,7 @@ func TestProvisionReconciliationRecovery(t *testing.T) {
 	if err = s.Provision(ctx, id); err != nil {
 		t.Fatal(err)
 	}
-	op, err = store.New(e.Pool).OperationByID(ctx, id)
+	op, err = testProvisionRow(ctx, e.Pool, id)
 	if err != nil || op.Status != "applied" || !bytes.Equal(original, op.Target) || p.adds != 1 || count(t, e, "trial_grants") != 1 {
 		t.Fatal("recovery replaced operation or extended access", err)
 	}
@@ -452,7 +452,7 @@ func TestProvisionReconciliationUnknownReads(t *testing.T) {
 			for range 5 {
 				_ = s.Provision(ctx, id)
 			}
-			op, err := store.New(e.Pool).OperationByID(ctx, id)
+			op, err := testProvisionRow(ctx, e.Pool, id)
 			if err != nil || op.Status != "needs_review" || p.adds != 0 || p.otherWrites != 0 {
 				t.Fatal("unknown read treated as absence", err)
 			}
@@ -489,7 +489,7 @@ func TestProvisionReconciliationAbsentAfterAmbiguity(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = s.Provision(ctx, id)
-	op, err := store.New(e.Pool).OperationByID(ctx, id)
+	op, err := testProvisionRow(ctx, e.Pool, id)
 	if err != nil || p.adds != 1 || op.Status != "needs_review" {
 		t.Fatal("ambiguous absence bypassed uniqueness guarantee", err)
 	}
@@ -501,7 +501,7 @@ func TestProvisionReconciliationAbsentAfterAmbiguity(t *testing.T) {
 	if err = s.Provision(ctx, id); err != nil {
 		t.Fatal(err)
 	}
-	op, err = store.New(e.Pool).OperationByID(ctx, id)
+	op, err = testProvisionRow(ctx, e.Pool, id)
 	if err != nil || op.Status != "applied" || p.adds != 2 {
 		t.Fatal("attested fixture recovery failed", err)
 	}
@@ -531,7 +531,7 @@ func TestProvisionReconciliationDBCrash(t *testing.T) {
 	p.mu.Lock()
 	p.blockRead = false
 	p.mu.Unlock()
-	op, err := store.New(e.Pool).OperationByID(ctx, id)
+	op, err := testProvisionRow(ctx, e.Pool, id)
 	if err != nil || op.Status != "needs_review" || p.adds != 1 {
 		t.Fatal("ownership loss falsely applied", err)
 	}
@@ -545,7 +545,7 @@ func TestProvisionReconciliationDBCrash(t *testing.T) {
 	if err = s.Provision(ctx, id); err != nil {
 		t.Fatal(err)
 	}
-	op, err = store.New(e.Pool).OperationByID(ctx, id)
+	op, err = testProvisionRow(ctx, e.Pool, id)
 	if err != nil || op.Status != "applied" || p.adds != 1 {
 		t.Fatal("session-loss recovery duplicated client", err)
 	}
@@ -559,7 +559,7 @@ func TestProvisionReconciliationApplyFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = s.Provision(ctx, id)
-	op, err := store.New(e.Pool).OperationByID(ctx, id)
+	op, err := testProvisionRow(ctx, e.Pool, id)
 	if err != nil || op.Status != "needs_review" || p.adds != 1 {
 		t.Fatal("failed apply abandoned operation", err)
 	}
@@ -595,7 +595,7 @@ func TestSubscriptionPrivacyForeignTargets(t *testing.T) {
 			if status(err) != 409 || p.adds != 1 || p.otherWrites != 0 {
 				t.Fatal("conflicting target exposed or rewritten", err)
 			}
-			op, err := store.New(e.Pool).OperationByID(ctx, id)
+			op, err := testProvisionRow(ctx, e.Pool, id)
 			if err != nil || op.Status != "applied" {
 				t.Fatal("profile read changed operation", err)
 			}

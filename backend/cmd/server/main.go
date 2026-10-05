@@ -3,16 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"example.com/cabinet/backend/db"
-	"example.com/cabinet/backend/internal/app"
-	"example.com/cabinet/backend/internal/httpapi"
-	"example.com/cabinet/backend/internal/modules/telegram"
-	"example.com/cabinet/backend/internal/platform"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/redis/go-redis/v9"
-	"github.com/riverqueue/river"
-	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"log/slog"
 	"net/http"
 	"os"
@@ -21,6 +11,18 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"example.com/cabinet/backend/db"
+	"example.com/cabinet/backend/internal/app"
+	"example.com/cabinet/backend/internal/httpapi"
+	"example.com/cabinet/backend/internal/modules/telegram"
+	"example.com/cabinet/backend/internal/modules/vpn"
+	"example.com/cabinet/backend/internal/platform"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 )
 
 func main() {
@@ -90,15 +92,15 @@ func run() error {
 		}
 	}
 	workers := river.NewWorkers()
-	river.AddWorker(workers, &platform.ProvisionWorker{Service: svc})
-	river.AddWorker(workers, &platform.AccessWorker{Service: svc})
-	river.AddWorker(workers, &platform.MonthlyResetWorker{Service: svc})
+	river.AddWorker(workers, &vpn.ProvisionWorker{Service: svc.VPN()})
+	river.AddWorker(workers, &vpn.AccessWorker{Service: svc.VPN()})
+	river.AddWorker(workers, &vpn.MonthlyResetWorker{Service: svc.VPN()})
 	queues := map[string]river.QueueConfig{"provision": {MaxWorkers: 2}}
 	if os.Args[1] == "serve" {
 		river.AddWorker(workers, &platform.MailWorker{Service: svc})
 		queues[river.QueueDefault] = river.QueueConfig{MaxWorkers: 2}
 	}
-	worker, err := river.NewClient(riverpgxv5.New(pool), &river.Config{Workers: workers, Queues: queues, RescueStuckJobsAfter: platform.ProvisionRescueAfter, Logger: slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))})
+	worker, err := river.NewClient(riverpgxv5.New(pool), &river.Config{Workers: workers, Queues: queues, RescueStuckJobsAfter: vpn.ProvisionRescueAfter, Logger: slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))})
 	if err != nil {
 		return err
 	}
@@ -115,7 +117,7 @@ func run() error {
 		return nil
 	}
 	monthlyResult := make(chan error, 1)
-	go func() { monthlyResult <- svc.RunMonthlyResetScheduler(ctx) }()
+	go func() { monthlyResult <- svc.VPN().RunMonthlyResetScheduler(ctx) }()
 	address := os.Getenv("LISTEN_ADDRESS")
 	if address == "" {
 		address = "127.0.0.1:8080"

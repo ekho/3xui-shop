@@ -109,3 +109,12 @@ type TelegramInput struct {
 	TelegramID          int64
 	DisplayName, Locale string
 }
+
+// SourceEligible is the common source-identity predicate, without subscription rules.
+func SourceEligible(a Snapshot) bool {
+ switch a.Kind {
+ case "web":return a.VerifiedAt!=nil && a.EmailKey!=nil && a.PasswordSet
+ case "telegram":return a.TelegramID!=nil && *a.TelegramID>0 && a.DisplayName!=nil
+ default:return false
+ }
+}

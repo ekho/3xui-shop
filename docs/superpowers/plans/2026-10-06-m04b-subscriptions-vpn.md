@@ -39,7 +39,7 @@
 - Tests: `backend/internal/app/boundaries_test.go`, `backend/internal/modules/subscriptions/contracts_test.go`, `backend/internal/modules/vpn/data_test.go`; прежние platform/app/httpapi/tests.
 
 **Interfaces:**
-- Consumes: accounts public Snapshot/Lookup/Lock/LockOperatorPair/RequireSupportOperator/AssignPanel/SetAccessMetadata; catalogue CurrentPlanTx/UnlimitedPlansTx; vpn PanelClient/targets М04а.
+- Consumes: accounts public Snapshot/Lookup/Lock/LockOperatorPair/RequireOperator/AssignPanel/SetAccessMetadata; catalogue CurrentPlanTx/UnlimitedPlansTx; vpn PanelClient/targets М04а.
 - Produces: `vpn.New(pool *pgxpool.Pool, authority *accounts.Service, queue func() *river.Client[pgx.Tx], config func() Settings, now func() time.Time, outcome func(context.Context,pgx.Tx,uuid.UUID,uuid.UUID,string) error) *Service`.
 - Produces: `subscriptions.New(pool *pgxpool.Pool, authority *accounts.Service, catalogue *catalogue.Service, vpn *vpn.Service, config func() Config, now func() time.Time) *Service`.
 - Produces: `vpn.ReserveTrialTx(ctx,tx,TrialReservation) error`, `TrialStateTx(ctx,tx,id) (TrialState,error)`, `AccountTrialState(ctx,account) (TrialState,error)`, `UnresolvedTx(ctx,tx,account) (bool,error)`, `RequeueTrialTx(ctx,tx,id) error`, `QueueAccessTx(ctx,tx,AccessWrite) (AccessState,error)`, `LatestAccessState/LatestAppliedAccessState`, `RequeueAccessTx` and batch metadata. Public snapshots omit lease fields.
