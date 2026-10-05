@@ -65,6 +65,105 @@ func TestPollingAcknowledgesAfterHandling(t *testing.T) {
 		t.Fatal("update was acknowledged before successful handling")
 	}
 }
+
+func TestPollingPermanentPromptFailure(t *testing.T) {
+	for _, stage := range []string{"prompt", "confirmation"} {
+		for _, code := range []int{400, 403} {
+			t.Run(stage+"/"+http.StatusText(code), func(t *testing.T) {
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				target := uuid.New()
+				first := callback(target, 101, 7, "s")
+				first.ID = 11
+				if stage == "confirmation" {
+					first = botapi.Update{ID: 11, Message: &botapi.Message{ID: 8, Date: 1, From: &botapi.User{ID: 101}, Chat: botapi.Chat{ID: 101, Type: "private"}, Text: "Support review"}}
+				}
+				next := callback(uuid.New(), 202, 7, "a")
+				next.ID = 12
+				var offsets []int64
+				h := &http.Client{Transport: testTransport(func(r *http.Request) (*http.Response, error) {
+					if strings.HasSuffix(r.URL.Path, "sendMessage") {
+						body, _ := json.Marshal(map[string]any{"ok": false, "error_code": code})
+						return &http.Response{StatusCode: code, Body: io.NopCloser(strings.NewReader(string(body)))}, nil
+					}
+					if strings.HasSuffix(r.URL.Path, "answerCallbackQuery") {
+						return jsonReply(true), nil
+					}
+					var in struct{ Offset int64 }
+					json.NewDecoder(r.Body).Decode(&in)
+					offsets = append(offsets, in.Offset)
+					if len(offsets) == 3 || (len(offsets) == 2 && in.Offset != 12) {
+						cancel()
+						return nil, context.Canceled
+					}
+					if in.Offset == 12 {
+						return jsonReply([]botapi.Update{next}), nil
+					}
+					return jsonReply([]botapi.Update{first}), nil
+				})}
+				a := &actionRecorder{}
+				r := runtimeFixture(t, h, a, &outboxRecorder{})
+				if stage == "confirmation" {
+					r.dispatcher.pending[101] = &confirmation{SupportAction: SupportAction{TargetID: target, ActorID: 101, Key: uuid.New()}, action: "s", messageID: 7}
+				}
+				if err := r.poll(ctx); err != nil {
+					t.Fatal(err)
+				}
+				if len(offsets) != 3 || offsets[1] != 12 || offsets[2] != 13 || len(a.decisions) != 1 || a.decisions[0].ActorID != 202 || r.dispatcher.pending[101] != nil {
+					t.Fatal("permanent prompt failure blocked the next operator or retained the dialogue")
+				}
+			})
+		}
+	}
+}
+
+func TestPollingCosmeticRateLimit(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	u := callback(uuid.New(), 101, 7, "a")
+	u.ID = 11
+	next := callback(uuid.New(), 202, 7, "a")
+	next.ID = 12
+	var r *Runtime
+	var limited time.Time
+	var offsets []int64
+	replies := 0
+	h := &http.Client{Transport: testTransport(func(req *http.Request) (*http.Response, error) {
+		if strings.HasSuffix(req.URL.Path, "answerCallbackQuery") {
+			replies++
+			if replies == 1 {
+				limited = time.Now()
+				return &http.Response{StatusCode: 429, Body: io.NopCloser(strings.NewReader(`{"ok":false,"error_code":429,"parameters":{"retry_after":1}}`))}, nil
+			}
+			if time.Since(limited) < time.Second {
+				t.Error("next reply ignored retry_after")
+			}
+			return jsonReply(true), nil
+		}
+		var in struct{ Offset int64 }
+		json.NewDecoder(req.Body).Decode(&in)
+		offsets = append(offsets, in.Offset)
+		if len(offsets) == 2 && (r.State().Code != "RATE_LIMITED" || time.Since(limited) < time.Second) {
+			t.Error("rate limit state or waiting was lost")
+		}
+		if len(offsets) == 3 {
+			cancel()
+			return nil, context.Canceled
+		}
+		if in.Offset > u.ID {
+			return jsonReply([]botapi.Update{next}), nil
+		}
+		return jsonReply([]botapi.Update{u}), nil
+	})}
+	a := &actionRecorder{}
+	r = runtimeFixture(t, h, a, &outboxRecorder{})
+	if err := r.poll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(offsets) != 3 || offsets[1] != 0 || offsets[2] != 12 || len(a.decisions) != 2 || a.decisions[0].CallbackID != a.decisions[1].CallbackID {
+		t.Fatal("rate limit retry changed the committed command identity")
+	}
+}
 func TestUnsupportedPaymentNotAcknowledged(t *testing.T) {
 	for _, body := range []string{
 		`{"update_id":12,"pre_checkout_query":{"id":"payment"}}`,

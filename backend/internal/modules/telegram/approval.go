@@ -75,13 +75,23 @@ func (d *dispatcher) allowed(u *botapi.User, m *botapi.Message) bool {
 }
 
 // A lost cosmetic response does not undo a committed decision. Authentication
-// and polling-conflict errors stop the channel; all other replies are best effort.
+// and polling-conflict errors stop the channel; rate limits preserve the pause.
+// Other cosmetic replies are best effort.
 func cosmetic(err error) error {
 	var api *botapi.APIError
-	if errors.As(err, &api) && (api.Code == "UNAUTHORIZED" || api.Code == "CONFLICT") {
+	if errors.As(err, &api) && (api.Code == "UNAUTHORIZED" || api.Code == "CONFLICT" || api.Code == "RATE_LIMITED") {
 		return err
 	}
 	return nil
+}
+func (d *dispatcher) promptFailure(actor int64, err error) error {
+	switch safeCode(err) {
+	case "FORBIDDEN", "BAD_REQUEST":
+		delete(d.pending, actor)
+		return nil // This dialogue cannot be delivered; other operators may proceed.
+	default:
+		return err
+	}
 }
 func (d *dispatcher) answer(ctx context.Context, c *botapi.Callback, text string) error {
 	return cosmetic(d.api.AnswerCallback(ctx, c.ID, text, true))
@@ -128,7 +138,7 @@ func (d *dispatcher) handle(ctx context.Context, u botapi.Update) error {
 	k.Rows[0] = append(k.Rows[0], botapi.Button{Text: "Отмена", Data: "wt1:x:" + p.TargetID.String()})
 	msg, err := d.api.SendMessage(ctx, m.Chat.ID, "Подтвердите действие поддержки.\nПричина: "+html.EscapeString(m.Text), k)
 	if err != nil {
-		return err
+		return d.promptFailure(m.From.ID, err)
 	}
 	p.Reason = m.Text
 	p.messageID = msg.ID
@@ -169,7 +179,7 @@ func (d *dispatcher) callback(ctx context.Context, c *botapi.Callback) error {
 		}
 		msg, err := d.api.SendMessage(ctx, c.From.ID, "Укажите причину обращения поддержки (1–1000 символов).", keyboard("x", id.String(), "Отмена"))
 		if err != nil {
-			return err
+			return d.promptFailure(c.From.ID, err)
 		}
 		p.messageID = msg.ID
 		return d.answer(ctx, c, "")

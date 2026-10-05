@@ -133,6 +133,7 @@ type nativeBot struct {
 	messages            []nativeMessage
 	sequence, messageID int64
 	offline             bool
+	rateLimitReplies    int
 }
 
 func nativeReply(v any) *http.Response {
@@ -185,6 +186,11 @@ func (b *nativeBot) RoundTrip(r *http.Request) (*http.Response, error) {
 			return nativeReply([]any{}), nil
 		}
 	case "answerCallbackQuery":
+		if b.rateLimitReplies > 0 {
+			b.rateLimitReplies--
+			b.mu.Unlock()
+			return &http.Response{StatusCode: 429, Body: io.NopCloser(strings.NewReader(`{"ok":false,"error_code":429,"parameters":{"retry_after":1}}`))}, nil
+		}
 		b.mu.Unlock()
 		return nativeReply(true), nil
 	case "sendMessage", "editMessageText", "editMessageReplyMarkup":
@@ -314,7 +320,7 @@ func cardFor(t *testing.T, bot *nativeBot, actor int64, r uuid.UUID) nativeMessa
 }
 func TestNativeTrialFlow(t *testing.T) {
 	f := openMode(t, true)
-	bot := &nativeBot{}
+	bot := &nativeBot{rateLimitReplies: 1}
 	launchNative(t, f, bot, true, true)
 	owner, _, a := f.signup(t, nativeEmail("native-owner"))
 	first := cardFor(t, bot, 101, a.RequestId)

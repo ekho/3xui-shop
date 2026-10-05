@@ -17,8 +17,8 @@ Telegram HTTP-клиент использует `net/http` и `encoding/json`; �
 **Spec:** [Принятая архитектура](../specs/2026-10-05-modular-monolith-design.md),
 [поведение С01](../specs/2026-10-01-s01-web-trial-design.md).
 
-Дата: 2026-10-05. Статус: автономное исполнение Native; задачи 1–4 выполнены, задача 5 проходит приёмку
-и финальное ревью. Отдельное повторное одобрение
+Дата: 2026-10-05. Статус: автономное исполнение Native; задачи 1–5 выполнены, свежее ревью разобрано;
+локальная приёмка пройдена. Доставка PR/CI отслеживается в GitHub #55. Отдельное повторное одобрение
 плана не запрашивается: действует ранее выданное разрешение на остальные
 документы и реализацию.
 Метод Native уже выбран владельцем и сохраняется. План покрывает только М01;
@@ -311,11 +311,12 @@ modify native acceptance profile/runner и platform-checks workflow.
   в native flow нет импорта app или доставки отдельным Python-процессом.
   Проверить Docker image и `/healthz` при выключенном Telegram. Не проводить
   новый реальный платёж YooMoney или переключение Happ.
-- [ ] **Step 6:** Native whole-branch review свежим reviewer, обязательные fixes
+- [x] **Step 6:** Native whole-branch review свежим reviewer, обязательные fixes
   и relevant rechecks. В `docs/evidence/m01-acceptance.md` отдельно записать
   local/fake Telegram, real test Telegram при наличии, commit/push/PR/CI и
   внешнюю готовность. Commit `test: verify embedded Telegram trial flow`;
-  PR в `v2` со ссылкой на принятую архитектуру и техническую задачу М01.
+  Доставка после проверок: PR в `v2` со ссылкой на принятую архитектуру
+  и техническую задачу М01; точный PR/SHA/CI фиксируется в GitHub #55.
 
 ## Общая архитектура и следующие задачи
 
