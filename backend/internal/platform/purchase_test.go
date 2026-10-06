@@ -344,6 +344,28 @@ func TestPurchaseRejectsPerpetualNativeAccessBeforeCheckout(t *testing.T) {
 	}
 }
 
+func TestPurchaseRejectsDisabledUnexpiredClientBeforeCheckout(t *testing.T) {
+	s, e, _, plan := purchaseFixture(t)
+	p := panelFixture(t, s)
+	ctx := context.Background()
+	account, trial := approved(t, s, e, "disabled-purchase@example.test")
+	if err := s.Provision(ctx, trial); err != nil {
+		t.Fatal(err)
+	}
+	if integer(t, p.client["expiryTime"]) <= e.Clock().UnixMilli() {
+		t.Fatal("fixture must have an unexpired finite client")
+	}
+	p.client["enable"] = false
+	jobs, access, adds := count(t, e, "river_job"), count(t, e, "access_operations"), p.adds
+	_, err := s.CreatePurchaseOrder(ctx, account, uuid.New(), wire.PurchaseOrderInput{Action: "purchase", PlanId: plan, Revision: 1, PeriodDays: 30, PaymentMethod: "yoomoney", PaymentType: "AC"})
+	if !catalogueCode(err, "PURCHASE_NOT_ELIGIBLE") {
+		t.Fatalf("disabled unexpired client got checkout: %v", err)
+	}
+	if count(t, e, "purchase_orders") != 0 || count(t, e, "river_job") != jobs || count(t, e, "access_operations") != access || p.adds != adds || p.updates != 0 || p.client["enable"] != false {
+		t.Fatal("rejected checkout persisted work or changed native access")
+	}
+}
+
 func TestPurchaseAccessReconcileDoesNotDependOnOperatorRole(t *testing.T) {
 	s, e, account, plan := purchaseFixture(t)
 	ctx := context.Background()

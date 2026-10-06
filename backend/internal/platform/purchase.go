@@ -137,7 +137,7 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 		return empty, unavailable()
 	}
 	if pre.AssignedPanelID.Valid {
-		if v == nil || v.VPNID != pre.VpnID || v.SubID != pre.SubID || v.ExpiryTimeMS <= 0 || (pre.AccessProfile.String != "regular" && pre.AccessProfile.String != "euru") {
+		if v == nil || v.VPNID != pre.VpnID || v.SubID != pre.SubID || v.ExpiryTimeMS <= 0 || (!v.Enabled && v.ExpiryTimeMS > s.now().UnixMilli()) || (pre.AccessProfile.String != "regular" && pre.AccessProfile.String != "euru") {
 			return empty, failure(409, "PURCHASE_NOT_ELIGIBLE")
 		}
 		ids, e := panel.ProfileInboundIDs(ctx, pre.AccessProfile.String)
