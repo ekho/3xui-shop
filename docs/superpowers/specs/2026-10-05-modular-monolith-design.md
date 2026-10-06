@@ -3,8 +3,8 @@
 Дата: 2026-10-05. Статус: спецификация принята владельцем ответом «Продолжаем»;
 М01–М05 доставлены в v2 и прошли локальную приёмку; М06 выполняется по частям
 (support → notifications → audit → удаление общего platform/store).
-М06а support доставлен PR #67/preview2.0.0-dev.23; М06b1 переносит Telegram outbox
-([спецификация](2026-10-06-m06b-telegram-delivery-design.md)); далее email М06b2,
+М06а support доставлен PR #67/preview2.0.0-dev.23; М06b1 Telegram outbox доставлен PR #68/dev.25
+([спецификация](2026-10-06-m06b-telegram-delivery-design.md)); далее [email М06b2](2026-10-06-m06b-email-delivery-design.md),
 audit М06c и cleanup М06d. #60 остаётся OPEN.
 
 Основание — новое требование владельца: весь backend, включая функциональность

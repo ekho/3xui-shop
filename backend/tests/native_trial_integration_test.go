@@ -8,6 +8,7 @@ import (
 	"errors"
 	"example.com/cabinet/backend/internal/app"
 	"example.com/cabinet/backend/internal/httpapi"
+	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/telegram"
 	"example.com/cabinet/backend/internal/platform"
 	"example.com/cabinet/backend/internal/wire"
@@ -248,7 +249,7 @@ func launchNative(t *testing.T, f *fixture, bot *nativeBot, enabled, provision b
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	workers := river.NewWorkers()
-	river.AddWorker(workers, &platform.MailWorker{Service: f.svc})
+	river.AddWorker(workers, &notifications.MailWorker{Service: f.svc.MailDelivery()})
 	river.AddWorker(workers, &platform.ProvisionWorker{Service: f.svc})
 	river.AddWorker(workers, &platform.AccessWorker{Service: f.svc})
 	river.AddWorker(workers, &platform.MonthlyResetWorker{Service: f.svc})

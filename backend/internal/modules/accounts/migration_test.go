@@ -5,6 +5,7 @@ import (
 	"context"
 	"example.com/cabinet/backend/db"
 	"example.com/cabinet/backend/internal/modules/accounts/internal/store"
+	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/testkit"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -25,7 +26,7 @@ func sessionCount(t *testing.T, e *testkit.Env) int {
 
 // An additive migration that destroys old sessions, encrypted letters or job identity fails here.
 func TestAccountSecurityMigration(t *testing.T) {
-	s, e, _ := fixture(t)
+	s, e, cfg := fixture(t)
 	ctx := context.Background()
 	database := stdlib.OpenDBFromPool(e.Pool)
 	defer database.Close()
@@ -84,8 +85,10 @@ func TestAccountSecurityMigration(t *testing.T) {
 		t.Fatal("migration changed registration data/jobs")
 	}
 	sent := 0
-	s.sender = func(context.Context, string, string, string) error { sent++; return nil }
-	if err = s.SendMail(ctx, delivery); err != nil || sent != 1 {
+	mail := notifications.NewMail(e.Pool, nil, func() notifications.MailConfig {
+		return notifications.MailConfig{CabinetOrigin: "https://cabinet.example.test", MailKey: cfg.MailKey, Now: e.Clock}
+	}, s.WithMailGuard, s.MailProofValidTx, func(context.Context, string, string, string) error { sent++; return nil })
+	if err = mail.SendMail(ctx, delivery); err != nil || sent != 1 {
 		t.Fatal("old job mail compatibility")
 	}
 }

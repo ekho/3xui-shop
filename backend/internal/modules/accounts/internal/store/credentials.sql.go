@@ -58,31 +58,6 @@ func (q *Queries) ActiveEmailChange(ctx context.Context, arg ActiveEmailChangePa
 	return items, nil
 }
 
-const addCredentialMail = `-- name: AddCredentialMail :exec
-INSERT INTO mail_deliveries(id,credential_challenge_id,email_key,ciphertext,created_at,kind) VALUES($1,$2,$3,$4,$5,$6)
-`
-
-type AddCredentialMailParams struct {
-	ID                    uuid.UUID
-	CredentialChallengeID *uuid.UUID
-	EmailKey              string
-	Ciphertext            []byte
-	CreatedAt             pgtype.Timestamptz
-	Kind                  string
-}
-
-func (q *Queries) AddCredentialMail(ctx context.Context, arg AddCredentialMailParams) error {
-	_, err := q.db.Exec(ctx, addCredentialMail,
-		arg.ID,
-		arg.CredentialChallengeID,
-		arg.EmailKey,
-		arg.Ciphertext,
-		arg.CreatedAt,
-		arg.Kind,
-	)
-	return err
-}
-
 const addCredentialProof = `-- name: AddCredentialProof :exec
 INSERT INTO credential_challenges(id,purpose,account_id,change_id,original_email,target_email,credential_version,token_hash,code_hash,created_at,token_expires_at,code_expires_at)
 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
@@ -118,33 +93,6 @@ func (q *Queries) AddCredentialProof(ctx context.Context, arg AddCredentialProof
 		arg.TokenExpiresAt,
 		arg.CodeExpiresAt,
 	)
-	return err
-}
-
-const clearCredentialMail = `-- name: ClearCredentialMail :exec
-UPDATE mail_deliveries SET ciphertext=NULL WHERE credential_challenge_id=$1 AND kind='credential'
-`
-
-func (q *Queries) ClearCredentialMail(ctx context.Context, credentialChallengeID *uuid.UUID) error {
-	_, err := q.db.Exec(ctx, clearCredentialMail, credentialChallengeID)
-	return err
-}
-
-const clearResetMail = `-- name: ClearResetMail :exec
-UPDATE mail_deliveries m SET ciphertext=NULL FROM credential_challenges c WHERE m.credential_challenge_id=c.id AND m.kind='credential' AND c.target_email=$1 AND c.purpose='password_reset' AND (c.revoked OR c.used_at IS NOT NULL)
-`
-
-func (q *Queries) ClearResetMail(ctx context.Context, targetEmail string) error {
-	_, err := q.db.Exec(ctx, clearResetMail, targetEmail)
-	return err
-}
-
-const clearRevokedCredentialMail = `-- name: ClearRevokedCredentialMail :exec
-UPDATE mail_deliveries m SET ciphertext=NULL FROM credential_challenges c WHERE m.credential_challenge_id=c.id AND m.kind='credential' AND c.account_id=$1 AND (c.revoked OR c.used_at IS NOT NULL)
-`
-
-func (q *Queries) ClearRevokedCredentialMail(ctx context.Context, accountID *uuid.UUID) error {
-	_, err := q.db.Exec(ctx, clearRevokedCredentialMail, accountID)
 	return err
 }
 
@@ -343,6 +291,30 @@ func (q *Queries) LookupCredentialByToken(ctx context.Context, tokenHash []byte)
 	return i, err
 }
 
+const resetMailProofs = `-- name: ResetMailProofs :many
+SELECT id FROM credential_challenges WHERE target_email=$1 AND purpose='password_reset' AND (revoked OR used_at IS NOT NULL)
+`
+
+func (q *Queries) ResetMailProofs(ctx context.Context, targetEmail string) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, resetMailProofs, targetEmail)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const revokeCredentialProofs = `-- name: RevokeCredentialProofs :exec
 UPDATE credential_challenges SET revoked=true WHERE account_id=$1 AND NOT revoked AND used_at IS NULL
 `
@@ -368,6 +340,30 @@ UPDATE credential_challenges SET revoked=true WHERE target_email=$1 AND purpose=
 func (q *Queries) RevokeResetProofs(ctx context.Context, targetEmail string) error {
 	_, err := q.db.Exec(ctx, revokeResetProofs, targetEmail)
 	return err
+}
+
+const revokedCredentialMailProofs = `-- name: RevokedCredentialMailProofs :many
+SELECT id FROM credential_challenges WHERE account_id=$1 AND (revoked OR used_at IS NOT NULL)
+`
+
+func (q *Queries) RevokedCredentialMailProofs(ctx context.Context, accountID *uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, revokedCredentialMailProofs, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const setAccountEmail = `-- name: SetAccountEmail :exec

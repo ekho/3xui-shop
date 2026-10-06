@@ -58,3 +58,8 @@ func (c Config) PaymentSettings() payments.Config {
 	return payments.Config{CabinetOrigin: c.CabinetOrigin, PanelID: c.PanelID, YooMoneyWalletID: c.YooMoneyWalletID, YooMoneyEnabled: c.YooMoneyEnabled, YooMoneyNotificationSecret: c.YooMoneyNotificationSecret}
 }
 func (s *Service) Payments() *payments.Service { return s.payments }
+
+func (c Config) MailSettings() notifications.MailConfig {
+	return notifications.MailConfig{CabinetOrigin: c.CabinetOrigin, MailKey: c.MailKey, SMTPAddress: c.SMTPAddress, SMTPFrom: c.SMTPFrom, SMTPUser: c.SMTPUser, SMTPPassword: c.SMTPPassword, SMTPRootCAs: c.SMTPRootCAs}
+}
+func (s *Service) MailDelivery() *notifications.MailService { return s.mailDelivery }

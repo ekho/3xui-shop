@@ -153,29 +153,6 @@ func (q *Queries) AddChallenge(ctx context.Context, arg AddChallengeParams) erro
 	return err
 }
 
-const addMail = `-- name: AddMail :exec
-INSERT INTO mail_deliveries(id,challenge_id,email_key,ciphertext,created_at) VALUES($1,$2,$3,$4,$5)
-`
-
-type AddMailParams struct {
-	ID          uuid.UUID
-	ChallengeID *uuid.UUID
-	EmailKey    string
-	Ciphertext  []byte
-	CreatedAt   pgtype.Timestamptz
-}
-
-func (q *Queries) AddMail(ctx context.Context, arg AddMailParams) error {
-	_, err := q.db.Exec(ctx, addMail,
-		arg.ID,
-		arg.ChallengeID,
-		arg.EmailKey,
-		arg.Ciphertext,
-		arg.CreatedAt,
-	)
-	return err
-}
-
 const challengeByID = `-- name: ChallengeByID :one
 SELECT id, email_key, locale, terms_version, privacy_version, token_hash, code_hash, created_at, token_expires_at, code_expires_at, failed_guesses, revoked FROM registration_challenges WHERE id = $1 FOR UPDATE
 `
@@ -246,20 +223,6 @@ func (q *Queries) ChallengeEmailByToken(ctx context.Context, tokenHash []byte) (
 	return email_key, err
 }
 
-const completeMail = `-- name: CompleteMail :exec
-UPDATE mail_deliveries SET ciphertext=NULL, delivered_at=$2 WHERE id=$1
-`
-
-type CompleteMailParams struct {
-	ID          uuid.UUID
-	DeliveredAt pgtype.Timestamptz
-}
-
-func (q *Queries) CompleteMail(ctx context.Context, arg CompleteMailParams) error {
-	_, err := q.db.Exec(ctx, completeMail, arg.ID, arg.DeliveredAt)
-	return err
-}
-
 const consumeChallenge = `-- name: ConsumeChallenge :exec
 UPDATE registration_challenges SET revoked=true WHERE id=$1
 `
@@ -287,71 +250,11 @@ func (q *Queries) LockRegistrationEmail(ctx context.Context, dollar_1 string) er
 	return err
 }
 
-const lookupMail = `-- name: LookupMail :one
-SELECT id, challenge_id, email_key, ciphertext, created_at, delivered_at, kind, credential_challenge_id FROM mail_deliveries WHERE id=$1
-`
-
-func (q *Queries) LookupMail(ctx context.Context, id uuid.UUID) (MailDelivery, error) {
-	row := q.db.QueryRow(ctx, lookupMail, id)
-	var i MailDelivery
-	err := row.Scan(
-		&i.ID,
-		&i.ChallengeID,
-		&i.EmailKey,
-		&i.Ciphertext,
-		&i.CreatedAt,
-		&i.DeliveredAt,
-		&i.Kind,
-		&i.CredentialChallengeID,
-	)
-	return i, err
-}
-
-const mailByID = `-- name: MailByID :one
-SELECT id, challenge_id, email_key, ciphertext, created_at, delivered_at, kind, credential_challenge_id FROM mail_deliveries WHERE id=$1 FOR UPDATE
-`
-
-func (q *Queries) MailByID(ctx context.Context, id uuid.UUID) (MailDelivery, error) {
-	row := q.db.QueryRow(ctx, mailByID, id)
-	var i MailDelivery
-	err := row.Scan(
-		&i.ID,
-		&i.ChallengeID,
-		&i.EmailKey,
-		&i.Ciphertext,
-		&i.CreatedAt,
-		&i.DeliveredAt,
-		&i.Kind,
-		&i.CredentialChallengeID,
-	)
-	return i, err
-}
-
-const mailEmailByID = `-- name: MailEmailByID :one
-SELECT email_key FROM mail_deliveries WHERE id=$1
-`
-
-func (q *Queries) MailEmailByID(ctx context.Context, id uuid.UUID) (string, error) {
-	row := q.db.QueryRow(ctx, mailEmailByID, id)
-	var email_key string
-	err := row.Scan(&email_key)
-	return email_key, err
-}
-
 const revokeChallenges = `-- name: RevokeChallenges :exec
 UPDATE registration_challenges SET revoked = true WHERE email_key = $1 AND NOT revoked
 `
 
 func (q *Queries) RevokeChallenges(ctx context.Context, emailKey string) error {
 	_, err := q.db.Exec(ctx, revokeChallenges, emailKey)
-	return err
-}
-
-const revokeRegistrationMail = `-- name: RevokeRegistrationMail :exec
-UPDATE mail_deliveries SET ciphertext = NULL WHERE email_key = $1 AND kind='registration' AND delivered_at IS NULL
-`
-
-func (q *Queries) RevokeRegistrationMail(ctx context.Context, emailKey string) error {
-	_, err := q.db.Exec(ctx, revokeRegistrationMail, emailKey)
 	return err
 }

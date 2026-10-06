@@ -65,7 +65,7 @@ func TestLegacyTrialReplay(t *testing.T) {
 	if _, err := e.Pool.Exec(ctx, `INSERT INTO idempotency_records(principal,operation,key,body_hash,result,created_at) VALUES($1,'createTrialRequest',$2,$3,$4,$5)`, "account:"+account.String(), key, hash[:], []byte(result), e.Now); err != nil {
 		t.Fatal(err)
 	}
-	authority := accounts.New(e.Pool, e.Redis, nil, accounts.Config{}, nil)
+	authority := accounts.New(e.Pool, e.Redis, nil, accounts.Config{})
 	svc := New(e.Pool, authority, nil, nil, nil, func() Config { return Config{} }, e.Clock)
 	// Cached success precedes eligibility; this account is intentionally restricted.
 	out, created, err := svc.CreateTrialRequest(ctx, account, key, TrialRequestInput{})
@@ -99,7 +99,7 @@ func TestLegacyDecisionReplay(t *testing.T) {
 	if _, err := e.Pool.Exec(ctx, `INSERT INTO decision_callbacks(id,request_id,operator_tg_id,body_hash,result,created_at) VALUES('frozen-callback',$1,101,$2,$3,$4)`, request, hash[:], []byte(result), e.Now); err != nil {
 		t.Fatal(err)
 	}
-	authority := accounts.New(e.Pool, e.Redis, nil, accounts.Config{Operators: []int64{101}}, nil)
+	authority := accounts.New(e.Pool, e.Redis, nil, accounts.Config{Operators: []int64{101}})
 	svc := New(e.Pool, authority, nil, nil, nil, func() Config { return Config{} }, e.Clock)
 	out, err := svc.DecideTrialRequest(ctx, request, DecisionInput{CallbackQueryId: "frozen-callback", Decision: "reject", OperatorTgId: 101})
 	if err != nil {

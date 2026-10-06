@@ -10,24 +10,41 @@ import (
 	"strings"
 	"testing"
 
+	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/testkit"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 )
 
-func fixture(t *testing.T) (*Service, *testkit.Env, Config) {
+type fixtureConfig struct {
+	Config
+	MailKey []byte
+}
+
+func fixture(t *testing.T) (*Service, *testkit.Env, fixtureConfig) {
 	t.Helper()
 	e := testkit.Open(t)
 	queue, err := river.NewClient(riverpgxv5.New(e.Pool), &river.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := Config{CabinetOrigin: "https://cabinet.example.test", MailKey: bytes.Repeat([]byte{1}, 32), CodeKey: bytes.Repeat([]byte{2}, 32), TermsVersion: "1", PrivacyVersion: "1", RateNamespace: uuid.NewString(), Now: e.Clock}
-	return New(e.Pool, e.Redis, queue, cfg, nil), e, cfg
+	cfg := fixtureConfig{Config: Config{CodeKey: bytes.Repeat([]byte{2}, 32), TermsVersion: "1", PrivacyVersion: "1", RateNamespace: uuid.NewString(), Now: e.Clock}, MailKey: bytes.Repeat([]byte{1}, 32)}
+	var owner *Service
+	mail := notifications.NewMail(e.Pool, queue, func() notifications.MailConfig {
+		return notifications.MailConfig{CabinetOrigin: "https://cabinet.example.test", MailKey: cfg.MailKey, Now: e.Clock}
+	}, func(ctx context.Context, email string, work func(*pgxpool.Conn) error) error {
+		return owner.WithMailGuard(ctx, email, work)
+	}, func(ctx context.Context, tx pgx.Tx, r, c *uuid.UUID) (bool, error) {
+		return owner.MailProofValidTx(ctx, tx, r, c)
+	}, nil)
+	owner = New(e.Pool, e.Redis, mail, cfg.Config)
+	return owner, e, cfg
 }
 
-func verified(t *testing.T, s *Service, e *testkit.Env, cfg Config, email string) uuid.UUID {
+func verified(t *testing.T, s *Service, e *testkit.Env, cfg fixtureConfig, email string) uuid.UUID {
 	t.Helper()
 	ctx := context.Background()
 	r, err := s.Register(ctx, RegisterInput{Email: email, Locale: "ru", AcceptedTermsVersion: "1", AcceptedPrivacyVersion: "1"})
@@ -68,7 +85,7 @@ func TestAccountsRegistrationAndSession(t *testing.T) {
 		t.Fatalf("existing identity/session contract: %v", err)
 	}
 	// A new owner reads the already persisted hash/session, without an import or rotation.
-	restarted := New(e.Pool, e.Redis, nil, cfg, nil)
+	restarted := New(e.Pool, e.Redis, nil, cfg.Config)
 	auth, err := restarted.Authenticate(ctx, raw)
 	if err != nil || auth.Account.ID != id || auth.CsrfToken != out.CsrfToken {
 		t.Fatalf("persisted session: %v", err)
@@ -112,7 +129,7 @@ func TestPasswordUnicodeAndCapacity(t *testing.T) {
 			t.Errorf("password validity: want %v, got %v", tc.valid, err)
 		}
 	}
-	s := New(nil, nil, nil, Config{}, nil)
+	s := New(nil, nil, nil, Config{})
 	s.hashSlots <- struct{}{}
 	s.hashSlots <- struct{}{}
 	ctx, cancel := context.WithCancel(context.Background())

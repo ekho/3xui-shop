@@ -21,7 +21,7 @@ func fixture(t *testing.T) (*Service, *testkit.Env, *accounts.Service, uuid.UUID
 			t.Fatal(err)
 		}
 	}
-	authority := accounts.New(e.Pool, e.Redis, nil, accounts.Config{Now: e.Clock}, nil)
+	authority := accounts.New(e.Pool, e.Redis, nil, accounts.Config{Now: e.Clock})
 	if err := authority.ChangeOperatorRole(ctx, actor, true); err != nil {
 		t.Fatal(err)
 	}

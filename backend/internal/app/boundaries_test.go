@@ -30,7 +30,7 @@ func forbiddenImport(owner, dependency string) bool {
 	return strings.Contains(peer, "/") && !strings.HasPrefix(dependency, owner+"/")
 }
 
-var accountSQL = regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:accounts|operator_accounts|sessions|registration_challenges|credential_challenges|mail_deliveries|legacy_approval_snapshots|legacy_approval_events)\b`)
+var accountSQL = regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:accounts|operator_accounts|sessions|registration_challenges|credential_challenges|legacy_approval_snapshots|legacy_approval_events)\b`)
 
 func ownsAccountSQL(text string) bool {
 	return accountSQL.MatchString(strings.ReplaceAll(text, `"`, ""))
@@ -68,7 +68,7 @@ func checkSQLBoundary(t *testing.T, owner string, ownsSQL func(string) bool) {
 		if entry.IsDir() && (rel == "internal/modules/"+owner || rel == "db/migrations" || rel == "internal/testkit") {
 			return filepath.SkipDir
 		}
-		if entry.IsDir() || strings.HasSuffix(rel, "_test.go") || (owner == "accounts" && rel == "db/maintenance/post_restore_auth.sql") {
+		if entry.IsDir() || strings.HasSuffix(rel, "_test.go") || ((owner == "accounts" || owner == "notifications") && rel == "db/maintenance/post_restore_auth.sql") {
 			return nil
 		}
 		switch filepath.Ext(path) {
@@ -247,6 +247,24 @@ func TestNotificationsTelegramSQLBoundary(t *testing.T) {
 		}
 	}
 	if ownsSQL(`SELECT request_id FROM trial_requests`) {
+		t.Fatal("foreign owner rejected")
+	}
+	checkSQLBoundary(t, "notifications", ownsSQL)
+}
+
+func TestNotificationsMailSQLBoundary(t *testing.T) {
+	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?mail_deliveries\b`)
+	ownsSQL := func(text string) bool { return pattern.MatchString(strings.ReplaceAll(text, `"`, "")) }
+	for _, sql := range []string{
+		`SELECT * FROM mail_deliveries`, `SELECT * FROM accounts JOIN mail_deliveries USING (email_key)`,
+		`UPDATE mail_deliveries SET ciphertext=NULL`, `INSERT INTO mail_deliveries VALUES ($1)`,
+		`DELETE FROM public.mail_deliveries`, `SELECT * FROM "public"."mail_deliveries"`,
+	} {
+		if !ownsSQL(sql) {
+			t.Fatal("negative fixture bypassed mail ownership", sql)
+		}
+	}
+	if ownsSQL(`SELECT id FROM credential_challenges`) {
 		t.Fatal("foreign owner rejected")
 	}
 	checkSQLBoundary(t, "notifications", ownsSQL)

@@ -50,11 +50,25 @@ func (s *Service) credentialEmails(ctx context.Context, tx pgx.Tx, account store
 	if err != nil {
 		return nil, unavailable()
 	}
-	return append(emails, account.EmailKey.String), nil
+	if account.EmailKey.Valid {
+		emails = append(emails, account.EmailKey.String)
+	}
+	return emails, nil
 }
 func (s *Service) revokeCredentialProofs(ctx context.Context, tx pgx.Tx, accountID uuid.UUID) error {
 	q := store.New(tx)
-	if q.RevokeCredentialProofs(ctx, &accountID) != nil || q.ClearRevokedCredentialMail(ctx, &accountID) != nil {
+	account, err := q.AccountByID(ctx, accountID)
+	if err != nil {
+		return unavailable()
+	}
+	emails, err := s.credentialEmails(ctx, tx, account)
+	if err != nil {
+		return err
+	}
+	if err = s.lockCredentialEmails(ctx, tx, emails); err != nil {
+		return err
+	}
+	if q.RevokeCredentialProofs(ctx, &accountID) != nil || s.clearRevokedCredentialMail(ctx, tx, accountID) != nil {
 		return unavailable()
 	}
 	return nil
@@ -129,7 +143,14 @@ func (s *Service) RequestPasswordReset(ctx context.Context, in PasswordResetInpu
 	if err = s.lockCredentialEmails(ctx, tx, emails); err != nil {
 		return out, err
 	}
-	if q.RevokeResetProofs(ctx, email) != nil || q.ClearResetMail(ctx, email) != nil {
+	if q.RevokeResetProofs(ctx, email) != nil {
+		return out, unavailable()
+	}
+	ids, err := q.ResetMailProofs(ctx, email)
+	if err != nil {
+		return out, unavailable()
+	}
+	if s.mail.ClearCredentialMailTx(ctx, tx, ids) != nil {
 		return out, unavailable()
 	}
 	// Unknown recipients use the same proof/job transaction; the worker stops before SMTP.
