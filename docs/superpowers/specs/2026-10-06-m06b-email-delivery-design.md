@@ -85,6 +85,10 @@ proof сохраняется. **revokeCredentialProofs** централизов�
 CredentialRecipients guards перед revoke: SetOperatorRestriction и ImportLegacyApprovals
 также проходят через него, раньше их защищал proof row lock через SMTP. Уже удерживаемые
 xact email locks повторно брать безопасно; пустой email Telegram-only account не добавляется.
+Пакетный ImportLegacyApprovals сначала блокирует все сопоставленные account rows в
+существующем UUID-порядке, затем берёт email guards и меняет данные. Нельзя брать
+account B после recipient guard аккаунта A: concurrent CancelEmailChange(B) может
+образовать цикл. Dry-run остаётся read-only; один commit/replay/identity guards сохранены.
 Нельзя оставлять защиту только в одном операторском caller. Account row не удерживается worker
 во время SMTP, иначе возможен deadlock с mutation.
 
@@ -105,6 +109,8 @@ HTTP/browser consumers и mail job ciphertext/ID/job args продолжают �
 - Actual real TLS DATA hold показывает SQL Tx RED → GREEN (xact_start отсутствует), recipient
   guard остаётся, account row свободен. Existing password/reset/cancel race и новый restriction
   case проходят; после revoke старое письмо не отправляется/старый proof не принимается.
+  TestLegacyApprovalMailLockOrder воспроизводит batch A/B с общим pending target C и
+  concurrent cancellation: old account A → C → B RED503 → all accounts first GREEN.
 - Pre-seeded legacy AES-GCM/AAD/uppercase payload + old River mail_delivery args/max_attempts:
   direct owner + facade доставляют прежний link/code и очистку; повтор не меняет delivered row.
   Unknown/expired/revoked/confirmed/version-changed proof без SMTP; bad ciphertext не очищается.

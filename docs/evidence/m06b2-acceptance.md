@@ -8,8 +8,12 @@
 
 ## Ревизия и результат
 
-Product revision `bdd9d40faf3127070d6da40732ebbcb27b695885`. Полная матрица **22/22 PASS**, 413.997s.
-Локальные проверки завершены; fresh whole-branch review, exact-source CI,
+Исходная product revision `bdd9d40faf3127070d6da40732ebbcb27b695885`:
+матрица **22/22 PASS**, 413.997s; результаты ниже относятся к ней.
+Fresh whole-branch review нашёл один Important I1: пакетный legacy import и
+отмена смены email могли взаимно блокироваться. Real-PG regression дал RED503;
+пакет теперь блокирует все account rows в прежнем UUID-порядке до email guards.
+Focused race GREEN18.761s. Новая полная матрица на committed fix, exact-source CI,
 manual v2 merge и preview/tag/three multiarch images ещё ожидаются.
 #60 остаётся OPEN/In progress до audit М06c → удаления shared platform/store
 М06d и собственной архитектурной приёмки всего М06.

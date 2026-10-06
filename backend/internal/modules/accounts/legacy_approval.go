@@ -122,8 +122,9 @@ func (s *Service) ImportLegacyApprovals(ctx context.Context, p LegacyApprovalPac
 	defer tx.Rollback(ctx)
 	q := store.New(tx)
 	type located struct {
-		user LegacyApprovalUser
-		id   uuid.UUID
+		user    LegacyApprovalUser
+		id      uuid.UUID
+		account store.Account
 	}
 	locatedUsers := make([]located, 0, len(p.Users))
 	ids := make(map[int64]uuid.UUID, len(p.Users))
@@ -135,23 +136,28 @@ func (s *Service) ImportLegacyApprovals(ctx context.Context, p LegacyApprovalPac
 		if err != nil {
 			return result, unavailable()
 		}
-		locatedUsers = append(locatedUsers, located{u, a.ID})
+		locatedUsers = append(locatedUsers, located{user: u, id: a.ID})
 		ids[u.SourceTgID] = a.ID
 	}
 	if !dryRun {
 		sort.Slice(locatedUsers, func(i, j int) bool { return bytes.Compare(locatedUsers[i].id[:], locatedUsers[j].id[:]) < 0 })
 	}
-	for _, item := range locatedUsers {
-		u, id := item.user, item.id
+	// Acquire the entire sorted account set before any recipient guard.
+	for i := range locatedUsers {
+		item := &locatedUsers[i]
 		var a store.Account
 		if dryRun {
-			a, err = q.AccountByID(ctx, id)
+			a, err = q.AccountByID(ctx, item.id)
 		} else {
-			a, err = q.LockAccount(ctx, id)
+			a, err = q.LockAccount(ctx, item.id)
 		}
 		if err != nil {
 			return result, unavailable()
 		}
+		item.account = a
+	}
+	for _, item := range locatedUsers {
+		u, id, a := item.user, item.id, item.account
 		if !a.TelegramID.Valid || a.TelegramID.Int64 != u.SourceTgID || !a.LegacyUserID.Valid || a.LegacyUserID.Int64 != u.SourceLegacyUserID {
 			return result, failure(409, "IMPORT_IDENTITY_CONFLICT")
 		}

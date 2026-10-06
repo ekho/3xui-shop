@@ -54,6 +54,7 @@
 
 ## Finish после Native-задач
 
-- [ ] One fresh Astra/high whole-branch review; exhaustive declines→Final rulings. Important/Critical one RED→GREEN fix pass + green suite, no re-review; minors deferred.
+- [x] One fresh Astra/high whole-branch review: 0 Critical/Minor, 1 Important I1; exhaustive declines→Final rulings. One RED→GREEN fix pass + green suite, no re-review.
+- [ ] I1: add platform/legacy_mail_concurrency_test.go; real-PG TestLegacyApprovalMailLockOrder RED503. Move sorted account lock loop in accounts/legacy_approval.go before all recipient guards; focused legacy/email/mail/restriction -race GREEN, then new committed full22-stage matrix. API/schema/deps/replay/dry-run unchanged.
 - [ ] Publish all rulings; export/delete only own Native scratch after verified clean pass.
 - [ ] Create/attach PR v2 → exact-source CI → fresh gates/effects/manual SHA-guarded merge → parents/source-equal tree/preview tag+3multiarch images. Record M06b2 delivery in #60, keep OPEN/In progress, then M06c audit.
