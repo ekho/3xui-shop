@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Fresh origin/v2 `65560b061438b5ceabb18d10c36502cff24954ff`, branch `feature/m04-subscriptions`, PR в v2, без codex prefix.
-- Контракт `2026-10-06-m04b-subscriptions-vpn-v1`, owner #58; архитектура `2026-10-05-modular-monolith-v1`.
+- Контракт `2026-10-06-m04b-subscriptions-vpn-v2`, owner #58; архитектура `2026-10-05-modular-monolith-v1`.
 - Native: координатор, один свежий Astra/high whole-branch reviewer; документы/реализация/merge автономны.
 - Схема/API/миграции/dependencies/job kinds/UUID/assignment/keys/hash/result/target JSON сохраняются; поля/int64/nil/empty не теряются.
 - Own Docker **3X-UI 3.7.0**, TLS Mailpit, PG/Redis и simulated Telegram; production/Happ/system trust/real payments исключены.

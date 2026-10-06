@@ -1,7 +1,7 @@
 # М04б — подписки и устойчивые операции VPN
 
 Дата: 2026-10-06. Владелец: [М04 #58](https://github.com/ekho/3xui-shop/issues/58).
-Контракт `2026-10-06-m04b-subscriptions-vpn-v1`; архитектура
+Контракт `2026-10-06-m04b-subscriptions-vpn-v2`; архитектура
 `2026-10-05-modular-monolith-v1`. Документы, реализация и последовательные merge
 в v2 автономны по [поручению владельца](https://github.com/ekho/3xui-shop/issues/55#issuecomment-6004574101).
 Выполнение Native, один свежий Astra/high final reviewer.
@@ -79,7 +79,11 @@ unknown panel fields и запрет unsafe повторного POST сохра
 
 Команда открывает dedicated physical session. Первый короткий Tx проверяет
 actor/account, idempotency/replay, незавершённые операции и пригодность назначения.
-Повтор сохранённого запроса возвращается до любого HTTP к панели. В той же
+Повтор сохранённого запроса возвращается до любого HTTP к панели. Одинаковый idempotency namespace блокируется до account row locks;
+его session lock сохраняется до конца команды. Это позволяет конкурентному
+повтору дождаться сохранённого результата без deadlock финального account lock.
+UUID-порядок account/role locks и проверки прав перед HTTP сохраняются.
+Release освобождает все locks, полученные на этой выделенной session. В той же
 session команда получает account-access lock, читает необходимые operation/
 catalogue snapshots и закрывает Tx. Панельные чтения и построение цели используют
 эти снимки без открытой SQL-транзакции и без второго соединения из pool.
