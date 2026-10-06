@@ -8,20 +8,17 @@
 
 ## Ревизия и результат
 
-Исходная product revision `bdd9d40faf3127070d6da40732ebbcb27b695885`:
-матрица **22/22 PASS**, 413.997s; результаты ниже относятся к ней.
-Fresh whole-branch review нашёл один Important I1: пакетный legacy import и
-отмена смены email могли взаимно блокироваться. Real-PG regression дал RED503;
-пакет теперь блокирует все account rows в прежнем UUID-порядке до email guards.
-Focused race GREEN18.761s. Новая полная матрица на committed fix, exact-source CI,
-manual v2 merge и preview/tag/three multiarch images ещё ожидаются.
+Product revision `1989231289a231dabf9eaa2ec41362b5cfb17c11`. После единственного review fix pass полная
+матрица **22/22 PASS**, 417.546s. Fresh Astra/high review на d57dc8f: 1 Important I1,
+0 Critical/Minor; I1 закрыт real-PG RED→GREEN и новой полной матрицей.
+Exact-source CI, manual v2 merge и preview/tag/three multiarch images ещё ожидаются.
 #60 остаётся OPEN/In progress до audit М06c → удаления shared platform/store
 М06d и собственной архитектурной приёмки всего М06.
 
 | Проверка | Результат |
 | --- | --- |
 | Generation/compatibility | Go/web без drift; API, все15 миграций и зависимости равны fresh v2 729eea5. Naming/vet/types/build/runtime config PASS. |
-| Go/подключённые потребители | `RUN_BROWSER_TESTS=1 go -C backend test -race ./... -count=1`, реальные изолированные PostgreSQL/Redis: **14 пакетов PASS**, platform192.217s, connected consumers102.662s. |
+| Go/подключённые потребители | `RUN_BROWSER_TESTS=1 go -C backend test -race ./... -count=1`, реальные изолированные PostgreSQL/Redis: **14 пакетов PASS**, platform196.426s, connected consumers105.332s. |
 | Web/Python | Playwright **127/127**, Python **105/105** PASS. Форма оплаты перехвачена до provider request. |
 | Контейнеры | Compose config/build backend/gateway/bot, HTTPS/routing/secret-file/migrate/restore smoke PASS. |
 | Native | Реальная **3X-UI3.7.0**, TLS SMTP/HTTPS; process stop/restart после commit сохраняет operation/grant/keys/readback; Bot API simulated, Telegram отключён. |
@@ -71,6 +68,21 @@ push -u в собственную SSH ref. Первый C06 event был invalid
 .superpowers evidence; file URI исправлен, ALLOWED получен до push/contract
 write. Это не отказ в разрешении. Product edits до принятого контракта не было.
 
+## Единственный fix pass после final review
+
+I1: новый central email guard выявил цикл batch account A → recipient C → account B
+против CancelEmailChange(B): B → C. У mapped web accounts допускается общий pending
+email; import не требует остановки всех writers. TestLegacyApprovalMailLockOrder
+управляет реальными PostgreSQL row/advisory locks: reviewed product RED503 →
+all mapped accounts first в прежнем UUID-порядке → focused race GREEN18.761s →
+полная новая матрица22/22. Два snapshots и отзыв proofs/ciphertexts фиксируются
+атомарно. Dry-run, replay, identity/protected guards сохранены; central revoke
+защита SMTP остаётся. Нет нового SQL, миграции, зависимости или lock framework.
+
+Первоначальная матрица на bdd9d40 (413.997s) сохранена как предыдущее доказательство;
+после I1 она не используется для принятия изменённого product. Новая матрица
+выполнена целиком на 1989231 после C07 ALLOWED. Второго reviewer нет по Native.
+
 ## Границы приёмки
 
 Audit/shared platform-store extraction — следующие части М06. Новые кампании,
@@ -95,3 +107,18 @@ Inherited uncertain-send/commit failure допускает повтор SMTP; ex
 - Ruling: Adapt catalogue/vpn qualified accounts.New test callers too — actual global caller inventory found them beyond plan initial files — cost if wrong: other modules would fail compile; coherent constructor transfer requires these five test-only callsites. Scope/API unchanged.
 - Ruling: Retain exact reviewed post_restore_auth.sql exception for notifications alongside accounts — existing S02 restore procedure clears credential ciphertext with all writers/workers stopped; owner extraction does not change operational SQL — cost if wrong: checker could hide runtime foreign SQL; only this exact maintenance file is exempt, module scans and restore checks remain. Focused FA3qKJ behavior GREEN exposed this previously account-only exception; minimal matcher correction, no restore behavior change.
 - Task 2: Ruling: adapt both actual backend/tests mail-worker registrations to notifications.MailWorker with svc.MailDelivery() — first full vet RED8EIT79 found the test consumer outside the earlier internal-only inventory; whole-backend rg found exactly native_trial and web_trial — cost if wrong: real trial/restart test runtime would not compile or would omit mail; focused compile then full connected/native matrix required. Full first attempt stopped before native containers; six failed-attempt records retained in verification-failed-vet.json.
+
+## Final rulings
+
+Все решения после ревью, включая каждую Declined to judge, в порядке принятия:
+
+- Ruling: Accept I1 as Important and lock every existing mapped batch account in current UUID order before email guards — mapped web accounts and concurrent cancellation are supported, writers shutdown is not the import contract — cost if wrong: broader row hold during the bounded import; no new lock manager/schema/dependency, one real-PG RED→GREEN fix pass required.
+- Ruling: Remote CI/manual merge/tag and multiarch preview remain pending coordinator gates — local review does not prove remote delivery — cost if wrong: unverified source could merge; exact-source gates still required.
+- Ruling: M06b1 PR68/dev25 statements are dated delivery evidence already verified by coordinator, not new remote verification by reviewer — its source-equal v2 merge is this accepted baseline — cost if wrong: historical links could be stale; next-phase actual source/parents/preview get fresh checks.
+- Ruling: Production and real payment/Telegram requests stay excluded — user authorized local and v2 preview — cost if wrong: simulations could be mistaken for external acceptance; limits remain explicit.
+- Ruling: Installed Happ/VPN/macOS trust stay excluded — user prohibited switching live Happ — cost if wrong: local native panel proof could be overstated; no installed-surface claim.
+- Ruling: External SMTP delivery/domain reputation/spam filtering remain external acceptance — local TLS proves transport only — cost if wrong: mail could fail externally; no external deliverability claim.
+- Ruling: Preserve inherited uncertain SMTP send/commit and possible retry — owner transfer does not redesign delivery protocol — cost if wrong: duplicate email may occur; no exactly-once promise.
+- Ruling: Audit/shared platform-store removal/Python retirement remain M06c/M06d/C47 — email extraction is a bounded part of OPEN M06 — cost if wrong: incomplete architecture could be marked complete; #60 remains OPEN.
+- Ruling: post_restore_auth only runs with ingress closed and writers stopped — exact reviewed operational exception and unchanged procedure — cost if wrong: runtime restore could race; inherited mandatory stop contract and real restore checks retained.
+- Ruling: Browser interception and real backend/native evidence stay distinct; no new complete browser-to-real-backend trial/support proof — actual matrix has those separate scopes — cost if wrong: cross-surface gap could remain; broader acceptance not claimed.
