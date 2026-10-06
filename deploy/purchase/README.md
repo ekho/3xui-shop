@@ -95,3 +95,28 @@ HTTPS API. В test mode допускается собственный private/lo
 SHOP_EMAIL. Для настоящего магазина отдельно проверьте фискальные настройки
 и публичную доставку уведомлений. Локальная заглушка подтверждает путь приложения,
 но не подтверждает готовность настоящего магазина.
+
+Для собственной локальной приёмки создайте новый закрытый каталог и задайте его
+абсолютный путь в `LOCAL_STATE_DIR`. В нём нужен `runtime.json` с отдельной
+идентичностью стенда:
+
+```json
+{"project":"cabinet-c12","postgres_user":"cabinet_c12","base_database":"cabinet_c12","fixture_prefixes":{"purchase":"c12-purchase-"}}
+```
+
+`python3 deploy/purchase/yookassa-local.py prepare` создаёт синтетический token,
+сертификат и Compose overlay. `up` собирает текущие backend/web и запускает
+3X-UI3.7.0, TLS Mailpit и stdlib API stub. Требуются свободные localhost-порты
+58443, 59444–59447, 58449 и подсеть Docker10.253.12.0/28. Файл сертификата
+используется только клиентами стенда; системное доверие менять не нужно.
+
+`check` проверяет новый доступ и переход с триала, одинаковые bytes/key после
+ошибки500 и перезапуска, авторизованный GET вместо доверия телу callback и один
+receipt/job/access. `restore` использует существующую процедуру остановки writers,
+backup, восстановления без writers и очистки авторизации; сравнивает также
+provider checkout/proof, затем возобновляет исходный backend. `down` удаляет
+только этот Docker-проект и его volume. Private reports/dump/credentials остаются
+в `LOCAL_STATE_DIR`; в лог выводится только результат проверок.
+
+`python3 deploy/purchase/yookassa-stub.py --self-check` проверяет саму заглушку
+без Docker и внешней сети. Заглушка не запускает legacy Telegram-бота.
