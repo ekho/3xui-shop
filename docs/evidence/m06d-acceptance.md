@@ -86,3 +86,5 @@ Python-бот остаётся до С47; legacy HTTP и штатные job kind
 - Final: Ruling: Future campaigns/reports/retention/bonuses/config/data/Python cutover remain later scenarios/C45/C46/C47 — M06 removes the transition facade while keeping current behavior, legacy HTTP/Python and open task responsibility; new features are not marked Done — cost if wrong: later read/config/migration contracts need separate design and acceptance; roadmap coverage remains open.
 
 Ревью проверило весь diff108 файлов, сравнило28 saved originals с Git baseline и27 migrated files с явным преобразованием; все154 checks и assertion flow сохранены. Оно самостоятельно повторило read-only API/all15 migrations/deps/product-equivalence/whitespace проверки и прочитало все22 оригинальных лога. Полную матрицу и generation повторно не запускало; CI/merge/release/image delivery проверяет координатор.
+
+Все12 rulings, Native briefs/ledger/review package, fresh report и22 полных лога сохранены в own private acceptance export. После проверки копии удаляется только собственный Native scratch; работающая ветка и чужие workspaces сохраняются. Удалённая доставка и #60 Done остаются pending до D08.

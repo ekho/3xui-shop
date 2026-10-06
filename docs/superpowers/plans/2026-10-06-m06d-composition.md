@@ -67,5 +67,5 @@
 ## Finish
 
 - [x] One fresh Astra/high whole-branch review with full range/Spec/Review Focus/ledger/proofs. Exhaustive declines→Final rulings; Important/Critical one RED→GREEN fix pass+green full suite, no re-review; minors deferred.
-- [ ] Publish exhaustive rulings, export logs/ledger/report then delete only own Native workspace.
+- [x] Publish exhaustive rulings, export logs/ledger/report then delete only own Native workspace.
 - [ ] Final source SSH guarded push/create+attach PR v2/exact-source CI/manual SHA guarded merge/parents/source-equal tree/preview tag+3publicmultiarch indexes+6configs. Close #60/Project Done only after own whole-M06 acceptance; re-read statuses/dependents and choose next available roadmap order without treating external S13 resources as already ready.
