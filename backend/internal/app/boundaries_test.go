@@ -211,3 +211,23 @@ func TestPaymentsSQLBoundary(t *testing.T) {
 	}
 	checkSQLBoundary(t, "payments", ownsSQL)
 }
+
+func TestSupportSQLBoundary(t *testing.T) {
+	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:support_conversations|support_messages)\b`)
+	ownsSQL := func(text string) bool {
+		return pattern.MatchString(strings.ReplaceAll(text, `"`, ""))
+	}
+	for _, sql := range []string{
+		`SELECT * FROM support_conversations`, `UPDATE support_messages SET text=$1`,
+		`INSERT INTO support_messages VALUES ($1)`, `DELETE FROM public.support_conversations`,
+		`WITH p AS (SELECT * FROM "public"."support_messages") SELECT * FROM p`,
+	} {
+		if !ownsSQL(sql) {
+			t.Fatal("negative fixture bypassed support ownership", sql)
+		}
+	}
+	if ownsSQL(`SELECT support_message_id FROM audit_events`) {
+		t.Fatal("foreign owner rejected")
+	}
+	checkSQLBoundary(t, "support", ownsSQL)
+}

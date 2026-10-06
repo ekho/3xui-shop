@@ -233,12 +233,11 @@ func (s *Service) OperatorClient(ctx context.Context, actor, target uuid.UUID) (
 	if s.cfg.PanelID != "" {
 		out.Server = &wire.OperatorServer{PanelId: s.cfg.PanelID, Enabled: s.cfg.TrialEnabled}
 	}
-	support, err := q.SupportByAccount(ctx, target)
-	if err == nil {
-		out.Support = publicSupportConversation(support)
-	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return out, unavailable()
+	conversation, supportErr := s.support.Conversation(ctx, actor, target, true)
+	if supportErr != nil {
+		return out, supportError(supportErr)
 	}
+	out.Support = wireSupportConversation(conversation)
 	subscription, subscriptionErr := s.subscriptions.OperatorSubscription(ctx, actor, target)
 	out.Subscription, err = toSubscriptionSubscription(subscription), subscriptionError(subscriptionErr)
 	if err != nil {
