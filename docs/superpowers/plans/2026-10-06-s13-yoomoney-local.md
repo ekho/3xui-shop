@@ -41,10 +41,12 @@
 
 - [x] Один fresh Astra/high read-only reviewer всего диапазона + Review Focus + ledger. Critical/Important — один fix pass с RED→GREEN и green affected suite; без re-review. Каждый Declined-to-judge → Final ruling/cost, minors deferred.
 - [x] Опубликовать все rulings/minors в evidence, сохранить проверенный export и удалить только собственный SDD scratch.
-- [ ] Exact-source CI и ручной v2 merge под source guard; actual parents/source-equal tree + действительный preview/tag/3indexes/6labels проверить. С11 source-equivalent delivery отражена отдельно от С13.
-- [ ] Только после собственных AC/source/delivery #18 CLOSED/Project Done; затем следующая готовая задача. Реальную доставку/legacy/production не считать проверенными.
+- [x] Exact-source CI и ручной v2 merge под source guard; actual parents/source-equal tree + действительный preview/tag/3indexes/6labels проверить. С11 source-equivalent delivery отражена отдельно от С13.
+- [x] Только после собственных AC/source/delivery #18 CLOSED/Project Done; затем следующая готовая задача. Реальную доставку/legacy/production не считать проверенными.
 
 Self-review: один cohesive task; AC01–06/Review Focus mapped, signatures existing,
 неизменённые expensive checks не повторяются. Единственная новая executable
 граница — actual HTTP signed/unsigned receipt tests, выполняемые со связанными
 purchase/cross-method regressions. План принят по автономному mandate.
+
+Delivery checkpoint: PR73/source d6087cf/merge d7b69eb/dev.35/#18 CLOSED/Project Done; proof и ограничения в docs/evidence/s13-acceptance.md.

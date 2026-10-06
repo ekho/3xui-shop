@@ -36,7 +36,7 @@ Browser provider POST перехватывался; native путь действ
 | AC03 | Новый HTTPReceiptBoundary: signed wrong currency/type, net0/net>gross/unaccepted — один retained dispute, ноль job/funding/access, нет checkout/cancel. WrongThenCorrectStaysInReview/LateAndProtectedStayInReview сохраняют сумму/codepro/late. True protected/held случаи синтетические защитные проверки; текущие документы провайдера описывают false. |
 | AC04 | Новый HTTPReceiptConflict: первый валидный callback/replay дают один receipt/job; конфликт net с тем же ID/replay сохраняет исходные gross9007199254740993/net9007199254740900/funding ID и блокирует подготовку доступа. Все selected second-payment/cancel/expiry/funding/manual cross-method regressions проходят. |
 | AC05 | Source-equivalent native signed HTTP→River→3X-UI3.7.0: новый доступ, переход с триала, прежние IDs/limits/одна операция, неизменный replay, paid-pending backup/restore. Каждая исходная стадия и full log проверены; actual provider delivery/перевод этим не доказываются. |
-| AC06 | Native task, один fresh whole-branch review, exact-source CI, manual v2 merge и actual preview/tag/3indexes/6labels — отдельные delivery gates ниже. #18 остаётся OPEN до их завершения. |
+| AC06 | Native task, один fresh whole-branch review, exact-source CI, manual v2 merge и actual preview/tag/3indexes/6labels — отдельные delivery gates ниже. #18 CLOSED/Project Done после собственной доставки ниже. |
 
 ## Отклонения и Native rulings
 
@@ -67,7 +67,7 @@ HTTP поведение до этого не проверялось, это не
 - Final: Ruling: Production/Happ/VPN/trust/live Telegram/SMTP/target-host performance remain outside local C13 — no such actions or success claims occurred under this scope — cost if wrong: external performance/delivery readiness remains unverified.
 - Final: Ruling: Own C13 exact-source CI/manual merge/actual preview/tag/images/issue closure remain coordinator gates — C11 dev33 is verified predecessor delivery and does not satisfy them — cost if wrong: unverified C13 artifacts could be called delivered; #18 stays OPEN until actual proofs.
 
-CI/merge и собственный preview С13 ещё не завершены.
+С13 доставлена [PR73](https://github.com/ekho/3xui-shop/pull/73): source `d6087cf8b2559dd2b2041121d4088b340959322a`, merge `d7b69ebd96fe09370c5197d60e1dc6e95324c3e3`, actual parents/base5144fc2 и source d6087cf проверены, дерево совпадает с source. Exact-source Platform/PR37462092944, Platform/push37462051424 и PRimages37462092938 завершились success; jobs/check-runs проверены отдельно. Preview37464031284/run35:4/4 success, [2.0.0-dev.35](https://github.com/ekho/3xui-shop/releases/tag/2.0.0-dev.35) prerelease/non-draft и peeled tag на merge; все три multiarch indexes и шесть image revision/version/source labels проверены. [#18 CLOSED/Project Done](https://github.com/ekho/3xui-shop/issues/18#issuecomment-6016466715), parent=null. Реальные provider delivery и production этим не доказаны. Этот delivery checkpoint добавлен в последующей ветке С12; исторические review/rulings выше сохранены.
 С11 отдельно доставлена [PR72](https://github.com/ekho/3xui-shop/pull/72),
 [2.0.0-dev.33](https://github.com/ekho/3xui-shop/releases/tag/2.0.0-dev.33), #19 CLOSED/Project Done;
 эта доставка не подменяет delivery gates С13. Полные обезличенные записи и логи сохранены в собственном private acceptance export.
