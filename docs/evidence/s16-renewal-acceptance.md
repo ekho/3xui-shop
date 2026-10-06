@@ -1,7 +1,7 @@
 # С16 — локальная приёмка продления
 
 Владелец [#23](https://github.com/ekho/3xui-shop/issues/23), контракт
-`2026-10-07-s16-renewal-v1`; [spec](../superpowers/specs/2026-10-07-s16-renewal-design.md),
+`2026-10-07-s16-renewal-v2`; [spec](../superpowers/specs/2026-10-07-s16-renewal-design.md),
 [Native plan](../superpowers/plans/2026-10-07-s16-renewal.md).
 Backend checkpoint c69767b, UI c1541b5. Product inputs и результаты сохраняются
 по SHA256; финальные source/review/CI/merge/preview фиксируются в PR и #23.
@@ -30,6 +30,22 @@ KeyError can_pay (4.165s) — поле принадлежит order, current DTO
 по существующему шаблону. Во втором запуске active/expired уже прошли.
 Окончательный полный native check прошёл; product код для этих исправлений
 не менялся. Все failed/completed records и диагностические logs сохранены.
+
+Fresh Astra/high review на 0549dba: Critical0, Important1, Minor0. Подтверждённый
+пропуск — старый paid/applied заказ блокировал С10 после возврата к стартовому
+триалу или отмены unlimited. В единственном проходе исправления используется
+общая проверка истории payments и публичное чтение применённого обнуления vpn;
+необязательный can_purchase сообщает кабинету допуск. Действующий платный
+тариф и unresolved/review по-прежнему не допускают обход С17 через purchase.
+Исходные результаты выше относятся к исходным checkpoint; новое доказательство
+сохраняется отдельно, без переписывания прежних source hashes.
+
+Behavioral RED: оба перехода отказывают PURCHASE_NOT_ELIGIBLE (8.349s); rendered
+Buy plan отсутствует после can_purchase=true (34.478s). После исправления
+оба перехода, настоящая повторная purchase и все пять funding paths прошли
+connected race (24.256s); 43/43 старых/новых purchase/renewal UI cases PASS18.491s.
+Проверки disputed/unresolved/late assignment, новый native trial-first-purchase,
+текущая полная регрессия и доставка остаются открытыми до их фактического результата.
 
 | Критерий | Исполняемое доказательство |
 | --- | --- |
@@ -61,6 +77,18 @@ KeyError can_pay (4.165s) — поле принадлежит order, current DTO
 9. Local task-done предшествует fresh review; delivery остаётся отдельным открытым
    gate до review/CI/merge/preview. Цена ошибки: завершение задачи реализации нельзя
    принимать за доставку всего сценария; #23 до неё остаётся открытой.
+10. Отложенные reviewer проверки реального YooMoney/Happ/production остаются
+    за пределами локальной приёмки, С45–С47. Цена ошибки: localhost успех
+    не разрешает внешнее развёртывание или реальный платёж.
+11. Отложенный полный Stars-переход сохраняется в С35. Цена ошибки: связанные
+    клиенты ждут достоверных состояний; отсутствие записи не считается inactive.
+12. Reviewer оставил CI/merge/preview/images координатору. Цена ошибки:
+    локальная проверка сама по себе не позволяет закрыть #23.
+13. Исправление применяет общую проверку history ко всем пяти funding paths и
+    live checkout/preparation/recovery/write, читая доказанное обнуление через vpn.
+    Дополнительная subscriptions-прослойка без собственной логики не нужна.
+    Цена ошибки: неизвестная provenance сохраняет запрет первой покупки;
+    optional can_purchase не заменяет серверные gates. Повторное review не запускается.
 
 Частные log bytes/durations/source hashes, image IDs, reports и dump находятся
 в `.superpowers/acceptance/c16-renewal`; credentials и VPN-идентификаторы не

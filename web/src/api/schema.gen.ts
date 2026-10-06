@@ -1961,6 +1961,8 @@ export interface components {
             heleket_checkout?: components["schemas"]["HeleketCheckout"] | null;
         };
         CurrentPurchaseOrder: {
+            /** @description Whether an applied historical order permits a new first purchase after proved starter-plan clearing. Omitted or false preserves the historical paid-order block; live price, method, pending and account checks still apply at creation. */
+            can_purchase?: boolean;
             order: components["schemas"]["PurchaseOrder"] | null;
         };
         PurchaseCancelInput: Record<string, never>;

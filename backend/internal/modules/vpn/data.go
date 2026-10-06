@@ -158,6 +158,15 @@ func (s *Service) CurrentPlanIDTx(ctx context.Context, tx pgx.Tx, account uuid.U
 	}
 	return id, err
 }
+
+// A NULL in applied plan provenance proves clearing; absent history does not.
+func (s *Service) PlanClearedTx(ctx context.Context, tx pgx.Tx, account uuid.UUID) (bool, error) {
+	id, err := s.queries(tx).CurrentAccessPlanID(ctx, account)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return id == nil && err == nil, err
+}
 func (s *Service) AccessStateForAccountTx(ctx context.Context, tx pgx.Tx, id, a uuid.UUID) (AccessState, error) {
 	v, e := s.queries(tx).AccessOperationForAccount(ctx, store.AccessOperationForAccountParams{ID: id, AccountID: a})
 	return accessState(v), e

@@ -38,7 +38,7 @@ type kassaStub struct {
 	raw            string
 }
 
-func kassaFixture(t *testing.T) (*regressionFixture, *testkit.Env, uuid.UUID, wire.PurchaseOrder, *kassaStub) {
+func kassaFixture(t *testing.T, setup ...func(*regressionFixture, *testkit.Env, uuid.UUID, uuid.UUID)) (*regressionFixture, *testkit.Env, uuid.UUID, wire.PurchaseOrder, *kassaStub) {
 	t.Helper()
 	s, e, account, plan := purchaseFixture(t)
 	s.cfg.Payments.YooKassaEnabled = true
@@ -46,6 +46,9 @@ func kassaFixture(t *testing.T) (*regressionFixture, *testkit.Env, uuid.UUID, wi
 	s.cfg.Payments.YooKassaToken = "test-only-api-token"
 	s.cfg.Payments.YooKassaTestMode = true
 	s.cfg.Payments.ShopEmail = "receipts@example.test"
+	for _, prepare := range setup {
+		prepare(s, e, account, plan)
+	}
 	in := purchaseInput(plan)
 	in.PaymentMethod, in.PaymentType = "yookassa", "YOOKASSA"
 	order, err := s.createPurchaseOrder(context.Background(), account, uuid.New(), in)

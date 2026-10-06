@@ -8,6 +8,7 @@ import (
 
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/catalogue"
+	"example.com/cabinet/backend/internal/modules/payments/internal/store"
 	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -38,6 +39,29 @@ func (s *Service) requireRenewalPlan(ctx context.Context, tx pgx.Tx, account, pl
 	return nil
 }
 
+// Completed payments are reusable only for renewal or proved starter clearing.
+// Review and unresolved funding stay blocked regardless of the current plan.
+func (s *Service) purchaseHistoryBlockedTx(ctx context.Context, tx pgx.Tx, account, except uuid.UUID, action string) (bool, error) {
+	ignoreApplied := action == "renew"
+	if !ignoreApplied {
+		var err error
+		ignoreApplied, err = s.vpn.PlanClearedTx(ctx, tx, account)
+		if err != nil {
+			return false, unavailable()
+		}
+	}
+	var q store.DBTX = s.pool
+	if tx != nil {
+		q = tx
+	}
+	var blocked bool
+	err := q.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE account_id=$1 AND id<>$2 AND (review_required OR fulfillment_status='needs_review' OR payment_status='paid' AND (NOT $3::boolean OR fulfillment_status<>'applied')))", account, except, ignoreApplied).Scan(&blocked)
+	if err != nil {
+		return false, unavailable()
+	}
+	return blocked, nil
+}
+
 // The same live policy guards checkout, preparation, recovery and panel writes.
 // A reason retains paid funds for review; a dependency error remains retryable.
 func (s *Service) purchasePolicyTx(ctx context.Context, tx pgx.Tx, p purchaseRow) (string, error) {
@@ -59,6 +83,15 @@ func (s *Service) purchasePolicyTx(ctx context.Context, tx pgx.Tx, p purchaseRow
 	}
 	if a.Restricted || a.VpnBanned || stringValue(a.AccessProfile) == "unlimited" {
 		return "account_not_eligible", nil
+	}
+	if p.action == "purchase" {
+		blocked, err := s.purchaseHistoryBlockedTx(ctx, tx, p.account, p.id, p.action)
+		if err != nil {
+			return "", err
+		}
+		if blocked {
+			return "another_first_payment", nil
+		}
 	}
 	if p.action == "renew" {
 		var quote PurchaseQuote

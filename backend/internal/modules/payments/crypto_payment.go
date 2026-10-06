@@ -571,8 +571,8 @@ func (s *Service) recordCrypto(ctx context.Context, c cryptoRow, payment cryptoP
 		}
 		return false, tx.Commit(ctx) // updated_at alone never rewrites the first financial time.
 	}
-	var otherPaid bool
-	if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE account_id=$1 AND id<>$2 AND payment_status='paid')", p.account, c.order).Scan(&otherPaid); err != nil {
+	otherPaid, err := s.purchaseHistoryBlockedTx(ctx, tx, p.account, c.order, p.action)
+	if err != nil {
 		return false, unavailable()
 	}
 	reason := ""

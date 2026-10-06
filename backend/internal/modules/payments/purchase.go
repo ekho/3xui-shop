@@ -317,9 +317,9 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if a.VpnBanned || stringValue(a.AccessProfile) == "unlimited" || (a.HadSubscription && a.AssignedPanelID == nil) || (a.AssignedPanelID != nil && stringValue(a.AssignedPanelID) != s.config().PanelID) {
 		return empty, failure(409, "PURCHASE_NOT_ELIGIBLE")
 	}
-	var blocked bool
-	if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE account_id=$1 AND (review_required OR fulfillment_status='needs_review' OR payment_status='paid' AND ($2::text='purchase' OR fulfillment_status<>'applied')))", account, in.Action).Scan(&blocked); err != nil {
-		return empty, unavailable()
+	blocked, err := s.purchaseHistoryBlockedTx(ctx, tx, account, uuid.Nil, in.Action)
+	if err != nil {
+		return empty, err
 	}
 	unresolved, err := s.vpn.UnresolvedTx(ctx, tx, account)
 	if err != nil {
@@ -442,6 +442,18 @@ func (s *Service) CurrentPurchaseOrder(ctx context.Context, account uuid.UUID) (
 		return out, err
 	}
 	out.Order = &order
+	if p.paymentStatus == "paid" && p.fulfillmentStatus == "applied" {
+		reason, err := s.purchasePolicyTx(ctx, nil, purchaseRow{account: account, action: "purchase"})
+		if err != nil {
+			return out, err
+		}
+		unresolved, err := s.vpn.UnresolvedTx(ctx, nil, account)
+		if err != nil {
+			return out, unavailable()
+		}
+		allowed := reason == "" && !unresolved
+		out.CanPurchase = &allowed
+	}
 	return out, nil
 }
 

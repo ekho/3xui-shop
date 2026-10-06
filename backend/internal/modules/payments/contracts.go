@@ -81,7 +81,8 @@ type ManualPaymentPage struct {
 	NextCursor *uuid.UUID          `json:"next_cursor"`
 }
 type CurrentPurchaseOrder struct {
-	Order *PurchaseOrder `json:"order"`
+	Order       *PurchaseOrder `json:"order"`
+	CanPurchase *bool          `json:"can_purchase,omitempty"`
 }
 type PaymentMethod struct {
 	Currency string `json:"currency"`

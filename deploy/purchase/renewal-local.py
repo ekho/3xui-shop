@@ -236,13 +236,41 @@ def check():
     assert status == 201
     purchase.private('plan.json', plan)
     report = []
-    for name in ('active', 'expired', 'exhausted', 'late-ban', 'late-plan', 'late-identity'):
+    for name in ('active', 'expired', 'exhausted', 'late-ban', 'late-plan', 'late-identity', 'trial-first-purchase'):
         opener, login = purchase.signup(name)
         account = login['account']['account_id']
         initial = purchase.create_order(opener, login, plan)
         paid(opener, initial)
         local.wait_until(lambda: purchase.applied(opener, initial['order_id']), timeout=60)
         allocated = purchase.account_row(account)
+        if name == 'trial-first-purchase':
+            operation(operator, actor, account, {'kind': 'starter_trial'})
+            assert purchase.manual_api(opener, '/api/v1/subscription/renewal')[0] == 409
+            assert local.api(opener, '/api/v1/orders/current')[2]['can_purchase'] is True
+            value = purchase.create_order(opener, login, plan)
+            paid(opener, value)
+            result = local.wait_until(lambda: purchase.applied(opener, value['order_id']), timeout=60)
+            assert result['action'] == 'purchase' and not result['review_required']
+            saved = proof(value)
+            after = purchase.panel(account)
+            assert saved['paid'] and saved['funded'] and saved['action'] == 'purchase'
+            assert saved['receipts'] == saved['jobs'] == 1 and saved['access_status'] == 'applied'
+            assert saved['target']['reset'] and native(account)['usedTraffic'] == 0
+            assert after['enabled'] and after['limit_ip'] == terms['devices']
+            assert after['traffic_bytes'] == terms['traffic_gb'] * 1024**3
+            assert purchase.account_row(account)['assigned_panel_id'] == allocated['assigned_panel_id']
+            assert native(account)['client']['uuid'] == allocated['vpn_id']
+            assert native(account)['client']['subId'] == allocated['sub_id']
+            receipt = json.loads((purchase.STATE / ('notice-' + value['order_id'] + '.json')).read_text())['receipt']
+            assert purchase.notification(value, receipt=receipt)[0] == 200
+            assert proof(value) == saved and purchase.panel(account) == after
+            assert local.api(opener, '/api/v1/orders/current')[2]['can_purchase'] is False
+            assert local.api(opener, '/api/v1/subscription/renewal')[2]['plan_id'] == plan['plan_id']
+            report.append({'case': name, 'purchase_after_clearing': True, 'identity_preserved': True,
+                'single_target_receipt_job': True, 'replay_unchanged': True, 'reset_zero': True,
+                'next_purchase_blocked': True, 'normal_renewal_restored': True})
+            print('PASS: native renewal ' + name)
+            continue
         if name in ('expired', 'exhausted'):
             expire_or_exhaust(account, name == 'exhausted')
         before = purchase.panel(account)

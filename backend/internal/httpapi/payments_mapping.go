@@ -39,7 +39,7 @@ func purchaseOrderResult(p payments.PurchaseOrder) wire.PurchaseOrder {
 }
 
 func currentPurchaseResult(p payments.CurrentPurchaseOrder) wire.CurrentPurchaseOrder {
-	var out wire.CurrentPurchaseOrder
+	out := wire.CurrentPurchaseOrder{CanPurchase: p.CanPurchase}
 	if p.Order != nil {
 		order := purchaseOrderResult(*p.Order)
 		out.Order = &order

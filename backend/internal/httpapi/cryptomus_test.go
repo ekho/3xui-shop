@@ -190,9 +190,12 @@ type cryptoStub struct {
 	raw            string
 }
 
-func cryptoFixture(t *testing.T, provider string) (*regressionFixture, *testkit.Env, uuid.UUID, wire.PurchaseOrder, *cryptoStub) {
+func cryptoFixture(t *testing.T, provider string, setup ...func(*regressionFixture, *testkit.Env, uuid.UUID, uuid.UUID)) (*regressionFixture, *testkit.Env, uuid.UUID, wire.PurchaseOrder, *cryptoStub) {
 	t.Helper()
 	s, e, account, plan := cryptoPurchaseFixture(t, provider)
+	for _, prepare := range setup {
+		prepare(s, e, account, plan)
+	}
 	in := purchaseInput(plan)
 	in.PaymentMethod, in.PaymentType = wire.PurchaseOrderInputPaymentMethod(provider), wire.PurchaseOrderInputPaymentType(strings.ToUpper(provider))
 	order, err := s.createPurchaseOrder(context.Background(), account, uuid.New(), in)

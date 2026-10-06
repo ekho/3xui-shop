@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"example.com/cabinet/backend/internal/app"
+	"example.com/cabinet/backend/internal/modules/payments"
 	"example.com/cabinet/backend/internal/testkit"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
@@ -349,12 +350,39 @@ func TestRenewalEligibilityAndSnapshot(t *testing.T) {
 	}
 }
 
+func clearPurchasePlan(t *testing.T, s *regressionFixture, actor, account uuid.UUID, transition string) {
+	t.Helper()
+	ctx := context.Background()
+	if transition == "starter" {
+		op, err := s.createAccessOperation(ctx, actor, account, uuid.New(), wire.AccessOperationInput{Kind: "starter_trial", Reason: "support starter"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = s.applyAccess(ctx, op.OperationId); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		if _, _, err := s.seedUnlimitedCatalogue(ctx); err != nil {
+			t.Fatal(err)
+		}
+		for _, profile := range []string{"unlimited", "regular"} {
+			op, err := s.createAccessOperation(ctx, actor, account, uuid.New(), wire.AccessOperationInput{Kind: "set_profile", Profile: profileInput(profile), Reason: "support transition"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = s.applyAccess(ctx, op.OperationId); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
 // Compensation/reset/ban preserve the selected plan; explicit starter issuance
 // and unlimited revocation must not resurrect the older paid plan.
 func TestRenewalPlanProvenance(t *testing.T) {
 	for _, transition := range []string{"starter", "unlimited revoke"} {
 		t.Run(transition, func(t *testing.T) {
-			s, e, _, account, plan := renewalFixture(t)
+			s, e, p, account, plan := renewalFixture(t)
 			ctx := context.Background()
 			actor := renewalOperator(t, s, e)
 			banned, unbanned := true, false
@@ -374,34 +402,44 @@ func TestRenewalPlanProvenance(t *testing.T) {
 			if offer, err := s.payments.RenewalOffer(ctx, account); err != nil || offer.PlanId != plan {
 				t.Fatal("preserved plan no longer offered", err)
 			}
-			if transition == "starter" {
-				op, err := s.createAccessOperation(ctx, actor, account, uuid.New(), wire.AccessOperationInput{Kind: "starter_trial", Reason: "support starter"})
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err = s.applyAccess(ctx, op.OperationId); err != nil {
-					t.Fatal(err)
-				}
-			} else {
-				if _, _, err := s.seedUnlimitedCatalogue(ctx); err != nil {
-					t.Fatal(err)
-				}
-				for _, profile := range []string{"unlimited", "regular"} {
-					op, err := s.createAccessOperation(ctx, actor, account, uuid.New(), wire.AccessOperationInput{Kind: "set_profile", Profile: profileInput(profile), Reason: "support transition"})
-					if err != nil {
-						t.Fatal(err)
-					}
-					if err = s.applyAccess(ctx, op.OperationId); err != nil {
-						t.Fatal(err)
-					}
-				}
+			if _, err := s.createPurchaseOrder(ctx, account, uuid.New(), purchaseInput(plan)); !catalogueCode(err, "PURCHASE_NOT_ELIGIBLE") {
+				t.Fatal("current paid plan bypassed C17 through first purchase", err)
 			}
+			clearPurchasePlan(t, s, actor, account, transition)
 			selected, err := s.vpn.CurrentPlanIDTx(ctx, nil, account)
 			if err != nil || selected != nil {
 				t.Fatal("starter transition resurrected paid plan", err)
 			}
 			if _, err = s.payments.RenewalOffer(ctx, account); status(paymentError(err)) != 409 {
 				t.Fatal("starter-only access offered renewal", err)
+			}
+			current, err := s.currentPurchaseOrder(ctx, account)
+			if err != nil || current.CanPurchase == nil || !*current.CanPurchase || current.Order == nil || current.Order.FulfillmentStatus != "applied" {
+				t.Fatal("client API kept the historical paid-order block after clearing", err)
+			}
+			identity, err := s.accountByID(ctx, account)
+			if err != nil {
+				t.Fatal(err)
+			}
+			updates, resets := p.updates, p.resets
+			order, err := s.createPurchaseOrder(ctx, account, uuid.New(), purchaseInput(plan))
+			if err != nil {
+				t.Fatal("proved trial clearing blocked C10 purchase", err)
+			}
+			applied := completeRenewalPayment(t, s, account, order)
+			after, err := s.accountByID(ctx, account)
+			if err != nil || applied.Action != "purchase" || after.PanelKey != identity.PanelKey || after.VpnID != identity.VpnID || after.SubID != identity.SubID || after.AssignedPanelID == nil || identity.AssignedPanelID == nil || *after.AssignedPanelID != *identity.AssignedPanelID || p.updates != updates+1 || p.resets != resets+1 {
+				t.Fatal("C10 after clearing lost purpose/identity or repeated native writes", err)
+			}
+			if _, err = s.createPurchaseOrder(ctx, account, uuid.New(), purchaseInput(plan)); !catalogueCode(err, "PURCHASE_NOT_ELIGIBLE") {
+				t.Fatal("new paid plan allowed another first purchase", err)
+			}
+			current, err = s.currentPurchaseOrder(ctx, account)
+			if err != nil || current.CanPurchase == nil || *current.CanPurchase {
+				t.Fatal("client API released a current paid-plan block", err)
+			}
+			if offer, err := s.payments.RenewalOffer(ctx, account); err != nil || offer.PlanId != plan {
+				t.Fatal("new purchase did not restore normal renewal", err)
 			}
 		})
 	}
@@ -645,5 +683,184 @@ func TestRenewalConcurrentCreate(t *testing.T) {
 	}
 	if success != 1 || conflicts != 1 || count(t, e, "purchase_orders") != 2 || count(t, e, "purchase_receipts") != 1 {
 		t.Fatal("concurrent renewal created multiple durable orders")
+	}
+}
+
+// Every existing funding path must accept a real second purchase after either
+// applied clearing transition, keeping its receipt and native identity once.
+func TestRenewalTrialClearingAllowsAllFirstPurchaseMethods(t *testing.T) {
+	for _, transition := range []string{"starter", "unlimited revoke"} {
+		for _, method := range []string{"yoomoney", "manual", "yookassa", "cryptomus", "heleket"} {
+			t.Run(transition+"/"+method, func(t *testing.T) {
+				ctx := context.Background()
+				var p *fakePanel
+				var actor uuid.UUID
+				prepare := func(s *regressionFixture, e *testkit.Env, account, plan uuid.UUID) {
+					p = panelFixture(t, s)
+					first, err := s.createPurchaseOrder(ctx, account, uuid.New(), purchaseInput(plan))
+					if err != nil {
+						t.Fatal(err)
+					}
+					completeRenewalPayment(t, s, account, first)
+					actor = renewalOperator(t, s, e)
+					clearPurchasePlan(t, s, actor, account, transition)
+				}
+				var s *regressionFixture
+				var e *testkit.Env
+				var account uuid.UUID
+				var order wire.PurchaseOrder
+				switch method {
+				case "yookassa":
+					var f *kassaStub
+					s, e, account, order, f = kassaFixture(t, prepare)
+					syncKassa(t, s, order.OrderId)
+					settleKassa(e, f)
+					syncKassa(t, s, order.OrderId)
+					syncKassa(t, s, order.OrderId)
+				case "cryptomus", "heleket":
+					var f *cryptoStub
+					s, e, account, order, f = cryptoFixture(t, method, prepare)
+					syncCrypto(t, s, order.OrderId, method)
+					settleCrypto(e, f)
+					syncCrypto(t, s, order.OrderId, method)
+					syncCrypto(t, s, order.OrderId, method)
+				default:
+					var plan uuid.UUID
+					s, e, account, plan = purchaseFixture(t)
+					prepare(s, e, account, plan)
+					in := purchaseInput(plan)
+					if method == "manual" {
+						s.cfg.Payments.ManualEnabled = true
+						s.cfg.Payments.ManualCardDetails = "Local synthetic recipient"
+						in.PaymentMethod = "manual"
+						in.PaymentType = "MANUAL"
+					}
+					var err error
+					order, err = s.createPurchaseOrder(ctx, account, uuid.New(), in)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if method == "manual" {
+						if _, err = s.payments.ReportManualPayment(ctx, account, order.OrderId, uuid.New()); err != nil {
+							t.Fatal(err)
+						}
+						if _, err = s.payments.DecideManualPayment(ctx, actor, account, order.OrderId, uuid.New(), payments.ManualPaymentDecisionInput{Decision: "approve", Reason: "Synthetic receipt checked", ConfirmedAmountMinor: &order.Quote.AmountMinor}); err != nil {
+							t.Fatal(err)
+						}
+					} else {
+						fields := purchaseNotice(s, order.OrderId, uuid.NewString(), "90071992547409.00", "90071992547409.93")
+						for range 2 {
+							if err = s.receiveYooMoney(ctx, fields); err != nil {
+								t.Fatal(err)
+							}
+						}
+					}
+				}
+				before, err := s.accountByID(ctx, account)
+				if err != nil {
+					t.Fatal(err)
+				}
+				updates, resets := p.updates, p.resets
+				for range 2 {
+					if err = s.fulfillPurchase(ctx, order.OrderId); err != nil {
+						t.Fatal(err)
+					}
+				}
+				funded, err := s.purchaseOrder(ctx, account, order.OrderId)
+				if err != nil || funded.PaymentStatus != "paid" || funded.ReviewRequired || funded.AccessOperationId == nil {
+					t.Fatal("cleared trial did not retain provider funding", err)
+				}
+				in := purchaseInput(order.Quote.PlanId)
+				if _, err = s.createPurchaseOrder(ctx, account, uuid.New(), in); !catalogueCode(err, "PURCHASE_NOT_ELIGIBLE") {
+					t.Fatal("trial clearing bypassed unresolved paid access", err)
+				}
+				current, err := s.currentPurchaseOrder(ctx, account)
+				if err != nil || current.Order == nil || current.Order.OrderId != order.OrderId || current.CanPurchase != nil && *current.CanPurchase {
+					t.Fatal("client API bypassed unresolved paid access", err)
+				}
+				for range 2 {
+					if err = s.applyAccess(ctx, *funded.AccessOperationId); err != nil {
+						t.Fatal(err)
+					}
+				}
+				applied, err := s.purchaseOrder(ctx, account, order.OrderId)
+				if err != nil || applied.Action != "purchase" || applied.FulfillmentStatus != "applied" {
+					t.Fatal("cleared trial purchase not applied", err)
+				}
+				after, err := s.accountByID(ctx, account)
+				if err != nil || after.PanelKey != before.PanelKey || after.VpnID != before.VpnID || after.SubID != before.SubID || after.AssignedPanelID == nil || before.AssignedPanelID == nil || *after.AssignedPanelID != *before.AssignedPanelID || p.updates != updates+1 || p.resets != resets+1 {
+					t.Fatal("cleared purchase changed identity or repeated native writes", err)
+				}
+				manualCounts(t, s, order.OrderId, 1, 1)
+			})
+		}
+	}
+}
+
+func TestRenewalTrialClearingRetainsDisputedHistoryBlock(t *testing.T) {
+	s, e, p, account, plan := renewalFixture(t)
+	ctx := context.Background()
+	actor := renewalOperator(t, s, e)
+	clearPurchasePlan(t, s, actor, account, "starter")
+	current, err := s.currentPurchaseOrder(ctx, account)
+	if err != nil || current.Order == nil || current.CanPurchase == nil || !*current.CanPurchase {
+		t.Fatal("cleared purchase unavailable before dispute", err)
+	}
+	updates, resets := p.updates, p.resets
+	if err = s.receiveYooMoney(ctx, purchaseNotice(s, current.Order.OrderId, uuid.NewString(), "90071992547409.00", "90071992547409.93")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.createPurchaseOrder(ctx, account, uuid.New(), purchaseInput(plan)); !catalogueCode(err, "PURCHASE_NOT_ELIGIBLE") {
+		t.Fatal("clearing discarded disputed payment history", err)
+	}
+	current, err = s.currentPurchaseOrder(ctx, account)
+	if err != nil || current.CanPurchase == nil || *current.CanPurchase || current.Order == nil || !current.Order.ReviewRequired || count(t, e, "purchase_orders") != 1 || count(t, e, "purchase_receipts") != 2 || p.updates != updates || p.resets != resets {
+		t.Fatal("dispute block lost history or wrote native access", err)
+	}
+}
+
+func TestRenewalTrialClearingLatePlanBlocksPurchase(t *testing.T) {
+	for _, phase := range []string{"checkout", "paid"} {
+		t.Run(phase, func(t *testing.T) {
+			s, e, p, account, plan := renewalFixture(t)
+			ctx := context.Background()
+			actor := renewalOperator(t, s, e)
+			clearPurchasePlan(t, s, actor, account, "starter")
+			order, err := s.createPurchaseOrder(ctx, account, uuid.New(), purchaseInput(plan))
+			if err != nil {
+				t.Fatal(err)
+			}
+			notice := purchaseNotice(s, order.OrderId, uuid.NewString(), "90071992547409.00", "90071992547409.93")
+			if phase == "paid" {
+				if err = s.receiveYooMoney(ctx, notice); err != nil {
+					t.Fatal(err)
+				}
+			}
+			revision, period := int64(1), int64(30)
+			op, err := s.createAccessOperation(ctx, actor, account, uuid.New(), wire.AccessOperationInput{Kind: "assign_plan", PlanId: &plan, Revision: &revision, PeriodDays: &period, Reason: "Support assigned a paid plan"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = s.applyAccess(ctx, op.OperationId); err != nil {
+				t.Fatal(err)
+			}
+			updates, resets := p.updates, p.resets
+			current, err := s.purchaseOrder(ctx, account, order.OrderId)
+			if err != nil || current.CanPay || current.Checkout != nil {
+				t.Fatal("new assignment left old cleared-trial checkout open", err)
+			}
+			if phase == "checkout" {
+				if err = s.receiveYooMoney(ctx, notice); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err = s.fulfillPurchase(ctx, order.OrderId); err != nil {
+				t.Fatal(err)
+			}
+			current, err = s.purchaseOrder(ctx, account, order.OrderId)
+			if err != nil || current.PaymentStatus != "paid" || current.FulfillmentStatus != "needs_review" || !current.ReviewRequired || current.AccessOperationId != nil || count(t, e, "purchase_receipts") != 2 || p.updates != updates || p.resets != resets {
+				t.Fatal("late plan assignment lost money or wrote native access", err)
+			}
+		})
 	}
 }
