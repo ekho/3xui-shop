@@ -1,0 +1,11 @@
+import {useEffect,useState} from 'react';
+import * as api from './api/client';
+import {displayPrice} from './catalogueMoney';
+import {text,link,errorText,type Lang} from './i18n';
+
+export function ManualPaymentInbox({lang,onForbidden}:{lang:Lang;onForbidden:()=>void}){
+ const t=text(lang);const[items,setItems]=useState<api.ManualPaymentPage['items']>([]);const[next,setNext]=useState<string|null>(null);const[after,setAfter]=useState<string|null>(null);const[revision,setRevision]=useState(0);const[loading,setLoading]=useState(true);const[error,setError]=useState('');
+ useEffect(()=>{const controller=new AbortController();setLoading(true);setError('');void api.getManualPaymentRequests(after,controller.signal).then(page=>{if(controller.signal.aborted)return;setItems(previous=>after?[...previous,...page.items.filter(item=>!previous.some(old=>old.order.order_id===item.order.order_id))]:page.items);setNext(page.has_more?page.next_cursor:null);}).catch(reason=>{if(controller.signal.aborted)return;if(reason instanceof api.ApiError&&(reason.status===401||reason.status===403))onForbidden();else setError(errorText(reason,lang));}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});return()=>controller.abort();},[after,revision,lang]);
+ function refresh(){setItems([]);setNext(null);setAfter(null);setRevision(value=>value+1);}
+ return <section className="admin-page manual-inbox" aria-label={t.manualRequests} aria-busy={loading}><h1>{t.manualRequests}</h1><button disabled={loading} onClick={refresh}>{t.orderRefresh}</button>{loading?<p role="status">{t.loading}</p>:null}{error?<div role="alert" className="error"><p>{error}</p><button disabled={loading} onClick={()=>setRevision(value=>value+1)}>{t.retry}</button></div>:null}{!loading&&!error&&items.length===0?<p>{t.manualEmpty}</p>:null}{items.map(item=><article className="admin-client" key={item.order.order_id}><p>{t.orderId}: {item.order.order_id}</p><p>{t.orderPrice}: {displayPrice(item.order.quote.amount_minor,'RUB',lang)}</p><p>{t.manualReported}: {new Date(item.order.manual_payment!.reported_at!).toLocaleString(lang==='ru'?'ru-RU':'en-US')}</p><a href={link('/admin/clients/'+encodeURIComponent(item.account_id)+'/show',lang)}>{t.openClient}</a></article>)}{next&&!error?<button disabled={loading} onClick={()=>setAfter(next)}>{t.manualMore}</button>:null}</section>;
+}

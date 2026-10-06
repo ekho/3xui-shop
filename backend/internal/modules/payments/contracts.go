@@ -41,6 +41,29 @@ type PurchaseOrder struct {
 	PaymentType       string            `json:"payment_type"`
 	Quote             PurchaseQuote     `json:"quote"`
 	ReviewRequired    bool              `json:"review_required"`
+	ManualPayment     *ManualPayment    `json:"manual_payment,omitempty"`
+}
+type ManualPayment struct {
+	CanReport    bool       `json:"can_report"`
+	DecidedAt    *time.Time `json:"decided_at"`
+	Instructions string     `json:"instructions"`
+	Reason       *string    `json:"reason"`
+	ReportedAt   *time.Time `json:"reported_at"`
+	State        string     `json:"state"`
+}
+type ManualPaymentDecisionInput struct {
+	ConfirmedAmountMinor *string `json:"confirmed_amount_minor,omitempty"`
+	Decision             string  `json:"decision"`
+	Reason               string  `json:"reason"`
+}
+type ManualPaymentItem struct {
+	AccountId uuid.UUID     `json:"account_id"`
+	Order     PurchaseOrder `json:"order"`
+}
+type ManualPaymentPage struct {
+	HasMore    bool                `json:"has_more"`
+	Items      []ManualPaymentItem `json:"items"`
+	NextCursor *uuid.UUID          `json:"next_cursor"`
 }
 type CurrentPurchaseOrder struct {
 	Order *PurchaseOrder `json:"order"`

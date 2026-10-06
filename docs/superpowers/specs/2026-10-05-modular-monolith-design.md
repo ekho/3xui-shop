@@ -1,12 +1,12 @@
 # Модульный Go-монолит с Telegram внутри приложения
 
 Дата: 2026-10-05. Статус: спецификация принята владельцем ответом «Продолжаем»;
-М01–М05 доставлены в v2 и прошли локальную приёмку; М06 выполняется по частям
+М01–М06 доставлены в v2 и прошли собственную архитектурную и локальную приёмку
 (support → notifications → audit → удаление общего platform/store).
 М06а support доставлен PR #67/preview2.0.0-dev.23; М06b1 Telegram outbox доставлен PR #68/dev.25
 ([спецификация](2026-10-06-m06b-telegram-delivery-design.md)); [email М06b2](2026-10-06-m06b-email-delivery-design.md)
 доставлен PR #69/dev.27 после единственного review fix pass и новой22-stage приёмки.
-[Audit М06c](2026-10-06-m06c-audit-design.md) имеет локальную22/22 приёмку ([доказательства](../../evidence/m06c-acceptance.md)); доставлен [PR #70](https://github.com/ekho/3xui-shop/pull/70)/dev.29 после fresh review без замечаний и exact-source CI, preview/tag/3multiarch проверены. [Cleanup М06d](2026-10-06-m06d-composition-design.md) локально завершён:22/22/154 регрессии, общие platform/store удалены ([доказательства](../../evidence/m06d-acceptance.md)); #60 остаётся OPEN до fresh review/CI/manual merge/preview.
+[Audit М06c](2026-10-06-m06c-audit-design.md) имеет локальную22/22 приёмку ([доказательства](../../evidence/m06c-acceptance.md)); доставлен [PR #70](https://github.com/ekho/3xui-shop/pull/70)/dev.29 после fresh review без замечаний и exact-source CI, preview/tag/3multiarch проверены. [Cleanup М06d](2026-10-06-m06d-composition-design.md) локально завершён:22/22/154 регрессии, общие platform/store удалены ([доказательства](../../evidence/m06d-acceptance.md)); #60 CLOSED/Project Done: [PR #71](https://github.com/ekho/3xui-shop/pull/71)/dev.31, source-equal merge c9c075e и exact-source CI/tag/3multiarch проверены; [полный отчёт](https://github.com/ekho/3xui-shop/issues/60#issuecomment-6013023863).
 
 Основание — новое требование владельца: весь backend, включая функциональность
 ботов, реализуется слабосвязанными модулями монолита; нынешний Python-бот в итоге

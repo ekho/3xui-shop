@@ -1058,6 +1058,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/{id}/manual-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Report a manual transfer; this does not confirm money. Existing owner/session/restriction/CSRF and idempotency checks apply. */
+        post: operations["reportManualPayment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operator/clients/{id}/orders/{order_id}/manual-decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Current operator confirms an exact checked amount or rejects with reason. Opposite terminal decisions conflict. Approve returns202; reject200. */
+        post: operations["decideManualPayment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operator/manual-payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Current operator only: oldest pending reports first, at most50. Cursor anchors immutable reported_at/id; resolved requests are not pending. */
+        get: operations["getManualPaymentRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1750,7 +1801,7 @@ export interface components {
         };
         PaymentMethod: {
             /** @enum {string} */
-            id: "yoomoney";
+            id: "yoomoney" | "manual";
             /** @enum {string} */
             currency: "RUB";
         };
@@ -1767,9 +1818,9 @@ export interface components {
             /** Format: int64 */
             period_days: number;
             /** @enum {string} */
-            payment_method: "yoomoney";
+            payment_method: "yoomoney" | "manual";
             /** @enum {string} */
-            payment_type: "AC" | "PC";
+            payment_type: "AC" | "PC" | "MANUAL";
         };
         PurchaseQuote: {
             /** Format: uuid */
@@ -1815,9 +1866,9 @@ export interface components {
             action: "purchase";
             quote: components["schemas"]["PurchaseQuote"];
             /** @enum {string} */
-            payment_method: "yoomoney";
+            payment_method: "yoomoney" | "manual";
             /** @enum {string} */
-            payment_type: "AC" | "PC";
+            payment_type: "AC" | "PC" | "MANUAL";
             /** @enum {string} */
             payment_status: "pending" | "paid" | "canceled";
             /** @enum {string} */
@@ -1833,6 +1884,7 @@ export interface components {
             /** Format: uuid */
             access_operation_id: string | null;
             checkout: components["schemas"]["YooMoneyCheckout"] | null;
+            manual_payment?: components["schemas"]["ManualPayment"] | null;
         };
         CurrentPurchaseOrder: {
             order: components["schemas"]["PurchaseOrder"] | null;
@@ -1840,6 +1892,36 @@ export interface components {
         PurchaseCancelInput: Record<string, never>;
         PurchaseReconcileInput: {
             reason: string;
+        };
+        ManualPayment: {
+            /** @enum {string} */
+            state: "not_reported" | "pending" | "approved" | "rejected";
+            instructions: string;
+            can_report: boolean;
+            /** Format: date-time */
+            reported_at: string | null;
+            /** Format: date-time */
+            decided_at: string | null;
+            reason: string | null;
+        };
+        ManualPaymentReportInput: Record<string, never>;
+        ManualPaymentDecisionInput: {
+            /** @enum {string} */
+            decision: "approve" | "reject";
+            reason: string;
+            /** @description Required for approve; exact amount actually credited and checked by the operator. Omit for reject. */
+            confirmed_amount_minor?: string;
+        };
+        ManualPaymentItem: {
+            /** Format: uuid */
+            account_id: string;
+            order: components["schemas"]["PurchaseOrder"];
+        };
+        ManualPaymentPage: {
+            items: components["schemas"]["ManualPaymentItem"][];
+            has_more: boolean;
+            /** Format: uuid */
+            next_cursor: string | null;
         };
     };
     responses: never;
@@ -7558,6 +7640,293 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    reportManualPayment: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token": string;
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualPaymentReportInput"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrder"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    /** @description Seconds before retry */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    decideManualPayment: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token": string;
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualPaymentDecisionInput"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrder"];
+                };
+            };
+            /** @description Success */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrder"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    /** @description Seconds before retry */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    getManualPaymentRequests: {
+        parameters: {
+            query?: {
+                after?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualPaymentPage"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    /** @description Seconds before retry */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
             };
         };
     };

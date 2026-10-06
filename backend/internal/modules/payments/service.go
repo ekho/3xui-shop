@@ -18,6 +18,8 @@ type Config struct {
 	CabinetOrigin, PanelID, YooMoneyWalletID string
 	YooMoneyEnabled                          bool
 	YooMoneyNotificationSecret               []byte
+	ManualEnabled                            bool
+	ManualCardDetails                        string
 }
 
 type Error struct {
