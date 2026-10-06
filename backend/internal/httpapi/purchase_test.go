@@ -16,7 +16,7 @@ func TestPurchaseHTTPStrictBoundary(t *testing.T) {
 	}
 	good := []byte(`{"action":"purchase","plan_id":"` + uuid.NewString() + `","revision":1,"period_days":30,"payment_method":"yoomoney","payment_type":"AC"}`)
 	for _, body := range [][]byte{[]byte(`{"action":"purchase","amount_minor":"1"}`), append(append([]byte{}, good[:len(good)-1]...), []byte(`,"account_id":"`+customer.id.String()+`"}`)...)} {
-		if r := supportRequest(h, &customer, "POST", "/api/v1/orders", "application/json", body, cfg.CabinetOrigin, uuid.New()); r.Code != 400 {
+		if r := supportRequest(h, &customer, "POST", "/api/v1/orders", "application/json", body, cfg.HTTP.CabinetOrigin, uuid.New()); r.Code != 400 {
 			t.Fatalf("forged order: %d", r.Code)
 		}
 	}

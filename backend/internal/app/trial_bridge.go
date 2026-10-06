@@ -8,27 +8,26 @@ import (
 	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/telegram"
-	"example.com/cabinet/backend/internal/platform"
 )
 
 // TrialBridge adapts owned trial actions and notification delivery to the channel.
-type TrialBridge struct{ svc *platform.Service }
+type TrialBridge struct {
+	trials   *subscriptions.Service
+	delivery *notifications.Service
+}
 
 var _ telegram.TrialActions = (*TrialBridge)(nil)
 var _ telegram.Outbox = (*TrialBridge)(nil)
 
-func NewTrialBridge(svc *platform.Service) *TrialBridge { return &TrialBridge{svc: svc} }
+func NewTrialBridge(trials *subscriptions.Service, delivery *notifications.Service) *TrialBridge {
+	return &TrialBridge{trials: trials, delivery: delivery}
+}
 
 func bridgeError(err error) error {
 	if err == nil {
 		return nil
 	}
 	out := &telegram.ActionError{Code: "SERVICE_UNAVAILABLE"}
-	var domain *platform.Error
-	if errors.As(err, &domain) {
-		out.Code = domain.Code
-		out.CurrentRequestStatus, _ = domain.Details["current_request_status"].(string)
-	}
 	var trialError *subscriptions.Error
 	if errors.As(err, &trialError) {
 		out.Code = trialError.Code
@@ -57,19 +56,19 @@ func card(p subscriptions.TelegramPayload) telegram.TrialCard {
 	return out
 }
 func (b *TrialBridge) Decide(ctx context.Context, in telegram.TrialDecision) (telegram.Decision, error) {
-	out, err := b.svc.Subscriptions().DecideTrialRequest(ctx, in.RequestID, subscriptions.DecisionInput{OperatorTgId: in.ActorID, Decision: string(in.Action), CallbackQueryId: in.CallbackID})
+	out, err := b.trials.DecideTrialRequest(ctx, in.RequestID, subscriptions.DecisionInput{OperatorTgId: in.ActorID, Decision: string(in.Action), CallbackQueryId: in.CallbackID})
 	return telegram.Decision{Trial: trial(out.Request), Card: card(out.Card)}, bridgeError(err)
 }
 func (b *TrialBridge) Reconsider(ctx context.Context, in telegram.SupportAction) (telegram.Trial, error) {
-	out, err := b.svc.Subscriptions().ReconsiderTrialRequest(ctx, in.TargetID, in.Key, subscriptions.ReconsiderInput{OperatorTgId: in.ActorID, Reason: in.Reason})
+	out, err := b.trials.ReconsiderTrialRequest(ctx, in.TargetID, in.Key, subscriptions.ReconsiderInput{OperatorTgId: in.ActorID, Reason: in.Reason})
 	return trial(out), bridgeError(err)
 }
 func (b *TrialBridge) Reconcile(ctx context.Context, in telegram.SupportAction) (telegram.Operation, error) {
-	out, err := b.svc.Subscriptions().ReconcileTrialOperation(ctx, in.TargetID, in.Key, subscriptions.ReconcileInput{OperatorTgId: in.ActorID, Reason: in.Reason})
+	out, err := b.trials.ReconcileTrialOperation(ctx, in.TargetID, in.Key, subscriptions.ReconcileInput{OperatorTgId: in.ActorID, Reason: in.Reason})
 	return telegram.Operation{ID: out.OperationId, Status: string(out.Status)}, bridgeError(err)
 }
 func (b *TrialBridge) Claim(ctx context.Context) (*telegram.Delivery, error) {
-	out, err := b.svc.Notifications().ClaimTelegramJobs(ctx, 1)
+	out, err := b.delivery.ClaimTelegramJobs(ctx, 1)
 	if err != nil {
 		return nil, bridgeError(err)
 	}
@@ -97,5 +96,5 @@ func (b *TrialBridge) Complete(ctx context.Context, d telegram.Delivery, out tel
 	if err != nil {
 		return &telegram.ActionError{Code: "INVALID_INPUT"}
 	}
-	return bridgeError(b.svc.Notifications().CompleteTelegramJob(ctx, d.ID, d.LeaseToken, result))
+	return bridgeError(b.delivery.CompleteTelegramJob(ctx, d.ID, d.LeaseToken, result))
 }

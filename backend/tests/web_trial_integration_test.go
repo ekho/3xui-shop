@@ -8,9 +8,12 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"example.com/cabinet/backend/db"
+	"example.com/cabinet/backend/internal/app"
 	"example.com/cabinet/backend/internal/httpapi"
+	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/notifications"
-	"example.com/cabinet/backend/internal/platform"
+	"example.com/cabinet/backend/internal/modules/subscriptions"
+	"example.com/cabinet/backend/internal/modules/vpn"
 	"example.com/cabinet/backend/internal/testkit"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
@@ -152,8 +155,8 @@ func TestPanelTrafficFixtureMatchesOwnedClient(t *testing.T) {
 
 type fixture struct {
 	env                 *testkit.Env
-	svc                 *platform.Service
-	cfg                 platform.Config
+	svc                 *app.Modules
+	cfg                 app.Config
 	public, internal    *httptest.Server
 	mail                *testkit.SMTP
 	panel               *panel
@@ -177,12 +180,12 @@ func openMode(t *testing.T, native bool) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.cfg = platform.Config{TermsVersion: "1", PrivacyVersion: "1", MailKey: bytes.Repeat([]byte{3}, 32), CodeKey: bytes.Repeat([]byte{4}, 32), RateNamespace: uuid.NewString(), Operators: []int64{101}, AdapterToken: strings.Repeat("f", 43), PanelID: "dedicated-test", TrialEnabled: true, TrialPeriodDays: 3, TrialTrafficGB: 15, TrialDevices: 1, PanelURL: ps.URL, PanelToken: "fixture-panel", SubscriptionBaseURL: "https://subscriptions.example.test/sub/", SMTPAddress: f.mail.Address, SMTPRootCAs: f.mail.Roots, SMTPFrom: "sender@example.test"}
-	f.cfg.PanelRootCAs = x509.NewCertPool()
-	f.cfg.PanelRootCAs.AddCert(ps.Certificate())
+	f.cfg = app.Config{Accounts: accounts.Config{TermsVersion: "1", PrivacyVersion: "1", CodeKey: bytes.Repeat([]byte{4}, 32), RateNamespace: uuid.NewString(), Operators: []int64{101}}, Mail: notifications.MailConfig{MailKey: bytes.Repeat([]byte{3}, 32), SMTPAddress: f.mail.Address, SMTPRootCAs: f.mail.Roots, SMTPFrom: "sender@example.test"}, HTTP: app.HTTPConfig{AdapterToken: strings.Repeat("f", 43)}, Subscriptions: subscriptions.Config{PanelID: "dedicated-test", TrialEnabled: true, TrialPeriodDays: 3, TrialTrafficGB: 15, TrialDevices: 1, SubscriptionBaseURL: "https://subscriptions.example.test/sub/"}, VPN: vpn.Settings{Panel: vpn.Config{PanelURL: ps.URL, PanelToken: "fixture-panel"}}}
+	f.cfg.VPN.Panel.PanelRootCAs = x509.NewCertPool()
+	f.cfg.VPN.Panel.PanelRootCAs.AddCert(ps.Certificate())
 	if native {
-		f.cfg.Operators = []int64{101, 202}
-		f.cfg.AdapterToken = ""
+		f.cfg.Accounts.Operators = []int64{101, 202}
+		f.cfg.HTTP.AdapterToken = ""
 		configureNativeDocker(t, f)
 	}
 	var handler http.Handler
@@ -207,9 +210,9 @@ func openMode(t *testing.T, native bool) *fixture {
 		http.ServeFile(w, r, path)
 	}))
 	t.Cleanup(f.public.Close)
-	f.cfg.CabinetOrigin = f.public.URL
-	f.svc = platform.NewService(e.Pool, e.Redis, queue, f.cfg)
-	handler = httpapi.New(f.svc, f.cfg)
+	f.cfg.HTTP.CabinetOrigin = f.public.URL
+	f.svc = app.NewModules(e.Pool, e.Redis, queue, &f.cfg)
+	handler = httpapi.New(f.svc, f.env.Pool, f.cfg.HTTP)
 	if !native {
 		f.internal = httptest.NewTLSServer(handler)
 		t.Cleanup(f.internal.Close)
@@ -217,14 +220,14 @@ func openMode(t *testing.T, native bool) *fixture {
 		f.ca = filepath.Join(dir, "ca.pem")
 		f.tokenFile = filepath.Join(dir, "adapter-token")
 		os.WriteFile(f.ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f.internal.Certificate().Raw}), 0600)
-		os.WriteFile(f.tokenFile, []byte(f.cfg.AdapterToken), 0600)
+		os.WriteFile(f.tokenFile, []byte(f.cfg.HTTP.AdapterToken), 0600)
 	}
 	workers := river.NewWorkers()
-	river.AddWorker(workers, &notifications.MailWorker{Service: f.svc.MailDelivery()})
-	river.AddWorker(workers, &platform.ProvisionWorker{Service: f.svc})
+	river.AddWorker(workers, &notifications.MailWorker{Service: f.svc.MailDelivery})
+	river.AddWorker(workers, &vpn.ProvisionWorker{Service: f.svc.VPN})
 	if native {
-		river.AddWorker(workers, &platform.AccessWorker{Service: f.svc})
-		river.AddWorker(workers, &platform.MonthlyResetWorker{Service: f.svc})
+		river.AddWorker(workers, &vpn.AccessWorker{Service: f.svc.VPN})
+		river.AddWorker(workers, &vpn.MonthlyResetWorker{Service: f.svc.VPN})
 	}
 	f.workers, err = river.NewClient(riverpgxv5.New(e.Pool), &river.Config{Workers: workers, Queues: map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: 2}, "provision": {MaxWorkers: 2}}, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	if err != nil {
@@ -255,9 +258,9 @@ func (f *fixture) send(t *testing.T, c *http.Client, method, path string, body a
 		req.Header.Set("Content-Type", "application/json")
 	}
 	if internal {
-		req.Header.Set("Authorization", "Bearer "+f.cfg.AdapterToken)
+		req.Header.Set("Authorization", "Bearer "+f.cfg.HTTP.AdapterToken)
 	} else if method == "POST" {
-		req.Header.Set("Origin", f.cfg.CabinetOrigin)
+		req.Header.Set("Origin", f.cfg.HTTP.CabinetOrigin)
 	}
 	if csrf != "" {
 		req.Header.Set("X-CSRF-Token", csrf)
@@ -303,7 +306,7 @@ func (f *fixture) signup(t *testing.T, email string) (*http.Client, string, wire
 	var delivery uuid.UUID
 	f.env.Pool.QueryRow(context.Background(), `SELECT id FROM mail_deliveries WHERE challenge_id=$1`, out.ChallengeId).Scan(&delivery)
 	if !f.native {
-		if f.svc.SendMail(context.Background(), delivery) != nil {
+		if f.svc.MailDelivery.SendMail(context.Background(), delivery) != nil {
 			t.Fatal("TLS SMTP send")
 		}
 	} else {
@@ -510,8 +513,8 @@ func TestWebTrialHTTPContractPaths(t *testing.T) {
 	var publicConfig map[string]string
 	if status != http.StatusOK || response.Header.Get("Cache-Control") != "no-store" ||
 		!strings.HasPrefix(response.Header.Get("Content-Type"), "application/json") ||
-		json.Unmarshal(body, &publicConfig) != nil || publicConfig["termsVersion"] != f.cfg.TermsVersion ||
-		publicConfig["privacyVersion"] != f.cfg.PrivacyVersion {
+		json.Unmarshal(body, &publicConfig) != nil || publicConfig["termsVersion"] != f.cfg.Accounts.TermsVersion ||
+		publicConfig["privacyVersion"] != f.cfg.Accounts.PrivacyVersion {
 		t.Fatal("browser must receive deployment policy configuration as uncached JSON")
 	}
 	c, csrf, r := f.signup(t, "contract@example.test")
@@ -664,10 +667,10 @@ func TestWebTrialBackupRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc := platform.NewService(restored, f.env.Redis, queue, f.cfg)
+	svc := app.NewModules(restored, f.env.Redis, queue, &f.cfg)
 	workers := river.NewWorkers()
-	river.AddWorker(workers, &platform.ProvisionWorker{Service: svc})
-	worker, err := river.NewClient(riverpgxv5.New(restored), &river.Config{Workers: workers, Queues: map[string]river.QueueConfig{"provision": {MaxWorkers: 1}}, RescueStuckJobsAfter: platform.ProvisionRescueAfter, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	river.AddWorker(workers, &vpn.ProvisionWorker{Service: svc.VPN})
+	worker, err := river.NewClient(riverpgxv5.New(restored), &river.Config{Workers: workers, Queues: map[string]river.QueueConfig{"provision": {MaxWorkers: 1}}, RescueStuckJobsAfter: vpn.ProvisionRescueAfter, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -712,7 +715,7 @@ func TestWebTrialBackupRestore(t *testing.T) {
 	if adds != 1 || forbidden != 0 {
 		t.Fatal("restore changed external client")
 	}
-	server := httptest.NewTLSServer(httpapi.New(svc, f.cfg))
+	server := httptest.NewTLSServer(httpapi.New(svc, restored, f.cfg.HTTP))
 	defer server.Close()
 	client := *server.Client()
 	client.Jar = c.Jar

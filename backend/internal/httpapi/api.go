@@ -6,10 +6,18 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
-	"example.com/cabinet/backend/internal/platform"
+	"example.com/cabinet/backend/internal/app"
+	"example.com/cabinet/backend/internal/modules/accounts"
+	"example.com/cabinet/backend/internal/modules/audit_reports"
+	"example.com/cabinet/backend/internal/modules/catalogue"
+	"example.com/cabinet/backend/internal/modules/notifications"
+	"example.com/cabinet/backend/internal/modules/payments"
+	"example.com/cabinet/backend/internal/modules/subscriptions"
+	"example.com/cabinet/backend/internal/modules/support"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
 	"io"
 	"mime"
@@ -22,12 +30,34 @@ import (
 )
 
 type API struct {
-	svc      *platform.Service
-	cfg      platform.Config
-	contract *openapi3.T
+	accounts       *accounts.Service
+	catalogueOwner *catalogue.Service
+	subscriptions  *subscriptions.Service
+	payments       *payments.Service
+	supportOwner   *support.Service
+	notifications  *notifications.Service
+	auditReports   *auditreports.Service
+	pool           *pgxpool.Pool
+	cfg            app.HTTPConfig
+	contract       *openapi3.T
+}
+type apiError struct {
+	Status        int
+	Code, Message string
+	Details       map[string]any
+	RetryAfter    int
 }
 
-func New(svc *platform.Service, cfg platform.Config) *echo.Echo {
+func (e *apiError) Error() string { return e.Code }
+func failure(status int, code string) error {
+	return &apiError{Status: status, Code: code, Message: code}
+}
+func unavailable() error { return failure(503, "SERVICE_UNAVAILABLE") }
+func newAPI(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, contract *openapi3.T) *API {
+	return &API{accounts: modules.Accounts, catalogueOwner: modules.Catalogue, subscriptions: modules.Subscriptions, payments: modules.Payments, supportOwner: modules.Support, notifications: modules.Notifications, auditReports: modules.AuditReports, pool: pool, cfg: cfg, contract: contract}
+}
+
+func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig) *echo.Echo {
 	e := echo.New()
 	e.IPExtractor = echo.ExtractIPDirect()
 	if len(cfg.TrustedProxyCIDRs) > 0 {
@@ -45,11 +75,11 @@ func New(svc *platform.Service, cfg platform.Config) *echo.Echo {
 	if err != nil {
 		panic("invalid compiled API contract")
 	}
-	a := &API{svc: svc, cfg: cfg, contract: contract}
+	a := newAPI(modules, pool, cfg, contract)
 	e.HTTPErrorHandler = func(c *echo.Context, err error) {
 		status := 503
 		code := "SERVICE_UNAVAILABLE"
-		var domain *platform.Error
+		var domain *apiError
 		if errors.As(err, &domain) {
 			status = domain.Status
 			code = domain.Code
@@ -81,17 +111,17 @@ func New(svc *platform.Service, cfg platform.Config) *echo.Echo {
 				return invalid()
 			}
 			if c.Request().Method == "POST" && len(c.Path()) >= 4 && c.Path()[:4] == "/api" && c.Request().Header.Get("Origin") != cfg.CabinetOrigin {
-				return &platform.Error{Status: 403, Code: "INVALID_CREDENTIALS"}
+				return &apiError{Status: 403, Code: "INVALID_CREDENTIALS"}
 			}
 			ctx, cancel := context.WithTimeout(c.Request().Context(), 15*time.Second)
 			defer cancel()
 			c.SetRequest(c.Request().WithContext(ctx))
 			if strings.HasPrefix(c.Path(), "/internal/") {
 				if cfg.AdapterToken == "" || subtle.ConstantTimeCompare([]byte(c.Request().Header.Get("Authorization")), []byte("Bearer "+cfg.AdapterToken)) != 1 {
-					return &platform.Error{Status: 401, Code: "INVALID_CREDENTIALS"}
+					return &apiError{Status: 401, Code: "INVALID_CREDENTIALS"}
 				}
 				if c.Request().Header.Get("Origin") != "" {
-					return &platform.Error{Status: 403, Code: "INVALID_CREDENTIALS"}
+					return &apiError{Status: 403, Code: "INVALID_CREDENTIALS"}
 				}
 			}
 			return next(c)
@@ -100,8 +130,8 @@ func New(svc *platform.Service, cfg platform.Config) *echo.Echo {
 	e.GET("/healthz", func(c *echo.Context) error {
 		ctx, cancel := context.WithTimeout(c.Request().Context(), 2*time.Second)
 		defer cancel()
-		if !svc.Health(ctx) {
-			return &platform.Error{Status: 503, Code: "SERVICE_UNAVAILABLE"}
+		if pool.Ping(ctx) != nil {
+			return &apiError{Status: 503, Code: "SERVICE_UNAVAILABLE"}
 		}
 		return c.JSON(200, map[string]bool{"ok": true})
 	})
@@ -169,7 +199,7 @@ func New(svc *platform.Service, cfg platform.Config) *echo.Echo {
 	e.POST("/api/v1/operator/clients/trial", a.CreateOperatorTelegramTrial)
 	return e
 }
-func invalid() error { return &platform.Error{Status: 400, Code: "INVALID_INPUT"} }
+func invalid() error { return &apiError{Status: 400, Code: "INVALID_INPUT"} }
 func decode[T any](a *API, c *echo.Context, schema string) (T, error) {
 	var out T
 	media, _, err := mime.ParseMediaType(c.Request().Header.Get("Content-Type"))
@@ -202,7 +232,7 @@ func (a *API) RegisterAccount(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.Register(c.Request().Context(), in)
+	out, err := a.register(c.Request().Context(), in)
 	if err != nil {
 		return err
 	}
@@ -213,7 +243,7 @@ func (a *API) VerifyEmail(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.VerifyEmail(c.Request().Context(), in)
+	out, err := a.verifyEmail(c.Request().Context(), in)
 	if err != nil {
 		return err
 	}
@@ -224,7 +254,7 @@ func (a *API) ResendVerification(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.ResendVerification(c.Request().Context(), in)
+	out, err := a.resendVerification(c.Request().Context(), in)
 	if err != nil {
 		return err
 	}
@@ -236,7 +266,7 @@ func (a *API) LoginAccount(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, raw, err := a.svc.Login(c.Request().Context(), in, c.RealIP())
+	out, raw, err := a.login(c.Request().Context(), in, c.RealIP())
 	if err != nil {
 		return err
 	}
@@ -246,14 +276,14 @@ func (a *API) LoginAccount(c *echo.Context) error {
 func (a *API) auth(c *echo.Context, write bool) (wire.AccountResult, error) {
 	cookie, err := c.Cookie("__Host-session")
 	if err != nil {
-		return wire.AccountResult{}, &platform.Error{Status: 401, Code: "INVALID_CREDENTIALS"}
+		return wire.AccountResult{}, &apiError{Status: 401, Code: "INVALID_CREDENTIALS"}
 	}
-	out, err := a.svc.Authenticate(c.Request().Context(), cookie.Value)
+	out, err := a.authenticate(c.Request().Context(), cookie.Value)
 	if err != nil {
 		return out, err
 	}
 	if write && subtle.ConstantTimeCompare([]byte(c.Request().Header.Get("X-CSRF-Token")), []byte(out.CsrfToken)) != 1 {
-		return out, &platform.Error{Status: 403, Code: "INVALID_CREDENTIALS"}
+		return out, &apiError{Status: 403, Code: "INVALID_CREDENTIALS"}
 	}
 	return out, nil
 }
@@ -275,16 +305,16 @@ func (a *API) LogoutAccount(c *echo.Context) error {
 	}
 	if raw != "" {
 		var out wire.SessionContext
-		out, err = a.svc.GetSessionContext(c.Request().Context(), raw)
+		out, err = a.getSessionContext(c.Request().Context(), raw)
 		if err == nil && subtle.ConstantTimeCompare([]byte(c.Request().Header.Get("X-CSRF-Token")), []byte(out.CsrfToken)) != 1 {
-			return &platform.Error{Status: 403, Code: "INVALID_CREDENTIALS"}
+			return &apiError{Status: 403, Code: "INVALID_CREDENTIALS"}
 		}
-		var domain *platform.Error
+		var domain *apiError
 		if err != nil && (!errors.As(err, &domain) || domain.Status != 401) {
 			return err
 		}
 		if err == nil {
-			if err = a.svc.Logout(c.Request().Context(), raw); err != nil {
+			if err = a.logout(c.Request().Context(), raw); err != nil {
 				return err
 			}
 		}
@@ -320,7 +350,7 @@ func (a *API) CreateTrialRequest(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, created, err := a.svc.CreateTrialRequest(c.Request().Context(), account.Account.AccountId, key, in)
+	out, created, err := a.createTrialRequest(c.Request().Context(), account.Account.AccountId, key, in)
 	if err != nil {
 		return err
 	}
@@ -335,7 +365,7 @@ func (a *API) GetCurrentTrialRequest(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.CurrentTrialRequest(c.Request().Context(), account.Account.AccountId)
+	out, err := a.currentTrialRequest(c.Request().Context(), account.Account.AccountId)
 	if err != nil {
 		return err
 	}
@@ -350,7 +380,7 @@ func (a *API) DecideTrialRequest(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.DecideTrialRequest(c.Request().Context(), id, in)
+	out, err := a.decideTrialRequest(c.Request().Context(), id, in)
 	if err != nil {
 		return err
 	}
@@ -369,7 +399,7 @@ func (a *API) ReconsiderTrialRequest(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.ReconsiderTrialRequest(c.Request().Context(), id, key, in)
+	out, err := a.reconsiderTrialRequest(c.Request().Context(), id, key, in)
 	if err != nil {
 		return err
 	}
@@ -381,7 +411,7 @@ func (a *API) GetSubscription(c *echo.Context) error {
 	if e != nil {
 		return e
 	}
-	out, e := a.svc.Subscription(c.Request().Context(), account.Account.AccountId)
+	out, e := a.subscription(c.Request().Context(), account.Account.AccountId)
 	if e != nil {
 		return e
 	}
@@ -392,7 +422,7 @@ func (a *API) GetSubscriptionKey(c *echo.Context) error {
 	if e != nil {
 		return e
 	}
-	out, e := a.svc.SubscriptionKey(c.Request().Context(), account.Account.AccountId)
+	out, e := a.subscriptionKey(c.Request().Context(), account.Account.AccountId)
 	if e != nil {
 		return e
 	}
@@ -411,7 +441,7 @@ func (a *API) ReconcileTrialOperation(c *echo.Context) error {
 	if e != nil {
 		return e
 	}
-	out, e := a.svc.ReconcileTrialOperation(c.Request().Context(), id, key, in)
+	out, e := a.reconcileTrialOperation(c.Request().Context(), id, key, in)
 	if e != nil {
 		return e
 	}
@@ -423,7 +453,7 @@ func (a *API) ClaimTelegramJobs(c *echo.Context) error {
 	if e != nil {
 		return e
 	}
-	out, e := a.svc.ClaimTelegramJobs(c.Request().Context(), in)
+	out, e := a.claimTelegramJobs(c.Request().Context(), in)
 	if e != nil {
 		return e
 	}
@@ -438,7 +468,7 @@ func (a *API) CompleteTelegramJob(c *echo.Context) error {
 	if e != nil {
 		return e
 	}
-	if e = a.svc.CompleteTelegramJob(c.Request().Context(), id, in); e != nil {
+	if e = a.completeTelegramJob(c.Request().Context(), id, in); e != nil {
 		return e
 	}
 	return c.JSON(200, wire.CompleteResult{})

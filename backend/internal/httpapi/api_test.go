@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"example.com/cabinet/backend/internal/platform"
+	"example.com/cabinet/backend/internal/app"
+	"example.com/cabinet/backend/internal/modules/accounts"
+	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/testkit"
 	"example.com/cabinet/backend/internal/wire"
 	"fmt"
@@ -17,22 +19,22 @@ import (
 	"testing"
 )
 
-func httpFixture(t *testing.T) (http.Handler, *testkit.Env, platform.Config) {
+func httpFixture(t *testing.T) (http.Handler, *testkit.Env, app.Config) {
 	t.Helper()
 	env := testkit.Open(t)
 	queue, err := river.NewClient(riverpgxv5.New(env.Pool), &river.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := platform.Config{CabinetOrigin: "https://cabinet.example.test", TermsVersion: "1", PrivacyVersion: "1", MailKey: bytes.Repeat([]byte{1}, 32), CodeKey: bytes.Repeat([]byte{2}, 32), RateNamespace: uuid.NewString()}
-	cfg.Operators = []int64{101, 202}
-	cfg.AdapterToken = strings.Repeat("x", 43)
-	cfg.PanelID = "dedicated-test"
-	cfg.TrialEnabled = true
-	cfg.TrialPeriodDays = 3
-	cfg.TrialTrafficGB = 15
-	cfg.TrialDevices = 1
-	return New(platform.NewService(env.Pool, env.Redis, queue, cfg), cfg), env, cfg
+	cfg := app.Config{HTTP: app.HTTPConfig{CabinetOrigin: "https://cabinet.example.test"}, Accounts: accounts.Config{TermsVersion: "1", PrivacyVersion: "1", CodeKey: bytes.Repeat([]byte{2}, 32), RateNamespace: uuid.NewString()}, Mail: notifications.MailConfig{MailKey: bytes.Repeat([]byte{1}, 32)}}
+	cfg.Accounts.Operators = []int64{101, 202}
+	cfg.HTTP.AdapterToken = strings.Repeat("x", 43)
+	cfg.Subscriptions.PanelID = "dedicated-test"
+	cfg.Subscriptions.TrialEnabled = true
+	cfg.Subscriptions.TrialPeriodDays = 3
+	cfg.Subscriptions.TrialTrafficGB = 15
+	cfg.Subscriptions.TrialDevices = 1
+	return New(app.NewModules(env.Pool, env.Redis, queue, &cfg), env.Pool, cfg.HTTP), env, cfg
 }
 func request(h http.Handler, method, path, body, origin string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
@@ -50,7 +52,7 @@ func TestRegistrationHTTP(t *testing.T) {
 	for _, tc := range []struct {
 		method, path, body, origin string
 		status                     int
-	}{{"POST", "/api/v1/auth/register", good, cfg.CabinetOrigin, 202}, {"POST", "/api/v1/auth/register", good, "https://attacker.example.test", 403}, {"POST", "/api/v1/auth/register", good, "", 403}, {"POST", "/api/v1/auth/register", strings.Replace(good, `"ru"`, `"xx"`, 1), cfg.CabinetOrigin, 400}, {"POST", "/api/v1/auth/register", `{"email":"x@example.test"}`, cfg.CabinetOrigin, 400}, {"POST", "/api/v1/auth/register", `{"password":"sensitive",` + good[1:], cfg.CabinetOrigin, 400}, {"POST", "/api/v1/auth/register?unknown=true", good, cfg.CabinetOrigin, 400}, {"POST", "/api/v1/auth/verify-email", `{"token":"` + strings.Repeat("x", 43) + `","code":"12345678","challenge_id":"` + uuid.NewString() + `","new_password":"long safe password"}`, cfg.CabinetOrigin, 400}, {"POST", "/api/v1/auth/register", strings.Repeat("a", 16385), cfg.CabinetOrigin, 400}, {"GET", "/api/v1/auth/verify-email?token=sensitive", "", "", 400}} {
+	}{{"POST", "/api/v1/auth/register", good, cfg.HTTP.CabinetOrigin, 202}, {"POST", "/api/v1/auth/register", good, "https://attacker.example.test", 403}, {"POST", "/api/v1/auth/register", good, "", 403}, {"POST", "/api/v1/auth/register", strings.Replace(good, `"ru"`, `"xx"`, 1), cfg.HTTP.CabinetOrigin, 400}, {"POST", "/api/v1/auth/register", `{"email":"x@example.test"}`, cfg.HTTP.CabinetOrigin, 400}, {"POST", "/api/v1/auth/register", `{"password":"sensitive",` + good[1:], cfg.HTTP.CabinetOrigin, 400}, {"POST", "/api/v1/auth/register?unknown=true", good, cfg.HTTP.CabinetOrigin, 400}, {"POST", "/api/v1/auth/verify-email", `{"token":"` + strings.Repeat("x", 43) + `","code":"12345678","challenge_id":"` + uuid.NewString() + `","new_password":"long safe password"}`, cfg.HTTP.CabinetOrigin, 400}, {"POST", "/api/v1/auth/register", strings.Repeat("a", 16385), cfg.HTTP.CabinetOrigin, 400}, {"GET", "/api/v1/auth/verify-email?token=sensitive", "", "", 400}} {
 		rr := request(h, tc.method, tc.path, tc.body, tc.origin)
 		if rr.Code != tc.status {
 			t.Errorf("%s %s want %d got %d", tc.method, tc.path, tc.status, rr.Code)
@@ -83,24 +85,24 @@ func TestRegistrationHTTP(t *testing.T) {
 	}
 }
 
-func verifiedHTTP(t *testing.T, h http.Handler, e *testkit.Env, cfg platform.Config) {
+func verifiedHTTP(t *testing.T, h http.Handler, e *testkit.Env, cfg app.Config) {
 	t.Helper()
-	rr := request(h, "POST", "/api/v1/auth/register", `{"email":"login@example.test","locale":"ru","accepted_terms_version":"1","accepted_privacy_version":"1"}`, cfg.CabinetOrigin)
+	rr := request(h, "POST", "/api/v1/auth/register", `{"email":"login@example.test","locale":"ru","accepted_terms_version":"1","accepted_privacy_version":"1"}`, cfg.HTTP.CabinetOrigin)
 	if rr.Code != 202 {
 		t.Fatal("registration", rr.Code)
 	}
 	var registered wire.RegistrationAccepted
 	json.Unmarshal(rr.Body.Bytes(), &registered)
-	_, token, _ := testkit.MailSecrets(t, e.Pool, cfg.MailKey, registered.ChallengeId)
+	_, token, _ := testkit.MailSecrets(t, e.Pool, cfg.Mail.MailKey, registered.ChallengeId)
 	body, _ := json.Marshal(map[string]string{"token": token, "new_password": "my long safe password ✨"})
-	if rr = request(h, "POST", "/api/v1/auth/verify-email", string(body), cfg.CabinetOrigin); rr.Code != 200 {
+	if rr = request(h, "POST", "/api/v1/auth/verify-email", string(body), cfg.HTTP.CabinetOrigin); rr.Code != 200 {
 		t.Fatal("verification", rr.Code)
 	}
 }
 func TestSessionBoundary(t *testing.T) {
 	h, e, cfg := httpFixture(t)
 	verifiedHTTP(t, h, e, cfg)
-	rr := request(h, "POST", "/api/v1/auth/login", `{"email":"login@example.test","password":"my long safe password ✨"}`, cfg.CabinetOrigin)
+	rr := request(h, "POST", "/api/v1/auth/login", `{"email":"login@example.test","password":"my long safe password ✨"}`, cfg.HTTP.CabinetOrigin)
 	if rr.Code != 200 {
 		t.Fatalf("login want200 got %d", rr.Code)
 	}
@@ -129,16 +131,16 @@ func TestSessionBoundary(t *testing.T) {
 	if rr = send("POST", "/api/v1/auth/logout", "https://attacker.example.test", login.CsrfToken); rr.Code != 403 {
 		t.Fatal("foreign Origin logout", rr.Code)
 	}
-	if rr = send("POST", "/api/v1/auth/logout", cfg.CabinetOrigin, ""); rr.Code != 403 {
+	if rr = send("POST", "/api/v1/auth/logout", cfg.HTTP.CabinetOrigin, ""); rr.Code != 403 {
 		t.Fatal("missing CSRF logout", rr.Code)
 	}
-	if rr = send("POST", "/api/v1/auth/logout", cfg.CabinetOrigin, login.CsrfToken); rr.Code != 204 {
+	if rr = send("POST", "/api/v1/auth/logout", cfg.HTTP.CabinetOrigin, login.CsrfToken); rr.Code != 204 {
 		t.Fatal("logout", rr.Code)
 	}
 	if rr = send("GET", "/api/v1/me", "", ""); rr.Code != 401 {
 		t.Fatal("revoked cookie accepted", rr.Code)
 	}
-	if rr = send("POST", "/api/v1/auth/logout", cfg.CabinetOrigin, ""); rr.Code != 204 {
+	if rr = send("POST", "/api/v1/auth/logout", cfg.HTTP.CabinetOrigin, ""); rr.Code != 204 {
 		t.Fatal("logout retry", rr.Code)
 	}
 }
@@ -156,7 +158,7 @@ func TestLoginRateLimit(t *testing.T) {
 		req := httptest.NewRequest("POST", "/api/v1/auth/login", strings.NewReader(body))
 		req.RemoteAddr = "192.0.2.1:1234"
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Origin", cfg.CabinetOrigin)
+		req.Header.Set("Origin", cfg.HTTP.CabinetOrigin)
 		req.Header.Set("X-Forwarded-For", fmt.Sprintf("203.0.113.%d", i))
 		rr := httptest.NewRecorder()
 		h.ServeHTTP(rr, req)
@@ -173,7 +175,7 @@ func TestLoginRateLimit(t *testing.T) {
 func TestInternalOperatorBoundary(t *testing.T) {
 	h, e, cfg := httpFixture(t)
 	verifiedHTTP(t, h, e, cfg)
-	rr := request(h, "POST", "/api/v1/auth/login", `{"email":"login@example.test","password":"my long safe password ✨"}`, cfg.CabinetOrigin)
+	rr := request(h, "POST", "/api/v1/auth/login", `{"email":"login@example.test","password":"my long safe password ✨"}`, cfg.HTTP.CabinetOrigin)
 	if rr.Code != 200 {
 		t.Fatal("login", rr.Code)
 	}
@@ -184,7 +186,7 @@ func TestInternalOperatorBoundary(t *testing.T) {
 		r := httptest.NewRequest("POST", "/api/v1/trial-requests", strings.NewReader(`{"comment":"test request"}`))
 		r.AddCookie(cookie)
 		r.Header.Set("Content-Type", "application/json")
-		r.Header.Set("Origin", cfg.CabinetOrigin)
+		r.Header.Set("Origin", cfg.HTTP.CabinetOrigin)
 		r.Header.Set("X-CSRF-Token", csrf)
 		r.Header.Set("Idempotency-Key", key.String())
 		out := httptest.NewRecorder()
@@ -222,13 +224,13 @@ func TestInternalOperatorBoundary(t *testing.T) {
 			t.Fatal("user cookie must not authorize internal", rr.Code)
 		}
 	}
-	if rr = internal(cfg.AdapterToken, 999, "approve", false); rr.Code != 403 {
+	if rr = internal(cfg.HTTP.AdapterToken, 999, "approve", false); rr.Code != 403 {
 		t.Fatal("forged operator", rr.Code)
 	}
-	if rr = internal(cfg.AdapterToken, 101, "approve", false); rr.Code != 200 {
+	if rr = internal(cfg.HTTP.AdapterToken, 101, "approve", false); rr.Code != 200 {
 		t.Fatal("authorized decision", rr.Code)
 	}
-	if rr = internal(cfg.AdapterToken, 202, "reject", false); rr.Code != 409 || !strings.Contains(rr.Body.String(), `"current_request_status":"approved"`) {
+	if rr = internal(cfg.HTTP.AdapterToken, 202, "reject", false); rr.Code != 409 || !strings.Contains(rr.Body.String(), `"current_request_status":"approved"`) {
 		t.Fatal("winning state", rr.Code)
 	}
 	r := httptest.NewRequest("GET", "/api/v1/trial-requests/current", nil)
@@ -243,7 +245,7 @@ func TestInternalOperatorBoundary(t *testing.T) {
 func TestSubscriptionPrivacy(t *testing.T) {
 	h, e, cfg := httpFixture(t)
 	verifiedHTTP(t, h, e, cfg)
-	login := request(h, "POST", "/api/v1/auth/login", `{"email":"login@example.test","password":"my long safe password ✨"}`, cfg.CabinetOrigin)
+	login := request(h, "POST", "/api/v1/auth/login", `{"email":"login@example.test","password":"my long safe password ✨"}`, cfg.HTTP.CabinetOrigin)
 	if login.Code != 200 {
 		t.Fatal(login.Code)
 	}
@@ -277,7 +279,7 @@ func TestTelegramLease(t *testing.T) {
 		t.Fatal("unauthorized claim", rr.Code)
 	}
 	r := httptest.NewRequest("POST", "/internal/v1/telegram/jobs/claim", strings.NewReader(`{"limit":1}`))
-	r.Header.Set("Authorization", "Bearer "+cfg.AdapterToken)
+	r.Header.Set("Authorization", "Bearer "+cfg.HTTP.AdapterToken)
 	r.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, r)

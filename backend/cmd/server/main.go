@@ -3,6 +3,18 @@ package main
 import (
 	"context"
 	"errors"
+	"example.com/cabinet/backend/db"
+	"example.com/cabinet/backend/internal/app"
+	"example.com/cabinet/backend/internal/httpapi"
+	"example.com/cabinet/backend/internal/modules/notifications"
+	"example.com/cabinet/backend/internal/modules/payments"
+	"example.com/cabinet/backend/internal/modules/telegram"
+	"example.com/cabinet/backend/internal/modules/vpn"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,20 +23,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-
-	"example.com/cabinet/backend/db"
-	"example.com/cabinet/backend/internal/app"
-	"example.com/cabinet/backend/internal/httpapi"
-	"example.com/cabinet/backend/internal/modules/notifications"
-	"example.com/cabinet/backend/internal/modules/payments"
-	"example.com/cabinet/backend/internal/modules/telegram"
-	"example.com/cabinet/backend/internal/modules/vpn"
-	"example.com/cabinet/backend/internal/platform"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/redis/go-redis/v9"
-	"github.com/riverqueue/river"
-	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 )
 
 func main() {
@@ -47,7 +45,7 @@ func run() error {
 		slog.Error("usage: server serve|migrate|reconcile or server operator grant|revoke --account-file <absolute-path>")
 		return errors.New("invalid command")
 	}
-	cfg, err := platform.LoadConfig()
+	cfg, err := app.LoadConfig()
 	if err != nil {
 		slog.Error("invalid configuration")
 		return err
@@ -78,29 +76,29 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	svc := app.NewService(pool, limiter, queue, cfg)
+	svc := app.NewModules(pool, limiter, queue, &cfg)
 	var tg *telegram.Runtime
 	if os.Args[1] == "serve" {
-		tgConfig, e := telegram.LoadConfig(cfg.Operators)
+		tgConfig, e := telegram.LoadConfig(cfg.Accounts.Operators)
 		if e != nil {
 			return e
 		}
-		if tgConfig.Enabled && cfg.AdapterToken != "" {
+		if tgConfig.Enabled && cfg.HTTP.AdapterToken != "" {
 			return errors.New("disable legacy bot API before enabling native Telegram")
 		}
-		tg, e = app.NewTelegram(tgConfig, svc, nil)
+		tg, e = app.NewTelegram(tgConfig, svc.Subscriptions, svc.Notifications, nil)
 		if e != nil {
 			return e
 		}
 	}
 	workers := river.NewWorkers()
-	river.AddWorker(workers, &vpn.ProvisionWorker{Service: svc.VPN()})
-	river.AddWorker(workers, &vpn.AccessWorker{Service: svc.VPN()})
-	river.AddWorker(workers, &payments.PurchaseWorker{Service: svc.Payments()})
-	river.AddWorker(workers, &vpn.MonthlyResetWorker{Service: svc.VPN()})
+	river.AddWorker(workers, &vpn.ProvisionWorker{Service: svc.VPN})
+	river.AddWorker(workers, &vpn.AccessWorker{Service: svc.VPN})
+	river.AddWorker(workers, &payments.PurchaseWorker{Service: svc.Payments})
+	river.AddWorker(workers, &vpn.MonthlyResetWorker{Service: svc.VPN})
 	queues := map[string]river.QueueConfig{"provision": {MaxWorkers: 2}}
 	if os.Args[1] == "serve" {
-		river.AddWorker(workers, &notifications.MailWorker{Service: svc.MailDelivery()})
+		river.AddWorker(workers, &notifications.MailWorker{Service: svc.MailDelivery})
 		queues[river.QueueDefault] = river.QueueConfig{MaxWorkers: 2}
 	}
 	worker, err := river.NewClient(riverpgxv5.New(pool), &river.Config{Workers: workers, Queues: queues, RescueStuckJobsAfter: vpn.ProvisionRescueAfter, Logger: slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))})
@@ -120,12 +118,12 @@ func run() error {
 		return nil
 	}
 	monthlyResult := make(chan error, 1)
-	go func() { monthlyResult <- svc.VPN().RunMonthlyResetScheduler(ctx) }()
+	go func() { monthlyResult <- svc.VPN.RunMonthlyResetScheduler(ctx) }()
 	address := os.Getenv("LISTEN_ADDRESS")
 	if address == "" {
 		address = "127.0.0.1:8080"
 	}
-	server := &http.Server{Addr: address, Handler: httpapi.New(svc, cfg), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
+	server := &http.Server{Addr: address, Handler: httpapi.New(svc, pool, cfg.HTTP), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 	result := make(chan error, 1)
 	go func() { result <- server.ListenAndServe() }()
 	return app.Serve(ctx, server, result, monthlyResult, tg)
@@ -147,7 +145,7 @@ func runOperatorCommand(action, flag, path string) error {
 	if err != nil || id == uuid.Nil {
 		return errors.New("invalid operator account file")
 	}
-	databaseURL, err := platform.SecretFile("DATABASE_URL")
+	databaseURL, err := app.SecretFile("DATABASE_URL")
 	if err != nil {
 		return err
 	}
@@ -161,7 +159,7 @@ func runOperatorCommand(action, flag, path string) error {
 	if err = pool.Ping(ctx); err != nil {
 		return errors.New("database unavailable")
 	}
-	if err = app.NewService(pool, nil, nil, platform.Config{}).ChangeOperatorRole(ctx, id, action == "grant"); err != nil {
+	if err = app.NewModules(pool, nil, nil, &app.Config{}).Accounts.ChangeOperatorRole(ctx, id, action == "grant"); err != nil {
 		return errors.New("operator role change failed")
 	}
 	return nil

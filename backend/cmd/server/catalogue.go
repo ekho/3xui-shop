@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"example.com/cabinet/backend/internal/app"
-	"example.com/cabinet/backend/internal/platform"
+	"example.com/cabinet/backend/internal/modules/catalogue"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"io"
 	"os"
@@ -14,8 +14,8 @@ import (
 	"unicode/utf8"
 )
 
-func decodeLegacyCatalogue(reader io.Reader) (platform.LegacyCataloguePackage, error) {
-	var pkg platform.LegacyCataloguePackage
+func decodeLegacyCatalogue(reader io.Reader) (catalogue.LegacyCataloguePackage, error) {
+	var pkg catalogue.LegacyCataloguePackage
 	const limit = 32 << 20
 	data, err := io.ReadAll(io.LimitReader(reader, limit+1))
 	if err != nil || len(data) > limit || !utf8.Valid(data) {
@@ -33,7 +33,7 @@ func runCatalogueCommand(args []string) error {
 	if (len(args) != 1 || args[0] != "seed-unlimited") && (len(args) != 2 || args[0] != "import-legacy" || (args[1] != "--dry-run" && args[1] != "--apply")) {
 		return errors.New("invalid catalogue command")
 	}
-	var pkg platform.LegacyCataloguePackage
+	var pkg catalogue.LegacyCataloguePackage
 	if args[0] == "import-legacy" {
 		var err error
 		pkg, err = decodeLegacyCatalogue(os.Stdin)
@@ -41,7 +41,7 @@ func runCatalogueCommand(args []string) error {
 			return importError("IMPORT_INVALID_PACKAGE")
 		}
 	}
-	url, err := platform.SecretFile("DATABASE_URL")
+	url, err := app.SecretFile("DATABASE_URL")
 	if err != nil {
 		return importError("IMPORT_DATABASE_UNAVAILABLE")
 	}
@@ -52,15 +52,15 @@ func runCatalogueCommand(args []string) error {
 		return importError("IMPORT_DATABASE_UNAVAILABLE")
 	}
 	defer pool.Close()
-	svc := app.NewService(pool, nil, nil, platform.Config{})
+	svc := app.NewModules(pool, nil, nil, &app.Config{})
 	if args[0] == "seed-unlimited" {
-		plan, created, e := svc.SeedUnlimitedCatalogue(ctx)
+		plan, created, e := svc.Catalogue.SeedUnlimitedCatalogue(ctx)
 		if e != nil {
 			return catalogueCLIError(e)
 		}
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{"plan_id": plan.PlanId, "revision": plan.Revision, "created": created})
 	}
-	result, e := svc.ImportLegacyCatalogue(ctx, pkg, args[1] == "--dry-run")
+	result, e := svc.Catalogue.ImportLegacyCatalogue(ctx, pkg, args[1] == "--dry-run")
 	if e != nil {
 		return catalogueCLIError(e)
 	}
@@ -68,7 +68,7 @@ func runCatalogueCommand(args []string) error {
 }
 
 func catalogueCLIError(err error) error {
-	var domain *platform.Error
+	var domain *catalogue.Error
 	if errors.As(err, &domain) {
 		return importError(domain.Code)
 	}

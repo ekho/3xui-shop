@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"example.com/cabinet/backend/internal/app"
-	"example.com/cabinet/backend/internal/platform"
+	"example.com/cabinet/backend/internal/modules/accounts"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"io"
 	"os"
@@ -14,8 +14,8 @@ import (
 	"unicode/utf8"
 )
 
-func decodeLegacyApprovalPackage(reader io.Reader) (platform.LegacyApprovalPackage, error) {
-	var out platform.LegacyApprovalPackage
+func decodeLegacyApprovalPackage(reader io.Reader) (accounts.LegacyApprovalPackage, error) {
+	var out accounts.LegacyApprovalPackage
 	const limit = 32 << 20
 	data, err := io.ReadAll(io.LimitReader(reader, limit+1))
 	if err != nil || len(data) > limit || !utf8.Valid(data) {
@@ -37,7 +37,7 @@ func runLegacyApprovalImport(flag string) error {
 	if err != nil {
 		return importError("IMPORT_INVALID_PACKAGE")
 	}
-	databaseURL, err := platform.SecretFile("DATABASE_URL")
+	databaseURL, err := app.SecretFile("DATABASE_URL")
 	if err != nil {
 		return importError("IMPORT_DATABASE_UNAVAILABLE")
 	}
@@ -48,9 +48,9 @@ func runLegacyApprovalImport(flag string) error {
 		return importError("IMPORT_DATABASE_UNAVAILABLE")
 	}
 	defer pool.Close()
-	result, err := app.NewService(pool, nil, nil, platform.Config{}).ImportLegacyApprovals(ctx, packageData, flag == "--dry-run")
+	result, err := app.NewModules(pool, nil, nil, &app.Config{}).Accounts.ImportLegacyApprovals(ctx, packageData, flag == "--dry-run")
 	if err != nil {
-		var domain *platform.Error
+		var domain *accounts.Error
 		if errors.As(err, &domain) {
 			return importError(domain.Code)
 		}

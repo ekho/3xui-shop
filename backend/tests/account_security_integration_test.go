@@ -71,9 +71,9 @@ func TestAccountSecurityResetFlow(t *testing.T) {
 func (f *fixture) ageMailBudget(t *testing.T, email string) {
 	t.Helper()
 	ctx := context.Background()
-	h := hmac.New(sha256.New, f.cfg.CodeKey)
+	h := hmac.New(sha256.New, f.cfg.Accounts.CodeKey)
 	h.Write([]byte(email))
-	key := fmt.Sprintf("%s:mail:%x", f.cfg.RateNamespace, h.Sum(nil))
+	key := fmt.Sprintf("%s:mail:%x", f.cfg.Accounts.RateNamespace, h.Sum(nil))
 	scores, err := f.env.Redis.ZRangeWithScores(ctx, key, 0, -1).Result()
 	if err != nil {
 		t.Fatal("own mail budget read")

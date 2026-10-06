@@ -3,7 +3,6 @@ package httpapi
 import (
 	"bytes"
 	"errors"
-	"example.com/cabinet/backend/internal/platform"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
@@ -28,7 +27,7 @@ func (a *API) supportActor(c *echo.Context, write, operator bool) (uuid.UUID, uu
 	}
 	// Entitlement is checked before reading a request body, then again under
 	// account/role locks in every write transaction.
-	if err = a.svc.RequireSupportOperator(c.Request().Context(), actor); err != nil {
+	if err = a.requireSupportOperator(c.Request().Context(), actor); err != nil {
 		return uuid.Nil, uuid.Nil, err
 	}
 	target, err := resourceID(c)
@@ -54,14 +53,14 @@ func readSupportMessage(a *API, c *echo.Context) (string, string, []byte, error)
 		return "", "", nil, invalid()
 	}
 	if c.Request().ContentLength > supportRequestMax {
-		return "", "", nil, &platform.Error{Status: 413, Code: "INVALID_INPUT"}
+		return "", "", nil, &apiError{Status: 413, Code: "INVALID_INPUT"}
 	}
 	raw, err := io.ReadAll(io.LimitReader(c.Request().Body, supportRequestMax+1))
 	if err != nil {
 		return "", "", nil, invalid()
 	}
 	if len(raw) > supportRequestMax {
-		return "", "", nil, &platform.Error{Status: 413, Code: "INVALID_INPUT"}
+		return "", "", nil, &apiError{Status: 413, Code: "INVALID_INPUT"}
 	}
 	reader := multipart.NewReader(bytes.NewReader(raw), params["boundary"])
 	var text, name string
@@ -101,7 +100,7 @@ func readSupportMessage(a *API, c *echo.Context) (string, string, []byte, error)
 				return "", "", nil, invalid()
 			}
 			if len(file) > 10*1024*1024 {
-				return "", "", nil, &platform.Error{Status: 413, Code: "INVALID_INPUT"}
+				return "", "", nil, &apiError{Status: 413, Code: "INVALID_INPUT"}
 			}
 		default:
 			return "", "", nil, invalid()
@@ -118,13 +117,13 @@ func (a *API) supportGet(c *echo.Context, operator bool) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.Support(c.Request().Context(), actor, target, operator)
+	out, err := a.support(c.Request().Context(), actor, target, operator)
 	if err != nil {
 		return err
 	}
 	return c.JSON(200, out)
 }
-func (a *API) supportHistory(c *echo.Context, operator bool) error {
+func (a *API) supportHistoryHTTP(c *echo.Context, operator bool) error {
 	actor, target, err := a.supportActor(c, true, operator)
 	if err != nil {
 		return err
@@ -133,7 +132,7 @@ func (a *API) supportHistory(c *echo.Context, operator bool) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.SupportHistory(c.Request().Context(), actor, target, operator, in.BeforeSequence)
+	out, err := a.supportHistory(c.Request().Context(), actor, target, operator, in.BeforeSequence)
 	if err != nil {
 		return err
 	}
@@ -152,7 +151,7 @@ func (a *API) supportCreate(c *echo.Context, operator bool) error {
 	if err != nil {
 		return err
 	}
-	out, created, err := a.svc.CreateSupportMessage(c.Request().Context(), actor, target, operator, key, text, name, file)
+	out, created, err := a.createSupportMessage(c.Request().Context(), actor, target, operator, key, text, name, file)
 	if err != nil {
 		return err
 	}
@@ -170,7 +169,7 @@ func (a *API) supportRead(c *echo.Context, operator bool) error {
 	if err != nil {
 		return err
 	}
-	if err = a.svc.AcknowledgeSupport(c.Request().Context(), actor, target, operator, in.Sequence); err != nil {
+	if err = a.acknowledgeSupport(c.Request().Context(), actor, target, operator, in.Sequence); err != nil {
 		return err
 	}
 	return c.NoContent(204)
@@ -184,18 +183,18 @@ func (a *API) supportState(c *echo.Context, operator bool) error {
 	if err != nil {
 		return err
 	}
-	if err = a.svc.SetSupportState(c.Request().Context(), actor, target, operator, string(in.Status)); err != nil {
+	if err = a.setSupportState(c.Request().Context(), actor, target, operator, string(in.Status)); err != nil {
 		return err
 	}
 	return c.NoContent(204)
 }
 func (a *API) GetSupport(c *echo.Context) error                   { return a.supportGet(c, false) }
-func (a *API) GetSupportHistory(c *echo.Context) error            { return a.supportHistory(c, false) }
+func (a *API) GetSupportHistory(c *echo.Context) error            { return a.supportHistoryHTTP(c, false) }
 func (a *API) CreateSupportMessage(c *echo.Context) error         { return a.supportCreate(c, false) }
 func (a *API) AcknowledgeSupport(c *echo.Context) error           { return a.supportRead(c, false) }
 func (a *API) SetSupportState(c *echo.Context) error              { return a.supportState(c, false) }
 func (a *API) GetOperatorSupport(c *echo.Context) error           { return a.supportGet(c, true) }
-func (a *API) GetOperatorSupportHistory(c *echo.Context) error    { return a.supportHistory(c, true) }
+func (a *API) GetOperatorSupportHistory(c *echo.Context) error    { return a.supportHistoryHTTP(c, true) }
 func (a *API) CreateOperatorSupportMessage(c *echo.Context) error { return a.supportCreate(c, true) }
 func (a *API) AcknowledgeOperatorSupport(c *echo.Context) error   { return a.supportRead(c, true) }
 func (a *API) SetOperatorSupportState(c *echo.Context) error      { return a.supportState(c, true) }
@@ -208,7 +207,7 @@ func (a *API) SetOperatorSupportBan(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if err = a.svc.SetSupportBan(c.Request().Context(), actor, target, in.Banned, in.Reason); err != nil {
+	if err = a.setSupportBan(c.Request().Context(), actor, target, in.Banned, in.Reason); err != nil {
 		return err
 	}
 	return c.NoContent(204)
@@ -222,7 +221,7 @@ func (a *API) GetSupportAttachment(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	name, body, err := a.svc.SupportAttachment(c.Request().Context(), account.Account.AccountId, id)
+	name, body, err := a.supportAttachment(c.Request().Context(), account.Account.AccountId, id)
 	if err != nil {
 		return err
 	}

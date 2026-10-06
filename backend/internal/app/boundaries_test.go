@@ -104,8 +104,8 @@ func checkSQLBoundary(t *testing.T, owner string, ownsSQL func(string) bool) {
 	}
 }
 func TestModuleBoundaries(t *testing.T) {
-	// Only the existing app bridge and legacy HTTP consumers may import
-	// platform/store/wire during the remaining owner extractions.
+	// Modules use public peer contracts. Application composition and HTTP
+	// projections remain outside their dependency graph.
 	cmd := exec.Command("go", "list", "-json", "./internal/modules/...")
 	cmd.Dir = "../.."
 	out, err := cmd.Output()
@@ -152,6 +152,96 @@ func TestModuleBoundaries(t *testing.T) {
 	for _, dependency := range []string{"context", moduleRoot + "telegram/internal/botapi", moduleRoot + "subscriptions"} {
 		if forbiddenImport(moduleRoot+"telegram", dependency) {
 			t.Fatal("public/owned dependency rejected")
+		}
+	}
+}
+
+// The executable must use the actual owners, never the transitional global
+// service. Composition may configure modules and adapt the Telegram channel.
+func compositionViolations(source string) []string {
+	file, err := parser.ParseFile(token.NewFileSet(), "composition.go", source, 0)
+	if err != nil {
+		return []string{err.Error()}
+	}
+	var violations []string
+	for _, imported := range file.Imports {
+		path, _ := strconv.Unquote(imported.Path.Value)
+		for _, shared := range []string{"platform", "store", "wire"} {
+			if path == "example.com/cabinet/backend/internal/"+shared {
+				violations = append(violations, "shared import "+path)
+			}
+		}
+	}
+	for _, declaration := range file.Decls {
+		method, ok := declaration.(*ast.FuncDecl)
+		if !ok || method.Recv == nil {
+			continue
+		}
+		receiver := method.Recv.List[0].Type
+		if pointer, ok := receiver.(*ast.StarExpr); ok {
+			receiver = pointer.X
+		}
+		name, ok := receiver.(*ast.Ident)
+		if !ok || (name.Name != "TrialBridge" && !(name.Name == "Config" && method.Name.Name == "Validate")) {
+			violations = append(violations, "domain method in composition: "+method.Name.Name)
+		}
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		method, ok := call.Fun.(*ast.SelectorExpr)
+		if ok {
+			switch method.Sel.Name {
+			case "Query", "QueryRow", "Exec", "Begin", "BeginTx":
+				violations = append(violations, "database operation in composition: "+method.Sel.Name)
+			}
+		}
+		return true
+	})
+	return violations
+}
+
+func TestRuntimeCompositionBoundary(t *testing.T) {
+	for _, source := range []string{
+		`package app; import "example.com/cabinet/backend/internal/wire"`,
+		`package app; type Modules struct{}; func (m *Modules) Purchase() {}`,
+		`package app; type RenamedService struct{}; func (s *RenamedService) Register() {}`,
+		`package app; func read() { pool.QueryRow(nil, "SELECT id FROM accounts") }`,
+	} {
+		if len(compositionViolations(source)) == 0 {
+			t.Fatal("negative composition fixture accepted")
+		}
+	}
+	if got := compositionViolations(`package app; type Config struct{}; func (c Config) Validate() {}; type TrialBridge struct{}; func (b *TrialBridge) Decide() {}`); len(got) != 0 {
+		t.Fatal("composition/config/channel rejected", got)
+	}
+	command := exec.Command("go", "list", "-deps", "./cmd/server")
+	command.Dir = "../.."
+	dependencies, err := command.Output()
+	if err != nil {
+		t.Fatal("runtime dependency inventory failed", err)
+	}
+	for _, dependency := range strings.Fields(string(dependencies)) {
+		if dependency == "example.com/cabinet/backend/internal/platform" || dependency == "example.com/cabinet/backend/internal/store" {
+			t.Errorf("transitional dependency in executable: %s", dependency)
+		}
+	}
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range files {
+		if strings.HasSuffix(path, "_test.go") {
+			continue
+		}
+		source, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, violation := range compositionViolations(string(source)) {
+			t.Errorf("%s: %s", path, violation)
 		}
 	}
 }
@@ -286,4 +376,21 @@ func TestAuditReportsSQLBoundary(t *testing.T) {
 		t.Fatal("foreign owner rejected")
 	}
 	checkSQLBoundary(t, "audit_reports", ownsSQL)
+}
+
+func TestSharedFacadeRemoved(t *testing.T) {
+	for _, path := range []string{"../platform", "../store", "../../db/queries"} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("transitional directory remains: %s", path)
+		}
+	}
+	config, err := os.ReadFile("../../sqlc.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, declaration := range []string{"queries: db/queries", "out: internal/store"} {
+		if strings.Contains(string(config), declaration) {
+			t.Errorf("shared generation remains: %s", declaration)
+		}
+	}
 }

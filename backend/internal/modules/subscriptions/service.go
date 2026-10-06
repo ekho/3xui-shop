@@ -85,3 +85,9 @@ func stringValue(v *string) string {
 	}
 	return *v
 }
+
+// TrialServer exposes the existing server presentation without credentials or I/O.
+func (s *Service) TrialServer() (panelID string, enabled bool) {
+	c := s.config()
+	return c.PanelID, c.TrialEnabled
+}

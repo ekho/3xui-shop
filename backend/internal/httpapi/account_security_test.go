@@ -20,12 +20,12 @@ func TestAccountSecurityHTTP(t *testing.T) {
 		path, body, origin string
 		want               int
 	}{
-		{"/api/v1/auth/password-reset", `{"email":"unknown@example.test","locale":"en"}`, cfg.CabinetOrigin, 202},
-		{"/api/v1/auth/password-reset", `{"email":"other@example.test","locale":"en","extra":true}`, cfg.CabinetOrigin, 400},
+		{"/api/v1/auth/password-reset", `{"email":"unknown@example.test","locale":"en"}`, cfg.HTTP.CabinetOrigin, 202},
+		{"/api/v1/auth/password-reset", `{"email":"other@example.test","locale":"en","extra":true}`, cfg.HTTP.CabinetOrigin, 400},
 		{"/api/v1/auth/password-reset", `{"email":"other@example.test","locale":"en"}`, "https://foreign.example.test", 403},
-		{"/api/v1/auth/password-reset?unknown=1", `{"email":"other@example.test","locale":"en"}`, cfg.CabinetOrigin, 400},
-		{"/api/v1/auth/password-reset", strings.Repeat("x", 16385), cfg.CabinetOrigin, 400},
-		{"/api/v1/auth/password-reset/complete", `{"token":"` + strings.Repeat("x", 43) + `","new_password":"my long safe password ✨"}`, cfg.CabinetOrigin, 400},
+		{"/api/v1/auth/password-reset?unknown=1", `{"email":"other@example.test","locale":"en"}`, cfg.HTTP.CabinetOrigin, 400},
+		{"/api/v1/auth/password-reset", strings.Repeat("x", 16385), cfg.HTTP.CabinetOrigin, 400},
+		{"/api/v1/auth/password-reset/complete", `{"token":"` + strings.Repeat("x", 43) + `","new_password":"my long safe password ✨"}`, cfg.HTTP.CabinetOrigin, 400},
 	} {
 		rr := request(h, "POST", tc.path, tc.body, tc.origin)
 		if rr.Code != tc.want {
@@ -50,7 +50,7 @@ func TestAccountSecurityHTTP(t *testing.T) {
 	}
 	// Cookie B must never be consumed, rotated or replaced by a reset proof belonging to A.
 	verifiedHTTP(t, h, env, cfg)
-	rr := request(h, "POST", "/api/v1/auth/login", `{"email":"login@example.test","password":"my long safe password ✨"}`, cfg.CabinetOrigin)
+	rr := request(h, "POST", "/api/v1/auth/login", `{"email":"login@example.test","password":"my long safe password ✨"}`, cfg.HTTP.CabinetOrigin)
 	if rr.Code != 200 {
 		t.Fatal("owner B login")
 	}
@@ -69,7 +69,7 @@ func TestAccountSecurityHTTP(t *testing.T) {
 		}
 		req := httptest.NewRequest(method, path, strings.NewReader(string(encoded)))
 		req.AddCookie(cookie)
-		req.Header.Set("Origin", cfg.CabinetOrigin)
+		req.Header.Set("Origin", cfg.HTTP.CabinetOrigin)
 		req.Header.Set("Content-Type", "application/json")
 		out := httptest.NewRecorder()
 		h.ServeHTTP(out, req)
@@ -81,7 +81,7 @@ func TestAccountSecurityHTTP(t *testing.T) {
 	}
 	var accepted wire.PasswordResetAccepted
 	json.Unmarshal(rr.Body.Bytes(), &accepted)
-	_, token, _ := testkit.CredentialMailSecrets(t, env.Pool, cfg.MailKey, accepted.ChallengeId)
+	_, token, _ := testkit.CredentialMailSecrets(t, env.Pool, cfg.Mail.MailKey, accepted.ChallengeId)
 	rr = call(http.MethodPost, "/api/v1/auth/password-reset/complete", map[string]string{"token": token, "new_password": "a different safe password ✨"})
 	if rr.Code != 204 || len(rr.Result().Cookies()) != 0 {
 		t.Fatal("reset A changed browser cookie")
@@ -97,7 +97,7 @@ func TestAccountSecurityHTTP(t *testing.T) {
 func TestRestrictedLogout(t *testing.T) {
 	h, e, cfg := httpFixture(t)
 	verifiedHTTP(t, h, e, cfg)
-	rr := request(h, "POST", "/api/v1/auth/login", `{"email":"login@example.test","password":"my long safe password ✨"}`, cfg.CabinetOrigin)
+	rr := request(h, "POST", "/api/v1/auth/login", `{"email":"login@example.test","password":"my long safe password ✨"}`, cfg.HTTP.CabinetOrigin)
 	cookie := rr.Result().Cookies()[0]
 	if _, err := e.Pool.Exec(context.Background(), `UPDATE accounts SET restricted=true`); err != nil {
 		t.Fatal(err)
@@ -127,13 +127,13 @@ func TestRestrictedLogout(t *testing.T) {
 	if rr = call("GET", "/api/v1/me/security", "", ""); rr.Code != 403 {
 		t.Fatal("restricted business access")
 	}
-	for _, pair := range [][2]string{{cfg.CabinetOrigin, ""}, {"https://foreign.example.test", out.CsrfToken}} {
+	for _, pair := range [][2]string{{cfg.HTTP.CabinetOrigin, ""}, {"https://foreign.example.test", out.CsrfToken}} {
 		if rr = call("POST", "/api/v1/auth/logout", pair[0], pair[1]); rr.Code != 403 {
 			t.Fatal("logout CSRF/Origin bypass", rr.Code)
 		}
 	}
 	e.Redis.Close()
-	rr = call("POST", "/api/v1/auth/logout", cfg.CabinetOrigin, out.CsrfToken)
+	rr = call("POST", "/api/v1/auth/logout", cfg.HTTP.CabinetOrigin, out.CsrfToken)
 	if rr.Code != 204 || rr.Result().Cookies()[0].MaxAge != -1 {
 		t.Fatal("restricted logout", rr.Code)
 	}
@@ -147,7 +147,7 @@ func TestPasswordChangeHTTP(t *testing.T) {
 		t.Run(path, func(t *testing.T) {
 			h, e, cfg := httpFixture(t)
 			verifiedHTTP(t, h, e, cfg)
-			rr := request(h, "POST", "/api/v1/auth/login", `{"email":"login@example.test","password":"my long safe password ✨"}`, cfg.CabinetOrigin)
+			rr := request(h, "POST", "/api/v1/auth/login", `{"email":"login@example.test","password":"my long safe password ✨"}`, cfg.HTTP.CabinetOrigin)
 			cookie := rr.Result().Cookies()[0]
 			var login wire.LoginResult
 			json.Unmarshal(rr.Body.Bytes(), &login)
@@ -169,18 +169,18 @@ func TestPasswordChangeHTTP(t *testing.T) {
 				h.ServeHTTP(out, req)
 				return out
 			}
-			for _, pair := range [][2]string{{"", cfg.CabinetOrigin}, {login.CsrfToken, "https://foreign.example.test"}} {
+			for _, pair := range [][2]string{{"", cfg.HTTP.CabinetOrigin}, {login.CsrfToken, "https://foreign.example.test"}} {
 				if rr = call(cookie, "POST", path, body, pair[0], pair[1]); rr.Code != 403 {
 					t.Fatal("CSRF/Origin", rr.Code)
 				}
 			}
-			if rr = call(nil, "POST", path, body, login.CsrfToken, cfg.CabinetOrigin); rr.Code != 401 {
+			if rr = call(nil, "POST", path, body, login.CsrfToken, cfg.HTTP.CabinetOrigin); rr.Code != 401 {
 				t.Fatal("missing session")
 			}
-			if rr = call(cookie, "POST", path, body[:len(body)-1]+`,"account_id":"`+uuid.NewString()+`"}`, login.CsrfToken, cfg.CabinetOrigin); rr.Code != 400 {
+			if rr = call(cookie, "POST", path, body[:len(body)-1]+`,"account_id":"`+uuid.NewString()+`"}`, login.CsrfToken, cfg.HTTP.CabinetOrigin); rr.Code != 400 {
 				t.Fatal("foreign ID accepted")
 			}
-			rr = call(cookie, "POST", path, body, login.CsrfToken, cfg.CabinetOrigin)
+			rr = call(cookie, "POST", path, body, login.CsrfToken, cfg.HTTP.CabinetOrigin)
 			if rr.Code != 204 || len(rr.Result().Cookies()) != 1 {
 				t.Fatal("rotation", rr.Code)
 			}
@@ -209,11 +209,11 @@ func TestEmailChangeHTTP(t *testing.T) {
 	if _, err := e.Pool.Exec(ctx, `INSERT INTO accounts(id,email_key,locale,password_hash,verified_at,vpn_id,sub_id,panel_key,terms_version,privacy_version) SELECT $1,'email-owner@example.test',locale,password_hash,verified_at,$2,'ef0123456789abcd',$3,terms_version,privacy_version FROM accounts WHERE email_key='login@example.test'`, owner, uuid.New(), "acct_"+strings.ReplaceAll(owner.String(), "-", "")); err != nil {
 		t.Fatal("owner fixture")
 	}
-	rr := request(h, "POST", "/api/v1/auth/login", `{"email":"email-owner@example.test","password":"my long safe password ✨"}`, cfg.CabinetOrigin)
+	rr := request(h, "POST", "/api/v1/auth/login", `{"email":"email-owner@example.test","password":"my long safe password ✨"}`, cfg.HTTP.CabinetOrigin)
 	cookie := rr.Result().Cookies()[0]
 	var login wire.LoginResult
 	json.Unmarshal(rr.Body.Bytes(), &login)
-	rr = request(h, "POST", "/api/v1/auth/login", `{"email":"login@example.test","password":"my long safe password ✨"}`, cfg.CabinetOrigin)
+	rr = request(h, "POST", "/api/v1/auth/login", `{"email":"login@example.test","password":"my long safe password ✨"}`, cfg.HTTP.CabinetOrigin)
 	foreign := rr.Result().Cookies()[0]
 	var other wire.LoginResult
 	json.Unmarshal(rr.Body.Bytes(), &other)
@@ -235,19 +235,19 @@ func TestEmailChangeHTTP(t *testing.T) {
 		cookie                   *http.Cookie
 		want                     int
 	}{
-		{"/api/v1/me/email-change", body, "", cfg.CabinetOrigin, cookie, 403},
+		{"/api/v1/me/email-change", body, "", cfg.HTTP.CabinetOrigin, cookie, 403},
 		{"/api/v1/me/email-change", body, login.CsrfToken, "https://foreign.example.test", cookie, 403},
-		{"/api/v1/me/email-change", body, login.CsrfToken, cfg.CabinetOrigin, nil, 401},
-		{"/api/v1/me/email-change", body[:len(body)-1] + `,"account_id":"` + owner.String() + `"}`, login.CsrfToken, cfg.CabinetOrigin, cookie, 400},
-		{"/api/v1/me/email-change/cancel", "{}", login.CsrfToken, cfg.CabinetOrigin, cookie, 400},
-		{"/api/v1/auth/email-change/confirm", `{"token":"` + strings.Repeat("x", 43) + `","challenge_id":"` + uuid.NewString() + `","code":"12345678"}`, "", cfg.CabinetOrigin, nil, 400},
+		{"/api/v1/me/email-change", body, login.CsrfToken, cfg.HTTP.CabinetOrigin, nil, 401},
+		{"/api/v1/me/email-change", body[:len(body)-1] + `,"account_id":"` + owner.String() + `"}`, login.CsrfToken, cfg.HTTP.CabinetOrigin, cookie, 400},
+		{"/api/v1/me/email-change/cancel", "{}", login.CsrfToken, cfg.HTTP.CabinetOrigin, cookie, 400},
+		{"/api/v1/auth/email-change/confirm", `{"token":"` + strings.Repeat("x", 43) + `","challenge_id":"` + uuid.NewString() + `","code":"12345678"}`, "", cfg.HTTP.CabinetOrigin, nil, 400},
 	} {
 		rr = call("POST", tc.path, tc.body, tc.csrf, tc.origin, tc.cookie)
 		if rr.Code != tc.want {
 			t.Fatal("email boundary", tc.path, rr.Code)
 		}
 	}
-	rr = call("POST", "/api/v1/me/email-change", body, login.CsrfToken, cfg.CabinetOrigin, cookie)
+	rr = call("POST", "/api/v1/me/email-change", body, login.CsrfToken, cfg.HTTP.CabinetOrigin, cookie)
 	if rr.Code != 202 {
 		t.Fatal("email request", rr.Code)
 	}
@@ -268,9 +268,9 @@ func TestEmailChangeHTTP(t *testing.T) {
 		t.Fatal("pair size")
 	}
 	for i, proof := range proofs {
-		_, token, _ := testkit.CredentialMailSecrets(t, e.Pool, cfg.MailKey, proof)
+		_, token, _ := testkit.CredentialMailSecrets(t, e.Pool, cfg.Mail.MailKey, proof)
 		encoded, _ := json.Marshal(map[string]string{"token": token})
-		rr = call("POST", "/api/v1/auth/email-change/confirm", string(encoded), "", cfg.CabinetOrigin, foreign)
+		rr = call("POST", "/api/v1/auth/email-change/confirm", string(encoded), "", cfg.HTTP.CabinetOrigin, foreign)
 		var result wire.EmailChangeResult
 		json.Unmarshal(rr.Body.Bytes(), &result)
 		if rr.Code != 200 || result.Completed != (i == 1) || len(rr.Result().Cookies()) != 0 {
