@@ -120,3 +120,48 @@ provider checkout/proof, затем возобновляет исходный ba
 
 `python3 deploy/purchase/yookassa-stub.py --self-check` проверяет саму заглушку
 без Docker и внешней сети. Заглушка не запускает legacy Telegram-бота.
+
+## Cryptomus
+
+Добавьте `-f deploy/purchase/compose.cryptomus.yml`. При запуске задайте
+`SHOP_PAYMENT_CRYPTOMUS_ENABLED=true`, `CRYPTOMUS_MERCHANT_ID` (UUID магазина)
+и абсолютный путь `CRYPTOMUS_API_KEY_FILE`. По умолчанию метод выключен;
+inline `CRYPTOMUS_API_KEY` запрещён. Сохраните парные credentials после
+выключения новых продаж для сверки старых invoice. Смена merchant требует
+сначала завершить или разобрать его заказы.
+
+Публичный proxy передаёт точный `POST /webhooks/cryptomus` и достоверный адрес
+отправителя. Backend принимает только официальный IP91.227.144.54; произвольный
+X-Forwarded-For не считается адресом отправителя. Локального обхода проверки IP
+нет. Проверяется подпись, затем авторизованный `/v1/payment/info`; webhook и
+возврат браузера сами не подтверждают деньги. Worker сверяет invoice и без
+уведомления. Не открывайте `/internal/*` и не настраивайте другой API hostname.
+
+Cryptomus выбирает цену в USD. Invoice principal хранится в USD, суммы фактической
+криптооплаты — отдельными фактами в payer currency. USD-net неизвестен/NULL.
+`paid_over` даёт обычный срок доступа без дополнительного кредита. Недостаточная,
+поздняя, AML/refund или противоречивая оплата требует разбора. Повтор создания
+сохраняет order_id и bytes; после expiry неизвестного результата новый POST
+не отправляется. Реальные реквизиты, публичная доставка и кошелёк проверяются
+отдельно до переноса; локальная приёмка их не подтверждает.
+
+Для собственного стенда создайте закрытый `LOCAL_STATE_DIR` с `runtime.json`:
+
+```json
+{"project":"cabinet-c14","postgres_user":"cabinet_c14","base_database":"cabinet_c14","fixture_prefixes":{"purchase":"c14-purchase-"}}
+```
+
+`python3 deploy/purchase/cryptomus-local.py prepare` готовит FILE secrets и TLS/DNS
+только для этого Docker-проекта; `up` собирает текущий Go/web и запускает
+3X-UI3.7.0 и TLS Mailpit. Нужны свободные порты58443,59444–59447,58450 и
+подсеть10.253.14.0/28. Системное доверие сертификатам менять не требуется.
+`check` проверяет new/paid, trial/paid_over, неопределённый500 и перезапуск,
+одинаковые bytes/invoice, один receipt/job/access. Повтор информации проверяется
+повторным запуском существующего River job в собственном fixture; vendor-IP
+webhook через Docker не имитируется. `restore` сохраняет paid-pending с checkout/
+proof, останавливает writers, сверяет восстановленную копию без writers и
+возобновляет только исходный backend. `stop` оставляет volume и private reports.
+
+`python3 deploy/purchase/cryptomus-stub.py --self-check` проверяет signed API,
+unique order_id,500,info и paid/paid_over без Docker и внешней сети. Legacy бот
+и живое VPN-соединение не используются.

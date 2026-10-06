@@ -1,0 +1,13 @@
+# Credentials are retained when new sales are disabled.
+x-payment: &payment
+  environment:
+    SHOP_PAYMENT_CRYPTOMUS_ENABLED: '${SHOP_PAYMENT_CRYPTOMUS_ENABLED:-false}'
+    CRYPTOMUS_MERCHANT_ID: '${CRYPTOMUS_MERCHANT_ID:?required}'
+    CRYPTOMUS_API_KEY_FILE: /run/secrets/cryptomus_api_key
+  secrets: [cryptomus_api_key]
+services:
+  backend: *payment
+  migrate: *payment
+  reconcile: *payment
+secrets:
+  cryptomus_api_key: {file: '${CRYPTOMUS_API_KEY_FILE:?required}'}

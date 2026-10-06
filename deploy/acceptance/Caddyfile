@@ -31,6 +31,9 @@ https://{$CABINET_HOST}:8443 {
  handle /webhooks/yookassa {
   reverse_proxy backend:8080
  }
+ handle /webhooks/cryptomus {
+  reverse_proxy backend:8080
+ }
  handle /healthz {
   reverse_proxy backend:8080
  }
