@@ -1,7 +1,8 @@
-package app
+package httpapi
 
 import (
 	"context"
+	"example.com/cabinet/backend/internal/app"
 	"example.com/cabinet/backend/internal/modules/telegram"
 	"io"
 	"net"
@@ -18,11 +19,11 @@ func (f transportFunc) RoundTrip(r *http.Request) (*http.Response, error) { retu
 func TestNativeLifecycleTelegramFailure(t *testing.T) {
 	for _, code := range []string{"401", "409"} {
 		t.Run(code, func(t *testing.T) {
-			bridge, _, _, _ := bridgeFixture(t)
+			_, modules, _, _ := bridgeFixture(t)
 			h := &http.Client{Transport: transportFunc(func(*http.Request) (*http.Response, error) {
 				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":false,"error_code":` + code + `}`))}, nil
 			})}
-			tg, err := NewTelegram(telegram.Config{Enabled: true, Token: "123456789:abcdefghijklmnopqrstuvwxyz012345678", Operators: []int64{101}}, bridge.svc, h)
+			tg, err := app.NewTelegram(telegram.Config{Enabled: true, Token: "123456789:abcdefghijklmnopqrstuvwxyz012345678", Operators: []int64{101}}, modules.Subscriptions, modules.Notifications, h)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -37,7 +38,7 @@ func TestNativeLifecycleTelegramFailure(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			done := make(chan error, 1)
-			go func() { done <- Serve(ctx, server, httpResult, make(chan error), tg) }()
+			go func() { done <- app.Serve(ctx, server, httpResult, make(chan error), tg) }()
 			deadline := time.Now().Add(2 * time.Second)
 			for !tg.State().Degraded && time.Now().Before(deadline) {
 				time.Sleep(time.Millisecond)
@@ -69,7 +70,7 @@ func TestNativeLifecycleTelegramFailure(t *testing.T) {
 }
 
 func TestNativeLifecycleDrain(t *testing.T) {
-	bridge, _, _, _ := bridgeFixture(t)
+	_, modules, _, _ := bridgeFixture(t)
 	started, stopped := make(chan string, 2), make(chan string, 2)
 	h := &http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
 		if strings.HasSuffix(r.URL.Path, "getWebhookInfo") {
@@ -80,7 +81,7 @@ func TestNativeLifecycleDrain(t *testing.T) {
 		stopped <- "cancelled"
 		return nil, r.Context().Err()
 	})}
-	tg, err := NewTelegram(telegram.Config{Enabled: true, Token: "123456789:abcdefghijklmnopqrstuvwxyz012345678", Operators: []int64{101, 202}}, bridge.svc, h)
+	tg, err := app.NewTelegram(telegram.Config{Enabled: true, Token: "123456789:abcdefghijklmnopqrstuvwxyz012345678", Operators: []int64{101, 202}}, modules.Subscriptions, modules.Notifications, h)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +100,7 @@ func TestNativeLifecycleDrain(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- Serve(ctx, server, httpResult, make(chan error), tg) }()
+	go func() { done <- app.Serve(ctx, server, httpResult, make(chan error), tg) }()
 	for range 2 {
 		select {
 		case <-started:

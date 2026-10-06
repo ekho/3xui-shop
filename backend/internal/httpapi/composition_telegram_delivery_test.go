@@ -1,4 +1,4 @@
-package app
+package httpapi
 
 import (
 	"bytes"
@@ -6,15 +6,14 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"strings"
-	"testing"
-
 	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/telegram"
 	"example.com/cabinet/backend/internal/wire"
+	"fmt"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"strings"
+	"testing"
 )
 
 // Normalizing the old raw union before hashing would reject persisted results.
@@ -56,7 +55,7 @@ func TestTelegramDeliveryPersistedCompatibility(t *testing.T) {
 	for _, state := range []string{"sent", "failed"} {
 		t.Run(state, func(t *testing.T) {
 			_, svc, e, _ := bridgeFixture(t)
-			jobs, err := svc.Notifications().ClaimTelegramJobs(ctx, 1)
+			jobs, err := svc.Notifications.ClaimTelegramJobs(ctx, 1)
 			if err != nil || len(jobs) != 1 {
 				t.Fatal("owned claim", err)
 			}
@@ -83,10 +82,10 @@ func TestTelegramDeliveryPersistedCompatibility(t *testing.T) {
 			if err = e.Pool.QueryRow(ctx, `SELECT to_jsonb(d)::text FROM telegram_deliveries d WHERE id=$1`, j.JobID).Scan(&before); err != nil {
 				t.Fatal(err)
 			}
-			if err = svc.Notifications().CompleteTelegramJob(ctx, j.JobID, j.LeaseToken, raw); err != nil {
+			if err = svc.Notifications.CompleteTelegramJob(ctx, j.JobID, j.LeaseToken, raw); err != nil {
 				t.Fatal("old raw result replay", err)
 			}
-			if err = svc.CompleteTelegramJob(ctx, j.JobID, wire.TelegramResultInput{LeaseToken: j.LeaseToken, Result: legacy}); err != nil {
+			if err = svc.completeTelegramJob(ctx, j.JobID, wire.TelegramResultInput{LeaseToken: j.LeaseToken, Result: legacy}); err != nil {
 				t.Fatal("HTTP facade legacy replay", err)
 			}
 			if err = e.Pool.QueryRow(ctx, `SELECT to_jsonb(d)::text FROM telegram_deliveries d WHERE id=$1`, j.JobID).Scan(&after); err != nil || before != after {
@@ -108,7 +107,7 @@ func TestTelegramDeliveryPersistedCompatibility(t *testing.T) {
 				{json.RawMessage(`{"kind":"unknown"}`), "INVALID_INPUT"},
 				{json.RawMessage("{"), "INVALID_INPUT"},
 			} {
-				err = svc.Notifications().CompleteTelegramJob(ctx, j.JobID, j.LeaseToken, in.raw)
+				err = svc.Notifications.CompleteTelegramJob(ctx, j.JobID, j.LeaseToken, in.raw)
 				if err == nil || err.Error() != in.code {
 					t.Fatal("result validation/replay", err, in.code)
 				}
@@ -117,12 +116,12 @@ func TestTelegramDeliveryPersistedCompatibility(t *testing.T) {
 				id    uuid.UUID
 				token string
 			}{{uuid.Nil, j.LeaseToken}, {j.JobID, "short"}, {j.JobID, strings.Repeat("x", 43)}} {
-				err = svc.Notifications().CompleteTelegramJob(ctx, in.id, in.token, raw)
+				err = svc.Notifications.CompleteTelegramJob(ctx, in.id, in.token, raw)
 				if err == nil || err.Error() != "REQUEST_STATE_CONFLICT" {
 					t.Fatal("lease validation", err)
 				}
 			}
-			if err = svc.Notifications().CompleteTelegramJob(ctx, uuid.Nil, "short", json.RawMessage("{")); err == nil || err.Error() != "REQUEST_STATE_CONFLICT" {
+			if err = svc.Notifications.CompleteTelegramJob(ctx, uuid.Nil, "short", json.RawMessage("{")); err == nil || err.Error() != "REQUEST_STATE_CONFLICT" {
 				t.Fatal("invalid id/token must precede JSON validation", err)
 			}
 			denied := notifications.New(e.Pool, func() []int64 { return nil }, func(int64) bool { return false }, nil)
@@ -136,7 +135,7 @@ func TestTelegramDeliveryPersistedCompatibility(t *testing.T) {
 			if _, err = e.Pool.Exec(ctx, `UPDATE telegram_deliveries SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1`, j.JobID); err != nil {
 				t.Fatal(err)
 			}
-			if err = svc.Notifications().CompleteTelegramJob(ctx, j.JobID, j.LeaseToken, raw); err == nil || err.Error() != "REQUEST_STATE_CONFLICT" {
+			if err = svc.Notifications.CompleteTelegramJob(ctx, j.JobID, j.LeaseToken, raw); err == nil || err.Error() != "REQUEST_STATE_CONFLICT" {
 				t.Fatal("expired completed replay accepted", err)
 			}
 		})
@@ -168,19 +167,19 @@ func TestTelegramDeliveryComposition(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer tx.Rollback(ctx)
-		message, err := svc.Notifications().LatestTelegramMessageTx(ctx, tx, id, d.ChatID)
+		message, err := svc.Notifications.LatestTelegramMessageTx(ctx, tx, id, d.ChatID)
 		if err != nil || message == nil || *message != 99 {
 			t.Fatal("latest sent", err)
 		}
-		state, err := svc.Notifications().LatestTelegramStateTx(ctx, tx, id, d.ChatID)
+		state, err := svc.Notifications.LatestTelegramStateTx(ctx, tx, id, d.ChatID)
 		if err != nil || state != "pending" {
 			t.Fatal("newest decision notification state", err)
 		}
-		message, err = svc.Notifications().LatestTelegramMessageTx(ctx, tx, id, 999)
+		message, err = svc.Notifications.LatestTelegramMessageTx(ctx, tx, id, 999)
 		if err != nil || message != nil {
 			t.Fatal("absent message", err)
 		}
-		state, err = svc.Notifications().LatestTelegramStateTx(ctx, tx, id, 999)
+		state, err = svc.Notifications.LatestTelegramStateTx(ctx, tx, id, 999)
 		if err != nil || state != "pending" {
 			t.Fatal("absent state", err)
 		}
@@ -188,7 +187,7 @@ func TestTelegramDeliveryComposition(t *testing.T) {
 		if err = tx.QueryRow(ctx, `SELECT count(*) FROM telegram_deliveries`).Scan(&before); err != nil {
 			t.Fatal(err)
 		}
-		if err = svc.Notifications().EnqueueTelegramTx(ctx, tx, id, nil, d.ChatID, "approval_card", json.RawMessage(`{"comment":"rollback"}`), e.Clock()); err != nil {
+		if err = svc.Notifications.EnqueueTelegramTx(ctx, tx, id, nil, d.ChatID, "approval_card", json.RawMessage(`{"comment":"rollback"}`), e.Clock()); err != nil {
 			t.Fatal(err)
 		}
 		if err = tx.QueryRow(ctx, `SELECT count(*) FROM telegram_deliveries`).Scan(&during); err != nil || during != before+1 {
@@ -228,7 +227,7 @@ func TestTelegramDeliveryComposition(t *testing.T) {
 			CREATE TRIGGER reject_delivery BEFORE INSERT ON telegram_deliveries FOR EACH ROW EXECUTE FUNCTION reject_delivery()`); err != nil {
 			t.Fatal(err)
 		}
-		_, _, err := svc.CreateTrialRequest(ctx, account, key, wire.TrialRequestInput{})
+		_, _, err := svc.createTrialRequest(ctx, account, key, wire.TrialRequestInput{})
 		if err == nil || err.Error() != "SERVICE_UNAVAILABLE" {
 			t.Fatal("outbox failure accepted", err)
 		}

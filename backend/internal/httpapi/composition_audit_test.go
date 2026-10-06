@@ -1,26 +1,26 @@
-package app
+package httpapi
 
 import (
 	"context"
+	"example.com/cabinet/backend/internal/app"
+	"example.com/cabinet/backend/internal/modules/accounts"
+	"example.com/cabinet/backend/internal/modules/audit_reports"
+	"example.com/cabinet/backend/internal/testkit"
+	"example.com/cabinet/backend/internal/wire"
+	"github.com/google/uuid"
 	"reflect"
 	"strconv"
 	"testing"
 	"time"
-
-	"example.com/cabinet/backend/internal/modules/audit_reports"
-	"example.com/cabinet/backend/internal/platform"
-	"example.com/cabinet/backend/internal/testkit"
-	"example.com/cabinet/backend/internal/wire"
-	"github.com/google/uuid"
 )
 
 // Seed the old schema directly so an owner transfer cannot redefine stored events.
 func TestAuditReportsPersistedCompatibility(t *testing.T) {
 	e := testkit.Open(t)
 	ctx := context.Background()
-	s := NewService(e.Pool, e.Redis, nil, platform.Config{RateNamespace: uuid.NewString()})
+	s := composeForTest(e.Pool, e.Redis, nil, app.Config{Accounts: accounts.Config{RateNamespace: uuid.NewString()}})
 	customer, operator, other := paymentAccount(t, e), paymentAccount(t, e), paymentAccount(t, e)
-	if err := s.ChangeOperatorRole(ctx, operator, true); err != nil {
+	if err := s.Accounts.ChangeOperatorRole(ctx, operator, true); err != nil {
 		t.Fatal(err)
 	}
 	when := e.Clock().UTC().Truncate(time.Microsecond)
@@ -68,7 +68,7 @@ func TestAuditReportsPersistedCompatibility(t *testing.T) {
 			t.Fatal("legacy audit event fixture", err)
 		}
 	}
-	owner := s.AuditReports()
+	owner := s.AuditReports
 	if owner == nil {
 		t.Fatal("app did not compose audit owner")
 	}
@@ -92,11 +92,11 @@ func TestAuditReportsPersistedCompatibility(t *testing.T) {
 	if err != nil || more || isolated == nil || len(isolated) != 0 {
 		t.Fatal("audit target isolation or empty list changed", err)
 	}
-	history, err := s.OperatorClientHistory(ctx, operator, customer, wire.OperatorHistoryInput{Kind: "audit"})
+	history, err := s.operatorClientHistory(ctx, operator, customer, wire.OperatorHistoryInput{Kind: "audit"})
 	if err != nil || !history.HasMore || len(history.AuditEvents) != 50 {
 		t.Fatal("composed history", err)
 	}
-	card, err := s.OperatorClient(ctx, operator, customer)
+	card, err := s.operatorClient(ctx, operator, customer)
 	if err != nil || !card.AuditHasMore || !reflect.DeepEqual(card.AuditEvents, history.AuditEvents) {
 		t.Fatal("composed card", err)
 	}
@@ -165,10 +165,10 @@ func TestAuditReportsPersistedCompatibility(t *testing.T) {
 		t.Fatal("old single-actor constraint bypassed or error suppressed")
 	}
 	tx.Rollback(ctx)
-	if err = s.ChangeOperatorRole(ctx, operator, false); err != nil {
+	if err = s.Accounts.ChangeOperatorRole(ctx, operator, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.OperatorClientHistory(ctx, operator, customer, wire.OperatorHistoryInput{Kind: "audit"}); err == nil || err.Error() != "INVALID_CREDENTIALS" {
+	if _, err = s.operatorClientHistory(ctx, operator, customer, wire.OperatorHistoryInput{Kind: "audit"}); err == nil || err.Error() != "INVALID_CREDENTIALS" {
 		t.Fatal("revoked operator read audit", err)
 	}
 }

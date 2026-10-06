@@ -11,7 +11,7 @@ func (a *API) operatorAuth(c *echo.Context, write bool) (wire.AccountResult, err
 	if err != nil {
 		return account, err
 	}
-	if err = a.svc.RequireSupportOperator(c.Request().Context(), account.Account.AccountId); err != nil {
+	if err = a.requireSupportOperator(c.Request().Context(), account.Account.AccountId); err != nil {
 		return account, err
 	}
 	return account, nil
@@ -32,7 +32,7 @@ func (a *API) SearchOperatorClients(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.SearchOperatorClients(c.Request().Context(), account.Account.AccountId, in)
+	out, err := a.searchOperatorClients(c.Request().Context(), account.Account.AccountId, in)
 	if err != nil {
 		return err
 	}
@@ -47,7 +47,7 @@ func (a *API) GetOperatorClient(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.OperatorClient(c.Request().Context(), account.Account.AccountId, id)
+	out, err := a.operatorClient(c.Request().Context(), account.Account.AccountId, id)
 	if err != nil {
 		return err
 	}
@@ -66,7 +66,7 @@ func (a *API) GetOperatorClientHistory(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.OperatorClientHistory(c.Request().Context(), account.Account.AccountId, id, in)
+	out, err := a.operatorClientHistory(c.Request().Context(), account.Account.AccountId, id, in)
 	if err != nil {
 		return err
 	}
@@ -81,7 +81,7 @@ func (a *API) GetOperatorClientKey(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.OperatorClientKey(c.Request().Context(), account.Account.AccountId, id)
+	out, err := a.operatorClientKey(c.Request().Context(), account.Account.AccountId, id)
 	if err != nil {
 		return err
 	}
@@ -96,7 +96,7 @@ func (a *API) SetOperatorRestriction(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.SetOperatorRestriction(c.Request().Context(), actor, id, key, in)
+	out, err := a.setOperatorRestriction(c.Request().Context(), actor, id, key, in)
 	if err != nil {
 		return err
 	}
@@ -126,7 +126,7 @@ func (a *API) DecideOperatorTrial(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, _, err := a.svc.DecideOperatorTrial(c.Request().Context(), actor, id, key, in)
+	out, _, err := a.decideOperatorTrial(c.Request().Context(), actor, id, key, in)
 	if err != nil {
 		return err
 	}
@@ -141,7 +141,7 @@ func (a *API) ReconsiderOperatorTrial(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, _, err := a.svc.ReconsiderOperatorTrial(c.Request().Context(), actor, id, key, in.Reason)
+	out, _, err := a.reconsiderOperatorTrial(c.Request().Context(), actor, id, key, in.Reason)
 	if err != nil {
 		return err
 	}
@@ -156,7 +156,7 @@ func (a *API) ReconcileOperatorTrial(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, _, err := a.svc.ReconcileOperatorTrial(c.Request().Context(), actor, id, key, in.Reason)
+	out, _, err := a.reconcileOperatorTrial(c.Request().Context(), actor, id, key, in.Reason)
 	if err != nil {
 		return err
 	}
@@ -175,7 +175,7 @@ func (a *API) CreateOperatorTelegramTrial(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, created, err := a.svc.CreateTelegramTrial(c.Request().Context(), account.Account.AccountId, key, in)
+	out, created, err := a.createTelegramTrial(c.Request().Context(), account.Account.AccountId, key, in)
 	if err != nil {
 		return err
 	}

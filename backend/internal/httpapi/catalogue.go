@@ -13,7 +13,7 @@ func (a *API) GetCatalogue(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.Catalogue(c.Request().Context(), account.Account.AccountId)
+	out, err := a.catalogue(c.Request().Context(), account.Account.AccountId)
 	if err != nil {
 		return err
 	}
@@ -74,7 +74,7 @@ func (a *API) GetOperatorCatalogue(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.OperatorCatalogue(c.Request().Context(), account.Account.AccountId, page, perPage)
+	out, err := a.operatorCatalogue(c.Request().Context(), account.Account.AccountId, page, perPage)
 	if err != nil {
 		return err
 	}
@@ -94,7 +94,7 @@ func (a *API) CreateCataloguePlan(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.CreateCataloguePlan(c.Request().Context(), account.Account.AccountId, key, in)
+	out, err := a.createCataloguePlan(c.Request().Context(), account.Account.AccountId, key, in)
 	if err != nil {
 		return err
 	}
@@ -110,7 +110,7 @@ func (a *API) ReviseCataloguePlan(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.ReviseCataloguePlan(c.Request().Context(), actor, id, key, in)
+	out, err := a.reviseCataloguePlan(c.Request().Context(), actor, id, key, in)
 	if err != nil {
 		return err
 	}
@@ -126,7 +126,7 @@ func (a *API) ArchiveCataloguePlan(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.ArchiveCataloguePlan(c.Request().Context(), actor, id, key, in)
+	out, err := a.archiveCataloguePlan(c.Request().Context(), actor, id, key, in)
 	if err != nil {
 		return err
 	}

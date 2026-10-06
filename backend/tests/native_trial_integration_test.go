@@ -9,9 +9,9 @@ import (
 	"example.com/cabinet/backend/internal/app"
 	"example.com/cabinet/backend/internal/httpapi"
 	"example.com/cabinet/backend/internal/modules/notifications"
+	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/telegram"
-	"example.com/cabinet/backend/internal/platform"
-	"example.com/cabinet/backend/internal/wire"
+	"example.com/cabinet/backend/internal/modules/vpn"
 	"github.com/google/uuid"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
@@ -45,11 +45,11 @@ func configureNativeDocker(t *testing.T, f *fixture) {
 	if !roots.AppendCertsFromPEM([]byte(read("cert.pem"))) {
 		t.Fatal("owned Docker CA invalid")
 	}
-	f.cfg.PanelURL, f.cfg.PanelUsername, f.cfg.PanelPassword = "https://localhost:59444", "local-operator", read("panel-password")
-	f.cfg.PanelToken, f.cfg.PanelRootCAs = "", roots
-	f.cfg.SubscriptionBaseURL = "https://localhost:59445/sub/"
-	f.cfg.SMTPAddress, f.cfg.SMTPUser, f.cfg.SMTPPassword = "localhost:59447", "local-service", read("smtp-password")
-	f.cfg.SMTPRootCAs = roots
+	f.cfg.VPN.Panel.PanelURL, f.cfg.VPN.Panel.PanelUsername, f.cfg.VPN.Panel.PanelPassword = "https://localhost:59444", "local-operator", read("panel-password")
+	f.cfg.VPN.Panel.PanelToken, f.cfg.VPN.Panel.PanelRootCAs = "", roots
+	f.cfg.Subscriptions.SubscriptionBaseURL = "https://localhost:59445/sub/"
+	f.cfg.Mail.SMTPAddress, f.cfg.Mail.SMTPUser, f.cfg.Mail.SMTPPassword = "localhost:59447", "local-service", read("smtp-password")
+	f.cfg.Mail.SMTPRootCAs = roots
 	f.mail = nil
 }
 
@@ -58,7 +58,7 @@ func (f *fixture) letters(t *testing.T, email string) []string {
 	if f.mail != nil {
 		return f.mail.Letters()
 	}
-	c := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: f.cfg.SMTPRootCAs, MinVersion: tls.VersionTLS12}}}
+	c := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: f.cfg.Mail.SMTPRootCAs, MinVersion: tls.VersionTLS12}}}
 	defer c.CloseIdleConnections()
 	read := func(path string, out any) {
 		response, err := c.Get("https://localhost:59446" + path)
@@ -106,14 +106,14 @@ func assertNativePanel(t *testing.T, f *fixture, operations ...uuid.UUID) {
 		}
 		return
 	}
-	client := platform.NewPanelClient(f.cfg)
+	client := vpn.NewPanelClient(f.cfg.VPN.Panel)
 	defer client.Close()
 	for _, op := range operations {
 		var raw []byte
 		if err := f.env.Pool.QueryRow(context.Background(), `SELECT target FROM trial_operations WHERE id=$1`, op).Scan(&raw); err != nil {
 			t.Fatal("native target missing")
 		}
-		var target platform.ProvisionTarget
+		var target vpn.ProvisionTarget
 		if json.Unmarshal(raw, &target) != nil {
 			t.Fatal("native target invalid")
 		}
@@ -249,10 +249,10 @@ func launchNative(t *testing.T, f *fixture, bot *nativeBot, enabled, provision b
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	workers := river.NewWorkers()
-	river.AddWorker(workers, &notifications.MailWorker{Service: f.svc.MailDelivery()})
-	river.AddWorker(workers, &platform.ProvisionWorker{Service: f.svc})
-	river.AddWorker(workers, &platform.AccessWorker{Service: f.svc})
-	river.AddWorker(workers, &platform.MonthlyResetWorker{Service: f.svc})
+	river.AddWorker(workers, &notifications.MailWorker{Service: f.svc.MailDelivery})
+	river.AddWorker(workers, &vpn.ProvisionWorker{Service: f.svc.VPN})
+	river.AddWorker(workers, &vpn.AccessWorker{Service: f.svc.VPN})
+	river.AddWorker(workers, &vpn.MonthlyResetWorker{Service: f.svc.VPN})
 	queues := map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: 2}}
 	if provision {
 		queues["provision"] = river.QueueConfig{MaxWorkers: 2}
@@ -265,7 +265,7 @@ func launchNative(t *testing.T, f *fixture, bot *nativeBot, enabled, provision b
 	if err = worker.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	tg, err := app.NewTelegram(telegram.Config{Enabled: enabled, Token: "123456789:abcdefghijklmnopqrstuvwxyz012345678", Operators: f.cfg.Operators}, f.svc, &http.Client{Transport: bot})
+	tg, err := app.NewTelegram(telegram.Config{Enabled: enabled, Token: "123456789:abcdefghijklmnopqrstuvwxyz012345678", Operators: f.cfg.Accounts.Operators}, f.svc.Subscriptions, f.svc.Notifications, &http.Client{Transport: bot})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +273,7 @@ func launchNative(t *testing.T, f *fixture, bot *nativeBot, enabled, provision b
 	svc, server := f.svc, f.public.Config
 	var schedulerDone sync.WaitGroup
 	schedulerDone.Add(1)
-	go func() { defer schedulerDone.Done(); scheduler <- svc.RunMonthlyResetScheduler(ctx) }()
+	go func() { defer schedulerDone.Done(); scheduler <- svc.VPN.RunMonthlyResetScheduler(ctx) }()
 	done := make(chan error, 1)
 	go func() { done <- app.Serve(ctx, server, make(chan error), scheduler, tg) }()
 	stop := sync.OnceFunc(func() {
@@ -418,7 +418,7 @@ func TestNativeTrialTelegramOutage(t *testing.T) {
 				bot.mu.Unlock()
 				wait(t, func() bool { return tg.State().Degraded })
 			} else {
-				if _, err := app.NewTrialBridge(f.svc).Decide(context.Background(), telegram.TrialDecision{RequestID: r.RequestId, ActorID: 101, Action: "approve", CallbackID: uuid.NewString()}); err != nil {
+				if _, err := app.NewTrialBridge(f.svc.Subscriptions, f.svc.Notifications).Decide(context.Background(), telegram.TrialDecision{RequestID: r.RequestId, ActorID: 101, Action: "approve", CallbackID: uuid.NewString()}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -429,10 +429,10 @@ func TestNativeTrialTelegramOutage(t *testing.T) {
 			if err := f.env.Pool.QueryRow(context.Background(), `SELECT id FROM accounts WHERE email_key=$1`, email).Scan(&account); err != nil {
 				t.Fatal(err)
 			}
-			if err := f.svc.ChangeOperatorRole(context.Background(), account, true); err != nil {
+			if err := f.svc.Accounts.ChangeOperatorRole(context.Background(), account, true); err != nil {
 				t.Fatal(err)
 			}
-			if _, _, err := f.svc.DecideOperatorTrial(context.Background(), account, other.RequestId, uuid.New(), wire.OperatorDecisionInput{Decision: "approve"}); err != nil {
+			if _, _, err := f.svc.Subscriptions.DecideOperatorTrial(context.Background(), account, other.RequestId, uuid.New(), subscriptions.OperatorDecisionInput{Decision: "approve"}); err != nil {
 				t.Fatal("web decision depends on Telegram", err)
 			}
 			otherOp := operationFor(t, f, other.RequestId)
@@ -466,9 +466,9 @@ func TestNativeTrialRestart(t *testing.T) {
 	var handler http.Handler
 	f.public = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { handler.ServeHTTP(w, r) }))
 	t.Cleanup(f.public.Close)
-	f.cfg.CabinetOrigin = f.public.URL
-	f.svc = platform.NewService(f.env.Pool, f.env.Redis, queue, f.cfg)
-	handler = httpapi.New(f.svc, f.cfg)
+	f.cfg.HTTP.CabinetOrigin = f.public.URL
+	f.svc = app.NewModules(f.env.Pool, f.env.Redis, queue, &f.cfg)
+	handler = httpapi.New(f.svc, f.env.Pool, f.cfg.HTTP)
 	launchNative(t, f, bot, true, true)
 	bot.callback(101, card.ID, "a", r.RequestId, callbackID)
 	wait(t, func() bool { return applied(f, op) })

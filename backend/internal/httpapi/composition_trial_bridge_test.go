@@ -1,36 +1,38 @@
-package app
+package httpapi
 
 import (
 	"bytes"
 	"context"
 	"errors"
-	"strings"
-	"testing"
-
+	"example.com/cabinet/backend/internal/app"
+	"example.com/cabinet/backend/internal/modules/accounts"
+	"example.com/cabinet/backend/internal/modules/notifications"
+	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/telegram"
-	"example.com/cabinet/backend/internal/platform"
 	"example.com/cabinet/backend/internal/testkit"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
+	"strings"
+	"testing"
 )
 
-func bridgeFixture(t *testing.T) (*TrialBridge, *platform.Service, *testkit.Env, uuid.UUID) {
+func bridgeFixture(t *testing.T) (*app.TrialBridge, *compositionFixture, *testkit.Env, uuid.UUID) {
 	t.Helper()
 	e := testkit.Open(t)
 	queue, err := river.NewClient(riverpgxv5.New(e.Pool), &river.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := platform.Config{CabinetOrigin: "https://cabinet.example.test", TermsVersion: "1", PrivacyVersion: "1", MailKey: bytes.Repeat([]byte{1}, 32), CodeKey: bytes.Repeat([]byte{2}, 32), RateNamespace: uuid.NewString(), Operators: []int64{101, 202}, PanelID: "dedicated-test", TrialEnabled: true, TrialPeriodDays: 3, TrialTrafficGB: 15, TrialDevices: 1}
-	svc := NewService(e.Pool, e.Redis, queue, cfg)
+	cfg := app.Config{HTTP: app.HTTPConfig{CabinetOrigin: "https://cabinet.example.test"}, Accounts: accounts.Config{TermsVersion: "1", PrivacyVersion: "1", CodeKey: bytes.Repeat([]byte{2}, 32), RateNamespace: uuid.NewString(), Operators: []int64{101, 202}}, Mail: notifications.MailConfig{MailKey: bytes.Repeat([]byte{1}, 32)}, Subscriptions: subscriptions.Config{PanelID: "dedicated-test", TrialEnabled: true, TrialPeriodDays: 3, TrialTrafficGB: 15, TrialDevices: 1}}
+	svc := composeForTest(e.Pool, e.Redis, queue, cfg)
 	id := uuid.New()
 	_, err = e.Pool.Exec(context.Background(), `INSERT INTO accounts (id,email_key,locale,password_hash,verified_at,vpn_id,sub_id,panel_key,terms_version,privacy_version) VALUES ($1,'trial@example.test','ru','fixture',now(),$2,'0123456789abcdef',$3,'1','1')`, id, uuid.New(), uuid.NewString())
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, _, err := svc.CreateTrialRequest(context.Background(), id, uuid.New(), wire.TrialRequestInput{})
+	r, _, err := svc.createTrialRequest(context.Background(), id, uuid.New(), wire.TrialRequestInput{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +41,7 @@ func bridgeFixture(t *testing.T) (*TrialBridge, *platform.Service, *testkit.Env,
 	if _, err = e.Pool.Exec(context.Background(), `UPDATE telegram_deliveries SET available_at=clock_timestamp()`); err != nil {
 		t.Fatal(err)
 	}
-	return NewTrialBridge(svc), svc, e, r.RequestId
+	return app.NewTrialBridge(svc.Subscriptions, svc.Notifications), svc, e, r.RequestId
 }
 
 func TestTrialBridgeDecisionReplay(t *testing.T) {

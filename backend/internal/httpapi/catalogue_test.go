@@ -31,7 +31,7 @@ func TestCatalogueHTTPStrictQueriesAndWriteAuthority(t *testing.T) {
 	}
 	path := "/api/v1/operator/catalogue/plans"
 	good := []byte(`{"reason":"initial","terms":{"devices":1,"traffic_gb":0,"profile":"regular","hidden":false,"periods":[30],"prices":[{"period_days":30,"currency":"RUB","amount_minor":"9007199254740993"},{"period_days":30,"currency":"USD","amount_minor":"0"},{"period_days":30,"currency":"XTR","amount_minor":"0"}]}}`)
-	if r := supportRequest(h, &operator, "POST", path, "application/json", []byte(`{"reason":"x","terms":{},"actor_account_id":"`+customer.id.String()+`"}`), cfg.CabinetOrigin, uuid.New()); r.Code != 400 {
+	if r := supportRequest(h, &operator, "POST", path, "application/json", []byte(`{"reason":"x","terms":{},"actor_account_id":"`+customer.id.String()+`"}`), cfg.HTTP.CabinetOrigin, uuid.New()); r.Code != 400 {
 		t.Fatalf("forged actor %d", r.Code)
 	}
 	if r := supportRequest(h, &operator, "POST", path, "application/json", good, "https://attacker.example", uuid.New()); r.Code != 403 {
@@ -39,11 +39,11 @@ func TestCatalogueHTTPStrictQueriesAndWriteAuthority(t *testing.T) {
 	}
 	noCSRF := operator
 	noCSRF.csrf = ""
-	if r := supportRequest(h, &noCSRF, "POST", path, "application/json", good, cfg.CabinetOrigin, uuid.New()); r.Code != 403 {
+	if r := supportRequest(h, &noCSRF, "POST", path, "application/json", good, cfg.HTTP.CabinetOrigin, uuid.New()); r.Code != 403 {
 		t.Fatalf("csrf %d", r.Code)
 	}
 	key := uuid.New()
-	r := supportRequest(h, &operator, "POST", path, "application/json", good, cfg.CabinetOrigin, key)
+	r := supportRequest(h, &operator, "POST", path, "application/json", good, cfg.HTTP.CabinetOrigin, key)
 	if r.Code != 201 {
 		t.Fatalf("create %d: %s", r.Code, r.Body.String())
 	}
@@ -54,7 +54,7 @@ func TestCatalogueHTTPStrictQueriesAndWriteAuthority(t *testing.T) {
 	if plan.ActorAccountId == nil || *plan.ActorAccountId != operator.id || plan.Prices[0].AmountMinor != "9007199254740993" {
 		t.Fatal("response lost actor/price")
 	}
-	if r := supportRequest(h, &operator, "POST", path, "application/json", good, cfg.CabinetOrigin, key); r.Code != 201 {
+	if r := supportRequest(h, &operator, "POST", path, "application/json", good, cfg.HTTP.CabinetOrigin, key); r.Code != 201 {
 		t.Fatalf("replay %d", r.Code)
 	}
 	if r := supportRequest(h, &customer, "GET", "/api/v1/catalogue", "", nil, "", uuid.Nil); r.Code != 200 || !json.Valid(r.Body.Bytes()) {
@@ -63,7 +63,7 @@ func TestCatalogueHTTPStrictQueriesAndWriteAuthority(t *testing.T) {
 	if _, err := e.Pool.Exec(context.Background(), `DELETE FROM operator_accounts WHERE account_id=$1`, operator.id); err != nil {
 		t.Fatal(err)
 	}
-	if r := supportRequest(h, &operator, "POST", path, "application/json", good, cfg.CabinetOrigin, key); r.Code != 403 {
+	if r := supportRequest(h, &operator, "POST", path, "application/json", good, cfg.HTTP.CabinetOrigin, key); r.Code != 403 {
 		t.Fatalf("revoked role replay %d", r.Code)
 	}
 }

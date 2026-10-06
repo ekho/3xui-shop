@@ -22,7 +22,7 @@ func (a *API) CreateAccessOperation(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.CreateAccessOperation(c.Request().Context(), actor, target, key, in)
+	out, err := a.createAccessOperation(c.Request().Context(), actor, target, key, in)
 	if err != nil {
 		return err
 	}
@@ -41,7 +41,7 @@ func (a *API) GetAccessOperation(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.GetAccessOperation(c.Request().Context(), account.Account.AccountId, target, id)
+	out, err := a.getAccessOperation(c.Request().Context(), account.Account.AccountId, target, id)
 	if err != nil {
 		return err
 	}
@@ -60,7 +60,7 @@ func (a *API) ReconcileAccessOperation(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.ReconcileAccessOperation(c.Request().Context(), actor, target, id, key, in)
+	out, err := a.reconcileAccessOperation(c.Request().Context(), actor, target, id, key, in)
 	if err != nil {
 		return err
 	}

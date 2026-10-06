@@ -1,14 +1,14 @@
 package httpapi
 
 import (
-	"example.com/cabinet/backend/internal/platform"
+	"example.com/cabinet/backend/internal/app"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
 func TestDisabledLegacyTransportRejectsEmptyBearer(t *testing.T) {
-	h := New(nil, platform.Config{})
+	h := New(&app.Modules{}, nil, app.HTTPConfig{})
 	for _, auth := range []string{"", "Bearer ", "Bearer any-value"} {
 		r := httptest.NewRequest("POST", "/internal/v1/telegram/jobs/claim", strings.NewReader(`{"limit":1}`))
 		r.Header.Set("Authorization", auth)

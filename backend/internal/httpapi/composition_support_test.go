@@ -1,24 +1,24 @@
-package app
+package httpapi
 
 import (
 	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
-	"testing"
-
+	"example.com/cabinet/backend/internal/app"
+	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/support"
-	"example.com/cabinet/backend/internal/platform"
 	"example.com/cabinet/backend/internal/testkit"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
+	"testing"
 )
 
 // New neutral DTOs must still read the JSON and hash committed by the old owner.
 func TestSupportPersistedCompatibility(t *testing.T) {
 	e := testkit.Open(t)
 	ctx := context.Background()
-	s := NewService(e.Pool, e.Redis, nil, platform.Config{RateNamespace: uuid.NewString()})
+	s := composeForTest(e.Pool, e.Redis, nil, app.Config{Accounts: accounts.Config{RateNamespace: uuid.NewString()}})
 	customer, conversation, message, key := paymentAccount(t, e), uuid.New(), uuid.New(), uuid.New()
 	when := e.Clock()
 	file := []byte("AB")
@@ -64,12 +64,12 @@ func TestSupportPersistedCompatibility(t *testing.T) {
 		VALUES($1,'createSupportMessage',$2,$3,$4,$5)`, "account:"+customer.String(), key, hash[:], result, when); err != nil {
 		t.Fatal(err)
 	}
-	got, created, err := s.CreateSupportMessage(ctx, customer, customer, false, key, "old message", "proof.txt", file)
+	got, created, err := s.createSupportMessage(ctx, customer, customer, false, key, "old message", "proof.txt", file)
 	gotJSON, marshalErr := json.Marshal(got)
 	if err != nil || marshalErr != nil || created || !bytes.Equal(gotJSON, result) {
 		t.Fatal("old result did not replay after support ban", err, marshalErr)
 	}
-	if _, _, err = s.CreateSupportMessage(ctx, customer, customer, false, key, "changed", "proof.txt", file); err == nil || err.Error() != "IDEMPOTENCY_CONFLICT" {
+	if _, _, err = s.createSupportMessage(ctx, customer, customer, false, key, "changed", "proof.txt", file); err == nil || err.Error() != "IDEMPOTENCY_CONFLICT" {
 		t.Fatal("changed old payload accepted", err)
 	}
 	var messages, audits int
@@ -91,12 +91,12 @@ func TestSupportComposition(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			e := testkit.Open(t)
 			ctx := context.Background()
-			s := NewService(e.Pool, e.Redis, nil, platform.Config{RateNamespace: uuid.NewString()})
+			s := composeForTest(e.Pool, e.Redis, nil, app.Config{Accounts: accounts.Config{RateNamespace: uuid.NewString()}})
 			customer, operator := paymentAccount(t, e), paymentAccount(t, e)
-			if err := s.ChangeOperatorRole(ctx, operator, true); err != nil {
+			if err := s.Accounts.ChangeOperatorRole(ctx, operator, true); err != nil {
 				t.Fatal(err)
 			}
-			card, err := s.OperatorClient(ctx, operator, customer)
+			card, err := s.operatorClient(ctx, operator, customer)
 			if err != nil || card.Support != nil {
 				t.Fatal("missing conversation must remain nil", err)
 			}
@@ -107,7 +107,7 @@ func TestSupportComposition(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			message, created, err := s.CreateSupportMessage(ctx, customer, customer, false, uuid.New(), "hello", "proof.txt", []byte("private bytes"))
+			message, created, err := s.createSupportMessage(ctx, customer, customer, false, uuid.New(), "hello", "proof.txt", []byte("private bytes"))
 			if rejectAudit {
 				if err == nil || err.Error() != "SERVICE_UNAVAILABLE" || created {
 					t.Fatal("audit failure must reject the message", err)
@@ -123,38 +123,38 @@ func TestSupportComposition(t *testing.T) {
 			if err != nil || !created || message.Delivery != "stored" || message.Attachment == nil {
 				t.Fatal("composed message", err)
 			}
-			card, err = s.OperatorClient(ctx, operator, customer)
+			card, err = s.operatorClient(ctx, operator, customer)
 			if err != nil || card.Support == nil || card.Support.Status != "open" {
 				t.Fatal("composed operator conversation", err)
 			}
-			name, body, err := s.SupportAttachment(ctx, operator, message.Id)
+			name, body, err := s.supportAttachment(ctx, operator, message.Id)
 			if err != nil || name != "proof.txt" || !bytes.Equal(body, []byte("private bytes")) {
 				t.Fatal("composed private attachment", err)
 			}
-			if err = s.AcknowledgeSupport(ctx, operator, customer, true, message.Sequence); err != nil {
+			if err = s.acknowledgeSupport(ctx, operator, customer, true, message.Sequence); err != nil {
 				t.Fatal(err)
 			}
-			view, err := s.Support(ctx, customer, customer, false)
+			view, err := s.support(ctx, customer, customer, false)
 			if err != nil || len(view.Messages) != 1 || view.Messages[0].Delivery != "delivered" {
 				t.Fatal("composed recipient ack", err)
 			}
 			if _, err = e.Pool.Exec(ctx, "UPDATE accounts SET vpn_banned=true WHERE id=$1", customer); err != nil {
 				t.Fatal(err)
 			}
-			if err = s.SetSupportBan(ctx, operator, customer, true, "abuse"); err != nil {
+			if err = s.setSupportBan(ctx, operator, customer, true, "abuse"); err != nil {
 				t.Fatal(err)
 			}
-			if _, _, err = s.CreateSupportMessage(ctx, customer, customer, false, uuid.New(), "blocked", "", nil); err == nil || err.Error() != "ACCOUNT_RESTRICTED" {
+			if _, _, err = s.createSupportMessage(ctx, customer, customer, false, uuid.New(), "blocked", "", nil); err == nil || err.Error() != "ACCOUNT_RESTRICTED" {
 				t.Fatal("support ban not composed", err)
 			}
 			var vpnBanned bool
 			if err = e.Pool.QueryRow(ctx, "SELECT vpn_banned FROM accounts WHERE id=$1", customer).Scan(&vpnBanned); err != nil || !vpnBanned {
 				t.Fatal("support ban changed VPN", err)
 			}
-			if err = s.ChangeOperatorRole(ctx, operator, false); err != nil {
+			if err = s.Accounts.ChangeOperatorRole(ctx, operator, false); err != nil {
 				t.Fatal(err)
 			}
-			if _, _, err = s.CreateSupportMessage(ctx, operator, customer, true, uuid.New(), "revoked", "", nil); err == nil || err.Error() != "INVALID_CREDENTIALS" {
+			if _, _, err = s.createSupportMessage(ctx, operator, customer, true, uuid.New(), "revoked", "", nil); err == nil || err.Error() != "INVALID_CREDENTIALS" {
 				t.Fatal("revoked operator wrote support message", err)
 			}
 		})

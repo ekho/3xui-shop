@@ -1,24 +1,23 @@
-package app
+package httpapi
 
 import (
 	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
-	"net/url"
-	"strings"
-	"testing"
-	"time"
-
+	"example.com/cabinet/backend/internal/app"
 	"example.com/cabinet/backend/internal/modules/payments"
 	"example.com/cabinet/backend/internal/modules/vpn"
-	"example.com/cabinet/backend/internal/platform"
 	"example.com/cabinet/backend/internal/testkit"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
+	"net/url"
+	"strings"
+	"testing"
+	"time"
 )
 
 func paymentAccount(t *testing.T, e *testkit.Env) uuid.UUID {
@@ -36,7 +35,7 @@ func paymentAccount(t *testing.T, e *testkit.Env) uuid.UUID {
 func TestPaymentsPersistedCompatibility(t *testing.T) {
 	e := testkit.Open(t)
 	ctx := context.Background()
-	s := NewService(e.Pool, e.Redis, nil, platform.Config{})
+	s := composeForTest(e.Pool, e.Redis, nil, app.Config{})
 	account, actor, plan, order, operation, key := paymentAccount(t, e), paymentAccount(t, e), uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	in := wire.PurchaseOrderInput{Action: "purchase", PaymentMethod: "yoomoney", PaymentType: "AC", PeriodDays: 30, PlanId: plan, Revision: 1}
 	neutral := payments.PurchaseOrderInput{Action: "purchase", PaymentMethod: "yoomoney", PaymentType: "AC", PeriodDays: 30, PlanId: plan, Revision: 1}
@@ -74,11 +73,11 @@ func TestPaymentsPersistedCompatibility(t *testing.T) {
 		VALUES($1,$2,$3,$4,$5,9007199254740993,'AC','canceled',false,$6,$7)`, order, account, key, hash[:], quoteRaw, created, expires); err != nil {
 		t.Fatal(err)
 	}
-	replayed, err := s.CreatePurchaseOrder(ctx, account, key, in)
+	replayed, err := s.createPurchaseOrder(ctx, account, key, in)
 	if err != nil || replayed.OrderId != order || replayed.Quote != quote || replayed.PaymentStatus != "canceled" || replayed.Checkout != nil {
 		t.Fatal("old order hash/quote did not replay with payment disabled", err)
 	}
-	if err = s.ChangeOperatorRole(ctx, actor, true); err != nil {
+	if err = s.Accounts.ChangeOperatorRole(ctx, actor, true); err != nil {
 		t.Fatal(err)
 	}
 	reconcileKey := uuid.New()
@@ -93,7 +92,7 @@ func TestPaymentsPersistedCompatibility(t *testing.T) {
 		VALUES($1,'reconcilePurchaseOrder',$2,$3,$4,$5)`, "operator-account:"+actor.String(), reconcileKey, oldHash[:], result, created); err != nil {
 		t.Fatal(err)
 	}
-	got, err := s.ReconcilePurchaseOrder(ctx, actor, account, order, reconcileKey, reason)
+	got, err := s.reconcilePurchaseOrder(ctx, actor, account, order, reconcileKey, reason)
 	if err != nil {
 		t.Fatal("old reconcile result did not replay", err)
 	}
@@ -115,7 +114,7 @@ func TestPaymentsComposition(t *testing.T) {
 				}
 			}
 			secret := []byte("test-only-notification-secret")
-			s := NewService(e.Pool, e.Redis, queue, platform.Config{YooMoneyEnabled: true, YooMoneyNotificationSecret: secret})
+			s := composeForTest(e.Pool, e.Redis, queue, app.Config{Payments: payments.Config{YooMoneyEnabled: true, YooMoneyNotificationSecret: secret}})
 			account, order, plan := paymentAccount(t, e), uuid.New(), uuid.New()
 			now := time.Now().UTC().Truncate(time.Microsecond)
 			quote := wire.PurchaseQuote{AmountMinor: "10000", Currency: "RUB", Devices: 2, PeriodDays: 30, PlanId: plan, Profile: "regular", Revision: 1}
@@ -133,13 +132,13 @@ func TestPaymentsComposition(t *testing.T) {
 			}
 			fields := url.Values{"notification_type": {"p2p-incoming"}, "operation_id": {"composed-payment"}, "amount": {"98.00"}, "withdraw_amount": {"100.00"}, "currency": {"643"}, "datetime": {now.Format(time.RFC3339Nano)}, "label": {order.String()}, "codepro": {"false"}, "unaccepted": {"false"}}
 			fields.Set("sign", testkit.YooMoneySignature(fields, secret))
-			err := s.ReceiveYooMoney(ctx, fields)
+			err := s.receiveYooMoney(ctx, fields)
 			if !queued {
 				if err == nil || err.Error() != "SERVICE_UNAVAILABLE" {
 					t.Fatal("nil queue accepted a paid receipt", err)
 				}
 			} else {
-				if err != nil || s.ReceiveYooMoney(ctx, fields) != nil {
+				if err != nil || s.receiveYooMoney(ctx, fields) != nil {
 					t.Fatal("signed receipt/repeat failed", err)
 				}
 			}
@@ -176,16 +175,16 @@ func TestPaymentsComposition(t *testing.T) {
 			defer tx.Rollback(ctx)
 			operation := uuid.New()
 			desired, _ := json.Marshal(vpn.AccessDesired{Devices: 2, PeriodDays: &quote.PeriodDays, PlanId: &plan, Profile: "regular", Revision: &quote.Revision})
-			if _, err = s.VPN().QueueAccessTx(ctx, tx, vpn.AccessWrite{ID: operation, AccountID: account, Kind: "purchase", Reason: "paid_order", PlanID: &plan, Revision: &quote.Revision, PeriodDays: &quote.PeriodDays, Desired: desired, Target: []byte(`{}`), PurchaseOrderID: &order, CreatedAt: now}); err != nil {
+			if _, err = s.VPN.QueueAccessTx(ctx, tx, vpn.AccessWrite{ID: operation, AccountID: account, Kind: "purchase", Reason: "paid_order", PlanID: &plan, Revision: &quote.Revision, PeriodDays: &quote.PeriodDays, Desired: desired, Target: []byte(`{}`), PurchaseOrderID: &order, CreatedAt: now}); err != nil {
 				t.Fatal(err)
 			}
 			if _, err = tx.Exec(ctx, "UPDATE purchase_orders SET access_operation_id=$2,fulfillment_status='running' WHERE id=$1", order, operation); err != nil {
 				t.Fatal(err)
 			}
-			if reason, err := s.Payments().CheckPurchaseAccess(ctx, tx, order, account, operation); err != nil || reason != "" {
+			if reason, err := s.Payments.CheckPurchaseAccess(ctx, tx, order, account, operation); err != nil || reason != "" {
 				t.Fatal("funding cannot see caller transaction", reason, err)
 			}
-			if err = s.Payments().RecordPurchaseAccessTx(ctx, tx, operation, "applied", ""); err != nil {
+			if err = s.Payments.RecordPurchaseAccessTx(ctx, tx, operation, "applied", ""); err != nil {
 				t.Fatal("outcome cannot see caller transaction", err)
 			}
 			if err = tx.Rollback(ctx); err != nil {

@@ -16,7 +16,7 @@ func (a *API) GetPaymentMethods(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.PaymentMethods(c.Request().Context(), account.Account.AccountId)
+	out, err := a.paymentMethods(c.Request().Context(), account.Account.AccountId)
 	if err != nil {
 		return err
 	}
@@ -36,7 +36,7 @@ func (a *API) CreatePurchaseOrder(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.CreatePurchaseOrder(c.Request().Context(), account.Account.AccountId, key, in)
+	out, err := a.createPurchaseOrder(c.Request().Context(), account.Account.AccountId, key, in)
 	if err != nil {
 		return err
 	}
@@ -48,7 +48,7 @@ func (a *API) GetCurrentPurchaseOrder(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.CurrentPurchaseOrder(c.Request().Context(), account.Account.AccountId)
+	out, err := a.currentPurchaseOrder(c.Request().Context(), account.Account.AccountId)
 	if err != nil {
 		return err
 	}
@@ -64,7 +64,7 @@ func (a *API) GetPurchaseOrder(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.PurchaseOrder(c.Request().Context(), account.Account.AccountId, id)
+	out, err := a.purchaseOrder(c.Request().Context(), account.Account.AccountId, id)
 	if err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func (a *API) CancelPurchaseOrder(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.CancelPurchaseOrder(c.Request().Context(), account.Account.AccountId, id, key)
+	out, err := a.cancelPurchaseOrder(c.Request().Context(), account.Account.AccountId, id, key)
 	if err != nil {
 		return err
 	}
@@ -104,7 +104,7 @@ func (a *API) GetOperatorPurchaseOrder(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.OperatorPurchaseOrder(c.Request().Context(), actor.Account.AccountId, target)
+	out, err := a.operatorPurchaseOrder(c.Request().Context(), actor.Account.AccountId, target)
 	if err != nil {
 		return err
 	}
@@ -124,7 +124,7 @@ func (a *API) ReconcilePurchaseOrder(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.svc.ReconcilePurchaseOrder(c.Request().Context(), actor, target, id, key, in)
+	out, err := a.reconcilePurchaseOrder(c.Request().Context(), actor, target, id, key, in)
 	if err != nil {
 		return err
 	}
@@ -154,7 +154,7 @@ func (a *API) ReceiveYooMoney(c *echo.Context) error {
 			return invalid()
 		}
 	}
-	if err = a.svc.ReceiveYooMoney(c.Request().Context(), fields); err != nil {
+	if err = a.receiveYooMoney(c.Request().Context(), fields); err != nil {
 		return err
 	}
 	return c.NoContent(200)
