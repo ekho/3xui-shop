@@ -44,7 +44,7 @@
 
 ### Task 2: Полная приёмка и актуальные доказательства
 
-**Files:** docs/evidence/m06b2-acceptance.md, delivery/roadmap/architecture status; private reused22-stage/compatibility/verify-final/publication helpers.
+**Files:** docs/evidence/m06b2-acceptance.md, delivery/roadmap/architecture status; backend/tests/{native_trial,web_trial}_integration_test.go (actual mail worker consumers found by full vet); private reused22-stage/compatibility/verify-final/publication helpers.
 
 **Interfaces:** Consume Task1 unchanged public/persisted contracts; produce exact-revision local evidence for fresh reviewer and remote delivery, #60 OPEN.
 

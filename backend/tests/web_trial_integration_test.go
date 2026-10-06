@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"example.com/cabinet/backend/db"
 	"example.com/cabinet/backend/internal/httpapi"
+	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/platform"
 	"example.com/cabinet/backend/internal/testkit"
 	"example.com/cabinet/backend/internal/wire"
@@ -219,7 +220,7 @@ func openMode(t *testing.T, native bool) *fixture {
 		os.WriteFile(f.tokenFile, []byte(f.cfg.AdapterToken), 0600)
 	}
 	workers := river.NewWorkers()
-	river.AddWorker(workers, &platform.MailWorker{Service: f.svc})
+	river.AddWorker(workers, &notifications.MailWorker{Service: f.svc.MailDelivery()})
 	river.AddWorker(workers, &platform.ProvisionWorker{Service: f.svc})
 	if native {
 		river.AddWorker(workers, &platform.AccessWorker{Service: f.svc})
