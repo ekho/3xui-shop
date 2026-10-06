@@ -66,7 +66,7 @@ func TestLegacyTrialReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	authority := accounts.New(e.Pool, e.Redis, nil, accounts.Config{}, nil)
-	svc := New(e.Pool, authority, nil, nil, func() Config { return Config{} }, e.Clock)
+	svc := New(e.Pool, authority, nil, nil, nil, func() Config { return Config{} }, e.Clock)
 	// Cached success precedes eligibility; this account is intentionally restricted.
 	out, created, err := svc.CreateTrialRequest(ctx, account, key, TrialRequestInput{})
 	if err != nil || created || out.RequestId != request || out.Status != "pending" {
@@ -100,7 +100,7 @@ func TestLegacyDecisionReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	authority := accounts.New(e.Pool, e.Redis, nil, accounts.Config{Operators: []int64{101}}, nil)
-	svc := New(e.Pool, authority, nil, nil, func() Config { return Config{} }, e.Clock)
+	svc := New(e.Pool, authority, nil, nil, nil, func() Config { return Config{} }, e.Clock)
 	out, err := svc.DecideTrialRequest(ctx, request, DecisionInput{CallbackQueryId: "frozen-callback", Decision: "reject", OperatorTgId: 101})
 	if err != nil {
 		t.Fatal(err)
