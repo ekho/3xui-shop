@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"example.com/cabinet/backend/internal/modules/payments"
 	"example.com/cabinet/backend/internal/modules/vpn"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"

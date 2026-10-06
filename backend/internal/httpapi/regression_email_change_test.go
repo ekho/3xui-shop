@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/testkit"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
