@@ -38,12 +38,17 @@ def private(name, value):
 
 def compose(*args, stdin=None):
     # Same owned resource identity and declarations as the original stack.
+    config = dict(line.split('=', 1) for line in local.ENV.read_text().splitlines()
+                  if line and not line.startswith('#'))
     return local.command(['docker', 'compose', '--project-name', local.PROJECT,
                           '--profile', 'restore', '--env-file', str(local.ENV),
                           '-f', 'deploy/acceptance/compose.acceptance.yml',
                           '-f', 'deploy/acceptance/compose.local.yml',
                           *(['-f', 'deploy/acceptance/compose.native.yml'] if local.PROFILE == 'native' else []),
-                          '-f', 'deploy/purchase/compose.yoomoney.yml', *args], stdin=stdin)
+                          '-f', 'deploy/purchase/compose.yoomoney.yml',
+                          *(['-f', 'deploy/purchase/compose.manual.yml']
+                            if config.get('SHOP_PAYMENT_MANUAL_ENABLED') == 'true' else []),
+                          *args], stdin=stdin)
 
 
 def prepare():
@@ -65,6 +70,21 @@ def prepare():
     if local.PROFILE == 'native' and configured['services']['backend']['environment'].get('LEGACY_BOT_API_ENABLED') != 'false':
         raise RuntimeError('native purchase requires disabled legacy bot API')
     print('PASS: owned localhost payment overlay; disposable secret, no provider requests')
+
+
+def prepare_manual():
+    prepare()
+    details = local.STATE / 'manual-card-details'
+    if not details.exists():
+        local.write('manual-card-details', 'Synthetic local recipient only\nReference: your order ID\n')
+    assert details.stat().st_mode & 0o777 == 0o600, 'unprotected manual fixture details'
+    config = dict(line.split('=', 1) for line in local.ENV.read_text().splitlines()
+                  if line and not line.startswith('#'))
+    config.update(SHOP_PAYMENT_MANUAL_ENABLED='true', MANUAL_CARD_DETAILS_FILE=str(details))
+    local.write('public.env', '\n'.join(k + '=' + v for k, v in config.items()) + '\n')
+    configured = json.loads(compose('config', '--format', 'json'))
+    assert configured['services']['backend']['environment']['SHOP_PAYMENT_MANUAL_ENABLED'] == 'true'
+    print('PASS: own manual overlay, synthetic instructions, no bank or provider request')
 
 
 def owned(account):
@@ -162,23 +182,51 @@ def applied(opener, order_id):
     return value if value['fulfillment_status'] == 'applied' else None
 
 
-def create_order(opener, login, plan):
+def create_order(opener, login, plan, manual=False):
     body = {'action': 'purchase', 'plan_id': plan['plan_id'], 'revision': plan['revision'],
-            'period_days': 30, 'payment_method': 'yoomoney', 'payment_type': 'AC'}
+            'period_days': 30, 'payment_method': 'manual' if manual else 'yoomoney',
+            'payment_type': 'MANUAL' if manual else 'AC'}
     key = str(uuid4())
     status, _, value = local.api(opener, '/api/v1/orders', body, login['csrf_token'], key)
     assert status == 201 and value['quote']['amount_minor'] == '10000', 'server quote differs'
-    assert value['checkout']['action'] == 'https://yoomoney.ru/quickpay/confirm', 'checkout action differs'
-    assert value['checkout']['fields']['sum'] == '100.00', 'checkout decimal differs'
+    if manual:
+        assert value['checkout'] is None and value['manual_payment']['can_report']
+        assert value['manual_payment']['instructions'] == (local.STATE / 'manual-card-details').read_text().strip()
+    else:
+        assert value['checkout']['action'] == 'https://yoomoney.ru/quickpay/confirm', 'checkout action differs'
+        assert value['checkout']['fields']['sum'] == '100.00', 'checkout decimal differs'
     replay = local.api(opener, '/api/v1/orders', body, login['csrf_token'], key)[2]
     assert replay['order_id'] == value['order_id'], 'lost response duplicated order'
     assert order(opener, value['order_id'])['payment_status'] == 'pending', 'browser return changed payment'
     return value
 
 
-def check():
+def manual_decision(operator, actor, login, purchase, *, key=None, decision='approve'):
+    body = {'decision': decision, 'reason': 'Synthetic fixture funds checked; no bank transfer'}
+    if decision == 'approve':
+        body['confirmed_amount_minor'] = purchase['quote']['amount_minor']
+    path = '/api/v1/operator/clients/' + owned(login['account']['account_id']) + '/orders/' + str(UUID(purchase['order_id'])) + '/manual-decision'
+    return local.api(operator, path, body, actor['csrf_token'], key or str(uuid4()))
+
+
+def manual_report(opener, login, purchase):
+    path = '/api/v1/orders/' + str(UUID(purchase['order_id'])) + '/manual-report'
+    key = str(uuid4())
+    first = local.api(opener, path, {}, login['csrf_token'], key)
+    assert first[0] == 200 and first[2]['manual_payment']['state'] == 'pending'
+    assert local.api(opener, path, {}, login['csrf_token'], key)[0] == 200
+    raw = bridge.query("""SELECT json_build_object('receipts',
+        (SELECT count(*) FROM purchase_receipts WHERE order_id=:'order'::uuid),
+        'jobs',(SELECT count(*) FROM river_job WHERE kind='purchase_fulfillment'
+          AND args->>'order_id'=:'order'));""", order=purchase['order_id'])
+    assert json.loads(raw) == {'receipts': 0, 'jobs': 0}, 'report confirmed money or provisioned'
+    assert local.api(opener, '/api/v1/orders/' + purchase['order_id'] + '/cancel', {}, login['csrf_token'], str(uuid4()))[0] == 409
+
+
+def check(manual=False):
     local.wait_until(local.ready)
-    operator, actor = signup('operator')
+    prefix = 'manual-' if manual else ''
+    operator, actor = signup(prefix + 'operator')
     assert bridge.role('grant', actor['account']['account_id']), 'local operator grant failed'
     devices = int(bridge.query("""SELECT min(n) FROM generate_series(3,10000) n
         WHERE NOT EXISTS(SELECT 1 FROM catalogue_plans WHERE NOT archived AND current_devices=n);"""))
@@ -188,10 +236,10 @@ def check():
     status, _, plan = local.api(operator, '/api/v1/operator/catalogue/plans',
         {'terms': terms, 'reason': 'Owned purchase acceptance'}, actor['csrf_token'], str(uuid4()))
     assert status == 201 and plan['devices'] == devices, 'owned plan creation failed'
-    private('plan.json', plan)
+    private(prefix + 'plan.json', plan)
     results = []
     for name in ['new', 'trial']:
-        opener, login = signup(name)
+        opener, login = signup(prefix + name)
         account = login['account']['account_id']
         before = None
         if name == 'trial':
@@ -201,12 +249,22 @@ def check():
                 {'decision': 'approve', 'reason': ''}, actor['csrf_token'], str(uuid4()))
             local.wait_until(lambda: local.active(opener))
             before = panel(account)
-        purchase = create_order(opener, login, plan)
-        assert notification(purchase, test=True)[0] == 200
-        assert notification(purchase, tamper=True)[0] == 403
-        assert order(opener, purchase['order_id'])['payment_status'] == 'pending', 'invalid notice issued access'
-        code, receipt = notification(purchase)
-        assert code == 200, 'signed local notice rejected'
+        purchase = create_order(opener, login, plan, manual)
+        if manual:
+            assert manual_decision(operator, actor, login, purchase)[0] == 409, 'unreported payment approved'
+            assert manual_decision(opener, login, login, purchase)[0] == 403, 'customer approved own money'
+            assert local.api(operator, '/api/v1/orders/' + purchase['order_id'] + '/manual-report', {}, actor['csrf_token'], str(uuid4()))[0] == 404, 'foreign report permitted'
+            manual_report(opener, login, purchase)
+            queue = local.api(operator, '/api/v1/operator/manual-payments')[2]
+            assert any(item['order']['order_id'] == purchase['order_id'] for item in queue['items'])
+            receipt = str(uuid4())  # Replay the decision, not a fabricated bank notification.
+            assert manual_decision(operator, actor, login, purchase, key=receipt)[0] == 202
+        else:
+            assert notification(purchase, test=True)[0] == 200
+            assert notification(purchase, tamper=True)[0] == 403
+            assert order(opener, purchase['order_id'])['payment_status'] == 'pending', 'invalid notice issued access'
+            code, receipt = notification(purchase)
+            assert code == 200, 'signed local notice rejected'
         final = local.wait_until(lambda: applied(opener, purchase['order_id']), timeout=60)
         after = panel(account)
         assert after['enabled'] and after['limit_ip'] == devices + 1 and after['traffic_bytes'] == 30 * 1024 ** 3
@@ -217,21 +275,36 @@ def check():
         else:
             assert account_row(account)['grants'] == 0, 'purchase manufactured trial grant'
             assert abs(after['expiry_ms'] - int(time.time() * 1000) - 30 * 86400000) < 60000
-        assert notification(purchase, receipt=receipt)[0] == 200
+        if manual:
+            assert manual_decision(operator, actor, login, purchase, key=receipt)[0] == 202
+            assert manual_decision(operator, actor, login, purchase, decision='reject')[0] == 409
+        else:
+            assert notification(purchase, receipt=receipt)[0] == 200
         assert panel(account) == after, 'receipt replay changed access'
         subscription = local.api(opener, '/api/v1/subscription')[2]
         assert subscription['status'] == 'active' and subscription['devices'] == devices
         status, _, key = local.api(opener, '/api/v1/subscription/key')
         assert status == 200 and key, 'paid subscription key unavailable'
-        private(name + '-order.json', final)
+        private(prefix + name + '-order.json', final)
         results.append({'fixture': name, 'paid': final['payment_status'] == 'paid',
                         'applied': final['fulfillment_status'] == 'applied',
                         'one_access_operation': account_row(account)['access_operations'] == 1,
                         'preserved_trial': before is not None, 'repeat_unchanged': True})
-    private('native-report.json', {'panel_version': '3.7.0', 'results': results,
+    if manual:
+        opener, login = signup('manual-rejected')
+        purchase = create_order(opener, login, plan, True)
+        manual_report(opener, login, purchase)
+        assert manual_decision(operator, actor, login, purchase, decision='reject')[0] == 200
+        rejected = order(opener, purchase['order_id'])
+        assert rejected['payment_status'] == 'canceled' and rejected['manual_payment']['reason']
+        assert manual_decision(operator, actor, login, purchase)[0] == 409
+        create_order(opener, login, plan, True)
+        assert not panel(login['account']['account_id'])['exists'], 'rejection provisioned access'
+    private(prefix + 'native-report.json', {'panel_version': '3.7.0', 'results': results,
                                   'real_payment': False, 'live_vpn_changed': False})
     assert all(r['paid'] and r['applied'] and r['one_access_operation'] for r in results)
-    print('PASS: signed local payment -> real 3X-UI 3.7.0 for new and trial accounts; repeat unchanged')
+    print('PASS: ' + ('synthetic operator-confirmed manual' if manual else 'signed local') +
+          ' payment -> real 3X-UI 3.7.0 for new and trial accounts; repeat unchanged')
 
 
 def financial_snapshot(db=None):
@@ -247,17 +320,18 @@ def financial_snapshot(db=None):
     return json.loads(raw)
 
 
-def restore():
-    account = json.loads((STATE / 'operator-account.json').read_text())
+def restore(manual=False):
+    prefix = 'manual-' if manual else ''
+    account = json.loads((STATE / (prefix + 'operator-account.json')).read_text())
     operator = local.session()
     _, _, actor = local.api(operator, '/api/v1/auth/login',
         {'email': account['email'], 'password': account['password']})
     _, _, catalogue = local.api(operator, '/api/v1/catalogue')
-    plan_id = json.loads((STATE / 'plan.json').read_text())['plan_id']
+    plan_id = json.loads((STATE / (prefix + 'plan.json')).read_text())['plan_id']
     plan = next(p for p in catalogue['plans'] if p['plan_id'] == plan_id and any(
         price['currency'] == 'RUB' and price['amount_minor'] == '10000' for price in p['prices']))
-    opener, login = signup('recovery')
-    purchase = create_order(opener, login, plan)
+    opener, login = signup(prefix + 'recovery')
+    purchase = create_order(opener, login, plan, manual)
     target_account = login['account']['account_id']
     restored = local.restore_name('purchase')
     restore_url = None
@@ -265,13 +339,17 @@ def restore():
     # Controlled outage affects only the native panel of this owned Docker project.
     compose('stop', 'panel')
     try:
-        assert notification(purchase)[0] == 200
+        if manual:
+            manual_report(opener, login, purchase)
+            assert manual_decision(operator, actor, login, purchase)[0] == 202
+        else:
+            assert notification(purchase)[0] == 200
         paid = order(opener, purchase['order_id'])
         assert paid['payment_status'] == 'paid' and paid['fulfillment_status'] != 'applied'
         compose('stop', 'backend')
         before = financial_snapshot()
         dump = compose('exec', '-T', 'postgres', 'pg_dump', '-U', local.PG_USER, '-Fc', '-d', local.database())
-        path = STATE / 'pending-payment.dump'
+        path = STATE / (prefix + 'pending-payment.dump')
         path.write_bytes(dump)
         path.chmod(0o600)
         bridge.query('CREATE DATABASE ' + restored + ';', db='postgres')  # Generated, validated identifier only.
@@ -292,7 +370,7 @@ def restore():
         assert len(counts) == 3 and all(c.isdigit() for c in counts), 'restore auth maintenance failed'
         assert bridge.query(maintenance, db=restored) == '0\n0\n0', 'restore maintenance not idempotent'
         assert financial_snapshot(restored) == before, 'auth maintenance changed payment data'
-        private('restore-report.json', {'paid_pending_preserved': True, 'financial_digest_matches': True,
+        private(prefix + 'restore-report.json', {'paid_pending_preserved': True, 'financial_digest_matches': True,
                                       'auth_maintenance_idempotent': True, 'restored_writers_started': False})
     finally:
         if restore_url:
@@ -309,9 +387,12 @@ def restore():
 
 
 def main():
-    if len(sys.argv) != 2 or sys.argv[1] not in ('prepare', 'check', 'restore'):
-        raise SystemExit('usage: local.py prepare|check|restore')
-    {'prepare': prepare, 'check': check, 'restore': restore}[sys.argv[1]]()
+    actions = {'prepare': prepare, 'check': check, 'restore': restore,
+               'prepare-manual': prepare_manual, 'check-manual': lambda: check(True),
+               'restore-manual': lambda: restore(True)}
+    if len(sys.argv) != 2 or sys.argv[1] not in actions:
+        raise SystemExit('usage: local.py prepare|check|restore|prepare-manual|check-manual|restore-manual')
+    actions[sys.argv[1]]()
 
 
 if __name__ == '__main__':

@@ -6,7 +6,7 @@
 ## Ревизия и результат
 
 Product revision `f051f1225c4292911b43146a7ff9be1fda4ff418`. Полная матрица **22/22 PASS**, 518.386s на одной committed revision: Go **13 пакетов PASS** с race/connected consumers, Python **105/105**, Playwright **127/127**. Все **154/154** перенесённых регрессий сохранены и прошли собственный Task2 и полный прогон. Собственный native stack остановлен; API, все15 миграций и зависимости не изменены, генерация стабильна.
-Единственный fresh whole-branch review Astra/high на d796e3a..81592a8: Critical0/Important0/Minor0, Ready from code review; fix pass/re-review не требуются. Exact-source CI, ручное слияние в v2 и preview ожидают проверки. #60 OPEN/In progress до завершения D08; локальная приёмка не означает доставку или запуск production.
+Единственный fresh whole-branch review Astra/high на d796e3a..81592a8: Critical0/Important0/Minor0, Ready from code review; fix pass/re-review не требуются. Exact-source CI и ручная доставка завершены: [PR #71](https://github.com/ekho/3xui-shop/pull/71), source fc437cfea19fc5418582dacecbfc3c56c1c58c47 → merge c9c075e40f822fbe4f7d058d292f2a14ad07cc3f, actual parents/source-equal tree проверены. [Preview2.0.0-dev.31](https://github.com/ekho/3xui-shop/releases/tag/2.0.0-dev.31), peeled tag и3public multiarch indexes/6config labels проверены. D08 завершён, #60 CLOSED/Project Done; [канонический отчёт доставки](https://github.com/ekho/3xui-shop/issues/60#issuecomment-6013023863). Production не входит в эту приёмку.
 
 | Этап | Seconds | Result |
 | --- | ---: | --- |
@@ -44,7 +44,7 @@ Product revision `f051f1225c4292911b43146a7ff9be1fda4ff418`. Полная мат
 | D05 | Компилируются154 новых TestRegression имён, каждое соответствует сохранённой baseline-функции. Сравнение полного преобразованного исходника сохраняет assertions и failure cases; audit13 nullable/TX/52-row, mail MaxConns1/revocation/account-order проверки входят в green suite. |
 | D06 | internal/platform, internal/store, db/queries и root sqlc block отсутствуют. Все module import/SQL boundaries green; shared source не переименован в новый all-domain facade. API/all15 migrations/dependency files равны fresh v2 d796e3a. |
 | D07 | Все22 проверки одной product revision: actual локальная 3X-UI3.7.0/TLS, подписанный callback/repeat и восстановление оплаченного состояния; teardown выполнен. М06а/b1/b2/c уже доставлены, их текущие владельцы и новая сборка проходят собственную общую приёмку. |
-| D08 | Fresh review без замечаний завершён; exact-source CI/manual merge/preview остаются OPEN. |
+| D08 | Один fresh review без findings; exact-source push/PR/PR-images SUCCESS; manual PR71 source-equal merge c9c075e. Post-merge run37439434498 все4 jobs SUCCESS; dev.31/tag/3public indexes/6config labels проверены. #60 CLOSED/Project Done; полный удалённый отчёт по ссылке выше. |
 
 Runtime: app.NewModules собирает accounts/catalogue/subscriptions/vpn/payments/support/notifications/mail delivery/audit reports. HTTP вызывает нужного владельца и делает только wire/error conversion; Telegram bridge не имеет доступа к общей бизнес-фасаде. Config.LoadConfig/Validate переехали в app, namespace `platform`, defaults3/15/1/UTC и legacy bearer true сохранены. Общие старые значения связываются в app, независимые настройки не добавлены.
 

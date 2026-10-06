@@ -48,7 +48,7 @@ Task command: `go -C backend test -race ./internal/httpapi ./internal/app ./inte
 
 - [x] **Step 1: Browser RED.** Test client manual→report/reload→late waiting→approved/rejected, lost-response replay/key, disabled/YooMoney coexistence, stale state and error. Test operator inbox empty/50+more→card, approve amount/reason/check acknowledgement, reject, forbidden/revoked role. Ru/en/375px/keyboard/escaped instruction text; mock существующего HTTP contract, внешний перевод не отправлять.
 - [x] **Step 2: Minimal UI/API methods.** Добавить методы reportManualPayment/decideManualPayment/getManualPaymentRequests к существующему api client. Общий каталог выбирает method и корректный PaymentType; на order не применять старый expired message к reported waiting. Отдельная очередь Resource в React-admin и действия OperatorPurchase с явной проверкой денег. Повторная команда хранит тот же key/body; при смене input новый key.
-- [ ] **Step 3: Verify and commit.** Expected: новый focused browser suite PASS, существующий purchase suite PASS; npm typecheck/build/runtime-config PASS. feat(web): add manual payment requests, Co-Authored. task-done выполняет focused browser command.
+- [x] **Step 3: Verify and commit.** Expected: новый focused browser suite PASS, существующий purchase suite PASS; npm typecheck/build/runtime-config PASS. feat(web): add manual payment requests, Co-Authored. task-done выполняет focused browser command.
 
 Task command: `npm --prefix web run test:e2e -- manual-payment.spec.ts purchase.spec.ts`. Expected: все cases PASS. Если имя существующей purchase suite отличается, записать проверенное имя и ruling, не запускать отсутствующий файл.
 

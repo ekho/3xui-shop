@@ -1,0 +1,12 @@
+# Opt-in. Instructions are plain text, supplied at deploy time in a protected file.
+x-manual: &manual
+  environment:
+    SHOP_PAYMENT_MANUAL_ENABLED: '${SHOP_PAYMENT_MANUAL_ENABLED:-false}'
+    MANUAL_CARD_DETAILS_FILE: /run/secrets/manual_card_details
+  secrets: [manual_card_details]
+services:
+  backend: *manual
+  migrate: *manual
+  reconcile: *manual
+secrets:
+  manual_card_details: {file: '${MANUAL_CARD_DETAILS_FILE:?required}'}
