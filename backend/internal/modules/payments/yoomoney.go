@@ -152,12 +152,13 @@ func (s *Service) ReceiveYooMoney(ctx context.Context, fields url.Values) error 
 	}
 	var existingOrder uuid.UUID
 	var existingWhen time.Time
-	var existingGross, existingNet int64
+	var existingGross int64
+	var existingNet *int64
 	var existingCurrency, existingType string
 	var existingCodepro, existingUnaccepted bool
 	err = tx.QueryRow(ctx, "SELECT order_id,occurred_at,gross_minor,net_minor,currency,notification_type,codepro,unaccepted FROM purchase_receipts WHERE operation_id=$1 FOR UPDATE", id).Scan(&existingOrder, &existingWhen, &existingGross, &existingNet, &existingCurrency, &existingType, &existingCodepro, &existingUnaccepted)
 	if err == nil {
-		if existingOrder != orderID || !existingWhen.Equal(occurred) || existingGross != gross || existingNet != net || existingCurrency != currency || existingType != typ || existingCodepro != codepro || existingUnaccepted != unaccepted {
+		if existingOrder != orderID || !existingWhen.Equal(occurred) || existingGross != gross || (existingNet == nil || *existingNet != net) || existingCurrency != currency || existingType != typ || existingCodepro != codepro || existingUnaccepted != unaccepted {
 			if _, err = tx.Exec(ctx, "UPDATE purchase_receipts SET review_reason='conflicting_operation_id' WHERE operation_id=$1", id); err != nil {
 				return unavailable()
 			}

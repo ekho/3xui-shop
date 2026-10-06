@@ -3,6 +3,7 @@ package payments
 import (
 	"context"
 	"errors"
+	"net/http"
 	"time"
 
 	"example.com/cabinet/backend/internal/modules/accounts"
@@ -20,6 +21,8 @@ type Config struct {
 	YooMoneyNotificationSecret               []byte
 	ManualEnabled                            bool
 	ManualCardDetails                        string
+	YooKassaEnabled, YooKassaTestMode        bool
+	YooKassaShopID, YooKassaToken, ShopEmail string
 }
 
 type Error struct {
@@ -39,13 +42,14 @@ type Service struct {
 	queue     func() *river.Client[pgx.Tx]
 	config    func() Config
 	now       func() time.Time
+	http      *http.Client
 }
 
 func New(pool *pgxpool.Pool, authority *accounts.Service, catalogueOwner *catalogue.Service, accessOwner *vpn.Service, queue func() *river.Client[pgx.Tx], config func() Config, now func() time.Time) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{pool: pool, authority: authority, catalogue: catalogueOwner, vpn: accessOwner, queue: queue, config: config, now: now}
+	return &Service{pool: pool, authority: authority, catalogue: catalogueOwner, vpn: accessOwner, queue: queue, config: config, now: now, http: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 
 func accountResult(a accounts.Snapshot, err error) (accounts.Snapshot, error) {

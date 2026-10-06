@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"example.com/cabinet/backend/internal/modules/payments"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
@@ -156,6 +157,20 @@ func (a *API) ReceiveYooMoney(c *echo.Context) error {
 	}
 	if err = a.receiveYooMoney(c.Request().Context(), fields); err != nil {
 		return err
+	}
+	return c.NoContent(200)
+}
+
+func (a *API) ReceiveYooKassa(c *echo.Context) error {
+	if !a.payments.YooKassaSourceAllowed(c.RealIP()) {
+		return paymentError(&payments.Error{Status: 403, Code: "INVALID_CREDENTIALS"})
+	}
+	in, err := decode[wire.YooKassaNotification](a, c, "YooKassaNotification")
+	if err != nil {
+		return err
+	}
+	if err = a.payments.ReceiveYooKassa(c.Request().Context(), in.Object.Id.String()); err != nil {
+		return paymentError(err)
 	}
 	return c.NoContent(200)
 }

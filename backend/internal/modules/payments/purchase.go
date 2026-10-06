@@ -39,13 +39,24 @@ type purchaseRow struct {
 const purchaseColumns = "id,account_id,idempotency_key,body_hash,quote,amount_minor,payment_type,payment_status,fulfillment_status,active,review_required,access_operation_id,funding_operation_id,created_at,expires_at,payment_method,manual_details,manual_reported_at,manual_decision,manual_decided_at,manual_actor_id,manual_reason"
 const purchaseFundingCheck = `SELECT EXISTS(SELECT 1 FROM purchase_orders p JOIN purchase_receipts r ON r.operation_id=p.funding_operation_id AND r.order_id=p.id
  WHERE p.id=$1 AND p.payment_status='paid' AND r.review_reason IS NULL AND r.gross_minor=p.amount_minor
- AND r.net_minor>0 AND r.net_minor<=r.gross_minor AND r.currency='643' AND NOT r.codepro AND NOT r.unaccepted
- AND ((p.payment_method='yoomoney' AND r.notification_type IN ('p2p-incoming','card-incoming')
-       AND r.occurred_at>=p.created_at-interval '5 minutes' AND r.occurred_at<=p.expires_at)
-   OR (p.payment_method='manual' AND r.notification_type='manual_confirmation' AND r.operation_id='manual:'||p.id::text
-       AND r.net_minor=r.gross_minor AND p.manual_decision='approved' AND p.manual_actor_id IS NOT NULL
-       AND p.manual_reported_at>=p.created_at AND p.manual_reported_at<p.expires_at
-       AND p.manual_decided_at>=p.manual_reported_at AND r.occurred_at=p.manual_decided_at)))`
+ AND NOT r.codepro AND NOT r.unaccepted
+ AND ((r.net_minor>0 AND r.net_minor<=r.gross_minor AND r.currency='643'
+       AND ((p.payment_method='yoomoney' AND r.notification_type IN ('p2p-incoming','card-incoming')
+             AND r.occurred_at>=p.created_at-interval '5 minutes' AND r.occurred_at<=p.expires_at)
+         OR (p.payment_method='manual' AND r.notification_type='manual_confirmation' AND r.operation_id='manual:'||p.id::text
+             AND r.net_minor=r.gross_minor AND p.manual_decision='approved' AND p.manual_actor_id IS NOT NULL
+             AND p.manual_reported_at>=p.created_at AND p.manual_reported_at<p.expires_at
+             AND p.manual_decided_at>=p.manual_reported_at AND r.occurred_at=p.manual_decided_at)))
+   OR (p.payment_method='yookassa' AND r.notification_type='yookassa.succeeded' AND r.currency='RUB'
+       AND (r.net_minor IS NULL OR (r.net_minor>0 AND r.net_minor<=r.gross_minor))
+       AND r.occurred_at>=p.created_at-interval '5 minutes' AND r.occurred_at<=p.expires_at
+       AND EXISTS(SELECT 1 FROM yookassa_checkouts c WHERE c.order_id=p.id
+           AND r.operation_id='yookassa:'||c.payment_id::text
+           AND r.provider_data->>'provider'='yookassa' AND r.provider_data->>'payment_id'=c.payment_id::text
+           AND r.provider_data->>'shop_id'=c.shop_id AND r.provider_data->>'test'=c.test_mode::text
+           AND r.provider_data->>'order_id'=p.id::text AND r.provider_data->>'status'='succeeded'
+           AND r.provider_data->>'paid'='true' AND r.provider_data->>'amount_minor'=r.gross_minor::text
+           AND r.provider_data->>'refund_minor'='0'))))`
 
 func scanPurchase(row pgx.Row) (purchaseRow, error) {
 	var p purchaseRow
@@ -53,7 +64,7 @@ func scanPurchase(row pgx.Row) (purchaseRow, error) {
 	return p, err
 }
 
-func (s *Service) publicPurchase(p purchaseRow) (PurchaseOrder, error) {
+func (s *Service) publicPurchase(ctx context.Context, p purchaseRow) (PurchaseOrder, error) {
 	var quote PurchaseQuote
 	if json.Unmarshal(p.quote, &quote) != nil {
 		return PurchaseOrder{}, unavailable()
@@ -77,6 +88,21 @@ func (s *Service) publicPurchase(p purchaseRow) (PurchaseOrder, error) {
 			state = *p.manualDecision
 		}
 		out.ManualPayment = &ManualPayment{State: state, Instructions: *p.manualDetails, CanReport: p.active && p.paymentStatus == "pending" && p.manualReported == nil && !expired && !p.review, ReportedAt: p.manualReported, DecidedAt: p.manualDecided, Reason: p.manualReason}
+	}
+	if p.method == "yookassa" {
+		var state string
+		var link *string
+		if err := s.pool.QueryRow(ctx, "SELECT state,confirmation_url FROM yookassa_checkouts WHERE order_id=$1", p.id).Scan(&state, &link); err != nil {
+			return PurchaseOrder{}, unavailable()
+		}
+		if !canPay || p.review {
+			state, link = "unavailable", nil
+		}
+		if state != "ready" {
+			link = nil
+		}
+		out.CanPay = canPay && !p.review && state == "ready" && link != nil
+		out.YooKassaCheckout = &YooKassaCheckout{State: state, URL: link}
 	}
 	if canPay && p.method == "yoomoney" {
 		out.Checkout = &YooMoneyCheckout{Action: "https://yoomoney.ru/quickpay/confirm", Method: "POST", Fields: YooMoneyCheckoutFields{Receiver: s.config().YooMoneyWalletID, QuickpayForm: "button", PaymentType: p.paymentType, Sum: fmt.Sprintf("%d.%02d", p.amount/100, p.amount%100), Label: p.id, SuccessURL: strings.TrimRight(s.config().CabinetOrigin, "/") + "/orders/" + p.id.String()}}
@@ -102,6 +128,9 @@ func (s *Service) PaymentMethods(ctx context.Context, account uuid.UUID) (Paymen
 	if s.config().YooMoneyEnabled {
 		out.Methods = append(out.Methods, PaymentMethod{Id: "yoomoney", Currency: "RUB"})
 	}
+	if s.methodEnabled("yookassa") {
+		out.Methods = append(out.Methods, PaymentMethod{Id: "yookassa", Currency: "RUB"})
+	}
 	if s.methodEnabled("manual") {
 		out.Methods = append(out.Methods, PaymentMethod{Id: "manual", Currency: "RUB"})
 	}
@@ -110,7 +139,7 @@ func (s *Service) PaymentMethods(ctx context.Context, account uuid.UUID) (Paymen
 
 func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUID, in PurchaseOrderInput) (PurchaseOrder, error) {
 	var empty PurchaseOrder
-	if account == uuid.Nil || key == uuid.Nil || in.Action != "purchase" || !((in.PaymentMethod == "yoomoney" && (in.PaymentType == "AC" || in.PaymentType == "PC")) || (in.PaymentMethod == "manual" && in.PaymentType == "MANUAL")) || in.PlanId == uuid.Nil || in.Revision < 1 || in.PeriodDays < 1 || in.PeriodDays > 106751 {
+	if account == uuid.Nil || key == uuid.Nil || in.Action != "purchase" || !((in.PaymentMethod == "yoomoney" && (in.PaymentType == "AC" || in.PaymentType == "PC")) || (in.PaymentMethod == "manual" && in.PaymentType == "MANUAL") || (in.PaymentMethod == "yookassa" && in.PaymentType == "YOOKASSA")) || in.PlanId == uuid.Nil || in.Revision < 1 || in.PeriodDays < 1 || in.PeriodDays > 106751 {
 		return empty, failure(400, "INVALID_INPUT")
 	}
 	hash := bodyHash(in)
@@ -145,7 +174,7 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 		if !bytes.Equal(prior.hash, hash) {
 			return empty, failure(409, "IDEMPOTENCY_CONFLICT")
 		}
-		return s.publicPurchase(prior)
+		return s.publicPurchase(ctx, prior)
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return empty, unavailable()
@@ -206,7 +235,7 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 		if !bytes.Equal(prior.hash, hash) {
 			return empty, failure(409, "IDEMPOTENCY_CONFLICT")
 		}
-		return s.publicPurchase(prior)
+		return s.publicPurchase(ctx, prior)
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return empty, unavailable()
@@ -288,10 +317,15 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 		}
 		return empty, unavailable()
 	}
+	if in.PaymentMethod == "yookassa" {
+		if err = s.queueYooKassaTx(ctx, tx, id, quote); err != nil {
+			return empty, err
+		}
+	}
 	if err = tx.Commit(ctx); err != nil {
 		return empty, unavailable()
 	}
-	return s.publicPurchase(purchaseRow{id: id, account: account, key: key, hash: hash, quote: quoteRaw, amount: amount, paymentType: string(in.PaymentType), paymentStatus: "pending", fulfillmentStatus: "not_started", active: true, created: now, expires: expires, method: in.PaymentMethod, manualDetails: details})
+	return s.publicPurchase(ctx, purchaseRow{id: id, account: account, key: key, hash: hash, quote: quoteRaw, amount: amount, paymentType: string(in.PaymentType), paymentStatus: "pending", fulfillmentStatus: "not_started", active: true, created: now, expires: expires, method: in.PaymentMethod, manualDetails: details})
 }
 
 func (s *Service) PurchaseOrder(ctx context.Context, account, id uuid.UUID) (PurchaseOrder, error) {
@@ -306,7 +340,7 @@ func (s *Service) PurchaseOrder(ctx context.Context, account, id uuid.UUID) (Pur
 	if err != nil {
 		return empty, unavailable()
 	}
-	return s.publicPurchase(p)
+	return s.publicPurchase(ctx, p)
 }
 
 func (s *Service) CurrentPurchaseOrder(ctx context.Context, account uuid.UUID) (CurrentPurchaseOrder, error) {
@@ -321,7 +355,7 @@ func (s *Service) CurrentPurchaseOrder(ctx context.Context, account uuid.UUID) (
 	if err != nil {
 		return out, unavailable()
 	}
-	order, err := s.publicPurchase(p)
+	order, err := s.publicPurchase(ctx, p)
 	if err != nil {
 		return out, err
 	}
@@ -350,7 +384,7 @@ func (s *Service) CancelPurchaseOrder(ctx context.Context, account, id, key uuid
 		return empty, unavailable()
 	}
 	if p.paymentStatus == "canceled" {
-		return s.publicPurchase(p)
+		return s.publicPurchase(ctx, p)
 	}
 	if p.paymentStatus != "pending" || !p.active || p.manualReported != nil || !s.now().Before(p.expires) {
 		return empty, failure(409, "PURCHASE_ORDER_CONFLICT")
@@ -363,7 +397,7 @@ func (s *Service) CancelPurchaseOrder(ctx context.Context, account, id, key uuid
 	}
 	p.paymentStatus = "canceled"
 	p.active = false
-	return s.publicPurchase(p)
+	return s.publicPurchase(ctx, p)
 }
 
 func (s *Service) OperatorPurchaseOrder(ctx context.Context, actor, target uuid.UUID) (CurrentPurchaseOrder, error) {
@@ -383,7 +417,7 @@ func (s *Service) OperatorPurchaseOrder(ctx context.Context, actor, target uuid.
 	if err != nil {
 		return out, unavailable()
 	}
-	order, err := s.publicPurchase(p)
+	order, err := s.publicPurchase(ctx, p)
 	if err != nil {
 		return out, err
 	}
@@ -450,7 +484,7 @@ func (s *Service) ReconcilePurchaseOrder(ctx context.Context, actor, target, id,
 		return empty, unavailable()
 	}
 	p.fulfillmentStatus = "queued"
-	out, err := s.publicPurchase(p)
+	out, err := s.publicPurchase(ctx, p)
 	if err != nil {
 		return empty, err
 	}

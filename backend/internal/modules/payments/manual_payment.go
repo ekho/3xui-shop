@@ -21,6 +21,8 @@ func (s *Service) methodEnabled(method string) bool {
 		return c.YooMoneyEnabled
 	case "manual":
 		return c.ManualEnabled && validText(c.ManualCardDetails, 1, 2000)
+	case "yookassa":
+		return c.YooKassaEnabled
 	default:
 		return false
 	}
@@ -82,7 +84,7 @@ func (s *Service) ReportManualPayment(ctx context.Context, account, id, key uuid
 		}
 		p.manualReported = &now
 	}
-	out, err := s.publicPurchase(p)
+	out, err := s.publicPurchase(ctx, p)
 	if err != nil {
 		return empty, err
 	}
@@ -196,7 +198,7 @@ func (s *Service) DecideManualPayment(ctx context.Context, actor, target, id, ke
 	}
 	p.manualDecision, p.manualDecided, p.manualActor, p.manualReason = &state, &now, &actor, &reason
 	p.paymentStatus, p.active = status, false
-	out, err := s.publicPurchase(p)
+	out, err := s.publicPurchase(ctx, p)
 	if err != nil {
 		return empty, err
 	}
@@ -242,7 +244,7 @@ func (s *Service) ManualPaymentRequests(ctx context.Context, actor uuid.UUID, af
 		if err != nil {
 			return out, unavailable()
 		}
-		order, err := s.publicPurchase(p)
+		order, err := s.publicPurchase(ctx, p)
 		if err != nil {
 			return out, err
 		}

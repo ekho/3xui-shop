@@ -42,6 +42,11 @@ type PurchaseOrder struct {
 	Quote             PurchaseQuote     `json:"quote"`
 	ReviewRequired    bool              `json:"review_required"`
 	ManualPayment     *ManualPayment    `json:"manual_payment,omitempty"`
+	YooKassaCheckout  *YooKassaCheckout `json:"yookassa_checkout,omitempty"`
+}
+type YooKassaCheckout struct {
+	State string  `json:"state"`
+	URL   *string `json:"url"`
 }
 type ManualPayment struct {
 	CanReport    bool       `json:"can_report"`

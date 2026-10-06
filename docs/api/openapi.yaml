@@ -8399,6 +8399,37 @@
           }
         }
       }
+    },
+    "/webhooks/yookassa": {
+      "post": {
+        "operationId": "receiveYooKassa",
+        "description": "Source IP uses configured trusted-proxy extraction. Notification only hints a known provider ID; money facts are retrieved using authenticated fixed-HTTPS API. UTF-8 JSON <=16 KiB. Unknown ID acknowledged without provider call or funding; browser return never confirms payment.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/YooKassaNotification"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Acknowledged, not a fulfillment confirmation."
+          },
+          "400": {
+            "description": "Invalid JSON/event/ID."
+          },
+          "403": {
+            "description": "Sender IP not permitted."
+          },
+          "503": {
+            "description": "Provider or persistence temporarily unavailable; safe retry."
+          }
+        }
+      }
     }
   },
   "components": {
@@ -11222,7 +11253,8 @@
             "type": "string",
             "enum": [
               "yoomoney",
-              "manual"
+              "manual",
+              "yookassa"
             ]
           },
           "currency": {
@@ -11282,7 +11314,8 @@
             "type": "string",
             "enum": [
               "yoomoney",
-              "manual"
+              "manual",
+              "yookassa"
             ]
           },
           "payment_type": {
@@ -11290,7 +11323,8 @@
             "enum": [
               "AC",
               "PC",
-              "MANUAL"
+              "MANUAL",
+              "YOOKASSA"
             ]
           }
         },
@@ -11455,7 +11489,8 @@
             "type": "string",
             "enum": [
               "yoomoney",
-              "manual"
+              "manual",
+              "yookassa"
             ]
           },
           "payment_type": {
@@ -11463,7 +11498,8 @@
             "enum": [
               "AC",
               "PC",
-              "MANUAL"
+              "MANUAL",
+              "YOOKASSA"
             ]
           },
           "payment_status": {
@@ -11521,6 +11557,14 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/ManualPayment"
+              }
+            ],
+            "nullable": true
+          },
+          "yookassa_checkout": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/YooKassaCheckout"
               }
             ],
             "nullable": true
@@ -11701,6 +11745,66 @@
           "items",
           "has_more",
           "next_cursor"
+        ]
+      },
+      "YooKassaCheckout": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "preparing",
+              "ready",
+              "unavailable"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "state",
+          "url"
+        ]
+      },
+      "YooKassaNotification": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "notification"
+            ]
+          },
+          "event": {
+            "type": "string",
+            "enum": [
+              "payment.succeeded",
+              "payment.waiting_for_capture",
+              "payment.canceled"
+            ]
+          },
+          "object": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "event",
+          "object"
         ]
       }
     }

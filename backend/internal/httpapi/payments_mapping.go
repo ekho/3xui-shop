@@ -26,6 +26,9 @@ func purchaseOrderResult(p payments.PurchaseOrder) wire.PurchaseOrder {
 	if m := p.ManualPayment; m != nil {
 		out.ManualPayment = &wire.ManualPayment{CanReport: m.CanReport, DecidedAt: m.DecidedAt, Instructions: m.Instructions, Reason: m.Reason, ReportedAt: m.ReportedAt, State: wire.ManualPaymentState(m.State)}
 	}
+	if k := p.YooKassaCheckout; k != nil {
+		out.YookassaCheckout = &wire.YooKassaCheckout{State: wire.YooKassaCheckoutState(k.State), Url: k.URL}
+	}
 	return out
 }
 

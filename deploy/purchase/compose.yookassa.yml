@@ -1,0 +1,15 @@
+# Credentials are retained when new sales are disabled.
+x-payment: &payment
+  environment:
+    SHOP_PAYMENT_YOOKASSA_ENABLED: '${SHOP_PAYMENT_YOOKASSA_ENABLED:-false}'
+    YOOKASSA_SHOP_ID: '${YOOKASSA_SHOP_ID:?required}'
+    YOOKASSA_TEST_MODE: '${YOOKASSA_TEST_MODE:-false}'
+    SHOP_EMAIL: '${SHOP_EMAIL:?required}'
+    YOOKASSA_TOKEN_FILE: /run/secrets/yookassa_token
+  secrets: [yookassa_token]
+services:
+  backend: *payment
+  migrate: *payment
+  reconcile: *payment
+secrets:
+  yookassa_token: {file: '${YOOKASSA_TOKEN_FILE:?required}'}
