@@ -67,5 +67,5 @@ Task command: `npm --prefix web run test:e2e -- manual-payment.spec.ts purchase.
 
 - [x] Один fresh Astra/high whole-branch reviewer от base c9c075e до окончательного head; все findings re-grade, каждое Declined to judge — Final ruling/cost. Critical/Important один RED→GREEN fix pass и green suite без re-review; Minor deferred.
 - [x] Экспортировать собственные briefs/ledger/review/full logs/rulings, проверить копию, удалить только own scratch.
-- [ ] Exact-source required CI и PR images, manual SHA-guarded merge→v2; actual parents/source-equal tree, actual preview tag/3public multiarch indexes/6config labels.
-- [ ] Только после собственной AC/доставки #19 CLOSED/Project Done и fresh v2 next task. С13/#18 остаётся отдельной задачей локальной приёмки с заглушками по [новому решению](https://github.com/ekho/3xui-shop/issues/18#issuecomment-6014628265); настоящая доставка провайдера/legacy cutover не заявляются проверенными.
+- [x] Exact-source required CI и PR images, manual SHA-guarded merge→v2; actual parents/source-equal tree, actual preview tag/3public multiarch indexes/6config labels.
+- [x] Только после собственной AC/доставки #19 CLOSED/Project Done и fresh v2 next task. С13/#18 остаётся отдельной задачей локальной приёмки с заглушками по [новому решению](https://github.com/ekho/3xui-shop/issues/18#issuecomment-6014628265); настоящая доставка провайдера/legacy cutover не заявляются проверенными.
