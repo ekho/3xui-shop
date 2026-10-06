@@ -78,7 +78,7 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 		c.Operators = cfg.Accounts.Operators
 		return c
 	}, now)
-	paymentsOwner = payments.New(pool, owner, catalogueOwner, vpnOwner, func() *river.Client[pgx.Tx] { return queue }, func() payments.Config {
+	paymentsOwner = payments.New(pool, owner, catalogueOwner, subscriptionOwner, vpnOwner, func() *river.Client[pgx.Tx] { return queue }, func() payments.Config {
 		c := cfg.Payments
 		c.CabinetOrigin, c.PanelID = cfg.HTTP.CabinetOrigin, cfg.Subscriptions.PanelID
 		return c

@@ -172,8 +172,8 @@ func (s *Service) ReceiveYooMoney(ctx context.Context, fields url.Values) error 
 		return unavailable()
 	}
 	review := ""
-	var otherPaid bool
-	if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE account_id=$1 AND id<>$2 AND payment_status='paid')", accountID, orderID).Scan(&otherPaid); err != nil {
+	otherPaid, err := s.purchaseHistoryBlockedTx(ctx, tx, accountID, orderID, p.action)
+	if err != nil {
 		return unavailable()
 	}
 	switch {

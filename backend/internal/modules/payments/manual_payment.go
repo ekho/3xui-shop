@@ -169,8 +169,8 @@ func (s *Service) DecideManualPayment(ctx context.Context, actor, target, id, ke
 		if s.queue == nil || s.queue() == nil {
 			return empty, unavailable()
 		}
-		var otherPaid bool
-		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE account_id=$1 AND id<>$2 AND payment_status='paid')", target, id).Scan(&otherPaid); err != nil {
+		otherPaid, err := s.purchaseHistoryBlockedTx(ctx, tx, target, id, p.action)
+		if err != nil {
 			return empty, unavailable()
 		}
 		if otherPaid {

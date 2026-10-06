@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/vpn"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -80,9 +81,16 @@ func (s *Service) FulfillPurchase(parent context.Context, id uuid.UUID) error {
 		return unavailable()
 	}
 	a, err := s.accountByIDTx(ctx, preTx, p.account)
+	reason, policyErr := s.purchasePolicyTx(ctx, preTx, p)
 	closeErr := preTx.Rollback(ctx)
 	if err != nil || closeErr != nil {
 		return unavailable()
+	}
+	if policyErr != nil {
+		return policyErr
+	}
+	if reason != "" {
+		return s.purchaseReview(ctx, id, reason)
 	}
 	if a.Restricted || a.VpnBanned || stringValue(a.AccessProfile) == "unlimited" || a.PanelKey == "" || a.VpnID == uuid.Nil || a.SubID == "" || (a.AssignedPanelID != nil && stringValue(a.AssignedPanelID) != s.config().PanelID) || s.config().PanelID == "" {
 		return s.purchaseReview(ctx, id, "account_not_eligible")
@@ -125,7 +133,7 @@ func (s *Service) FulfillPurchase(parent context.Context, id uuid.UUID) error {
 		t.PreviousTrafficLimitBytes = view.TrafficLimitBytes
 		t.PreviousInboundIDs = append([]int64{}, view.InboundIDs...)
 		if !view.Enabled {
-			if view.ExpiryTimeMS > now.UnixMilli() {
+			if view.ExpiryTimeMS > now.UnixMilli() && (p.action != "renew" || !subscriptions.CanActivateRenewal(view, now)) {
 				return s.purchaseReview(ctx, id, "disabled_client")
 			}
 			t.Enable = true
@@ -179,6 +187,13 @@ func (s *Service) FulfillPurchase(parent context.Context, id uuid.UUID) error {
 	}
 	if !funded {
 		return reviewTx("funding_invalid")
+	}
+	reason, policyErr = s.purchasePolicyTx(ctx, tx, p)
+	if policyErr != nil {
+		return policyErr
+	}
+	if reason != "" {
+		return reviewTx(reason)
 	}
 	if current.Restricted || current.VpnBanned || current.PanelKey != a.PanelKey || current.VpnID != a.VpnID || current.SubID != a.SubID || !reflect.DeepEqual(current.AssignedPanelID, a.AssignedPanelID) || !reflect.DeepEqual(current.AccessProfile, a.AccessProfile) || current.HadSubscription != a.HadSubscription {
 		return reviewTx("account_changed")

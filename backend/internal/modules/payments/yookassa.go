@@ -426,8 +426,8 @@ func (s *Service) settleKassaTx(ctx context.Context, c kassaRow, payment kassaPa
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return false, unavailable()
 	}
-	var otherPaid bool
-	if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE account_id=$1 AND id<>$2 AND payment_status='paid')", account, c.order).Scan(&otherPaid); err != nil {
+	otherPaid, err := s.purchaseHistoryBlockedTx(ctx, tx, account, c.order, p.action)
+	if err != nil {
 		return false, unavailable()
 	}
 	review := ""

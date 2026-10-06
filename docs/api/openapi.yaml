@@ -8492,6 +8492,110 @@
           }
         }
       }
+    },
+    "/api/v1/subscription/renewal": {
+      "get": {
+        "operationId": "getRenewalOffer",
+        "description": "Authenticated unrestricted web account. One own current finite plan, including its hidden plan; trial/unlimited reversal clears that plan. 409 RENEWAL_NOT_ELIGIBLE or EXTERNAL_BILLING_UNVERIFIED. No query parameters; private no-store.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                },
+                "description": "Seconds before retry"
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CataloguePlanSnapshot"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -11357,8 +11461,10 @@
           "action": {
             "type": "string",
             "enum": [
-              "purchase"
-            ]
+              "purchase",
+              "renew"
+            ],
+            "description": "purchase retains first-purchase rules; renew uses only the account own current finite plan and YooMoney AC/PC. Unknown Telegram/legacy billing fails closed."
           },
           "plan_id": {
             "type": "string",
@@ -11549,7 +11655,8 @@
           "action": {
             "type": "string",
             "enum": [
-              "purchase"
+              "purchase",
+              "renew"
             ]
           },
           "quote": {
@@ -11682,6 +11789,10 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "can_purchase": {
+            "type": "boolean",
+            "description": "Whether an applied historical order permits a new first purchase after proved starter-plan clearing. Omitted or false preserves the historical paid-order block; live price, method, pending and account checks still apply at creation."
+          },
           "order": {
             "allOf": [
               {

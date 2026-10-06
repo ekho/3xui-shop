@@ -178,6 +178,20 @@ func (q *Queries) AppendAccessStep(ctx context.Context, arg AppendAccessStepPara
 	return result.RowsAffected(), nil
 }
 
+const currentAccessPlanID = `-- name: CurrentAccessPlanID :one
+SELECT plan_id FROM access_operations WHERE account_id=$1 AND status='applied'
+ AND (kind IN ('purchase','assign_plan','starter_trial')
+      OR (kind='set_profile' AND (plan_id IS NOT NULL OR desired->>'reset_traffic'='true')))
+ ORDER BY sequence DESC LIMIT 1
+`
+
+func (q *Queries) CurrentAccessPlanID(ctx context.Context, accountID uuid.UUID) (*uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, currentAccessPlanID, accountID)
+	var plan_id *uuid.UUID
+	err := row.Scan(&plan_id)
+	return plan_id, err
+}
+
 const insertAccessOperation = `-- name: InsertAccessOperation :exec
 INSERT INTO access_operations(id,account_id,operator_account_id,execution_actor_id,kind,status,reason,plan_id,plan_revision,period_days,desired,target,completed_steps,monthly_period,purchase_order_id,created_at,updated_at)
 VALUES($1,$2,$3,$3,$4,'pending',$5,$6,$7,$8,$9,$10,'["prepared"]'::jsonb,$12::text,$13::uuid,$11,$11)
