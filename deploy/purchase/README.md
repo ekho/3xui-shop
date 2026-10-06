@@ -165,3 +165,5 @@ proof, останавливает writers, сверяет восстановле
 `python3 deploy/purchase/cryptomus-stub.py --self-check` проверяет signed API,
 unique order_id,500,info и paid/paid_over без Docker и внешней сети. Legacy бот
 и живое VPN-соединение не используются.
+
+Результаты и границы проверки: [локальная приёмка С14](../../docs/evidence/s14-acceptance.md).

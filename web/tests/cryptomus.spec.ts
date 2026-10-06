@@ -75,3 +75,18 @@ test('currency and provider selection stay aligned when switching back to RUB',a
  await page.getByLabel('Currency').selectOption('USD');await expect(page.getByRole('radio',{name:'Cryptomus'})).toBeChecked();
  await page.getByLabel('Currency').selectOption('XTR');await expect(page.getByRole('button',{name:'Buy plan'})).toBeDisabled();
 });
+
+for(const [name,method,type] of [['Manual transfer','manual','MANUAL'],['YooKassa','yookassa','YOOKASSA']] as const)test(`changing period preserves ${method} selection and order`,async({page})=>{
+ const calls:Model<'PurchaseOrderInput'>[]=[];
+ await routes(page,async(route,path)=>{
+  if(path.endsWith('/payment-methods')){await route.fulfill({json:{methods:[{id:'yoomoney',currency:'RUB'},{id:'manual',currency:'RUB'},{id:'yookassa',currency:'RUB'},{id:'cryptomus',currency:'USD'}]}});return true;}
+  if(path.endsWith('/catalogue')){await route.fulfill({json:{plans:[{...plan,periods:[30,60],prices:[...plan.prices,{period_days:60,currency:'RUB',amount_minor:'88888'}]}]}});return true;}
+  if(path.endsWith('/orders')&&route.request().method()==='POST'){calls.push(route.request().postDataJSON());await route.abort();return true;}return false;
+ });
+ await page.goto('/catalogue?lang=en');await page.getByRole('button',{name:'Select plan'}).click();
+ const selected=page.getByRole('radio',{name});await selected.check();await page.getByLabel('Period').selectOption('60');
+ await expect(selected).toBeChecked();await expect(page.getByLabel('Currency')).toHaveValue('RUB');
+ await page.getByRole('button',{name:'Buy plan'}).click();await expect(page.getByText(/Review the terms.*888\.88 RUB/)).toBeVisible();
+ await page.getByRole('button',{name:'Confirm purchase'}).click();await expect.poll(()=>calls.length).toBe(1);
+ expect(calls[0]).toEqual({action:'purchase',plan_id:planId,revision:3,period_days:60,payment_method:method,payment_type:type});
+});

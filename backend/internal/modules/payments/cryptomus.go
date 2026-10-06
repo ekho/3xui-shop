@@ -453,8 +453,6 @@ func (s *Service) recordCrypto(ctx context.Context, c cryptoRow, payment cryptoP
 	}
 	id, idErr := uuid.Parse(payment.ID)
 	gross, amountErr := cryptoUSD(payment.Amount)
-	created, createdErr := time.Parse(time.RFC3339Nano, payment.Created)
-	updated, updatedErr := time.Parse(time.RFC3339Nano, payment.Updated)
 	status := payment.Status
 	waiting := status == "check" || status == "process" || status == "confirm_check"
 	terminalEmpty := status == "cancel" || status == "fail" || status == "system_fail"
@@ -469,7 +467,7 @@ func (s *Service) recordCrypto(ctx context.Context, c cryptoRow, payment cryptoP
 	if idErr != nil || id == uuid.Nil || id.String() != payment.ID || c.id != nil && id != *c.id || payment.Order != c.order.String() {
 		return review("provider_identity_mismatch")
 	}
-	if amountErr != nil || gross <= 0 || payment.Currency != "USD" || createdErr != nil || updatedErr != nil || updated.Before(created) || updated.After(s.now().Add(5*time.Minute)) || created.Before(p.created.Add(-5*time.Minute)) || payment.Final == nil || payment.PaymentStatus != status {
+	if amountErr != nil || gross <= 0 || payment.Currency != "USD" || payment.Final == nil || payment.PaymentStatus != status {
 		return review("provider_observation_invalid")
 	}
 	if c.id == nil {
@@ -520,6 +518,11 @@ func (s *Service) recordCrypto(ctx context.Context, c cryptoRow, payment cryptoP
 			return false, unavailable()
 		}
 		return true, tx.Commit(ctx)
+	}
+	created, createdErr := time.Parse(time.RFC3339Nano, payment.Created)
+	updated, updatedErr := time.Parse(time.RFC3339Nano, payment.Updated)
+	if createdErr != nil || updatedErr != nil || updated.Before(created) || updated.After(s.now().Add(5*time.Minute)) || created.Before(p.created.Add(-5*time.Minute)) {
+		return review("provider_observation_invalid")
 	}
 	actual, actualOK := cryptoNumber(payment.PaymentAmount)
 	payer, payerOK := cryptoNumber(payment.PayerAmount)

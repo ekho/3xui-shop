@@ -296,6 +296,38 @@ func TestCryptomusRequestAndRecovery(t *testing.T) {
 	}
 }
 
+func TestCryptomusPendingNullableDates(t *testing.T) {
+	for _, both := range []bool{false, true} {
+		t.Run(fmt.Sprintf("both-%t", both), func(t *testing.T) {
+			s, e, account, order, f := cryptoFixture(t)
+			created := f.payment["created_at"]
+			f.payment["updated_at"] = nil
+			if both {
+				f.payment["created_at"] = nil
+			}
+			syncCrypto(t, s, order.OrderId)
+			manualCounts(t, s, order.OrderId, 0, 0)
+			pending, err := s.purchaseOrder(context.Background(), account, order.OrderId)
+			if err != nil || pending.ReviewRequired || !pending.CanPay || pending.CryptomusCheckout == nil || pending.CryptomusCheckout.State != "ready" {
+				t.Fatal("nullable pending dates blocked checkout", err)
+			}
+			f.payment["created_at"] = created
+			settleCrypto(e, f)
+			for range 2 {
+				syncCrypto(t, s, order.OrderId)
+				if err = s.fulfillPurchase(context.Background(), order.OrderId); err != nil {
+					t.Fatal(err)
+				}
+			}
+			manualCounts(t, s, order.OrderId, 1, 1)
+			paid, err := s.purchaseOrder(context.Background(), account, order.OrderId)
+			if err != nil || paid.PaymentStatus != "paid" || paid.ReviewRequired || paid.AccessOperationId == nil {
+				t.Fatal("valid final proof did not recover pending invoice", err)
+			}
+		})
+	}
+}
+
 func TestCryptomusFundingBoundary(t *testing.T) {
 	for _, tc := range []struct {
 		name, field    string
@@ -314,6 +346,7 @@ func TestCryptomusFundingBoundary(t *testing.T) {
 		{"negative-merchant", "merchant_amount", "-1", 0, 0, true}, {"not-final", "is_final", false, 0, 0, true},
 		{"status-mismatch", "payment_status", "check", 0, 0, true}, {"missing-final", "is_final", nil, 0, 0, true},
 		{"future", "updated_at", "2026-10-02T00:00:00Z", 0, 0, true}, {"before-created", "updated_at", "2026-09-30T23:59:59Z", 0, 0, true},
+		{"missing-created", "created_at", nil, 0, 0, true}, {"missing-updated", "updated_at", nil, 0, 0, true},
 		{"late", "late", nil, 1, 0, true}, {"local-canceled", "local-canceled", nil, 1, 0, true},
 		{"locked", "status", "locked", 0, 0, true}, {"refund", "status", "refund_paid", 0, 0, true},
 		{"wrong-amount", "status", "wrong_amount", 0, 0, true}, {"missing-uuid", "uuid", nil, 0, 0, true},

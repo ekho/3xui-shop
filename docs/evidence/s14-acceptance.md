@@ -3,7 +3,10 @@
 Владелец [#21](https://github.com/ekho/3xui-shop/issues/21), контракт
 `2026-10-06-s14-cryptomus-v1`; [spec](../superpowers/specs/2026-10-06-s14-cryptomus-design.md),
 [Native plan](../superpowers/plans/2026-10-06-s14-cryptomus.md), [решения](s14-decisions.md).
-Backend checkpoint cbf857d, UI b14ff8e; финальный source и delivery ещё не зафиксированы.
+Backend checkpoint cbf857d, UI b14ff8e; whole-branch review 42a791c..1ac06ec.
+Два Important исправлены в одном проходе; текущие исполняемые inputs сверены
+по 515 SHA256. Финальный source/CI/merge/preview фиксируются в PR и #21;
+delivery пока открыт.
 
 Покупка выбирает серверную USD цену. Только signed API info с final paid/paid_over,
 точным invoice principal и достаточной crypto оплатой сохраняет один receipt и
@@ -14,25 +17,26 @@ Backend checkpoint cbf857d, UI b14ff8e; финальный source и delivery е
 | Проверка | Наблюдение |
 | --- | --- |
 | Connected Go money/config/old methods |61 root tests PASS,150.733s, race, no skip. Первое148.425s aggregate упало только на некорректной подготовке unverified fixture; исправлена регистрация без account row. |
-| Полный web |176 PASS,98.990s; focused65 PASS25.684s. RU/EN keyboard, USD/RUB switch, frozen retry, freshness/owner/review/URL/return. Первые два keyboard RED64.842s на отсутствующем Cryptomus control. |
-| Python/Go consumer |105 PASS,28.936s с защищёнными TEST FILEs; legacy behavior сохранён. |
-| Generator/vet/typecheck/names |PASS; generated Go/TS не отличаются от checkpoint. Task1 TS7053 разрешён Task2 UI; временный backend checkpoint не считался полной web-фичей. |
+| Полный web после fix pass |178 PASS,100.685s; Cryptomus22cases, все старые методы сохранены. RU/EN keyboard, USD/RUB switch, frozen retry, freshness/owner/review/URL/return, period сохраняет выбранный RUB method и POST. Предварительный focused65 PASS25.684s и два keyboard RED64.842s сохранены отдельно. |
+| Python/Go consumer после fix pass |105 PASS,31.226s с защищёнными TEST FILEs; legacy behavior сохранён. |
+| Generator/vet/typecheck/names |PASS; generated Go/TS не отличаются от checkpoint; final static5.596s. Task1 TS7053 разрешён Task2 UI; временный backend checkpoint не считался полной web-фичей. |
 | Stub self-check |PASS0.605s: signed requests, unique order_id/frozen bytes,500,info,paid/paid_over, persistent invoice. |
-| Own Docker startup |PASS47.427s; ordinary source images, isolated cabinet-c14, native3X-UI3.7.0, TLS Mailpit/API; один Go backend процесс. |
-| Native purchase |PASS51.035s: new/paid и trial/paid_over, initial500/backend+stub restart, same bytes/invoice, one receipt/job/access, trial ID/expiry+30days/limits сохранены. |
-| Native paid-pending restore |PASS23.660s: writer quiesce/dump/read-only restore/checkouts/proof/auth maintenance unchanged, restored writers не запускались; исходный backend выдал ровно один native access. |
-| Full Go race |294 root tests /13 packages PASS,458.269s; financial56 HTTP roots, no skip. |
-| Final review / delivery |Pending: не выводятся из успешных local checks. |
+| Own Docker startup после fix pass |PASS45.041s; ordinary source images, isolated cabinet-c14, native3X-UI3.7.0, TLS Mailpit/API; один Go backend процесс. |
+| Native purchase после fix pass |PASS51.024s: new/paid и trial/paid_over, initial500/backend+stub restart, same bytes/invoice, one receipt/job/access, trial ID/expiry+30days/limits сохранены. |
+| Native paid-pending restore после fix pass |PASS23.576s: writer quiesce/dump/read-only restore/checkouts/proof/auth maintenance unchanged, restored writers не запускались; исходный backend выдал ровно один native access. |
+| Full Go race после fix pass |295 root tests /13 packages PASS,459.552s; financial57 HTTP roots,62 по всем пакетам, no skip. |
+| Final behavioral RED→GREEN |Pending nullable dates: RED7.300s, GREEN вместе с30 FundingBoundary cases36.174s; final paid без дат отклоняется. Manual/YooKassa period reset: rendered RED26.715s, два GREEN6.523s. |
+| Final review / delivery |Fresh Astra/high: Critical0/Important2/Minor0; оба Important исправлены одним проходом, re-review не выполнялся. Exact-source CI/manual merge/actual preview пока pending. Все rulings/cost/Declined опубликованы в decisions. |
 
 | AC / Review Focus | Исполняемое доказательство |
 | --- | --- |
 | AC01; creation/expiry/drift |OrderAtomic/OrderGuards/RequestAndRecovery/ExpiryAndDrift; native500/restart; actual USD vs different RUB price and immutable request. |
 | AC02; signature vs API |HTTPBoundary/HTTPAuthoritativeStatus/ProviderHTTPFailures: effective IP/forgedXFF, ordered unicode/slash/number/duplicate/tamper, unknown200/noAPI, paid callback+pending info→zero funding. |
-| AC03; USD vs crypto |FundingBoundary28subcases, exact decimals/paid_over/NULL net/underpay/missing/currency/time/late/cancel/AML/refund; native paid/paid_over. |
+| AC03; USD vs crypto |FundingBoundary30subcases, PendingNullableDates2subcases и recovery/replay; exact decimals/paid_over/NULL net/underpay/missing/currency/time/late/cancel/AML/refund; native paid/paid_over. |
 | AC04; terminal race/common guard |ObservationRace real PostgreSQL barrier; ReceiptConflictAndForeignCollision; ChangedFactsBlockPreparedAccess five cases; ReviewCannotReconcile. First immutable receipt survives while prepare/access/reconcile reject contradictory money. |
-| AC05; USD/fresh checkout |cryptomus.spec.ts20cases plus old purchase/manual/yookassa suites; full web176. |
+| AC05; USD/fresh checkout |cryptomus.spec.ts22cases plus old purchase/manual/yookassa suites; full web178. |
 | AC06; recovery |cryptomus-local.py check/restore, actual signed TLS request/info through River and native3X-UI; SQL digests and one writer. |
-| AC07 |Fresh Astra/high review/one fix pass if required/exact CI/manual merge/actual preview still pending. |
+| AC07 |Fresh Astra/high review и one fix pass завершены; exact CI/manual merge/actual preview pending и фиксируются отдельно в #21. |
 
 Native replay reschedules the existing completed provider job in this owned
 fixture and verifies another authenticated info without another invoice/job/receipt/
