@@ -184,6 +184,9 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		if ctx.Err() != nil || lost.Load() {
 			return false
 		}
+		if op.Kind == "purchase" && view != nil && !view.Enabled && view.ExpiryTimeMS > s.now().UnixMilli() && (view.TrafficLimitBytes <= 0 || view.UsedTraffic == nil || *view.UsedTraffic < view.TrafficLimitBytes) {
+			return false
+		}
 		if op.Kind == "monthly_reset" {
 			expired, e := s.monthlyOperationExpired(ctx, op)
 			if e != nil || expired {

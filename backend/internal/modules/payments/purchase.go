@@ -8,6 +8,7 @@ import (
 	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"example.com/cabinet/backend/internal/modules/catalogue"
 	"example.com/cabinet/backend/internal/modules/payments/internal/store"
+	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/vpn"
 	"fmt"
 	"github.com/google/uuid"
@@ -31,12 +32,13 @@ type purchaseRow struct {
 	fundingID                                     *string
 	created, expires                              time.Time
 	method                                        string
+	action                                        string
 	manualDetails, manualDecision, manualReason   *string
 	manualReported, manualDecided                 *time.Time
 	manualActor                                   *uuid.UUID
 }
 
-const purchaseColumns = "id,account_id,idempotency_key,body_hash,quote,amount_minor,payment_type,payment_status,fulfillment_status,active,review_required,access_operation_id,funding_operation_id,created_at,expires_at,payment_method,manual_details,manual_reported_at,manual_decision,manual_decided_at,manual_actor_id,manual_reason"
+const purchaseColumns = "id,account_id,idempotency_key,body_hash,quote,amount_minor,payment_type,payment_status,fulfillment_status,active,review_required,access_operation_id,funding_operation_id,created_at,expires_at,payment_method,manual_details,manual_reported_at,manual_decision,manual_decided_at,manual_actor_id,manual_reason,action"
 const purchaseFundingCheck = `SELECT EXISTS(SELECT 1 FROM purchase_orders p JOIN purchase_receipts r ON r.operation_id=p.funding_operation_id AND r.order_id=p.id
  WHERE p.id=$1 AND p.payment_status='paid' AND r.review_reason IS NULL AND r.gross_minor=p.amount_minor
  AND NOT r.codepro AND NOT r.unaccepted
@@ -78,7 +80,7 @@ const purchaseFundingCheck = `SELECT EXISTS(SELECT 1 FROM purchase_orders p JOIN
 
 func scanPurchase(row pgx.Row) (purchaseRow, error) {
 	var p purchaseRow
-	err := row.Scan(&p.id, &p.account, &p.key, &p.hash, &p.quote, &p.amount, &p.paymentType, &p.paymentStatus, &p.fulfillmentStatus, &p.active, &p.review, &p.accessID, &p.fundingID, &p.created, &p.expires, &p.method, &p.manualDetails, &p.manualReported, &p.manualDecision, &p.manualDecided, &p.manualActor, &p.manualReason)
+	err := row.Scan(&p.id, &p.account, &p.key, &p.hash, &p.quote, &p.amount, &p.paymentType, &p.paymentStatus, &p.fulfillmentStatus, &p.active, &p.review, &p.accessID, &p.fundingID, &p.created, &p.expires, &p.method, &p.manualDetails, &p.manualReported, &p.manualDecision, &p.manualDecided, &p.manualActor, &p.manualReason, &p.action)
 	return p, err
 }
 
@@ -93,7 +95,14 @@ func (s *Service) publicPurchase(ctx context.Context, p purchaseRow) (PurchaseOr
 		expired = false
 	}
 	canPay := p.active && p.paymentStatus == "pending" && !expired && p.manualReported == nil && s.methodEnabled(p.method)
-	out := PurchaseOrder{OrderId: p.id, Action: "purchase", PaymentMethod: p.method, PaymentType: p.paymentType, Quote: quote, PaymentStatus: p.paymentStatus, FulfillmentStatus: p.fulfillmentStatus, ReviewRequired: p.review, CreatedAt: p.created, ExpiresAt: p.expires, Expired: expired, CanPay: canPay, CanCancel: p.active && p.paymentStatus == "pending" && !expired && p.manualReported == nil, AccessOperationId: p.accessID}
+	if canPay {
+		reason, err := s.purchasePolicyTx(ctx, nil, p)
+		if err != nil {
+			return PurchaseOrder{}, err
+		}
+		canPay = reason == "" && !p.review
+	}
+	out := PurchaseOrder{OrderId: p.id, Action: p.action, PaymentMethod: p.method, PaymentType: p.paymentType, Quote: quote, PaymentStatus: p.paymentStatus, FulfillmentStatus: p.fulfillmentStatus, ReviewRequired: p.review, CreatedAt: p.created, ExpiresAt: p.expires, Expired: expired, CanPay: canPay, CanCancel: p.active && p.paymentStatus == "pending" && !expired && p.manualReported == nil, AccessOperationId: p.accessID}
 	if p.method == "manual" {
 		if p.manualDetails == nil {
 			return PurchaseOrder{}, unavailable()
@@ -182,7 +191,7 @@ func (s *Service) PaymentMethods(ctx context.Context, account uuid.UUID) (Paymen
 
 func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUID, in PurchaseOrderInput) (PurchaseOrder, error) {
 	var empty PurchaseOrder
-	if account == uuid.Nil || key == uuid.Nil || in.Action != "purchase" || !((in.PaymentMethod == "yoomoney" && (in.PaymentType == "AC" || in.PaymentType == "PC")) || (in.PaymentMethod == "manual" && in.PaymentType == "MANUAL") || (in.PaymentMethod == "yookassa" && in.PaymentType == "YOOKASSA") || (in.PaymentMethod == "cryptomus" && in.PaymentType == "CRYPTOMUS") || (in.PaymentMethod == "heleket" && in.PaymentType == "HELEKET")) || in.PlanId == uuid.Nil || in.Revision < 1 || in.PeriodDays < 1 || in.PeriodDays > 106751 {
+	if account == uuid.Nil || key == uuid.Nil || (in.Action != "purchase" && in.Action != "renew") || (in.Action == "renew" && in.PaymentMethod != "yoomoney") || !((in.PaymentMethod == "yoomoney" && (in.PaymentType == "AC" || in.PaymentType == "PC")) || (in.PaymentMethod == "manual" && in.PaymentType == "MANUAL") || (in.PaymentMethod == "yookassa" && in.PaymentType == "YOOKASSA") || (in.PaymentMethod == "cryptomus" && in.PaymentType == "CRYPTOMUS") || (in.PaymentMethod == "heleket" && in.PaymentType == "HELEKET")) || in.PlanId == uuid.Nil || in.Revision < 1 || in.PeriodDays < 1 || in.PeriodDays > 106751 {
 		return empty, failure(400, "INVALID_INPUT")
 	}
 	hash := bodyHash(in)
@@ -225,6 +234,14 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if !s.methodEnabled(in.PaymentMethod) {
 		return empty, failure(409, "PAYMENT_METHOD_UNAVAILABLE")
 	}
+	if !independentBilling(pre) {
+		return empty, failure(409, "EXTERNAL_BILLING_UNVERIFIED")
+	}
+	if in.Action == "renew" {
+		if err = s.requireRenewalPlan(ctx, preTx, account, in.PlanId); err != nil {
+			return empty, err
+		}
+	}
 	if pre.Restricted {
 		return empty, failure(403, "ACCOUNT_RESTRICTED")
 	}
@@ -241,7 +258,7 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 		return empty, unavailable()
 	}
 	if pre.AssignedPanelID != nil {
-		if v == nil || v.VPNID != pre.VpnID || v.SubID != pre.SubID || v.ExpiryTimeMS <= 0 || (!v.Enabled && v.ExpiryTimeMS > s.now().UnixMilli()) || (stringValue(pre.AccessProfile) != "regular" && stringValue(pre.AccessProfile) != "euru") {
+		if v == nil || v.VPNID != pre.VpnID || v.SubID != pre.SubID || v.ExpiryTimeMS <= 0 || (!v.Enabled && v.ExpiryTimeMS > s.now().UnixMilli() && (in.Action != "renew" || !subscriptions.CanActivateRenewal(v, s.now()))) || (stringValue(pre.AccessProfile) != "regular" && stringValue(pre.AccessProfile) != "euru") {
 			return empty, failure(409, "PURCHASE_NOT_ELIGIBLE")
 		}
 		ids, e := panel.ProfileInboundIDs(ctx, stringValue(pre.AccessProfile))
@@ -286,6 +303,14 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if !s.methodEnabled(in.PaymentMethod) {
 		return empty, failure(409, "PAYMENT_METHOD_UNAVAILABLE")
 	}
+	if !independentBilling(a) {
+		return empty, failure(409, "EXTERNAL_BILLING_UNVERIFIED")
+	}
+	if in.Action == "renew" {
+		if err = s.requireRenewalPlan(ctx, tx, account, in.PlanId); err != nil {
+			return empty, err
+		}
+	}
 	if a.Restricted {
 		return empty, failure(403, "ACCOUNT_RESTRICTED")
 	}
@@ -293,7 +318,7 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 		return empty, failure(409, "PURCHASE_NOT_ELIGIBLE")
 	}
 	var blocked bool
-	if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE account_id=$1 AND (payment_status='paid' OR fulfillment_status='needs_review'))", account).Scan(&blocked); err != nil {
+	if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE account_id=$1 AND (review_required OR fulfillment_status='needs_review' OR payment_status='paid' AND ($2::text='purchase' OR fulfillment_status<>'applied')))", account, in.Action).Scan(&blocked); err != nil {
 		return empty, unavailable()
 	}
 	unresolved, err := s.vpn.UnresolvedTx(ctx, tx, account)
@@ -321,11 +346,11 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 		return empty, unavailable()
 	}
 	profile := plan.Profile
-	if plan.Archived || plan.Hidden || plan.Revision != in.Revision || (profile != "regular" && profile != "euru") {
+	if plan.Archived || (plan.Hidden && in.Action != "renew") || plan.Revision != in.Revision || (profile != "regular" && profile != "euru") {
 		return empty, failure(409, "PURCHASE_PLAN_CONFLICT")
 	}
 	terms := plan.Terms
-	if err != nil || terms.Hidden || string(terms.Profile) != profile || terms.TrafficGb < 0 || terms.TrafficGb > math.MaxInt64/(1024*1024*1024) {
+	if err != nil || (terms.Hidden && in.Action != "renew") || terms.Hidden != plan.Hidden || terms.Devices < 1 || terms.Devices > 10000 || string(terms.Profile) != profile || terms.TrafficGb < 0 || terms.TrafficGb > math.MaxInt64/(1024*1024*1024) {
 		return empty, unavailable()
 	}
 	currency := "RUB"
@@ -356,7 +381,7 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 		value := s.config().ManualCardDetails
 		details = &value
 	}
-	_, err = tx.Exec(ctx, "INSERT INTO purchase_orders(id,account_id,idempotency_key,body_hash,quote,amount_minor,payment_type,created_at,expires_at,payment_method,manual_details) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)", id, account, key, hash, quoteRaw, amount, string(in.PaymentType), now, expires, in.PaymentMethod, details)
+	_, err = tx.Exec(ctx, "INSERT INTO purchase_orders(id,account_id,idempotency_key,body_hash,quote,amount_minor,payment_type,created_at,expires_at,payment_method,manual_details,action) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)", id, account, key, hash, quoteRaw, amount, string(in.PaymentType), now, expires, in.PaymentMethod, details, in.Action)
 	if err != nil {
 		var pg *pgconn.PgError
 		if errors.As(err, &pg) && pg.Code == "23505" {
@@ -382,7 +407,7 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if err = tx.Commit(ctx); err != nil {
 		return empty, unavailable()
 	}
-	return s.publicPurchase(ctx, purchaseRow{id: id, account: account, key: key, hash: hash, quote: quoteRaw, amount: amount, paymentType: string(in.PaymentType), paymentStatus: "pending", fulfillmentStatus: "not_started", active: true, created: now, expires: expires, method: in.PaymentMethod, manualDetails: details})
+	return s.publicPurchase(ctx, purchaseRow{id: id, account: account, key: key, hash: hash, quote: quoteRaw, amount: amount, paymentType: string(in.PaymentType), paymentStatus: "pending", fulfillmentStatus: "not_started", active: true, created: now, expires: expires, method: in.PaymentMethod, manualDetails: details, action: in.Action})
 }
 
 func (s *Service) PurchaseOrder(ctx context.Context, account, id uuid.UUID) (PurchaseOrder, error) {
@@ -405,7 +430,7 @@ func (s *Service) CurrentPurchaseOrder(ctx context.Context, account uuid.UUID) (
 	if _, err := s.PaymentMethods(ctx, account); err != nil {
 		return out, err
 	}
-	p, err := scanPurchase(s.pool.QueryRow(ctx, "SELECT "+purchaseColumns+" FROM purchase_orders WHERE account_id=$1 ORDER BY CASE WHEN fulfillment_status='needs_review' THEN 0 WHEN payment_status='paid' THEN 1 WHEN active THEN 2 ELSE 3 END,created_at DESC,id DESC LIMIT 1", account))
+	p, err := scanPurchase(s.pool.QueryRow(ctx, "SELECT "+purchaseColumns+" FROM purchase_orders WHERE account_id=$1 ORDER BY CASE WHEN review_required OR fulfillment_status='needs_review' THEN 0 WHEN payment_status='paid' AND fulfillment_status<>'applied' THEN 1 WHEN active AND payment_status='pending' THEN 2 ELSE 3 END,created_at DESC,id DESC LIMIT 1", account))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return out, nil
 	}
@@ -467,7 +492,7 @@ func (s *Service) OperatorPurchaseOrder(ctx context.Context, actor, target uuid.
 	} else if err != nil {
 		return out, unavailable()
 	}
-	p, err := scanPurchase(s.pool.QueryRow(ctx, "SELECT "+purchaseColumns+" FROM purchase_orders WHERE account_id=$1 ORDER BY CASE WHEN fulfillment_status='needs_review' THEN 0 WHEN payment_status='paid' THEN 1 WHEN active THEN 2 ELSE 3 END,created_at DESC,id DESC LIMIT 1", target))
+	p, err := scanPurchase(s.pool.QueryRow(ctx, "SELECT "+purchaseColumns+" FROM purchase_orders WHERE account_id=$1 ORDER BY CASE WHEN review_required OR fulfillment_status='needs_review' THEN 0 WHEN payment_status='paid' AND fulfillment_status<>'applied' THEN 1 WHEN active AND payment_status='pending' THEN 2 ELSE 3 END,created_at DESC,id DESC LIMIT 1", target))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return out, nil
 	}
@@ -524,6 +549,11 @@ func (s *Service) ReconcilePurchaseOrder(ctx context.Context, actor, target, id,
 	if !funded {
 		return empty, failure(409, "PURCHASE_ORDER_CONFLICT")
 	}
+	if reason, err := s.purchasePolicyTx(ctx, tx, p); err != nil {
+		return empty, err
+	} else if reason != "" {
+		return empty, failure(409, "PURCHASE_ORDER_CONFLICT")
+	}
 	if err = tx.QueryRow(ctx, `UPDATE purchase_orders p SET fulfillment_status='queued',
 		review_required=EXISTS(SELECT 1 FROM purchase_receipts r WHERE r.order_id=p.id AND r.review_reason IS NOT NULL),
 		review_reason=(SELECT r.review_reason FROM purchase_receipts r WHERE r.order_id=p.id AND r.review_reason IS NOT NULL ORDER BY r.created_at,r.operation_id LIMIT 1)
@@ -560,14 +590,18 @@ func (s *Service) CheckPurchaseAccess(ctx context.Context, tx pgx.Tx, order, acc
 	if tx != nil {
 		q = tx
 	}
-	var valid bool
-	if err := q.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE id=$1 AND account_id=$2 AND payment_status='paid' AND access_operation_id=$3)", order, account, operation).Scan(&valid); err != nil || !valid {
-		return "purchase_provenance_invalid", err
+	p, err := scanPurchase(q.QueryRow(ctx, "SELECT "+purchaseColumns+" FROM purchase_orders WHERE id=$1 AND account_id=$2 AND payment_status='paid' AND access_operation_id=$3", order, account, operation))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "purchase_provenance_invalid", nil
 	}
+	if err != nil {
+		return "", err
+	}
+	var valid bool
 	if err := q.QueryRow(ctx, purchaseFundingCheck, order).Scan(&valid); err != nil || !valid {
 		return "purchase_funding_invalid", err
 	}
-	return "", nil
+	return s.purchasePolicyTx(ctx, tx, p)
 }
 
 // RecordPurchaseAccessTx shares the access owner's Tx; no partial outcome may commit.

@@ -6,6 +6,11 @@ SELECT * FROM access_operations WHERE id=$1 AND account_id=$2;
 SELECT * FROM access_operations WHERE account_id=$1 AND status<>'skipped' ORDER BY sequence DESC LIMIT 1;
 -- name: LatestAppliedAccess :one
 SELECT * FROM access_operations WHERE account_id=$1 AND status='applied' ORDER BY updated_at DESC,sequence DESC LIMIT 1;
+-- name: CurrentAccessPlanID :one
+SELECT plan_id FROM access_operations WHERE account_id=$1 AND status='applied'
+ AND (kind IN ('purchase','assign_plan','starter_trial')
+      OR (kind='set_profile' AND (plan_id IS NOT NULL OR desired->>'reset_traffic'='true')))
+ ORDER BY sequence DESC LIMIT 1;
 -- name: UnresolvedAccessExists :one
 SELECT EXISTS(SELECT 1 FROM access_operations WHERE account_id=$1 AND status IN ('pending','provisioning','needs_review'));
 -- name: UnresolvedTrialExists :one

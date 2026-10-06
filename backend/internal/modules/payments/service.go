@@ -8,6 +8,7 @@ import (
 
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/catalogue"
+	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/vpn"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -39,21 +40,22 @@ func failure(status int, code string) error { return &Error{Status: status, Code
 func unavailable() error                    { return failure(503, "SERVICE_UNAVAILABLE") }
 
 type Service struct {
-	pool      *pgxpool.Pool
-	authority *accounts.Service
-	catalogue *catalogue.Service
-	vpn       *vpn.Service
-	queue     func() *river.Client[pgx.Tx]
-	config    func() Config
-	now       func() time.Time
-	http      *http.Client
+	pool          *pgxpool.Pool
+	authority     *accounts.Service
+	catalogue     *catalogue.Service
+	subscriptions *subscriptions.Service
+	vpn           *vpn.Service
+	queue         func() *river.Client[pgx.Tx]
+	config        func() Config
+	now           func() time.Time
+	http          *http.Client
 }
 
-func New(pool *pgxpool.Pool, authority *accounts.Service, catalogueOwner *catalogue.Service, accessOwner *vpn.Service, queue func() *river.Client[pgx.Tx], config func() Config, now func() time.Time) *Service {
+func New(pool *pgxpool.Pool, authority *accounts.Service, catalogueOwner *catalogue.Service, subscriptionOwner *subscriptions.Service, accessOwner *vpn.Service, queue func() *river.Client[pgx.Tx], config func() Config, now func() time.Time) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{pool: pool, authority: authority, catalogue: catalogueOwner, vpn: accessOwner, queue: queue, config: config, now: now, http: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	return &Service{pool: pool, authority: authority, catalogue: catalogueOwner, subscriptions: subscriptionOwner, vpn: accessOwner, queue: queue, config: config, now: now, http: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 
 func accountResult(a accounts.Snapshot, err error) (accounts.Snapshot, error) {

@@ -24,6 +24,18 @@ func (a *API) GetPaymentMethods(c *echo.Context) error {
 	return c.JSON(200, out)
 }
 
+func (a *API) GetRenewalOffer(c *echo.Context) error {
+	account, err := a.auth(c, false)
+	if err != nil {
+		return err
+	}
+	p, err := a.payments.RenewalOffer(c.Request().Context(), account.Account.AccountId)
+	if err != nil {
+		return paymentError(err)
+	}
+	return c.JSON(200, wire.CataloguePlanSnapshot{PlanId: p.PlanId, Revision: p.Revision, Devices: p.Devices, Hidden: p.Hidden, Periods: p.Periods, Prices: cataloguePrices(p.Prices), Profile: wire.CataloguePlanSnapshotProfile(p.Profile), TrafficGb: p.TrafficGb})
+}
+
 func (a *API) CreatePurchaseOrder(c *echo.Context) error {
 	account, err := a.auth(c, true)
 	if err != nil {

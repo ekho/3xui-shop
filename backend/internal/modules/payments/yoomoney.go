@@ -173,7 +173,7 @@ func (s *Service) ReceiveYooMoney(ctx context.Context, fields url.Values) error 
 	}
 	review := ""
 	var otherPaid bool
-	if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE account_id=$1 AND id<>$2 AND payment_status='paid')", accountID, orderID).Scan(&otherPaid); err != nil {
+	if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE account_id=$1 AND id<>$2 AND (review_required OR fulfillment_status='needs_review' OR (payment_status='paid' AND ($3::text='purchase' OR fulfillment_status<>'applied'))))", accountID, orderID, p.action).Scan(&otherPaid); err != nil {
 		return unavailable()
 	}
 	switch {
