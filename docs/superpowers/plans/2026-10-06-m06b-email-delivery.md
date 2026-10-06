@@ -48,9 +48,9 @@
 
 **Interfaces:** Consume Task1 unchanged public/persisted contracts; produce exact-revision local evidence for fresh reviewer and remote delivery, #60 OPEN.
 
-- [ ] Adapt own M06b1 driver/helpers/workspace/base; run22-stage generation/drift/API+schema+deps/vet/types/build/runtime/full connected race/Python/Playwright/Compose/smoke/native3.7/TLS/purchase/repeat/paid restore/down. Expected all PASS at one committed product, own stack stopped.
-- [ ] Record actual counts/durations/commands/limits/all Native rulings; M06b1 already delivered facts and next M06c/M06d. Expected local acceptance distinct from pending exact-source CI/manual merge/preview.
-- [ ] Commit docs + Co-Authored; own verify-final checks22 records/product equivalence/generation/history/API/deps/committed whitespace. Expected PASS.
+- [x] Adapt own M06b1 driver/helpers/workspace/base; run22-stage generation/drift/API+schema+deps/vet/types/build/runtime/full connected race/Python/Playwright/Compose/smoke/native3.7/TLS/purchase/repeat/paid restore/down. Expected all PASS at one committed product, own stack stopped.
+- [x] Record actual counts/durations/commands/limits/all Native rulings; M06b1 already delivered facts and next M06c/M06d. Expected local acceptance distinct from pending exact-source CI/manual merge/preview.
+- [x] Commit docs + Co-Authored; own verify-final checks22 records/product equivalence/generation/history/API/deps/committed whitespace. Expected PASS.
 
 ## Finish после Native-задач
 
