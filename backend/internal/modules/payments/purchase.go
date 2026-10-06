@@ -57,14 +57,16 @@ const purchaseFundingCheck = `SELECT EXISTS(SELECT 1 FROM purchase_orders p JOIN
            AND r.provider_data->>'order_id'=p.id::text AND r.provider_data->>'status'='succeeded'
            AND r.provider_data->>'paid'='true' AND r.provider_data->>'amount_minor'=r.gross_minor::text
            AND r.provider_data->>'refund_minor'='0'))
-   OR (p.payment_method='cryptomus' AND p.quote->>'currency'='USD' AND r.currency='USD' AND r.net_minor IS NULL
-       AND r.notification_type IN ('cryptomus.paid','cryptomus.paid_over')
+   OR (p.payment_method IN ('cryptomus','heleket') AND p.quote->>'currency'='USD' AND r.currency='USD' AND r.net_minor IS NULL
+       AND r.notification_type IN (p.payment_method||'.paid',p.payment_method||'.paid_over')
        AND r.occurred_at>=p.created_at-interval '5 minutes' AND r.occurred_at<=p.expires_at
-       AND EXISTS(SELECT 1 FROM cryptomus_checkouts c WHERE c.order_id=p.id
-           AND c.first_attempt_at IS NOT NULL AND r.operation_id='cryptomus:'||c.invoice_id::text
-           AND r.provider_data->>'provider'='cryptomus' AND r.provider_data->>'invoice_id'=c.invoice_id::text
+       AND EXISTS(SELECT 1 FROM (SELECT order_id,merchant_id,first_attempt_at,invoice_id,'cryptomus' AS provider FROM cryptomus_checkouts
+                     UNION ALL SELECT order_id,merchant_id,first_attempt_at,invoice_id,'heleket' FROM heleket_checkouts) c
+           WHERE c.order_id=p.id AND c.provider=p.payment_method
+           AND c.first_attempt_at IS NOT NULL AND r.operation_id=c.provider||':'||c.invoice_id::text
+           AND r.provider_data->>'provider'=c.provider AND r.provider_data->>'invoice_id'=c.invoice_id::text
            AND r.provider_data->>'merchant_id'=c.merchant_id AND r.provider_data->>'order_id'=p.id::text
-           AND r.notification_type='cryptomus.'||(r.provider_data->>'status')
+           AND r.notification_type=c.provider||'.'||(r.provider_data->>'status')
            AND r.provider_data->>'payment_status'=r.provider_data->>'status'
            AND r.provider_data->'is_final'='true'::jsonb AND r.provider_data->>'currency'='USD'
            AND r.provider_data->>'amount_minor'=r.gross_minor::text
@@ -120,10 +122,10 @@ func (s *Service) publicPurchase(ctx context.Context, p purchaseRow) (PurchaseOr
 		out.CanPay = canPay && !p.review && state == "ready" && link != nil
 		out.YooKassaCheckout = &YooKassaCheckout{State: state, URL: link}
 	}
-	if p.method == "cryptomus" {
+	if p.method == "cryptomus" || p.method == "heleket" {
 		var state string
 		var link *string
-		if err := s.pool.QueryRow(ctx, "SELECT state,checkout_url FROM cryptomus_checkouts WHERE order_id=$1", p.id).Scan(&state, &link); err != nil {
+		if err := s.pool.QueryRow(ctx, "SELECT state,checkout_url FROM "+cryptoProvider(p.method).table()+" WHERE order_id=$1", p.id).Scan(&state, &link); err != nil {
 			return PurchaseOrder{}, unavailable()
 		}
 		if !canPay || p.review {
@@ -133,7 +135,11 @@ func (s *Service) publicPurchase(ctx context.Context, p purchaseRow) (PurchaseOr
 			link = nil
 		}
 		out.CanPay = canPay && !p.review && state == "ready" && link != nil
-		out.CryptomusCheckout = &CryptomusCheckout{State: state, URL: link}
+		if p.method == "heleket" {
+			out.HeleketCheckout = &HeleketCheckout{State: state, URL: link}
+		} else {
+			out.CryptomusCheckout = &CryptomusCheckout{State: state, URL: link}
+		}
 	}
 	if canPay && p.method == "yoomoney" {
 		out.Checkout = &YooMoneyCheckout{Action: "https://yoomoney.ru/quickpay/confirm", Method: "POST", Fields: YooMoneyCheckoutFields{Receiver: s.config().YooMoneyWalletID, QuickpayForm: "button", PaymentType: p.paymentType, Sum: fmt.Sprintf("%d.%02d", p.amount/100, p.amount%100), Label: p.id, SuccessURL: strings.TrimRight(s.config().CabinetOrigin, "/") + "/orders/" + p.id.String()}}
@@ -165,6 +171,9 @@ func (s *Service) PaymentMethods(ctx context.Context, account uuid.UUID) (Paymen
 	if s.methodEnabled("cryptomus") {
 		out.Methods = append(out.Methods, PaymentMethod{Id: "cryptomus", Currency: "USD"})
 	}
+	if s.methodEnabled("heleket") {
+		out.Methods = append(out.Methods, PaymentMethod{Id: "heleket", Currency: "USD"})
+	}
 	if s.methodEnabled("manual") {
 		out.Methods = append(out.Methods, PaymentMethod{Id: "manual", Currency: "RUB"})
 	}
@@ -173,7 +182,7 @@ func (s *Service) PaymentMethods(ctx context.Context, account uuid.UUID) (Paymen
 
 func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUID, in PurchaseOrderInput) (PurchaseOrder, error) {
 	var empty PurchaseOrder
-	if account == uuid.Nil || key == uuid.Nil || in.Action != "purchase" || !((in.PaymentMethod == "yoomoney" && (in.PaymentType == "AC" || in.PaymentType == "PC")) || (in.PaymentMethod == "manual" && in.PaymentType == "MANUAL") || (in.PaymentMethod == "yookassa" && in.PaymentType == "YOOKASSA") || (in.PaymentMethod == "cryptomus" && in.PaymentType == "CRYPTOMUS")) || in.PlanId == uuid.Nil || in.Revision < 1 || in.PeriodDays < 1 || in.PeriodDays > 106751 {
+	if account == uuid.Nil || key == uuid.Nil || in.Action != "purchase" || !((in.PaymentMethod == "yoomoney" && (in.PaymentType == "AC" || in.PaymentType == "PC")) || (in.PaymentMethod == "manual" && in.PaymentType == "MANUAL") || (in.PaymentMethod == "yookassa" && in.PaymentType == "YOOKASSA") || (in.PaymentMethod == "cryptomus" && in.PaymentType == "CRYPTOMUS") || (in.PaymentMethod == "heleket" && in.PaymentType == "HELEKET")) || in.PlanId == uuid.Nil || in.Revision < 1 || in.PeriodDays < 1 || in.PeriodDays > 106751 {
 		return empty, failure(400, "INVALID_INPUT")
 	}
 	hash := bodyHash(in)
@@ -320,7 +329,7 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 		return empty, unavailable()
 	}
 	currency := "RUB"
-	if in.PaymentMethod == "cryptomus" {
+	if in.PaymentMethod == "cryptomus" || in.PaymentMethod == "heleket" {
 		currency = "USD"
 	}
 	var amount int64
@@ -362,6 +371,11 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	}
 	if in.PaymentMethod == "cryptomus" {
 		if err = s.queueCryptomusTx(ctx, tx, id, quote); err != nil {
+			return empty, err
+		}
+	}
+	if in.PaymentMethod == "heleket" {
+		if err = s.queueHeleketTx(ctx, tx, id, quote); err != nil {
 			return empty, err
 		}
 	}

@@ -24,80 +24,120 @@ import (
 	"github.com/riverqueue/river"
 )
 
-func cryptoPurchaseFixture(t *testing.T) (*regressionFixture, *testkit.Env, uuid.UUID, uuid.UUID) {
+type cryptoCase struct{ field, merchant, key, apiHost, payHost, source string }
+
+func cryptoCaseFor(provider string) cryptoCase {
+	if provider == "heleket" {
+		return cryptoCase{"Heleket", "00000000-0000-4000-8000-000000000015", "test-only-heleket-key", "api.heleket.com", "new-pay.heleket.com", "31.133.220.8"}
+	}
+	return cryptoCase{"Cryptomus", "00000000-0000-4000-8000-000000000014", "test-only-crypto-key", "api.cryptomus.com", "pay.cryptomus.com", "91.227.144.54"}
+}
+func setCryptoTestEnabled(s *regressionFixture, provider string, enabled bool) {
+	if provider == "heleket" {
+		s.cfg.Payments.HeleketEnabled = enabled
+	} else {
+		s.cfg.Payments.CryptomusEnabled = enabled
+	}
+}
+func setCryptoTestMerchant(s *regressionFixture, provider, merchant string) {
+	if provider == "heleket" {
+		s.cfg.Payments.HeleketMerchantID = merchant
+	} else {
+		s.cfg.Payments.CryptomusMerchantID = merchant
+	}
+}
+func cryptoSync(s *regressionFixture, provider string) func(context.Context, uuid.UUID) error {
+	if provider == "heleket" {
+		return s.payments.SyncHeleket
+	}
+	return s.payments.SyncCryptomus
+}
+func cryptoCheckoutFor(p wire.PurchaseOrder, provider string) *wire.CryptomusCheckout {
+	if provider == "heleket" {
+		if p.HeleketCheckout == nil {
+			return nil
+		}
+		return &wire.CryptomusCheckout{State: wire.CryptomusCheckoutState(p.HeleketCheckout.State), Url: p.HeleketCheckout.Url}
+	}
+	return p.CryptomusCheckout
+}
+
+func cryptoPurchaseFixture(t *testing.T, provider string) (*regressionFixture, *testkit.Env, uuid.UUID, uuid.UUID) {
 	t.Helper()
 	s, e, account, plan := purchaseFixture(t)
-	if err := json.Unmarshal([]byte(`{"CryptomusEnabled":true,"CryptomusMerchantID":"00000000-0000-4000-8000-000000000014","CryptomusAPIKey":"test-only-crypto-key"}`), &s.cfg.Payments); err != nil {
+	p := cryptoCaseFor(provider)
+	raw, err := json.Marshal(map[string]any{p.field + "Enabled": true, p.field + "MerchantID": p.merchant, p.field + "APIKey": p.key})
+	if err != nil || json.Unmarshal(raw, &s.cfg.Payments) != nil {
 		t.Fatal(err)
 	}
 	return s, e, account, plan
 }
 
-func signedCryptoBody(unsigned string) []byte {
-	sign := fmt.Sprintf("%x", md5.Sum([]byte(base64.StdEncoding.EncodeToString([]byte(unsigned))+"test-only-crypto-key")))
+func signedCryptoBody(unsigned string, provider string) []byte {
+	sign := fmt.Sprintf("%x", md5.Sum([]byte(base64.StdEncoding.EncodeToString([]byte(unsigned))+cryptoCaseFor(provider).key)))
 	return []byte(strings.TrimSuffix(unsigned, "}") + `,"sign":"` + sign + `"}`)
 }
 
 // Signed callbacks are hints: their status/amount never bypass authenticated info.
-func TestCryptomusHTTPAuthoritativeStatus(t *testing.T) {
-	s, _, _, order, f := cryptoFixture(t)
-	syncCrypto(t, s, order.OrderId)
+func testCryptoHTTPAuthoritativeStatus(t *testing.T, provider string) {
+	s, _, _, order, f := cryptoFixture(t, provider)
+	syncCrypto(t, s, order.OrderId, provider)
 	h := New(app.NewModules(s.pool, s.limiter, s.queue, s.cfg), s.pool, s.cfg.HTTP)
 	request := func(body []byte, path string) int {
 		r := httptest.NewRequest("POST", path, bytes.NewReader(body))
 		r.Header.Set("Content-Type", "application/json")
-		r.RemoteAddr = "91.227.144.54:12345"
+		r.RemoteAddr = cryptoCaseFor(provider).source + ":12345"
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
 		return w.Code
 	}
 	unknown := `{"type":"payment","uuid":"00000000-0000-4000-8000-000000000090","order_id":"00000000-0000-4000-8000-000000000091","comments":"<タグ>\/a","discount_percent":1.5}`
 	before := f.infos
-	body := signedCryptoBody(unknown)
+	body := signedCryptoBody(unknown, provider)
 	// Same values/field order, whitespace and Unicode escaping changed in transit.
 	pretty := bytes.ReplaceAll(body, []byte("<タグ>"), []byte(`<\u30bf\u30b0>`))
 	pretty = bytes.ReplaceAll(pretty, []byte(`,"`), []byte(",\n  \""))
-	if code := request(pretty, "/webhooks/cryptomus"); code != 200 || f.infos != before {
+	if code := request(pretty, "/webhooks/"+provider); code != 200 || f.infos != before {
 		t.Fatal("valid ordered/PHP slash/unicode signature rejected or unknown order called API", code)
 	}
 	for _, raw := range []string{`{}`, `[]`, string(body) + string(body), `{"type":"payment","type":"payment"}`, `{"type":"payment","object":{"x":1,"x":2}}`, strings.Repeat("a", 16385)} {
-		if code := request([]byte(raw), "/webhooks/cryptomus"); code != 400 {
+		if code := request([]byte(raw), "/webhooks/"+provider); code != 400 {
 			t.Fatal("malformed/duplicate notice accepted", code)
 		}
 	}
-	if code := request(body, "/webhooks/cryptomus?unexpected=1"); code != 400 {
+	if code := request(body, "/webhooks/"+provider+"?unexpected=1"); code != 400 {
 		t.Fatal("query accepted", code)
 	}
 	tampered := bytes.Replace(body, []byte(`"discount_percent":1.5`), []byte(`"discount_percent":2.5`), 1)
-	if code := request(tampered, "/webhooks/cryptomus"); code != 403 || f.infos != before {
+	if code := request(tampered, "/webhooks/"+provider); code != 403 || f.infos != before {
 		t.Fatal("signature tampering accepted", code)
 	}
 	forged := fmt.Sprintf(`{"type":"payment","uuid":"%s","order_id":"%s","status":"paid","is_final":true,"amount":"1.00"}`, f.payment["uuid"], order.OrderId)
-	if code := request(signedCryptoBody(forged), "/webhooks/cryptomus"); code != 200 || f.infos != before+1 {
+	if code := request(signedCryptoBody(forged, provider), "/webhooks/"+provider); code != 200 || f.infos != before+1 {
 		t.Fatal("known signed hint failed authenticated info", code)
 	}
 	manualCounts(t, s, order.OrderId, 0, 0)
 }
 
-func TestCryptomusExpiryAndDrift(t *testing.T) {
+func testCryptoExpiryAndDrift(t *testing.T, provider string) {
 	for _, name := range []string{"unattempted-expired", "unknown-expired", "merchant-drift", "disabled-before-attempt"} {
 		t.Run(name, func(t *testing.T) {
-			s, e, account, order, f := cryptoFixture(t)
+			s, e, account, order, f := cryptoFixture(t, provider)
 			switch name {
 			case "unattempted-expired":
 				e.Advance(31 * time.Minute)
 			case "unknown-expired":
 				f.failFirst = true
-				if err := s.payments.SyncCryptomus(context.Background(), order.OrderId); err == nil {
+				if err := cryptoSync(s, provider)(context.Background(), order.OrderId); err == nil {
 					t.Fatal("ambiguous500 expected")
 				}
 				e.Advance(31 * time.Minute)
 			case "merchant-drift":
-				s.cfg.Payments.CryptomusMerchantID = uuid.NewString()
+				setCryptoTestMerchant(s, provider, uuid.NewString())
 			case "disabled-before-attempt":
-				s.cfg.Payments.CryptomusEnabled = false
+				setCryptoTestEnabled(s, provider, false)
 			}
-			syncCrypto(t, s, order.OrderId)
+			syncCrypto(t, s, order.OrderId, provider)
 			manualCounts(t, s, order.OrderId, 0, 0)
 			if name == "unknown-expired" {
 				if len(f.posts) != 1 || f.infos != 1 {
@@ -114,10 +154,10 @@ func TestCryptomusExpiryAndDrift(t *testing.T) {
 	}
 }
 
-func TestCryptomusProviderHTTPFailures(t *testing.T) {
+func testCryptoProviderHTTPFailures(t *testing.T, provider string) {
 	for _, name := range []string{"redirect", "oversize", "malformed", "trailing", "state", "missing-state"} {
 		t.Run(name, func(t *testing.T) {
-			s, _, _, order, f := cryptoFixture(t)
+			s, _, _, order, f := cryptoFixture(t, provider)
 			switch name {
 			case "redirect":
 				f.responseStatus = 302
@@ -132,7 +172,7 @@ func TestCryptomusProviderHTTPFailures(t *testing.T) {
 			case "missing-state":
 				f.raw = `{"result":{}}`
 			}
-			if err := s.payments.SyncCryptomus(context.Background(), order.OrderId); err == nil || len(f.posts) != 1 {
+			if err := cryptoSync(s, provider)(context.Background(), order.OrderId); err == nil || len(f.posts) != 1 {
 				t.Fatal("unsafe API response accepted or real request not exercised")
 			}
 			manualCounts(t, s, order.OrderId, 0, 0)
@@ -150,11 +190,11 @@ type cryptoStub struct {
 	raw            string
 }
 
-func cryptoFixture(t *testing.T) (*regressionFixture, *testkit.Env, uuid.UUID, wire.PurchaseOrder, *cryptoStub) {
+func cryptoFixture(t *testing.T, provider string) (*regressionFixture, *testkit.Env, uuid.UUID, wire.PurchaseOrder, *cryptoStub) {
 	t.Helper()
-	s, e, account, plan := cryptoPurchaseFixture(t)
+	s, e, account, plan := cryptoPurchaseFixture(t, provider)
 	in := purchaseInput(plan)
-	in.PaymentMethod, in.PaymentType = "cryptomus", "CRYPTOMUS"
+	in.PaymentMethod, in.PaymentType = wire.PurchaseOrderInputPaymentMethod(provider), wire.PurchaseOrderInputPaymentType(strings.ToUpper(provider))
 	order, err := s.createPurchaseOrder(context.Background(), account, uuid.New(), in)
 	if err != nil {
 		t.Fatal(err)
@@ -166,13 +206,13 @@ func cryptoFixture(t *testing.T) (*regressionFixture, *testkit.Env, uuid.UUID, w
 		"created_at": e.Clock().Format(time.RFC3339Nano), "updated_at": e.Clock().Format(time.RFC3339Nano),
 		"address": "test-only-wallet-not-for-proof", "txid": "test-only-txid-not-for-proof",
 	}}
-	f.payment["url"] = "https://pay.cryptomus.com/pay/" + f.payment["uuid"].(string)
+	f.payment["url"] = "https://" + cryptoCaseFor(provider).payHost + "/pay/" + f.payment["uuid"].(string)
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		data, err := io.ReadAll(r.Body)
-		want := fmt.Sprintf("%x", md5.Sum([]byte(base64.StdEncoding.EncodeToString(data)+"test-only-crypto-key")))
-		if err != nil || r.Method != "POST" || r.Header.Get("merchant") != "00000000-0000-4000-8000-000000000014" || r.Header.Get("sign") != want {
+		want := fmt.Sprintf("%x", md5.Sum([]byte(base64.StdEncoding.EncodeToString(data)+cryptoCaseFor(provider).key)))
+		if err != nil || r.Method != "POST" || r.Header.Get("merchant") != cryptoCaseFor(provider).merchant || r.Header.Get("sign") != want {
 			w.WriteHeader(401)
 			return
 		}
@@ -213,7 +253,7 @@ func cryptoFixture(t *testing.T) (*regressionFixture, *testkit.Env, uuid.UUID, w
 	target, _ := url.Parse(server.URL)
 	prior := http.DefaultTransport
 	http.DefaultTransport = kassaTransport(func(r *http.Request) (*http.Response, error) {
-		if r.URL.Scheme != "https" || r.URL.Host != "api.cryptomus.com" {
+		if r.URL.Scheme != "https" || r.URL.Host != cryptoCaseFor(provider).apiHost {
 			return nil, errors.New("test forbids external provider endpoints")
 		}
 		copy := r.Clone(r.Context())
@@ -226,9 +266,9 @@ func cryptoFixture(t *testing.T) (*regressionFixture, *testkit.Env, uuid.UUID, w
 	return s, e, account, order, f
 }
 
-func syncCrypto(t *testing.T, s *regressionFixture, id uuid.UUID) {
+func syncCrypto(t *testing.T, s *regressionFixture, id uuid.UUID, provider string) {
 	t.Helper()
-	err := s.payments.SyncCryptomus(context.Background(), id)
+	err := cryptoSync(s, provider)(context.Background(), id)
 	var waiting *river.JobSnoozeError
 	if err != nil && !errors.As(err, &waiting) {
 		t.Fatal("crypto synchronization failed", err)
@@ -243,32 +283,32 @@ func settleCrypto(e *testkit.Env, f *cryptoStub) {
 }
 
 // Changing bytes/order/merchant on retry or treating crypto net as USD breaks this.
-func TestCryptomusRequestAndRecovery(t *testing.T) {
-	s, e, account, order, f := cryptoFixture(t)
+func testCryptoRequestAndRecovery(t *testing.T, provider string) {
+	s, e, account, order, f := cryptoFixture(t, provider)
 	f.failFirst = true
-	if err := s.payments.SyncCryptomus(context.Background(), order.OrderId); err == nil {
+	if err := cryptoSync(s, provider)(context.Background(), order.OrderId); err == nil {
 		t.Fatal("ambiguous500 accepted")
 	}
 	manualCounts(t, s, order.OrderId, 0, 0)
-	syncCrypto(t, s, order.OrderId)
+	syncCrypto(t, s, order.OrderId, provider)
 	if len(f.posts) != 2 || !bytes.Equal(f.posts[0], f.posts[1]) {
 		t.Fatal("retry changed frozen request or invoice count")
 	}
 	var req map[string]any
-	if json.Unmarshal(f.posts[0], &req) != nil || req["amount"] != "123.45" || req["currency"] != "USD" || req["order_id"] != order.OrderId.String() || req["lifetime"] != float64(1800) || req["is_payment_multiple"] != false || req["is_refresh"] != nil || req["url_callback"] != s.cfg.HTTP.CabinetOrigin+"/webhooks/cryptomus" || req["url_return"] != s.cfg.HTTP.CabinetOrigin+"/orders/"+order.OrderId.String() || req["url_success"] != req["url_return"] {
+	if json.Unmarshal(f.posts[0], &req) != nil || req["amount"] != "123.45" || req["currency"] != "USD" || req["order_id"] != order.OrderId.String() || req["lifetime"] != float64(1800) || req["is_payment_multiple"] != false || req["is_refresh"] != nil || req["url_callback"] != s.cfg.HTTP.CabinetOrigin+"/webhooks/"+provider || req["url_return"] != s.cfg.HTTP.CabinetOrigin+"/orders/"+order.OrderId.String() || req["url_success"] != req["url_return"] {
 		t.Fatal("request changed retained invoice parameters or USD price")
 	}
 	ready, err := s.purchaseOrder(context.Background(), account, order.OrderId)
-	if err != nil || !ready.CanPay || ready.CryptomusCheckout == nil || ready.CryptomusCheckout.State != "ready" || ready.CryptomusCheckout.Url == nil {
+	if err != nil || !ready.CanPay || cryptoCheckoutFor(ready, provider) == nil || cryptoCheckoutFor(ready, provider).State != "ready" || cryptoCheckoutFor(ready, provider).Url == nil {
 		t.Fatal("known invoice has no safe checkout", err)
 	}
-	s.cfg.Payments.CryptomusEnabled = false
+	setCryptoTestEnabled(s, provider, false)
 	settleCrypto(e, f)
 	firstTime := e.Clock()
-	syncCrypto(t, s, order.OrderId)
+	syncCrypto(t, s, order.OrderId, provider)
 	e.Advance(time.Minute)
 	f.payment["updated_at"] = e.Clock().Format(time.RFC3339Nano)
-	syncCrypto(t, s, order.OrderId)
+	syncCrypto(t, s, order.OrderId, provider)
 	manualCounts(t, s, order.OrderId, 1, 1)
 	var gross int64
 	var net *int64
@@ -296,25 +336,25 @@ func TestCryptomusRequestAndRecovery(t *testing.T) {
 	}
 }
 
-func TestCryptomusPendingNullableDates(t *testing.T) {
+func testCryptoPendingNullableDates(t *testing.T, provider string) {
 	for _, both := range []bool{false, true} {
 		t.Run(fmt.Sprintf("both-%t", both), func(t *testing.T) {
-			s, e, account, order, f := cryptoFixture(t)
+			s, e, account, order, f := cryptoFixture(t, provider)
 			created := f.payment["created_at"]
 			f.payment["updated_at"] = nil
 			if both {
 				f.payment["created_at"] = nil
 			}
-			syncCrypto(t, s, order.OrderId)
+			syncCrypto(t, s, order.OrderId, provider)
 			manualCounts(t, s, order.OrderId, 0, 0)
 			pending, err := s.purchaseOrder(context.Background(), account, order.OrderId)
-			if err != nil || pending.ReviewRequired || !pending.CanPay || pending.CryptomusCheckout == nil || pending.CryptomusCheckout.State != "ready" {
+			if err != nil || pending.ReviewRequired || !pending.CanPay || cryptoCheckoutFor(pending, provider) == nil || cryptoCheckoutFor(pending, provider).State != "ready" {
 				t.Fatal("nullable pending dates blocked checkout", err)
 			}
 			f.payment["created_at"] = created
 			settleCrypto(e, f)
 			for range 2 {
-				syncCrypto(t, s, order.OrderId)
+				syncCrypto(t, s, order.OrderId, provider)
 				if err = s.fulfillPurchase(context.Background(), order.OrderId); err != nil {
 					t.Fatal(err)
 				}
@@ -328,7 +368,7 @@ func TestCryptomusPendingNullableDates(t *testing.T) {
 	}
 }
 
-func TestCryptomusFundingBoundary(t *testing.T) {
+func testCryptoFundingBoundary(t *testing.T, provider string) {
 	for _, tc := range []struct {
 		name, field    string
 		value          any
@@ -352,8 +392,8 @@ func TestCryptomusFundingBoundary(t *testing.T) {
 		{"wrong-amount", "status", "wrong_amount", 0, 0, true}, {"missing-uuid", "uuid", nil, 0, 0, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			s, e, account, order, f := cryptoFixture(t)
-			syncCrypto(t, s, order.OrderId)
+			s, e, account, order, f := cryptoFixture(t, provider)
+			syncCrypto(t, s, order.OrderId, provider)
 			settleCrypto(e, f)
 			switch tc.field {
 			case "late":
@@ -373,7 +413,7 @@ func TestCryptomusFundingBoundary(t *testing.T) {
 					f.payment["payment_amount"] = "0.00133450"
 				}
 			}
-			syncCrypto(t, s, order.OrderId)
+			syncCrypto(t, s, order.OrderId, provider)
 			manualCounts(t, s, order.OrderId, tc.receipts, tc.jobs)
 			got, err := s.purchaseOrder(context.Background(), account, order.OrderId)
 			if err != nil || got.ReviewRequired != tc.review || got.AccessOperationId != nil {
@@ -396,28 +436,28 @@ func TestCryptomusFundingBoundary(t *testing.T) {
 }
 
 // Equivalent decimal spelling is a replay; a changed amount or foreign receipt is not.
-func TestCryptomusReceiptConflictAndForeignCollision(t *testing.T) {
-	s, e, account, order, f := cryptoFixture(t)
-	syncCrypto(t, s, order.OrderId)
+func testCryptoReceiptConflictAndForeignCollision(t *testing.T, provider string) {
+	s, e, account, order, f := cryptoFixture(t, provider)
+	syncCrypto(t, s, order.OrderId, provider)
 	settleCrypto(e, f)
-	syncCrypto(t, s, order.OrderId)
+	syncCrypto(t, s, order.OrderId, provider)
 	firstTime := e.Clock()
 	e.Advance(time.Minute)
 	f.payment["payment_amount"] = "0.001234500000"
 	f.payment["payer_amount"] = "0.0012345000"
 	f.payment["merchant_amount"] = "0.001209810000"
 	f.payment["updated_at"] = e.Clock().Format(time.RFC3339Nano)
-	syncCrypto(t, s, order.OrderId)
+	syncCrypto(t, s, order.OrderId, provider)
 	got, err := s.purchaseOrder(context.Background(), account, order.OrderId)
 	if err != nil || got.ReviewRequired {
 		t.Fatal("equal decimal facts fabricated a conflict", err)
 	}
 	for _, query := range []string{
-		"UPDATE cryptomus_checkouts SET request='changed' WHERE order_id=$1",
-		"UPDATE cryptomus_checkouts SET merchant_id='00000000-0000-4000-8000-000000000015' WHERE order_id=$1",
-		"UPDATE cryptomus_checkouts SET first_attempt_at=first_attempt_at+interval '1 second' WHERE order_id=$1",
-		"UPDATE cryptomus_checkouts SET invoice_id=gen_random_uuid() WHERE order_id=$1",
-		"UPDATE cryptomus_checkouts SET checkout_url='https://pay.cryptomus.com/changed' WHERE order_id=$1",
+		"UPDATE " + provider + "_checkouts SET request='changed' WHERE order_id=$1",
+		"UPDATE " + provider + "_checkouts SET merchant_id='00000000-0000-4000-8000-000000000099' WHERE order_id=$1",
+		"UPDATE " + provider + "_checkouts SET first_attempt_at=first_attempt_at+interval '1 second' WHERE order_id=$1",
+		"UPDATE " + provider + "_checkouts SET invoice_id=gen_random_uuid() WHERE order_id=$1",
+		"UPDATE " + provider + "_checkouts SET checkout_url='https://pay.cryptomus.com/changed' WHERE order_id=$1",
 		"UPDATE purchase_receipts SET provider_data=provider_data||'{\"status\":\"paid_over\"}' WHERE order_id=$1",
 		"UPDATE purchase_receipts SET gross_minor=1 WHERE order_id=$1",
 		"UPDATE purchase_receipts SET net_minor=1 WHERE order_id=$1",
@@ -426,7 +466,7 @@ func TestCryptomusReceiptConflictAndForeignCollision(t *testing.T) {
 			t.Fatal("immutable payment facts changed")
 		}
 	}
-	fields := purchaseNotice(s, order.OrderId, "cryptomus:"+f.payment["uuid"].(string), "123.40", "123.45")
+	fields := purchaseNotice(s, order.OrderId, provider+":"+f.payment["uuid"].(string), "123.40", "123.45")
 	if err = s.receiveYooMoney(context.Background(), fields); err != nil {
 		t.Fatal("foreign-method nullable-net collision failed", err)
 	}
@@ -446,13 +486,13 @@ func TestCryptomusReceiptConflictAndForeignCollision(t *testing.T) {
 	}
 }
 
-func TestCryptomusChangedFactsBlockPreparedAccess(t *testing.T) {
+func testCryptoChangedFactsBlockPreparedAccess(t *testing.T, provider string) {
 	for _, name := range []string{"cancel", "payment", "payer", "merchant", "final"} {
 		t.Run(name, func(t *testing.T) {
-			s, e, account, order, f := cryptoFixture(t)
-			syncCrypto(t, s, order.OrderId)
+			s, e, account, order, f := cryptoFixture(t, provider)
+			syncCrypto(t, s, order.OrderId, provider)
 			settleCrypto(e, f)
-			syncCrypto(t, s, order.OrderId)
+			syncCrypto(t, s, order.OrderId, provider)
 			if err := s.fulfillPurchase(context.Background(), order.OrderId); err != nil {
 				t.Fatal(err)
 			}
@@ -475,7 +515,7 @@ func TestCryptomusChangedFactsBlockPreparedAccess(t *testing.T) {
 			case "final":
 				f.payment["is_final"] = false
 			}
-			syncCrypto(t, s, order.OrderId)
+			syncCrypto(t, s, order.OrderId, provider)
 			if reason, err := s.payments.CheckPurchaseAccess(context.Background(), nil, order.OrderId, account, *got.AccessOperationId); err != nil || reason != "purchase_funding_invalid" {
 				t.Fatal("changed facts still authorize prepared write", reason, err)
 			}
@@ -484,9 +524,9 @@ func TestCryptomusChangedFactsBlockPreparedAccess(t *testing.T) {
 	}
 }
 
-func TestCryptomusObservationRace(t *testing.T) {
-	s, e, account, order, f := cryptoFixture(t)
-	syncCrypto(t, s, order.OrderId)
+func testCryptoObservationRace(t *testing.T, provider string) {
+	s, e, account, order, f := cryptoFixture(t, provider)
+	syncCrypto(t, s, order.OrderId, provider)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	gate, err := e.Pool.Acquire(ctx)
@@ -519,12 +559,12 @@ CREATE TRIGGER hold_crypto_settlement AFTER UPDATE ON purchase_orders FOR EACH R
 	}
 	settleCrypto(e, f)
 	settled, canceled := make(chan error, 1), make(chan error, 1)
-	go func() { settled <- s.payments.SyncCryptomus(ctx, order.OrderId) }()
+	go func() { settled <- cryptoSync(s, provider)(ctx, order.OrderId) }()
 	waitBlocked(1)
 	f.mu.Lock()
 	f.payment["status"], f.payment["payment_status"] = "cancel", "cancel"
 	f.mu.Unlock()
-	go func() { canceled <- s.payments.SyncCryptomus(ctx, order.OrderId) }()
+	go func() { canceled <- cryptoSync(s, provider)(ctx, order.OrderId) }()
 	waitBlocked(2)
 	if _, err = gate.Exec(ctx, "SELECT pg_advisory_unlock(742014)"); err != nil {
 		t.Fatal(err)
@@ -552,16 +592,16 @@ CREATE TRIGGER hold_crypto_settlement AFTER UPDATE ON purchase_orders FOR EACH R
 	}
 }
 
-func TestCryptomusOrderGuards(t *testing.T) {
+func testCryptoOrderGuards(t *testing.T, provider string) {
 	for _, name := range []string{"disabled", "unverified", "restricted", "payment-type"} {
 		t.Run(name, func(t *testing.T) {
-			s, _, account, plan := cryptoPurchaseFixture(t)
+			s, _, account, plan := cryptoPurchaseFixture(t, provider)
 			in := purchaseInput(plan)
-			in.PaymentMethod, in.PaymentType = "cryptomus", "CRYPTOMUS"
+			in.PaymentMethod, in.PaymentType = wire.PurchaseOrderInputPaymentMethod(provider), wire.PurchaseOrderInputPaymentType(strings.ToUpper(provider))
 			want := ""
 			switch name {
 			case "disabled":
-				s.cfg.Payments.CryptomusEnabled = false
+				setCryptoTestEnabled(s, provider, false)
 				want = "PAYMENT_METHOD_UNAVAILABLE"
 			case "unverified":
 				if _, err := s.register(context.Background(), signup("crypto-pending@example.test")); err != nil {
@@ -590,17 +630,17 @@ func TestCryptomusOrderGuards(t *testing.T) {
 	}
 }
 
-func TestCryptomusReviewCannotReconcile(t *testing.T) {
-	s, e, account, order, f := cryptoFixture(t)
-	syncCrypto(t, s, order.OrderId)
+func testCryptoReviewCannotReconcile(t *testing.T, provider string) {
+	s, e, account, order, f := cryptoFixture(t, provider)
+	syncCrypto(t, s, order.OrderId, provider)
 	settleCrypto(e, f)
-	syncCrypto(t, s, order.OrderId)
+	syncCrypto(t, s, order.OrderId, provider)
 	actor := verified(t, s, e, "crypto-operator@example.test")
 	if _, err := s.pool.Exec(context.Background(), "INSERT INTO operator_accounts(account_id,granted_at) VALUES($1,$2)", actor, e.Clock()); err != nil {
 		t.Fatal(err)
 	}
 	f.payment["status"], f.payment["payment_status"] = "cancel", "cancel"
-	syncCrypto(t, s, order.OrderId)
+	syncCrypto(t, s, order.OrderId, provider)
 	if _, err := s.reconcilePurchaseOrder(context.Background(), actor, account, order.OrderId, uuid.New(), wire.PurchaseReconcileInput{Reason: "test-only reconciliation"}); !catalogueCode(err, "PURCHASE_ORDER_CONFLICT") {
 		t.Fatal("operator reconcile bypassed provider proof", err)
 	}
@@ -608,12 +648,12 @@ func TestCryptomusReviewCannotReconcile(t *testing.T) {
 }
 
 // A forwarded vendor address cannot authorize an unrelated network sender.
-func TestCryptomusHTTPBoundary(t *testing.T) {
+func testCryptoHTTPBoundary(t *testing.T, provider string) {
 	h, _, _ := httpFixture(t)
-	req := httptest.NewRequest("POST", "/webhooks/cryptomus", strings.NewReader(`{"type":"payment","uuid":"00000000-0000-4000-8000-000000000014","order_id":"00000000-0000-4000-8000-000000000015","sign":"00000000000000000000000000000000"}`))
+	req := httptest.NewRequest("POST", "/webhooks/"+provider, strings.NewReader(`{"type":"payment","uuid":cryptoCaseFor(provider).merchant,"order_id":"00000000-0000-4000-8000-000000000015","sign":"00000000000000000000000000000000"}`))
 	req.RemoteAddr = "203.0.113.5:12345"
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Forwarded-For", "91.227.144.54")
+	req.Header.Set("X-Forwarded-For", cryptoCaseFor(provider).source)
 	r := httptest.NewRecorder()
 	h.ServeHTTP(r, req)
 	if r.Code != 403 {
@@ -622,16 +662,16 @@ func TestCryptomusHTTPBoundary(t *testing.T) {
 }
 
 // Selecting RUB, skipping the frozen request, or enqueueing twice breaks this.
-func TestCryptomusOrderAtomic(t *testing.T) {
-	s, _, account, plan := cryptoPurchaseFixture(t)
+func testCryptoOrderAtomic(t *testing.T, provider string) {
+	s, _, account, plan := cryptoPurchaseFixture(t, provider)
 	in := purchaseInput(plan)
-	in.PaymentMethod, in.PaymentType = "cryptomus", "CRYPTOMUS"
+	in.PaymentMethod, in.PaymentType = wire.PurchaseOrderInputPaymentMethod(provider), wire.PurchaseOrderInputPaymentType(strings.ToUpper(provider))
 	key := uuid.New()
 	out, err := s.createPurchaseOrder(context.Background(), account, key, in)
 	if err != nil {
 		t.Fatal("enabled Cryptomus did not create a server-priced order", err)
 	}
-	if out.Quote.AmountMinor != "12345" || out.Quote.Currency != "USD" || out.CanPay || out.Checkout != nil || out.PaymentMethod != "cryptomus" {
+	if out.Quote.AmountMinor != "12345" || out.Quote.Currency != "USD" || out.CanPay || out.Checkout != nil || string(out.PaymentMethod) != provider {
 		t.Fatal("provider preparation selected RUB or became a YooMoney form")
 	}
 	again, err := s.createPurchaseOrder(context.Background(), account, key, in)
@@ -639,10 +679,10 @@ func TestCryptomusOrderAtomic(t *testing.T) {
 		t.Fatal("lost response created another order", err)
 	}
 	var checkouts, jobs int
-	if err = s.pool.QueryRow(context.Background(), "SELECT count(*) FROM cryptomus_checkouts WHERE order_id=$1", out.OrderId).Scan(&checkouts); err != nil {
+	if err = s.pool.QueryRow(context.Background(), "SELECT count(*) FROM "+provider+"_checkouts WHERE order_id=$1", out.OrderId).Scan(&checkouts); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.pool.QueryRow(context.Background(), "SELECT count(*) FROM river_job WHERE kind='cryptomus_payment' AND args->>'order_id'=$1", out.OrderId.String()).Scan(&jobs); err != nil || checkouts != 1 || jobs != 1 {
+	if err = s.pool.QueryRow(context.Background(), "SELECT count(*) FROM river_job WHERE kind='"+provider+"_payment' AND args->>'order_id'=$1", out.OrderId.String()).Scan(&jobs); err != nil || checkouts != 1 || jobs != 1 {
 		t.Fatal("order/replay did not atomically retain one provider request/job", err)
 	}
 	s.cfg.Payments.ManualEnabled = true
@@ -654,7 +694,7 @@ func TestCryptomusOrderAtomic(t *testing.T) {
 	}
 	for _, method := range methods.Methods {
 		currency := "RUB"
-		if method.Id == "cryptomus" {
+		if string(method.Id) == provider {
 			currency = "USD"
 		}
 		if string(method.Currency) != currency {
@@ -662,3 +702,25 @@ func TestCryptomusOrderAtomic(t *testing.T) {
 		}
 	}
 }
+
+func TestCryptomusHTTPAuthoritativeStatus(t *testing.T) {
+	testCryptoHTTPAuthoritativeStatus(t, "cryptomus")
+}
+func TestCryptomusExpiryAndDrift(t *testing.T)       { testCryptoExpiryAndDrift(t, "cryptomus") }
+func TestCryptomusProviderHTTPFailures(t *testing.T) { testCryptoProviderHTTPFailures(t, "cryptomus") }
+func TestCryptomusRequestAndRecovery(t *testing.T)   { testCryptoRequestAndRecovery(t, "cryptomus") }
+func TestCryptomusPendingNullableDates(t *testing.T) { testCryptoPendingNullableDates(t, "cryptomus") }
+func TestCryptomusFundingBoundary(t *testing.T)      { testCryptoFundingBoundary(t, "cryptomus") }
+func TestCryptomusReceiptConflictAndForeignCollision(t *testing.T) {
+	testCryptoReceiptConflictAndForeignCollision(t, "cryptomus")
+}
+func TestCryptomusChangedFactsBlockPreparedAccess(t *testing.T) {
+	testCryptoChangedFactsBlockPreparedAccess(t, "cryptomus")
+}
+func TestCryptomusObservationRace(t *testing.T) { testCryptoObservationRace(t, "cryptomus") }
+func TestCryptomusOrderGuards(t *testing.T)     { testCryptoOrderGuards(t, "cryptomus") }
+func TestCryptomusReviewCannotReconcile(t *testing.T) {
+	testCryptoReviewCannotReconcile(t, "cryptomus")
+}
+func TestCryptomusHTTPBoundary(t *testing.T) { testCryptoHTTPBoundary(t, "cryptomus") }
+func TestCryptomusOrderAtomic(t *testing.T)  { testCryptoOrderAtomic(t, "cryptomus") }

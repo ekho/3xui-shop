@@ -1143,6 +1143,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/webhooks/heleket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Heleket effective IP 31.133.220.8 and own documented ordered JSON signature are validated. UTF-8 unique JSON <=16 KiB; signed body only hints an order. Authenticated fixed api.heleket.com payment/info supplies money facts. Unknown signed order acknowledged without API/funding; browser return never confirms payment. */
+        post: operations["receiveHeleket"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1835,7 +1852,7 @@ export interface components {
         };
         PaymentMethod: {
             /** @enum {string} */
-            id: "yoomoney" | "manual" | "yookassa" | "cryptomus";
+            id: "yoomoney" | "manual" | "yookassa" | "cryptomus" | "heleket";
             /** @enum {string} */
             currency: "RUB" | "USD";
         };
@@ -1852,9 +1869,9 @@ export interface components {
             /** Format: int64 */
             period_days: number;
             /** @enum {string} */
-            payment_method: "yoomoney" | "manual" | "yookassa" | "cryptomus";
+            payment_method: "yoomoney" | "manual" | "yookassa" | "cryptomus" | "heleket";
             /** @enum {string} */
-            payment_type: "AC" | "PC" | "MANUAL" | "YOOKASSA" | "CRYPTOMUS";
+            payment_type: "AC" | "PC" | "MANUAL" | "YOOKASSA" | "CRYPTOMUS" | "HELEKET";
         };
         PurchaseQuote: {
             /** Format: uuid */
@@ -1900,9 +1917,9 @@ export interface components {
             action: "purchase";
             quote: components["schemas"]["PurchaseQuote"];
             /** @enum {string} */
-            payment_method: "yoomoney" | "manual" | "yookassa" | "cryptomus";
+            payment_method: "yoomoney" | "manual" | "yookassa" | "cryptomus" | "heleket";
             /** @enum {string} */
-            payment_type: "AC" | "PC" | "MANUAL" | "YOOKASSA" | "CRYPTOMUS";
+            payment_type: "AC" | "PC" | "MANUAL" | "YOOKASSA" | "CRYPTOMUS" | "HELEKET";
             /** @enum {string} */
             payment_status: "pending" | "paid" | "canceled";
             /** @enum {string} */
@@ -1921,6 +1938,7 @@ export interface components {
             manual_payment?: components["schemas"]["ManualPayment"] | null;
             yookassa_checkout?: components["schemas"]["YooKassaCheckout"] | null;
             cryptomus_checkout?: components["schemas"]["CryptomusCheckout"] | null;
+            heleket_checkout?: components["schemas"]["HeleketCheckout"] | null;
         };
         CurrentPurchaseOrder: {
             order: components["schemas"]["PurchaseOrder"] | null;
@@ -1984,6 +2002,22 @@ export interface components {
             url: string | null;
         };
         CryptomusNotification: {
+            /** @enum {string} */
+            type: "payment";
+            /** Format: uuid */
+            uuid: string;
+            /** Format: uuid */
+            order_id: string;
+            sign: string;
+        } & {
+            [key: string]: unknown;
+        };
+        HeleketCheckout: {
+            /** @enum {string} */
+            state: "preparing" | "ready" | "unavailable";
+            url: string | null;
+        };
+        HeleketNotification: {
             /** @enum {string} */
             type: "payment";
             /** Format: uuid */
@@ -8054,6 +8088,49 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CryptomusNotification"];
+            };
+        };
+        responses: {
+            /** @description Acknowledged, not fulfillment confirmation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid body/query/identity. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sender or signature not permitted. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Provider/persistence temporarily unavailable; safe retry. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    receiveHeleket: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HeleketNotification"];
             };
         };
         responses: {

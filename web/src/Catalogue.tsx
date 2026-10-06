@@ -3,8 +3,8 @@ import * as api from './api/client';
 import {displayPrice,type Currency} from './catalogueMoney';
 import {text,link,errorText,type Lang} from './i18n';
 
-const methodByType={AC:'yoomoney',PC:'yoomoney',MANUAL:'manual',YOOKASSA:'yookassa',CRYPTOMUS:'cryptomus'} as const;
-const typeByMethod={yoomoney:'AC',manual:'MANUAL',yookassa:'YOOKASSA',cryptomus:'CRYPTOMUS'} as const;
+const methodByType={AC:'yoomoney',PC:'yoomoney',MANUAL:'manual',YOOKASSA:'yookassa',CRYPTOMUS:'cryptomus',HELEKET:'heleket'} as const;
+const typeByMethod={yoomoney:'AC',manual:'MANUAL',yookassa:'YOOKASSA',cryptomus:'CRYPTOMUS',heleket:'HELEKET'} as const;
 
 export function Catalogue({lang}:{lang:Lang}){
  const t=text(lang);const[plans,setPlans]=useState<api.CataloguePlanSnapshot[]>([]);const[status,setStatus]=useState<'loading'|'ready'|'error'>('loading');const[error,setError]=useState('');const[stale,setStale]=useState(false);const[retry,setRetry]=useState(0);const[choice,setChoice]=useState<{planId:string;period:number;currency:Currency}>({planId:'',period:0,currency:'RUB'});const[methods,setMethods]=useState<api.PaymentMethods['methods']>([]);const[methodsStatus,setMethodsStatus]=useState<'loading'|'ready'|'error'>('loading');const[currentOrder,setCurrentOrder]=useState<api.PurchaseOrder|null>(null);const[confirming,setConfirming]=useState(false);const[paymentType,setPaymentType]=useState<api.PurchaseOrderInput['payment_type']>('AC');const[busy,setBusy]=useState(false);const attempt=useRef<{body:api.PurchaseOrderInput;key:string}|null>(null);

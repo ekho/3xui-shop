@@ -97,6 +97,7 @@ func run() error {
 	river.AddWorker(workers, &payments.PurchaseWorker{Service: svc.Payments})
 	river.AddWorker(workers, &payments.YooKassaWorker{Service: svc.Payments})
 	river.AddWorker(workers, &payments.CryptomusWorker{Service: svc.Payments})
+	river.AddWorker(workers, &payments.HeleketWorker{Service: svc.Payments})
 	river.AddWorker(workers, &vpn.MonthlyResetWorker{Service: svc.VPN})
 	queues := map[string]river.QueueConfig{"provision": {MaxWorkers: 2}, "payments": {MaxWorkers: 2}}
 	if os.Args[1] == "serve" {

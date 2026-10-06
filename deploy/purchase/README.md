@@ -167,3 +167,23 @@ unique order_id,500,info и paid/paid_over без Docker и внешней се�
 и живое VPN-соединение не используются.
 
 Результаты и границы проверки: [локальная приёмка С14](../../docs/evidence/s14-acceptance.md).
+
+## Heleket
+
+Настройки задаются при деплое: `SHOP_PAYMENT_HELEKET_ENABLED=false` по умолчанию,
+`HELEKET_MERCHANT_ID` — canonical UUID, `HELEKET_API_KEY_FILE` — абсолютный путь к
+закрытому файлу. Inline `HELEKET_API_KEY` запрещён; парные retained credentials
+проверяются и после отключения новых продаж. Секретов в frontend/image нет.
+
+Публичный proxy передаёт точный `POST /webhooks/heleket` в backend. Разрешён
+только effective IP31.133.220.8 и собственная подпись; forwarded header не
+заменяет источник. Fixed API api.heleket.com; HTTPS checkout допускает только
+new-pay.heleket.com или pay.heleket.com. Authenticated info подтверждает деньги;
+return/webhook сами их не подтверждают. Не открывайте `/internal/*` публично.
+
+Цена invoice в USD, crypto payer/payment/merchant facts отдельно, USD-net
+неизвестен/NULL. Paid_over не добавляет доступ сверх тарифа. Underpayment,
+late/canceled/refund/AML или противоречивые facts требуют review. Frozen
+order/merchant/bytes и invoice сохраняются; неизвестный результат после expiry
+проверяется только через info, без refresh. Cryptomus settings/host/IP/history
+остаются отдельными. Реальные merchant/payment/public delivery не проверены.
