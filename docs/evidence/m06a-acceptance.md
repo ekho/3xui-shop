@@ -9,8 +9,11 @@
 
 Product revision: `65b215802b78a371b3bb518a0cf7994ec017b38e`. Полная матрица **22/22 PASS**,
 суммарно 412.600 секунд выполнения проверок. Локальная приёмка support
-завершена; fresh whole-branch review, exact-source PR CI, manual merge и preview
-publication пока pending. #60 остаётся OPEN/In progress до notifications,
+завершена. Fresh whole-branch review Astra/high диапазона `b5d8eb3..8e51638`:
+**0 Critical / 0 Important / 0 Minor**, Ready to merge по коду. Reviewer повторил
+boundary/API/all15migration/dependency/diff checks, проверил все22 records/logs;
+полный matrix не повторял. Exact-source PR CI, manual merge и preview publication
+пока pending. #60 остаётся OPEN/In progress до notifications,
 audit и удаления общего platform.Service/store с собственной приёмкой M06.
 
 | Проверка | Результат |
@@ -64,3 +67,20 @@ module directives остаётся; web build успешен, frontend/dependenc
 - Ruling: Reuse the verified source-equal M05 baseline instead of repeating a full suite at branch setup — fresh base b5d8eb3 equals source b2815af verified product dcfd61e, 22/22 and exact-source CI/preview passed; new commits only Spec/Plan — cost if wrong: stale baseline could hide a failure; clean tree/product comparison verified before edits.
 - Ruling: Keep support audit INSERT in caller Tx until M06c — accepted sequential owner transfer preserves atomic message/audit/idem — cost if wrong: later port adaptation, no partial audit/message commit.
 - Task 1: Ruling: Narrow the boundary RED expectation to SQL literals/queries — existing AST checker scans SQL, not operator method calls; removing root query and composition/card tests prove that caller's migration — cost if wrong: raw caller bypass could survive, covered by query deletion/compile and actual operator card check.
+
+- Final: Ruling: Require fresh exact-source remote CI/rules/manual merge/preview proof — reviewer checked code and local logs only; coordinator verifies these gates before delivery — cost if wrong: stale remote evidence could incorrectly claim a delivered revision.
+- Final: Ruling: Keep #60 OPEN through later notifications/audit/platform-store removal — users receive this support owner slice, whole M06 acceptance is still pending — cost if wrong: unfinished module boundaries could be mistaken for complete migration.
+- Final: Ruling: Keep the support audit INSERT in caller Tx until M06c — preserves tested atomic message/conversation/audit/idem, unified audit port belongs to that next owner — cost if wrong: later port adaptation, no partial commit now.
+- Final: Ruling: Keep Python retirement in С47 — retained old runtime supports planned migration until coverage/cutover is ready — cost if wrong: temporary legacy maintenance, not premature removal.
+- Final: Ruling: Leave new Telegram topics/relay/reports/campaigns/bonuses to their accepted scenarios — this transfer preserves existing С05 without new product rules — cost if wrong: those functions remain pending in their tracked tasks.
+- Final: Ruling: Preserve the exclusions for production/real payments/provider settings/installed Happ/VPN/macOS trust — local controlled proof satisfies the bounded support transfer, no authorization or evidence for those targets is inferred — cost if wrong: external defects await their own acceptance.
+- Final: Ruling: Do not infer external email or real Bot API delivery from local TLS SMTP/simulated Telegram — current evidence proves the controlled integration only — cost if wrong: external transport issues remain for external launch checks.
+- Final: Ruling: Accept separate browser/support HTTP/backend evidence without claiming a new complete browser-to-real-support-backend run — existing support Playwright intercepts API, real HTTP/PG tests check the actual owner independently — cost if wrong: combined browser/backend integration defects could remain; no new full-chain acceptance is claimed.
+- Final: Ruling: Do not add repository AGENTS.md/SECURITY.md during support extraction — supplied user instructions and enabled shared policy govern this scoped work, adding project policy is a separate owner decision — cost if wrong: future contributors need those external instructions; repository policy installation is not claimed.
+
+## Workflow correction
+
+В private C09 event локальная приёмка ошибочно обозначалась финальной acceptance
+при delivery=pending; checker отклонил это сочетание. Final acceptance исправлена
+на pending до delivery gates. Shared checkpoint описывает только локальные тесты;
+merge/closure не происходили, #60 оставалась OPEN. Правила2.0.0.
