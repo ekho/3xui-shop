@@ -10,9 +10,11 @@
 Ветка feature/s12-yookassa создана от fresh v2 `d7b69ebd96fe09370c5197d60e1dc6e95324c3e3`.
 Task1/backend/API/migration: `5d0bd4dc4561216be4be6c9ecd51d6552b48f3fc`.
 Task2/web и исходная ревизия проверок Task3: `6ce3ddad390af1c4afae0ad06d96391d5ffb07da`.
-После неё product/backend/web/API/dependencies не менялись; добавлены собственные
-fixtures и точный маршрут webhook в существующем тестовом proxy. Хеши проверенных
-файлов и полные логи сохранены в private `.superpowers/acceptance/c12-provider`.
+В Task3 добавлены собственные fixtures и точный маршрут webhook в существующем
+тестовом proxy. После финального ревью исправлена одна гонка в payments и добавлен
+управляемый SQL regression test; текущая полная регрессия приведена ниже. Web/API/
+dependencies не менялись. Хеши проверенных файлов и полные логи сохранены в private
+`.superpowers/acceptance/c12-provider`.
 Это связь проверенного содержимого с последующим commit, без заявления о запуске
 тестов на ещё не существовавшей ревизии.
 
@@ -38,6 +40,32 @@ Go-регрессия составлена из успешных неизмен�
 
 Go/TypeScript generation/no generated diff, semantic names, `go vet ./...` и web
 typecheck прошли. Go1.27.1; новых production dependencies нет.
+
+## Финальное ревью и исправление
+
+Fresh Astra/high whole-branch review `d7b69eb..a2ec5cc`: Critical0 / Important1 /
+Minor0. Important принят: обработка canceled читала receipt вне общей транзакции
+с succeeded. Теперь проверка receipt, отмена и отметка противоречия сериализованы
+по account/order. Первый финансовый факт сохраняется; новые и уже подготовленные
+операции доступа проверяют его состояние. Автоматического отзыва выданного доступа нет.
+
+Управляемый SQL barrier воспроизвёл поведение RED5.530s; тот же тест GREEN7.126s.
+Один fix pass, без повторного ревью. [Все Native/Final rulings, их стоимость ошибки
+и Declined](s12-decisions.md) опубликованы; deferred Minor нет.
+
+| Проверка исправленного содержимого | Результат | Время |
+| --- | --- | --- |
+| Полный Go race с RUN_BROWSER_TESTS=1 | 280 корневых тестов / 13 пакетов PASS, включая 47 финансовых; без skip | 388.103s |
+| Python contracts/deploy/real Go consumer | 105 PASS | 21.249s |
+| Go vet | PASS | 0.733s |
+| Обычная новая Docker-сборка, new/trial/500/restart/replay | PASS | 60.797s |
+| Paid-pending read-only restore и source recovery | PASS | 13.127s |
+
+Эти проверки выполнены до commit: SHA256 затронутых Go-файлов связывает результаты
+с последующим commit, actual container image IDs фиксируют обычную сборку.
+156 успешных web-проверок сохранены по неизменённому web-содержимому. Первая полная
+Go-попытка и диагностические failures выше остаются историей; текущий полный Go
+запуск завершился с exit0. Private verifier проверяет обе группы логов и текущие хеши.
 
 ## Критерии и Review Focus
 

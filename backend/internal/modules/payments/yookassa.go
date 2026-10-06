@@ -160,6 +160,13 @@ func (s *Service) kassaReview(ctx context.Context, order uuid.UUID, reason strin
 	if _, err = s.lockAccount(ctx, tx, account); err != nil {
 		return unavailable()
 	}
+	if err = s.kassaReviewTx(ctx, tx, order, reason, observation); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+func (s *Service) kassaReviewTx(ctx context.Context, tx pgx.Tx, order uuid.UUID, reason string, observation []byte) error {
+	var err error
 	if _, err = tx.Exec(ctx, "UPDATE purchase_receipts SET review_reason=$2 WHERE operation_id=(SELECT funding_operation_id FROM purchase_orders WHERE id=$1)", order, reason); err != nil {
 		return unavailable()
 	}
@@ -169,7 +176,7 @@ func (s *Service) kassaReview(ctx context.Context, order uuid.UUID, reason strin
 	if _, err = tx.Exec(ctx, "UPDATE yookassa_checkouts SET state='unavailable',observation=COALESCE($2,observation) WHERE order_id=$1", order, observation); err != nil {
 		return unavailable()
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 // SQL commits the frozen request/first attempt before POST; no transaction spans HTTP.
@@ -300,31 +307,50 @@ func (s *Service) recordKassa(ctx context.Context, c kassaRow, payment kassaPaym
 		if payment.Status == "succeeded" {
 			return false, s.kassaReview(ctx, c.order, "provider_not_paid", observation)
 		}
+		tx, err := s.pool.Begin(ctx)
+		if err != nil {
+			return false, unavailable()
+		}
+		defer tx.Rollback(ctx)
+		var account uuid.UUID
+		if err = tx.QueryRow(ctx, "SELECT account_id FROM purchase_orders WHERE id=$1", c.order).Scan(&account); err != nil {
+			return false, unavailable()
+		}
+		if _, err = s.lockAccount(ctx, tx, account); err != nil {
+			return false, unavailable()
+		}
+		if _, err = scanPurchase(tx.QueryRow(ctx, "SELECT "+purchaseColumns+" FROM purchase_orders WHERE id=$1 FOR UPDATE", c.order)); err != nil {
+			return false, unavailable()
+		}
 		var hadReceipt bool
-		if err := s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM purchase_receipts WHERE operation_id=$1)", "yookassa:"+id.String()).Scan(&hadReceipt); err != nil {
+		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM purchase_receipts WHERE operation_id=$1)", "yookassa:"+id.String()).Scan(&hadReceipt); err != nil {
 			return false, unavailable()
 		}
 		if hadReceipt {
 			// An older nonterminal GET may arrive after the settled GET.
 			if payment.Status == "pending" || payment.Status == "waiting_for_capture" {
-				return false, nil
+				return false, tx.Commit(ctx)
 			}
-			return false, s.kassaReview(ctx, c.order, "provider_status_conflict", observation)
+			if err = s.kassaReviewTx(ctx, tx, c.order, "provider_status_conflict", observation); err != nil {
+				return false, err
+			}
+			return false, tx.Commit(ctx)
 		}
 		if payment.Status == "canceled" {
-			_, err := s.pool.Exec(ctx, "UPDATE purchase_orders SET payment_status='canceled',active=false WHERE id=$1 AND payment_status='pending'", c.order)
-			if err != nil {
+			if _, err = tx.Exec(ctx, "UPDATE purchase_orders SET payment_status='canceled',active=false WHERE id=$1 AND payment_status='pending'", c.order); err != nil {
 				return false, unavailable()
 			}
-			_, err = s.pool.Exec(ctx, "UPDATE yookassa_checkouts SET state='unavailable',observation=$2 WHERE order_id=$1", c.order, observation)
-			return false, err
+			if _, err = tx.Exec(ctx, "UPDATE yookassa_checkouts SET state='unavailable',observation=$2 WHERE order_id=$1", c.order, observation); err != nil {
+				return false, unavailable()
+			}
+			return false, tx.Commit(ctx)
 		}
 		if payment.Confirmation.Type == "redirect" && validKassaURL(payment.Confirmation.URL) {
-			if _, err := s.pool.Exec(ctx, "UPDATE yookassa_checkouts SET confirmation_url=COALESCE(confirmation_url,$2),state='ready' WHERE order_id=$1", c.order, payment.Confirmation.URL); err != nil {
+			if _, err = tx.Exec(ctx, "UPDATE yookassa_checkouts SET confirmation_url=COALESCE(confirmation_url,$2),state='ready' WHERE order_id=$1", c.order, payment.Confirmation.URL); err != nil {
 				return false, unavailable()
 			}
 		}
-		return true, nil
+		return true, tx.Commit(ctx)
 	}
 	captured, err := time.Parse(time.RFC3339Nano, payment.Captured)
 	if err != nil || captured.Before(created) || captured.After(s.now().Add(5*time.Minute)) {

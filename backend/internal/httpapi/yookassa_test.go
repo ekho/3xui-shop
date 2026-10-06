@@ -432,6 +432,75 @@ func TestYooKassaChangedFactsBlockQueuedAccess(t *testing.T) {
 	}
 }
 
+func TestYooKassaCanceledSettlementRace(t *testing.T) {
+	s, e, account, order, f := kassaFixture(t)
+	syncKassa(t, s, order.OrderId)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	gate, err := e.Pool.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gate.Release()
+	if _, err = gate.Exec(ctx, "SELECT pg_advisory_lock(742012)"); err != nil {
+		t.Fatal(err)
+	}
+	defer gate.Exec(context.Background(), "SELECT pg_advisory_unlock(742012)")
+	if _, err = e.Pool.Exec(ctx, `CREATE FUNCTION hold_kassa_settlement() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN IF NEW.payment_status='paid' AND OLD.payment_status<>'paid' THEN PERFORM pg_advisory_xact_lock(742012); END IF; RETURN NEW; END $$;
+CREATE TRIGGER hold_kassa_settlement AFTER UPDATE ON purchase_orders FOR EACH ROW EXECUTE FUNCTION hold_kassa_settlement();`); err != nil {
+		t.Fatal(err)
+	}
+	waitBlocked := func(n int) {
+		t.Helper()
+		for ctx.Err() == nil {
+			var count int
+			if err := e.Pool.QueryRow(ctx, "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND cardinality(pg_blocking_pids(pid))>0").Scan(&count); err != nil {
+				t.Fatal(err)
+			}
+			if count >= n {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Fatal("controlled provider observations did not reach the SQL barrier")
+	}
+	settleKassa(e, f)
+	id := f.payment["id"].(string)
+	settled, canceled := make(chan error, 1), make(chan error, 1)
+	go func() { settled <- s.payments.ReceiveYooKassa(ctx, id) }()
+	waitBlocked(1) // Receipt is still uncommitted; settlement owns account/order.
+	f.mu.Lock()
+	f.payment["status"], f.payment["paid"] = "canceled", false
+	f.mu.Unlock()
+	go func() { canceled <- s.payments.ReceiveYooKassa(ctx, id) }()
+	waitBlocked(2) // Old code has read no receipt and is waiting on its UPDATE.
+	if _, err = gate.Exec(ctx, "SELECT pg_advisory_unlock(742012)"); err != nil {
+		t.Fatal(err)
+	}
+	for _, result := range []chan error{settled, canceled} {
+		if err := <-result; err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.purchaseOrder(ctx, account, order.OrderId)
+	if err != nil || !got.ReviewRequired || got.PaymentStatus != "paid" {
+		t.Fatal("concurrent canceled observation lost the settled conflict", got.ReviewRequired, err)
+	}
+	manualCounts(t, s, order.OrderId, 1, 1)
+	var retained bool
+	if err = e.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM purchase_receipts WHERE order_id=$1 AND gross_minor=9007199254740993 AND review_reason='provider_status_conflict' AND provider_data->>'status'='succeeded')", order.OrderId).Scan(&retained); err != nil || !retained {
+		t.Fatal("first provider receipt was overwritten or not quarantined", err)
+	}
+	if err = s.fulfillPurchase(ctx, order.OrderId); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.purchaseOrder(ctx, account, order.OrderId)
+	if err != nil || got.AccessOperationId != nil {
+		t.Fatal("conflicting provider observations prepared new access", err)
+	}
+}
+
 func TestYooKassaLateNonterminalObservation(t *testing.T) {
 	for _, status := range []string{"pending", "waiting_for_capture"} {
 		t.Run(status, func(t *testing.T) {
