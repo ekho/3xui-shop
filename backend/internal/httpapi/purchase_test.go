@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"example.com/cabinet/backend/internal/app"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
@@ -9,6 +10,49 @@ import (
 	"strings"
 	"testing"
 )
+
+// A missing method/atomic enqueue breaks this consumer-visible purchase result.
+func TestYooKassaOrderAtomic(t *testing.T) {
+	s, _, account, plan := purchaseFixture(t)
+	// JSON keeps this RED runnable before the new configuration fields exist.
+	if err := json.Unmarshal([]byte(`{"YooKassaEnabled":true,"YooKassaShopID":"100001","YooKassaToken":"test-only-api-token","YooKassaTestMode":true,"ShopEmail":"receipts@example.test"}`), &s.cfg.Payments); err != nil {
+		t.Fatal(err)
+	}
+	in := purchaseInput(plan)
+	in.PaymentMethod, in.PaymentType = "yookassa", "YOOKASSA"
+	key := uuid.New()
+	out, err := s.createPurchaseOrder(context.Background(), account, key, in)
+	if err != nil {
+		t.Fatal("enabled YooKassa did not create a server-priced order", err)
+	}
+	if out.Quote.AmountMinor != "9007199254740993" || out.CanPay || out.Checkout != nil || out.PaymentMethod != "yookassa" {
+		t.Fatal("provider preparation bypassed server quote or became a YooMoney form")
+	}
+	again, err := s.createPurchaseOrder(context.Background(), account, key, in)
+	if err != nil || again.OrderId != out.OrderId {
+		t.Fatal("lost response created a second order", err)
+	}
+	var checkouts, jobs int
+	if err = s.pool.QueryRow(context.Background(), "SELECT count(*) FROM yookassa_checkouts WHERE order_id=$1", out.OrderId).Scan(&checkouts); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.pool.QueryRow(context.Background(), "SELECT count(*) FROM river_job WHERE kind='yookassa_payment' AND args->>'order_id'=$1", out.OrderId.String()).Scan(&jobs); err != nil || checkouts != 1 || jobs != 1 {
+		t.Fatal("order/replay did not atomically retain one provider request/job", err)
+	}
+}
+
+func TestYooKassaHTTPBoundary(t *testing.T) {
+	h, _, _ := httpFixture(t)
+	req := httptest.NewRequest("POST", "/webhooks/yookassa", strings.NewReader(`{"type":"notification","event":"payment.succeeded","object":{"id":"00000000-0000-4000-8000-000000000001"}}`))
+	req.RemoteAddr = "203.0.113.5:12345"
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Forwarded-For", "185.71.76.1")
+	r := httptest.NewRecorder()
+	h.ServeHTTP(r, req)
+	if r.Code != 403 {
+		t.Fatal("public callback did not enforce effective source IP", r.Code)
+	}
+}
 
 func TestPurchaseHTTPStrictBoundary(t *testing.T) {
 	h, e, cfg := httpFixture(t)

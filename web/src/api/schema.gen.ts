@@ -1109,6 +1109,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/webhooks/yookassa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Source IP uses configured trusted-proxy extraction. Notification only hints a known provider ID; money facts are retrieved using authenticated fixed-HTTPS API. UTF-8 JSON <=16 KiB. Unknown ID acknowledged without provider call or funding; browser return never confirms payment. */
+        post: operations["receiveYooKassa"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1801,7 +1818,7 @@ export interface components {
         };
         PaymentMethod: {
             /** @enum {string} */
-            id: "yoomoney" | "manual";
+            id: "yoomoney" | "manual" | "yookassa";
             /** @enum {string} */
             currency: "RUB";
         };
@@ -1818,9 +1835,9 @@ export interface components {
             /** Format: int64 */
             period_days: number;
             /** @enum {string} */
-            payment_method: "yoomoney" | "manual";
+            payment_method: "yoomoney" | "manual" | "yookassa";
             /** @enum {string} */
-            payment_type: "AC" | "PC" | "MANUAL";
+            payment_type: "AC" | "PC" | "MANUAL" | "YOOKASSA";
         };
         PurchaseQuote: {
             /** Format: uuid */
@@ -1866,9 +1883,9 @@ export interface components {
             action: "purchase";
             quote: components["schemas"]["PurchaseQuote"];
             /** @enum {string} */
-            payment_method: "yoomoney" | "manual";
+            payment_method: "yoomoney" | "manual" | "yookassa";
             /** @enum {string} */
-            payment_type: "AC" | "PC" | "MANUAL";
+            payment_type: "AC" | "PC" | "MANUAL" | "YOOKASSA";
             /** @enum {string} */
             payment_status: "pending" | "paid" | "canceled";
             /** @enum {string} */
@@ -1885,6 +1902,7 @@ export interface components {
             access_operation_id: string | null;
             checkout: components["schemas"]["YooMoneyCheckout"] | null;
             manual_payment?: components["schemas"]["ManualPayment"] | null;
+            yookassa_checkout?: components["schemas"]["YooKassaCheckout"] | null;
         };
         CurrentPurchaseOrder: {
             order: components["schemas"]["PurchaseOrder"] | null;
@@ -1922,6 +1940,25 @@ export interface components {
             has_more: boolean;
             /** Format: uuid */
             next_cursor: string | null;
+        };
+        YooKassaCheckout: {
+            /** @enum {string} */
+            state: "preparing" | "ready" | "unavailable";
+            url: string | null;
+        };
+        YooKassaNotification: {
+            /** @enum {string} */
+            type: "notification";
+            /** @enum {string} */
+            event: "payment.succeeded" | "payment.waiting_for_capture" | "payment.canceled";
+            object: {
+                /** Format: uuid */
+                id: string;
+            } & {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
         };
     };
     responses: never;
@@ -7927,6 +7964,49 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["APIError"];
                 };
+            };
+        };
+    };
+    receiveYooKassa: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["YooKassaNotification"];
+            };
+        };
+        responses: {
+            /** @description Acknowledged, not a fulfillment confirmation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid JSON/event/ID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sender IP not permitted. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Provider or persistence temporarily unavailable; safe retry. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

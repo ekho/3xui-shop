@@ -10,6 +10,7 @@ import (
 	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/vpn"
 	"net"
+	"net/mail"
 	"net/url"
 	"os"
 	"strconv"
@@ -63,6 +64,21 @@ func LoadConfig() (Config, error) {
 	}
 	c.Subscriptions.PanelID = os.Getenv("PANEL_ID")
 	c.Payments.YooMoneyWalletID = os.Getenv("YOOMONEY_WALLET_ID")
+	c.Payments.YooKassaShopID, c.Payments.ShopEmail = os.Getenv("YOOKASSA_SHOP_ID"), os.Getenv("SHOP_EMAIL")
+	for name, dest := range map[string]*bool{"SHOP_PAYMENT_YOOKASSA_ENABLED": &c.Payments.YooKassaEnabled, "YOOKASSA_TEST_MODE": &c.Payments.YooKassaTestMode} {
+		if value := os.Getenv(name); value != "" {
+			*dest, err = strconv.ParseBool(value)
+			if err != nil {
+				return c, errors.New("invalid " + name)
+			}
+		}
+	}
+	if c.Payments.YooKassaEnabled || os.Getenv("YOOKASSA_TOKEN_FILE") != "" || os.Getenv("YOOKASSA_TOKEN") != "" {
+		c.Payments.YooKassaToken, err = SecretFile("YOOKASSA_TOKEN")
+		if err != nil {
+			return c, err
+		}
+	}
 	if value := os.Getenv("SHOP_PAYMENT_MANUAL_ENABLED"); value != "" {
 		c.Payments.ManualEnabled, err = strconv.ParseBool(value)
 		if err != nil {
@@ -206,6 +222,19 @@ func LoadConfig() (Config, error) {
 	return c, c.Validate()
 }
 func (c Config) Validate() error {
+	if c.Payments.YooKassaEnabled || c.Payments.YooKassaToken != "" {
+		shop, err := strconv.ParseUint(c.Payments.YooKassaShopID, 10, 64)
+		if err != nil || shop == 0 || len(c.Payments.YooKassaShopID) > 20 {
+			return errors.New("invalid YOOKASSA_SHOP_ID")
+		}
+		if c.Payments.YooKassaToken == "" || len(c.Payments.YooKassaToken) > 512 || !utf8.ValidString(c.Payments.YooKassaToken) || strings.ContainsAny(c.Payments.YooKassaToken, " \t\r\n\x00") {
+			return errors.New("invalid YOOKASSA_TOKEN file")
+		}
+		email, err := mail.ParseAddress(c.Payments.ShopEmail)
+		if err != nil || email.Address != c.Payments.ShopEmail || len(c.Payments.ShopEmail) > 254 {
+			return errors.New("invalid SHOP_EMAIL")
+		}
+	}
 	if c.Payments.ManualEnabled && (!utf8.ValidString(c.Payments.ManualCardDetails) || strings.ContainsRune(c.Payments.ManualCardDetails, '\x00') || utf8.RuneCountInString(c.Payments.ManualCardDetails) > 2000 || strings.TrimSpace(c.Payments.ManualCardDetails) == "") {
 		return errors.New("enabled manual payment requires valid MANUAL_CARD_DETAILS file")
 	}
