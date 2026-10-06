@@ -377,3 +377,20 @@ func TestAuditReportsSQLBoundary(t *testing.T) {
 	}
 	checkSQLBoundary(t, "audit_reports", ownsSQL)
 }
+
+func TestSharedFacadeRemoved(t *testing.T) {
+	for _, path := range []string{"../platform", "../store", "../../db/queries"} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("transitional directory remains: %s", path)
+		}
+	}
+	config, err := os.ReadFile("../../sqlc.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, declaration := range []string{"queries: db/queries", "out: internal/store"} {
+		if strings.Contains(string(config), declaration) {
+			t.Errorf("shared generation remains: %s", declaration)
+		}
+	}
+}
