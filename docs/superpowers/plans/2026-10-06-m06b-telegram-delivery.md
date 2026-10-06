@@ -31,7 +31,7 @@
 
 ### Task 1: Перенести Telegram outbox и подключить всех потребителей
 
-**Files:** Create modules/notifications/{telegram.go,internal/queries/telegram.sql,generated internal/store}; app/telegram_delivery_test.go. Modify app/{accounts.go,trial_bridge.go,boundaries_test.go}, platform/{service.go,modules.go,telegram.go}, subscriptions/{service.go,trial.go,data.go,operator.go,internal/queries/shared.sql}, sqlc.yaml/generated root/subscription stores. Remove obsolete db/queries/telegram.sql and root generated telegram.sql.go; remove only3 outbox queries from db/queries/trials.sql.
+**Files:** Create modules/notifications/{telegram.go,internal/queries/telegram.sql,generated internal/store}; app/telegram_delivery_test.go. Modify app/{accounts.go,trial_bridge.go,boundaries_test.go}, platform/{service.go,modules.go,telegram.go}, subscriptions/{service.go,contracts_test.go,trial.go,data.go,operator.go,internal/queries/shared.sql}, sqlc.yaml/generated root/subscription stores. Remove obsolete db/queries/telegram.sql and root generated telegram.sql.go; remove only3 outbox queries from db/queries/trials.sql.
 
 **Interfaces:** Produce notifications.New and five public methods exactly Spec (context/pgx.Tx/UUID/*UUID/int64/string/RawMessage/time). TelegramJob JSON tags match wire; neutral TelegramSent/TelegramFailed keep original field order/tags. Error Status/Code/Message; callback error retained for facade/bridge mapping. Subscriptions.New gains concrete *notifications.Service before config/now. Root constructor gains explicit owner/Notifications accessor; app bridge reads raw payload into subscriptions.TelegramPayload and reuses card conversion.
 
@@ -48,9 +48,9 @@
 
 **Interfaces:** Consume Task1 product/current app composition; produce exact-revision full/native evidence for fresh final review and remote delivery, #60 OPEN for M06b2/M06c/M06d.
 
-- [ ] Reuse completed M06a driver/helpers, adapt own workspace/base/proof names. Run22-stage matrix names/generation/drift/API+migrations+deps/vet/types/build/runtime/connected Go race/Python/Playwright/Compose build/smoke/native3.7/TLS/purchase prepare+overlay+repeat check+paid restore/down. Expected all PASS on one committed product revision, owned stack stopped.
-- [ ] Record commands/counts/durations/limits/all Native Rulings; update M06a source/CI/merge/dev.23 delivered truth and next M06 sequence. Expected local acceptance distinct from pending exact-source CI/manual merge/preview, #60 OPEN.
-- [ ] Commit docs with Co-Authored; own verify-final.py checks22 records/unchanged product/generation/compatibility. Expected PASS.
+- [x] Reuse completed M06a driver/helpers, adapt own workspace/base/proof names. Run22-stage matrix names/generation/drift/API+migrations+deps/vet/types/build/runtime/connected Go race/Python/Playwright/Compose build/smoke/native3.7/TLS/purchase prepare+overlay+repeat check+paid restore/down. Expected all PASS on one committed product revision, owned stack stopped.
+- [x] Record commands/counts/durations/limits/all Native Rulings; update M06a source/CI/merge/dev.23 delivered truth and next M06 sequence. Expected local acceptance distinct from pending exact-source CI/manual merge/preview, #60 OPEN.
+- [x] Commit docs with Co-Authored; own verify-final.py checks22 records/unchanged product/generation/compatibility. Expected PASS.
 
 ## Finish после Native-задач
 
