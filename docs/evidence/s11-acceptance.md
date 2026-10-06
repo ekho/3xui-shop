@@ -5,38 +5,38 @@
 
 ## Результат и ревизия
 
-Product revision `1d3d3c90bae90c68f005a5f7761788fb8c311fea`, база `c9c075e40f822fbe4f7d058d292f2a14ad07cc3f`.
+Product revision `d407ad344e7c540a3946bd6ff1077977d82feff4`, база `c9c075e40f822fbe4f7d058d292f2a14ad07cc3f`.
 **26/26 PASS** на одной committed product revision: Go **13 пакетов PASS** с race/подключёнными PostgreSQL и Redis, Python **105/105**, Playwright **139/139**.
 Generation/drift, actual composition/import/SQL/API compatibility, vet/types/build/runtime config, Compose/smoke и собственная HTTPS/3X-UI3.7.0 приёмка прошли. Все прежние15 миграций и4 Go/web dependency/lock files (всего19) равны базе; migration16 additive, downgrade блокируется при любой manual history. Собственный native stack остановлен.
 
 | Проверка | Seconds | Результат |
 | --- | ---: | --- |
-| names | 0.196 | PASS |
-| go-generate | 1.018 | PASS |
-| web-generate | 0.761 | PASS |
-| generated-drift | 0.029 | PASS |
-| compatibility | 0.438 | PASS |
-| go-vet | 0.293 | PASS |
-| web-types | 2.238 | PASS |
-| web-build | 2.510 | PASS |
-| runtime-config | 0.089 | PASS |
-| compose-config | 0.243 | PASS |
-| compose-build | 12.739 | PASS |
-| smoke | 26.192 | PASS |
-| native-up | 8.490 | PASS |
-| native-check | 47.328 | PASS |
-| purchase-prepare | 0.253 | PASS |
-| purchase-overlay | 0.913 | PASS |
-| purchase-check | 6.272 | PASS |
-| purchase-restore | 12.497 | PASS |
-| manual-prepare | 0.281 | PASS |
-| manual-overlay | 0.494 | PASS |
-| manual-check | 9.809 | PASS |
-| manual-restore | 13.089 | PASS |
-| go-race-connected | 343.470 | PASS |
-| python | 21.491 | PASS |
-| playwright | 86.177 | PASS |
-| native-down | 2.116 | PASS |
+| names | 0.210 | PASS |
+| go-generate | 0.926 | PASS |
+| web-generate | 0.675 | PASS |
+| generated-drift | 0.035 | PASS |
+| compatibility | 0.342 | PASS |
+| go-vet | 1.038 | PASS |
+| web-types | 2.069 | PASS |
+| web-build | 2.355 | PASS |
+| runtime-config | 0.094 | PASS |
+| compose-config | 0.306 | PASS |
+| compose-build | 24.885 | PASS |
+| smoke | 24.640 | PASS |
+| native-up | 8.798 | PASS |
+| native-check | 48.123 | PASS |
+| purchase-prepare | 0.214 | PASS |
+| purchase-overlay | 0.965 | PASS |
+| purchase-check | 6.263 | PASS |
+| purchase-restore | 12.794 | PASS |
+| manual-prepare | 0.260 | PASS |
+| manual-overlay | 0.412 | PASS |
+| manual-check | 10.768 | PASS |
+| manual-restore | 12.898 | PASS |
+| go-race-connected | 350.361 | PASS |
+| python | 21.347 | PASS |
+| playwright | 86.140 | PASS |
+| native-down | 2.077 | PASS |
 
 ## Критерии приёмки
 
@@ -46,7 +46,7 @@ Generation/drift, actual composition/import/SQL/API compatibility, vet/types/bui
 | AC02 | ReportDecisionAndSnapshot: exact server quote/большая целая сумма, одна active-заявка; report/repeat не создают receipt/job/paid. Истекает только незаявленный заказ; после report cancel/new order запрещены. Native actual HTTP проверяет эти же различия и идемпотентность заявления. |
 | AC03 | BoundariesAndInbox/actual HTTPS: текущий operator/verified account, report до approve, exact confirmed_amount_minor и причина. Клиент/неподтверждённый/restricted/foreign target/CSRF/Origin/malformed/oversize не меняют деньги. Reject терминален, причина сохраняется, новый заказ разрешён. Browser требует bank acknowledgement, точную сумму и причину. |
 | AC04 | TerminalRacesAndRollback: approve/approve и approve/reject, original/different keys, atomic audit/queue rollback, revoked role до replay. Один terminal decision/receipt/job/access target. Browser потерянного ответа сохраняет key/body, не отправляет второе решение; actual native replay не изменяет issued state. |
-| AC05 | CrossMethodFunding/ImmutabilityAndDowngrade + старые YooMoney regressions: подписанный provider callback с manual label сохранён needs_review без auto-approve; forged manual receipt не является funding proof. Actor/report/decision/source/quote защищены DB. Прежние YooMoney суммы/held/protected/повторы/поздние события/отмена/неоднозначные формы сохраняются. |
+| AC05 | CrossMethodFunding/TerminalCrossMethodReceipt/ImmutabilityAndDowngrade + старые YooMoney regressions: подписанный provider callback с manual label сохранён needs_review без auto-approve, включая rejected/canceled/approved/expired и replay; manual status/actor/report/decision/funding неизменны. Forged manual receipt не является funding proof. Прежние YooMoney суммы/held/protected/повторы/поздние события/отмена/неоднозначные формы сохраняются. |
 | AC06 | Собственный actual HTTP/River/3X-UI3.7.0: новый доступ и переход с триала, прежние native IDs/лимиты и одна access operation; повтор неизменен. Panel outage сохраняет paid; restore-manual сверяет полный финансовый digest/actor/report/receipt, очищает auth/maintenance идемпотентно, restored writers не запускает, исходный backend после рестарта выдаёт один доступ. Старый signed YooMoney check/restore тоже PASS. |
 | AC07 | Все139 browser cases, включая12 manual и сохранённые purchase/catalogue/runtime suites: ru/en/375px/keyboard/queue50+1/empty/error/retry/role revoke/persisted status/poll/reload. Реальные HTTP/security/DB и native TLS проверены отдельно; full browser→real backend путь не заявлен. Generation и owner boundaries стабильны. |
 
@@ -76,10 +76,24 @@ Task3 первая26 matrix остановилась на manual fixture HTTP409
 - Task3: Ruling: Run own native slice/recovery before connected full regressions in one26-stage committed-product matrix — reuses the22-stage owner driver and adds4manual stages, avoiding an identical separate thin/native repeat — cost if wrong: early fixture failure postpones broad checks; driver stops at exact failure and always tears down cabinet-c11. Accepted Task1 actual HTTP was the earlier shared-contract slice.
 - Task3: Ruling: Normalize HTTPError only in the manual acceptance adapter — shared local.api intentionally raises for non-2xx; actual first denial409 correctly stopped helper1836msodnAFP. Trace/callers inspected; no product/server API change — cost if wrong: swallowing unexpected code could hide failures; every command asserts exact 200/202/403/404/409. First matrix142342msbkuZVI:20 prior stages PASS incl native/YooMoney/restore; own teardown PASS. Full matrix repeats after changed helper commit to keep one exact committed revision, not a transient retry; before-fix records/logs retained.
 
+## Итоговый обзор и единственный fix pass
+
+Один fresh Astra/high обзор всего range c9c075e..43b93d1/34files: **Critical0/Important1/Minor0**, With fixes. I1: подписанный callback после отказа в manual менял canceled→pending, constraint16 откатывал receipt и возвращал503. Новый TestManualPaymentTerminalCrossMethodReceipt RED11.341s (IgoxoV) подтвердил и503 после rejected, и оживление canceled-заказа; approved/expired siblings прошли.
+Минимальное исправление в shared locked UPDATE сохраняет payment_status non-YooMoney заказа; decision constraint не ослаблен, прежняя YooMoney-ветка/подпись/receipt/очередь не меняются. Все4 состояния/replay/one receipt/immutable actor-claim-funding/no new issuance прошли focused GREEN; итоговая26 матрица выше проверяет committed исправление. Повторного ревью не было. Deferred minors отсутствуют.
+
+Все шесть Declined to judge оценены координатором; решения со стоимостью ошибки:
+
+- Final: Ruling: Real banking/provider delivery/legacy wallet cutover/production/Telegram/Happ-VPN-trust/public SMTP/target-host performance remain outside local C11 — the accepted scope and latest C13 stub decision exclude these actual effects, synthetic/native proof is stated accurately — cost if wrong: external readiness still needs exact resources/authority and cannot be inferred from green local tests.
+- Final: Ruling: A user leaving the cabinet receives no new outbound manual-payment notice in C11 — accepted C27/C28/C32 own channel delivery, persisted web decision/reason and operator queue are implemented and those tasks remain OPEN — cost if wrong: the user must return or contact support until those channels ship.
+- Final: Ruling: Resolution/refund of a retained cross-method needs_review dispute remains C19/C20 — C11 preserves the fact and blocks approval/automatic issuance, no new refund or dispute-resolution API is promised; I1 retention failure enters the fix pass — cost if wrong: support needs a later resolution workflow, and retained money must not be called resolved.
+- Final: Ruling: First manual report after the30-minute window stays denied under the accepted contract — report time is explicit and does not invent bank time; support contact remains available, no late-payment override is introduced — cost if wrong: an earlier transfer reported late requires support/reconciliation, the current manual decision API cannot bypass that window.
+- Final: Ruling: Current M06/C13 shared authority is coordinator-owned — own PR71/dev31/#60 delivery and C13 canonical6014628265 were actually checked/recorded, C13 stays separate pending and local stubs do not prove real provider delivery — cost if wrong: stale or inherited claims could conceal an external gap; reread remote completion sources before dependent closure.
+- Final: Ruling: Code review does not complete CI/manual v2 delivery — exact final source, all required jobs, checked target/actual parents/source-equal tree, actual preview/tag/3public multiarch indexes/6labels and #19 closure remain coordinator gates — cost if wrong: an unverified artifact could be called delivered; #19 stays OPEN until these proofs.
+
 ## Границы и следующие проверки
 
 Реквизиты и подтверждение поступления в fixture синтетические: **real_payment=false, live_vpn_changed=false**. Нет реального банковского/provider перевода, настоящей Telegram-доставки, production/cutover, Happ/VPN/macOS trust изменений. Настоящая SMTP-доставляемость и benchmark целевого сервера остаются вне локальной приёмки.
 Решение и причина доступны в кабинете/React-admin; outbound channels остаются С27/С28/С32. Python удаляется только С47, promos/referrals — Р7.
 По [новому уточнению С13](https://github.com/ekho/3xui-shop/issues/18#issuecomment-6014628265) отдельная локальная приёмка YooMoney будет завершена с заглушками после текущей С11. Проверка настоящей доставки провайдера и legacy/production readiness этим не доказывается; договорённость о real-transfer prerequisite больше не удерживает локальную С13. Остальные provider/renew/history контракты не меняются.
 
-Fresh whole-branch review, exact-source CI/manual PR→v2 и согласованный preview/3multiarch delivery пока pending; #19 остаётся OPEN до собственной доставки. Каждое Declined to judge будет отдельно оценено координатором, все Final rulings/minors опубликованы. Повторное ревью после единственного fix pass не запускается.
+Exact-source CI/manual PR→v2 и согласованный preview/3multiarch delivery пока pending; #19 остаётся OPEN до собственной доставки. Fresh review и единственный проверенный fix pass завершены; все Native/Final rulings опубликованы, deferred minors отсутствуют. Code review не подтверждает удалённую доставку.
