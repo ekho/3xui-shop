@@ -5,8 +5,9 @@
 [Native plan](../superpowers/plans/2026-10-06-s14-cryptomus.md), [решения](s14-decisions.md).
 Backend checkpoint cbf857d, UI b14ff8e; whole-branch review 42a791c..1ac06ec.
 Два Important исправлены в одном проходе; текущие исполняемые inputs сверены
-по 515 SHA256. Финальный source/CI/merge/preview фиксируются в PR и #21;
-delivery пока открыт.
+по 515 SHA256. Ниже сохранён исторический checkpoint до доставки.
+С14 доставлен через PR75/dev.39; итоговые CI/merge/preview и CLOSED/Project Done
+указаны в последнем абзаце. Статусы pending в таблице относятся к checkpoint.
 
 Покупка выбирает серверную USD цену. Только signed API info с final paid/paid_over,
 точным invoice principal и достаточной crypto оплатой сохраняет один receipt и
