@@ -8,8 +8,9 @@
 ## Ревизия и результат
 
 Product revision `52ea333a3504ba59475b519eb4f553bf1956d8e8`. Полная матрица **22/22 PASS**, 416.361s.
-Локальная приёмка завершена; fresh whole-branch review, exact-source PR CI,
-ручной merge в v2 и preview publication пока pending. #60 OPEN/In progress:
+Локальная приёмка завершена. Fresh Astra/high whole-branch review диапазона
+6cc8d03..95301a9: **0 Critical/Important/Minor**. Exact-source PR CI, ручной merge
+в v2 и preview publication пока pending. #60 OPEN/In progress:
 после Telegram остаются email M06b2 → audit M06c → removal shared platform/store
 M06d и собственная архитектурная приёмка всего M06.
 
@@ -73,3 +74,15 @@ real-backend trial/support run не заявлен. Прежние third-party m
 - Ruling: Carry raw result JSON across owner boundary and hash compacted raw, not typed normalized fields — persisted wire hashes retain replay semantics — cost if wrong: key-order legacy replay would conflict; independent preseed test covers it.
 - Task 1: Ruling: include Operator prefix in final focused completion run — changed web-operator reconsider caller needs explicit exercise — cost if wrong: missed Tx propagation regression; full connected suite also follows.
 - Task 2: Ruling: pass nil notifications only to the two replay-only legacy fixtures — cached trial/callback success must not touch outbox, matching their existing nil catalogue/VPN dependencies — cost if wrong: fixture would fail on accidental new outbox dependency; production composition always supplies owner.
+
+## Final rulings после whole-branch review
+
+Все семь declines reviewer разрешены координатором; продуктового fix pass нет.
+
+- Final Ruling: Email/proof/revocation, audit and shared platform/store removal remain M06b2/M06c/M06d; #60 stays OPEN — separate accepted ownership boundaries require their own proof — cost if wrong: incomplete architecture could be reported complete; no such claim made.
+- Final Ruling: Python retirement and new campaigns/broadcast/topics/relay remain their roadmap scenarios — current extraction preserves existing functionality — cost if wrong: those scenarios would remain missing; roadmap and #60 retain them.
+- Final Ruling: Production, real provider/Telegram delivery, installed Happ/VPN and macOS trust remain excluded — user authorized local and v2 preview only — cost if wrong: local simulations could be mistaken for external acceptance; limits explicitly retained.
+- Final Ruling: Browser interception and real backend/native evidence are separate; no new full browser-to-real-backend trial/support run claimed — matrix records prove those actual scopes — cost if wrong: a cross-surface gap would remain undetected; broader claim withheld.
+- Final Ruling: Exact-source remote CI/manual merge/preview remain coordinator delivery gates; reviewer did not verify live GitHub/registry — local review does not prove publication — cost if wrong: unverified source could be merged; required gates execute before merge and acceptance.
+- Final Ruling: Preserve inherited uncertain-send, lease expiry and repeated-delivery semantics — transfer does not redesign transport guarantees — cost if wrong: a repeated Telegram delivery may occur; no exactly-once promise added.
+- Final Ruling: Normalize authored spec/plan EOF during final documentation update and add committed-range whitespace verification; inherited frontend directive warnings remain — cosmetic review observation is not a product defect — cost if wrong: cosmetic verification gap; product unchanged, no implementation fix pass or re-review.

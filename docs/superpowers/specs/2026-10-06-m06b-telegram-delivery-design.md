@@ -95,4 +95,3 @@ Important/Critical — один RED→GREEN fix pass + suite без re-review. E
 ручной SHA-guarded merge в v2, preview/tag/три multiarch GHCR images.
 Production/real provider/Happ/VPN/macOS trust исключены. Python retirement — С47;
 новые рассылки, кампании, Telegram topics/relay — отдельные сценарии.
-

@@ -54,7 +54,6 @@
 
 ## Finish после Native-задач
 
-- [ ] One fresh Astra/high whole-branch review (explicit model/effort), declines → exhaustive Final Rulings; Important/Critical one RED→GREEN fix pass + green suite, no re-review.
+- [x] One fresh Astra/high whole-branch review (explicit model/effort), declines → exhaustive Final Rulings; Important/Critical one RED→GREEN fix pass + green suite, no re-review.
 - [ ] Publish all rulings; export/delete only this Native scratch after verified clean pass.
 - [ ] Create/attach PR → v2, all exact-source CI, fresh gates/effects + manual SHA-guarded merge, actual parents/source-equal tree and preview/tag/three multiarch images. Record M06b1 delivery in #60, keep OPEN/In progress, then bounded email M06b2.
-
