@@ -60,9 +60,9 @@
 
 **Interfaces:** Consume final owned assembly/public contracts; produce D01–D08 evidence at one committed product. #60 stays OPEN until remote delivery; preserved154 inventory and architecture result included.
 
-- [ ] Adapt existing full22 M06c driver to own path/base/actual code; do not rerun green baseline. Run generation/drift/API+15schemas+deps/vet/types/build/runtime/full connected race/Python/Playwright/Compose/smoke/native3.7TLS/purchase/repeat/paid restore/down; Expected22/22 PASS one committed product and own stack down. Existing unknown external SMTP/panel duplicate retry limits remain explicit.
-- [ ] Record actual stage/package/test counts/durations,154 mapping/whole-M06 import+SQL+active composition evidence, all Native rulings and limits; source/CI/merge/preview separate. Mark closed functional scenarios unchanged; full #60 pending remote.
-- [ ] Commit docs + Co-Authored; own verify-final checks22 records/product equivalence/generation/API/schemas/deps/154 map/no retired folders/whitespace. Task-done runs exact final verifier, Expected PASS.
+- [x] Adapt existing full22 M06c driver to own path/base/actual code; do not rerun green baseline. Run generation/drift/API+15schemas+deps/vet/types/build/runtime/full connected race/Python/Playwright/Compose/smoke/native3.7TLS/purchase/repeat/paid restore/down; Expected22/22 PASS one committed product and own stack down. Existing unknown external SMTP/panel duplicate retry limits remain explicit.
+- [x] Record actual stage/package/test counts/durations,154 mapping/whole-M06 import+SQL+active composition evidence, all Native rulings and limits; source/CI/merge/preview separate. Mark closed functional scenarios unchanged; full #60 pending remote.
+- [x] Commit docs + Co-Authored; own verify-final checks22 records/product equivalence/generation/API/schemas/deps/154 map/no retired folders/whitespace. Task-done runs exact final verifier, Expected PASS.
 
 ## Finish
 
