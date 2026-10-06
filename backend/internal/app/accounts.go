@@ -7,6 +7,7 @@ import (
 	"example.com/cabinet/backend/internal/modules/catalogue"
 	"example.com/cabinet/backend/internal/modules/payments"
 	"example.com/cabinet/backend/internal/modules/subscriptions"
+	"example.com/cabinet/backend/internal/modules/support"
 	"example.com/cabinet/backend/internal/modules/vpn"
 	"example.com/cabinet/backend/internal/platform"
 	"github.com/google/uuid"
@@ -33,5 +34,6 @@ func NewService(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 	}})
 	subscriptionOwner = subscriptions.New(pool, owner, catalogueOwner, vpnOwner, func() subscriptions.Config { return cfg.SubscriptionSettings() }, nil)
 	paymentsOwner = payments.New(pool, owner, catalogueOwner, vpnOwner, func() *river.Client[pgx.Tx] { return queue }, func() payments.Config { return cfg.PaymentSettings() }, nil)
-	return platform.NewServiceWithModules(pool, limiter, queue, cfg, owner, catalogueOwner, subscriptionOwner, vpnOwner, paymentsOwner)
+	supportOwner := support.New(pool, limiter, owner, cfg.RateNamespace, nil)
+	return platform.NewServiceWithModules(pool, limiter, queue, cfg, owner, catalogueOwner, subscriptionOwner, vpnOwner, paymentsOwner, supportOwner)
 }
