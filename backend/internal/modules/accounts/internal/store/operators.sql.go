@@ -47,36 +47,6 @@ func (q *Queries) AccountByTelegramID(ctx context.Context, telegramID pgtype.Int
 	return i, err
 }
 
-const addOperatorAudit = `-- name: AddOperatorAudit :exec
-INSERT INTO audit_events(id,created_at,action,account_id,request_id,operation_id,operator_account_id,reason)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8)
-`
-
-type AddOperatorAuditParams struct {
-	ID                uuid.UUID
-	CreatedAt         pgtype.Timestamptz
-	Action            string
-	AccountID         uuid.UUID
-	RequestID         *uuid.UUID
-	OperationID       *uuid.UUID
-	OperatorAccountID *uuid.UUID
-	Reason            pgtype.Text
-}
-
-func (q *Queries) AddOperatorAudit(ctx context.Context, arg AddOperatorAuditParams) error {
-	_, err := q.db.Exec(ctx, addOperatorAudit,
-		arg.ID,
-		arg.CreatedAt,
-		arg.Action,
-		arg.AccountID,
-		arg.RequestID,
-		arg.OperationID,
-		arg.OperatorAccountID,
-		arg.Reason,
-	)
-	return err
-}
-
 const addTelegramAccount = `-- name: AddTelegramAccount :exec
 INSERT INTO accounts(id,kind,display_name,telegram_id,locale,vpn_id,sub_id,panel_key,access_profile)
 VALUES($1,'telegram',$2,$3,$4,$5,$6,$7,'regular')

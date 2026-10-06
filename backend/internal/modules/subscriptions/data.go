@@ -39,7 +39,7 @@ func (s *Service) RecordTrialOutcomeTx(ctx context.Context, tx pgx.Tx, request, 
 	} else if status != "needs_review" {
 		return unavailable()
 	}
-	if s.audit(ctx, q, action, a.ID, &request, &operation, 0, "") != nil || s.notify(ctx, tx, a, r, kind, view) != nil {
+	if s.audit(ctx, tx, action, a.ID, &request, &operation, 0, "") != nil || s.notify(ctx, tx, a, r, kind, view) != nil {
 		return unavailable()
 	}
 	return nil

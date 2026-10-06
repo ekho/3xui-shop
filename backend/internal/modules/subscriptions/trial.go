@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"example.com/cabinet/backend/internal/modules/audit_reports"
 
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/subscriptions/internal/store"
@@ -52,16 +53,16 @@ func (s *Service) trialEligibility(ctx context.Context, q *store.Queries, a acco
 	}
 	return nil
 }
-func (s *Service) audit(ctx context.Context, q *store.Queries, action string, account uuid.UUID, requestID, operationID *uuid.UUID, actor int64, reason string) error {
-	var operator pgtype.Int8
+func (s *Service) audit(ctx context.Context, tx pgx.Tx, action string, account uuid.UUID, requestID, operationID *uuid.UUID, actor int64, reason string) error {
+	var operator *int64
 	if actor > 0 {
-		operator = pgtype.Int8{Int64: actor, Valid: true}
+		operator = &actor
 	}
-	var text pgtype.Text
+	var text *string
 	if reason != "" {
-		text = pgtype.Text{String: reason, Valid: true}
+		text = &reason
 	}
-	if q.AddAudit(ctx, store.AddAuditParams{ID: uuid.New(), CreatedAt: stamp(s.now()), Action: action, AccountID: account, RequestID: requestID, OperationID: operationID, OperatorTgID: operator, Reason: text}) != nil {
+	if auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), CreatedAt: s.now(), Action: action, AccountID: account, RequestID: requestID, OperationID: operationID, OperatorTgID: operator, Reason: text}) != nil {
 		return unavailable()
 	}
 	return nil
@@ -176,7 +177,7 @@ func (s *Service) CreateTrialRequest(ctx context.Context, accountID, key uuid.UU
 			return out, false, unavailable()
 		}
 		created = true
-		if s.audit(ctx, q, "trial_requested", accountID, &current.ID, nil, 0, "") != nil || s.notify(ctx, tx, a, current, "approval_card", "pending") != nil {
+		if s.audit(ctx, tx, "trial_requested", accountID, &current.ID, nil, 0, "") != nil || s.notify(ctx, tx, a, current, "approval_card", "pending") != nil {
 			return out, false, unavailable()
 		}
 	}
@@ -217,15 +218,15 @@ type trialActor struct {
 	accountID  *uuid.UUID
 }
 
-func (s *Service) trialActorAudit(ctx context.Context, q *store.Queries, action string, account, request uuid.UUID, operation *uuid.UUID, actor trialActor, reason string) error {
+func (s *Service) trialActorAudit(ctx context.Context, tx pgx.Tx, action string, account, request uuid.UUID, operation *uuid.UUID, actor trialActor, reason string) error {
 	if actor.accountID == nil {
-		return s.audit(ctx, q, action, account, &request, operation, actor.telegramID, reason)
+		return s.audit(ctx, tx, action, account, &request, operation, actor.telegramID, reason)
 	}
-	var why pgtype.Text
+	var why *string
 	if reason != "" {
-		why = pgtype.Text{String: reason, Valid: true}
+		why = &reason
 	}
-	if err := q.AddOperatorAudit(ctx, store.AddOperatorAuditParams{ID: uuid.New(), CreatedAt: stamp(s.now()), Action: action, AccountID: account, RequestID: &request, OperationID: operation, OperatorAccountID: actor.accountID, Reason: why}); err != nil {
+	if err := auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), CreatedAt: s.now(), Action: action, AccountID: account, RequestID: &request, OperationID: operation, OperatorAccountID: actor.accountID, Reason: why}); err != nil {
 		return unavailable()
 	}
 	return nil
@@ -273,7 +274,7 @@ func (s *Service) decideTrialLocked(ctx context.Context, tx pgx.Tx, q *store.Que
 	if err != nil {
 		return r, unavailable()
 	}
-	if err = s.trialActorAudit(ctx, q, "trial_"+desired, a.ID, r.ID, operation, actor, reason); err != nil {
+	if err = s.trialActorAudit(ctx, tx, "trial_"+desired, a.ID, r.ID, operation, actor, reason); err != nil {
 		return r, err
 	}
 	if err = s.notify(ctx, tx, a, r, "request_decided", desired); err != nil {
@@ -433,7 +434,7 @@ func (s *Service) reconsiderTrialLocked(ctx context.Context, tx pgx.Tx, q *store
 	if err != nil {
 		return old, unavailable()
 	}
-	if err = s.trialActorAudit(ctx, q, "trial_reconsidered", a.ID, r.ID, nil, actor, reason); err != nil {
+	if err = s.trialActorAudit(ctx, tx, "trial_reconsidered", a.ID, r.ID, nil, actor, reason); err != nil {
 		return old, err
 	}
 	if err = s.notify(ctx, tx, a, r, "approval_card", "pending"); err != nil {

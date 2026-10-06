@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"example.com/cabinet/backend/internal/modules/catalogue"
 	"example.com/cabinet/backend/internal/modules/payments/internal/store"
 	"example.com/cabinet/backend/internal/modules/vpn"
@@ -408,7 +409,8 @@ func (s *Service) ReconcilePurchaseOrder(ctx context.Context, actor, target, id,
 	if _, err = s.queue().InsertTx(ctx, tx, PurchaseArgs{OrderID: id}, &river.InsertOpts{Queue: "provision", MaxAttempts: 1000000}); err != nil {
 		return empty, unavailable()
 	}
-	if _, err = tx.Exec(ctx, "INSERT INTO audit_events(id,created_at,action,account_id,operator_account_id,reason) VALUES($1,$2,'purchase_reconcile_requested',$3,$4,$5)", uuid.New(), s.now(), target, actor, strings.TrimSpace(in.Reason)); err != nil {
+	auditReason := strings.TrimSpace(in.Reason)
+	if err = auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), CreatedAt: s.now(), Action: "purchase_reconcile_requested", AccountID: target, OperatorAccountID: &actor, Reason: &auditReason}); err != nil {
 		return empty, unavailable()
 	}
 	p.fulfillmentStatus = "queued"

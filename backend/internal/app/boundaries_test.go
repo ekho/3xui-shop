@@ -269,3 +269,21 @@ func TestNotificationsMailSQLBoundary(t *testing.T) {
 	}
 	checkSQLBoundary(t, "notifications", ownsSQL)
 }
+
+func TestAuditReportsSQLBoundary(t *testing.T) {
+	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?audit_events\b`)
+	ownsSQL := func(text string) bool { return pattern.MatchString(strings.ReplaceAll(text, `"`, "")) }
+	for _, sql := range []string{
+		`SELECT * FROM audit_events`, `SELECT * FROM accounts JOIN audit_events USING (account_id)`,
+		`UPDATE audit_events SET reason=NULL`, `INSERT INTO audit_events VALUES ($1)`,
+		`DELETE FROM public.audit_events`, `SELECT * FROM "public"."audit_events"`,
+	} {
+		if !ownsSQL(sql) {
+			t.Fatal("negative fixture bypassed audit ownership", sql)
+		}
+	}
+	if ownsSQL(`SELECT actor_type FROM legacy_approval_events`) {
+		t.Fatal("foreign owner rejected")
+	}
+	checkSQLBoundary(t, "audit_reports", ownsSQL)
+}

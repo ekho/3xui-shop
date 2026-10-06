@@ -2,6 +2,7 @@ package platform
 
 import (
 	"context"
+	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"time"
 
 	"example.com/cabinet/backend/internal/modules/accounts"
@@ -43,10 +44,11 @@ type Service struct {
 	support       *support.Service
 	notifications *notifications.Service
 	mailDelivery  *notifications.MailService
+	auditReports  *auditreports.Service
 }
 
 func NewService(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[pgx.Tx], cfg Config) *Service {
-	s := NewServiceWithModules(pool, limiter, queue, cfg, nil, nil, nil, nil, nil, nil, nil, nil)
+	s := NewServiceWithModules(pool, limiter, queue, cfg, nil, nil, nil, nil, nil, nil, nil, nil, auditreports.New(pool))
 	s.mailDelivery = notifications.NewMail(pool, queue, func() notifications.MailConfig {
 		c := s.cfg.MailSettings()
 		c.Now = func() time.Time { return s.now() }
@@ -64,8 +66,8 @@ func NewService(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 	return s
 }
 
-func NewServiceWithModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[pgx.Tx], cfg Config, owner *accounts.Service, catalogueOwner *catalogue.Service, subscriptionOwner *subscriptions.Service, vpnOwner *vpn.Service, paymentsOwner *payments.Service, supportOwner *support.Service, notificationsOwner *notifications.Service, mailOwner *notifications.MailService) *Service {
-	return &Service{pool: pool, limiter: limiter, queue: queue, cfg: cfg, now: time.Now, accounts: owner, catalogue: catalogueOwner, subscriptions: subscriptionOwner, vpn: vpnOwner, payments: paymentsOwner, support: supportOwner, notifications: notificationsOwner, mailDelivery: mailOwner}
+func NewServiceWithModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[pgx.Tx], cfg Config, owner *accounts.Service, catalogueOwner *catalogue.Service, subscriptionOwner *subscriptions.Service, vpnOwner *vpn.Service, paymentsOwner *payments.Service, supportOwner *support.Service, notificationsOwner *notifications.Service, mailOwner *notifications.MailService, auditOwner *auditreports.Service) *Service {
+	return &Service{pool: pool, limiter: limiter, queue: queue, cfg: cfg, now: time.Now, accounts: owner, catalogue: catalogueOwner, subscriptions: subscriptionOwner, vpn: vpnOwner, payments: paymentsOwner, support: supportOwner, notifications: notificationsOwner, mailDelivery: mailOwner, auditReports: auditOwner}
 }
 
 type MailArgs = notifications.MailArgs

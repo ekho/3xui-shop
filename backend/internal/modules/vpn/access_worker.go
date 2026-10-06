@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"math"
 	"slices"
 	"time"
@@ -398,7 +399,7 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	if op.Kind == "monthly_reset" {
 		err = monthlyAudit(ctx, tx, a.ID, op.MonthlyPeriod.String, "monthly_reset_applied", &id, s.now())
 	} else {
-		_, err = tx.Exec(ctx, "INSERT INTO audit_events(id,created_at,action,account_id,operator_account_id,reason,access_operation_id) VALUES($1,$2,$3,$4,$5,$6,$7)", uuid.New(), s.now(), "access_applied", a.ID, op.OperatorAccountID, op.Reason, id)
+		err = auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), CreatedAt: s.now(), Action: "access_applied", AccountID: a.ID, OperatorAccountID: op.OperatorAccountID, Reason: &op.Reason, AccessOperationID: &id})
 	}
 	if err != nil {
 		tx.Rollback(ctx)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"reflect"
 
 	"example.com/cabinet/backend/internal/modules/vpn/internal/store"
@@ -106,8 +107,8 @@ func (s *Service) EnqueueMonthlyResets(ctx context.Context, at time.Time) (int, 
 }
 
 func monthlyAudit(ctx context.Context, tx pgx.Tx, account uuid.UUID, period, action string, op *uuid.UUID, now time.Time) error {
-	_, err := tx.Exec(ctx, "INSERT INTO audit_events(id,created_at,action,account_id,access_operation_id,system_actor,monthly_period) VALUES($1,$2,$3,$4,$5,true,$6)", uuid.New(), now.UTC(), action, account, op, period)
-	return err
+	system := true
+	return auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), CreatedAt: now.UTC(), Action: action, AccountID: account, AccessOperationID: op, SystemActor: &system, MonthlyPeriod: &period})
 }
 
 func (s *Service) monthlyOperationExpired(ctx context.Context, op store.AccessOperation) (bool, error) {

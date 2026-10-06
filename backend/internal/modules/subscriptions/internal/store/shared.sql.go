@@ -12,35 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const addAudit = `-- name: AddAudit :exec
-INSERT INTO audit_events(id,created_at,action,account_id,request_id,operation_id,operator_tg_id,reason) VALUES($1,$2,$3,$4,$5,$6,$7,$8)
-`
-
-type AddAuditParams struct {
-	ID           uuid.UUID
-	CreatedAt    pgtype.Timestamptz
-	Action       string
-	AccountID    uuid.UUID
-	RequestID    *uuid.UUID
-	OperationID  *uuid.UUID
-	OperatorTgID pgtype.Int8
-	Reason       pgtype.Text
-}
-
-func (q *Queries) AddAudit(ctx context.Context, arg AddAuditParams) error {
-	_, err := q.db.Exec(ctx, addAudit,
-		arg.ID,
-		arg.CreatedAt,
-		arg.Action,
-		arg.AccountID,
-		arg.RequestID,
-		arg.OperationID,
-		arg.OperatorTgID,
-		arg.Reason,
-	)
-	return err
-}
-
 const addIdempotency = `-- name: AddIdempotency :exec
 INSERT INTO idempotency_records(principal,operation,key,body_hash,result,created_at) VALUES($1,$2,$3,$4,$5,$6)
 `
@@ -62,36 +33,6 @@ func (q *Queries) AddIdempotency(ctx context.Context, arg AddIdempotencyParams) 
 		arg.BodyHash,
 		arg.Result,
 		arg.CreatedAt,
-	)
-	return err
-}
-
-const addOperatorAudit = `-- name: AddOperatorAudit :exec
-INSERT INTO audit_events(id,created_at,action,account_id,request_id,operation_id,operator_account_id,reason)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8)
-`
-
-type AddOperatorAuditParams struct {
-	ID                uuid.UUID
-	CreatedAt         pgtype.Timestamptz
-	Action            string
-	AccountID         uuid.UUID
-	RequestID         *uuid.UUID
-	OperationID       *uuid.UUID
-	OperatorAccountID *uuid.UUID
-	Reason            pgtype.Text
-}
-
-func (q *Queries) AddOperatorAudit(ctx context.Context, arg AddOperatorAuditParams) error {
-	_, err := q.db.Exec(ctx, addOperatorAudit,
-		arg.ID,
-		arg.CreatedAt,
-		arg.Action,
-		arg.AccountID,
-		arg.RequestID,
-		arg.OperationID,
-		arg.OperatorAccountID,
-		arg.Reason,
 	)
 	return err
 }

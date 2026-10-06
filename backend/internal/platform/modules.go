@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"time"
 
 	"example.com/cabinet/backend/internal/modules/notifications"
@@ -63,3 +64,4 @@ func (c Config) MailSettings() notifications.MailConfig {
 	return notifications.MailConfig{CabinetOrigin: c.CabinetOrigin, MailKey: c.MailKey, SMTPAddress: c.SMTPAddress, SMTPFrom: c.SMTPFrom, SMTPUser: c.SMTPUser, SMTPPassword: c.SMTPPassword, SMTPRootCAs: c.SMTPRootCAs}
 }
 func (s *Service) MailDelivery() *notifications.MailService { return s.mailDelivery }
+func (s *Service) AuditReports() *auditreports.Service      { return s.auditReports }

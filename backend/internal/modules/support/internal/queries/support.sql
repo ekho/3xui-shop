@@ -27,6 +27,3 @@ UPDATE support_conversations SET support_banned=$2,updated_at=$3 WHERE id=$1;
 UPDATE support_conversations SET customer_received_sequence=GREATEST(customer_received_sequence,$2) WHERE id=$1;
 -- name: AckSupportOperator :exec
 UPDATE support_conversations SET operator_received_sequence=GREATEST(operator_received_sequence,$2) WHERE id=$1;
--- name: AddSupportAudit :exec
-INSERT INTO audit_events(id,created_at,action,account_id,operator_account_id,reason,support_message_id)
-VALUES($1,$2,$3,$4,$5,$6,$7);
