@@ -6,7 +6,7 @@
 ## Ревизия и результат
 
 Product revision `f051f1225c4292911b43146a7ff9be1fda4ff418`. Полная матрица **22/22 PASS**, 518.386s на одной committed revision: Go **13 пакетов PASS** с race/connected consumers, Python **105/105**, Playwright **127/127**. Все **154/154** перенесённых регрессий сохранены и прошли собственный Task2 и полный прогон. Собственный native stack остановлен; API, все15 миграций и зависимости не изменены, генерация стабильна.
-Fresh whole-branch review, exact-source CI, ручное слияние в v2 и preview пока ожидают проверки. #60 OPEN/In progress до завершения D08; локальная приёмка не означает доставку или запуск production.
+Единственный fresh whole-branch review Astra/high на d796e3a..81592a8: Critical0/Important0/Minor0, Ready from code review; fix pass/re-review не требуются. Exact-source CI, ручное слияние в v2 и preview ожидают проверки. #60 OPEN/In progress до завершения D08; локальная приёмка не означает доставку или запуск production.
 
 | Этап | Seconds | Result |
 | --- | ---: | --- |
@@ -44,7 +44,7 @@ Fresh whole-branch review, exact-source CI, ручное слияние в v2 и
 | D05 | Компилируются154 новых TestRegression имён, каждое соответствует сохранённой baseline-функции. Сравнение полного преобразованного исходника сохраняет assertions и failure cases; audit13 nullable/TX/52-row, mail MaxConns1/revocation/account-order проверки входят в green suite. |
 | D06 | internal/platform, internal/store, db/queries и root sqlc block отсутствуют. Все module import/SQL boundaries green; shared source не переименован в новый all-domain facade. API/all15 migrations/dependency files равны fresh v2 d796e3a. |
 | D07 | Все22 проверки одной product revision: actual локальная 3X-UI3.7.0/TLS, подписанный callback/repeat и восстановление оплаченного состояния; teardown выполнен. М06а/b1/b2/c уже доставлены, их текущие владельцы и новая сборка проходят собственную общую приёмку. |
-| D08 | До fresh review и точной удалённой доставки остаётся OPEN. |
+| D08 | Fresh review без замечаний завершён; exact-source CI/manual merge/preview остаются OPEN. |
 
 Runtime: app.NewModules собирает accounts/catalogue/subscriptions/vpn/payments/support/notifications/mail delivery/audit reports. HTTP вызывает нужного владельца и делает только wire/error conversion; Telegram bridge не имеет доступа к общей бизнес-фасаде. Config.LoadConfig/Validate переехали в app, namespace `platform`, defaults3/15/1/UTC и legacy bearer true сохранены. Общие старые значения связываются в app, независимые настройки не добавлены.
 
@@ -76,4 +76,13 @@ Python-бот остаётся до С47; legacy HTTP и штатные job kind
 
 ## Final rulings
 
-Ожидают единственного fresh whole-branch review. Findings/deferred minors и все пункты Declined to judge будут оценены и опубликованы до доставки.
+Все шесть Declined to judge оценены координатором по фактическим границам. Findings и deferred minors отсутствуют; все254 прежних Go Test entrypoints сохранены, две новые архитектурные проверки дают256.
+
+- Final: Ruling: Exact-source CI/manual v2 merge/parents/tree/preview/images remain coordinator delivery gates — code review approval does not deliver the product; live workflow and accepted advance authority were read, every final source and automatic prerelease effect must be verified — cost if wrong: an unverified artifact could be called delivered; #60 stays OPEN until actual proofs.
+- Final: Ruling: Current GitHub/Project state and whole-M06 closure are coordinator-owned — live #60 is OPEN, M06c PR70/dev29 source-equal d796 base and canonical decisions were checked; own D01–D07 pass and D08 will gate closure — cost if wrong: stale history or child completion could hide missing parent acceptance; re-read exact remote state before Done.
+- Final: Ruling: Production/real provider/Telegram/Happ/VPN/macOS trust remain excluded — clients receive only the stated local controlled evidence; no new external test or cutover is inferred from autonomous development — cost if wrong: external readiness still requires resources and exact-target authority; no production readiness claim.
+- Final: Ruling: External SMTP delivery/target performance and inherited uncertain-send/panel-retry limits remain explicit prerequisites — preserved config and local TLS/3X-UI checks do not prove delivery or stronger retry guarantees; no behavior weakened or new retry activated — cost if wrong: outside acceptance may expose existing limits; external launch remains gated.
+- Final: Ruling: No new browser-to-real-backend full trial/support result is claimed — unchanged API/frontend and existing browser plus actual HTTP/connected/native proofs cover their separate boundaries for this ownership cleanup — cost if wrong: a gap between boundaries may need a dedicated future surface proof; mandatory full22 and preserved assertions still pass.
+- Final: Ruling: Future campaigns/reports/retention/bonuses/config/data/Python cutover remain later scenarios/C45/C46/C47 — M06 removes the transition facade while keeping current behavior, legacy HTTP/Python and open task responsibility; new features are not marked Done — cost if wrong: later read/config/migration contracts need separate design and acceptance; roadmap coverage remains open.
+
+Ревью проверило весь diff108 файлов, сравнило28 saved originals с Git baseline и27 migrated files с явным преобразованием; все154 checks и assertion flow сохранены. Оно самостоятельно повторило read-only API/all15 migrations/deps/product-equivalence/whitespace проверки и прочитало все22 оригинальных лога. Полную матрицу и generation повторно не запускало; CI/merge/release/image delivery проверяет координатор.
