@@ -17,7 +17,7 @@ Implementation/local verification завершены; свежий final review 
 | --- | --- |
 | Генерация и совместимость | `make -C backend generate`, web `api:generate`, no drift; JSON semantic comparison сохраняет все 54 прежних paths/87 schemas; API С10 и migration15 идентичны afaeacf, migrations1–14 и зависимости идентичны v2. |
 | Статические проверки | Semantic naming, Go vet, TypeScript, web test build и runtime-config PASS. |
-| Go и подключённые потребители | `RUN_BROWSER_TESTS=1 go -C backend test -race ./... -count=1`, настоящие изолированные PostgreSQL/Redis; все 14 пакетов с тестами PASS, platform190.713s, connected tests101.798s. |
+| Go и подключённые потребители | `RUN_BROWSER_TESTS=1 go -C backend test -race ./... -count=1`, настоящие изолированные PostgreSQL/Redis; все 13 пакетов с тестами PASS, platform190.713s, connected tests101.798s. |
 | Web/Python | Playwright **126/126**, Python **105/105** PASS. Форма YooMoney перехватывается до внешнего запроса. |
 | Контейнеры | Compose config/build backend/gateway/bot, HTTPS/routing/secrets/migration/restore smoke PASS. Legacy image собирается, процесс Python не запускается в native profile. |
 | Native process | Go HTTP/jobs и simulated Bot API, TLS SMTP, HTTPS и настоящая 3X-UI **3.7.0**; остановка compiled backend после commit и restart сохраняют operation/grant/keys. Telegram выключен. |
