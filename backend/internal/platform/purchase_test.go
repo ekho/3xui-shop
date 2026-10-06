@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+var yooMoneySignature = testkit.YooMoneySignature
+
 func purchaseFixture(t *testing.T) (*Service, *testkit.Env, uuid.UUID, uuid.UUID) {
 	t.Helper()
 	s, e := fixture(t)

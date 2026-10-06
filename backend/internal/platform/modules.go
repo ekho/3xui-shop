@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"example.com/cabinet/backend/internal/modules/payments"
 	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/vpn"
 	"github.com/google/uuid"
@@ -42,3 +43,8 @@ func (s *Service) connectSubscriptions() {
 }
 
 func (s *Service) operatorAllowed(actor int64) bool { return s.accounts.OperatorAllowed(actor) }
+
+func (c Config) PaymentSettings() payments.Config {
+	return payments.Config{CabinetOrigin: c.CabinetOrigin, PanelID: c.PanelID, YooMoneyWalletID: c.YooMoneyWalletID, YooMoneyEnabled: c.YooMoneyEnabled, YooMoneyNotificationSecret: c.YooMoneyNotificationSecret}
+}
+func (s *Service) Payments() *payments.Service { return s.payments }

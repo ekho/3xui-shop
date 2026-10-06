@@ -15,6 +15,7 @@ import (
 	"example.com/cabinet/backend/db"
 	"example.com/cabinet/backend/internal/app"
 	"example.com/cabinet/backend/internal/httpapi"
+	"example.com/cabinet/backend/internal/modules/payments"
 	"example.com/cabinet/backend/internal/modules/telegram"
 	"example.com/cabinet/backend/internal/modules/vpn"
 	"example.com/cabinet/backend/internal/platform"
@@ -94,7 +95,7 @@ func run() error {
 	workers := river.NewWorkers()
 	river.AddWorker(workers, &vpn.ProvisionWorker{Service: svc.VPN()})
 	river.AddWorker(workers, &vpn.AccessWorker{Service: svc.VPN()})
-	river.AddWorker(workers, &platform.PurchaseWorker{Service: svc})
+	river.AddWorker(workers, &payments.PurchaseWorker{Service: svc.Payments()})
 	river.AddWorker(workers, &vpn.MonthlyResetWorker{Service: svc.VPN()})
 	queues := map[string]river.QueueConfig{"provision": {MaxWorkers: 2}}
 	if os.Args[1] == "serve" {

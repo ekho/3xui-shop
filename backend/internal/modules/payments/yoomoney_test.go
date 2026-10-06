@@ -1,6 +1,7 @@
-package platform
+package payments
 
 import (
+	"example.com/cabinet/backend/internal/testkit"
 	"net/url"
 	"testing"
 )
@@ -15,6 +16,9 @@ func TestYooMoneySignatureOfficialVector(t *testing.T) {
 	}
 	if got := yooMoneySignature(fields, []byte("secret123")); got != "a452af731650e2c5b39abcdc7c28dd27db7b3b654c2230ad2c386e64afb98605" {
 		t.Fatalf("official signature vector: %s", got)
+	}
+	if got := testkit.YooMoneySignature(fields, []byte("secret123")); got != "a452af731650e2c5b39abcdc7c28dd27db7b3b654c2230ad2c386e64afb98605" {
+		t.Fatalf("fixture signature vector: %s", got)
 	}
 	fields.Set("extra", "a b")
 	if got := yooMoneySignature(fields, []byte("secret123")); got == "a452af731650e2c5b39abcdc7c28dd27db7b3b654c2230ad2c386e64afb98605" {

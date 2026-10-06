@@ -5,6 +5,7 @@ import (
 
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/catalogue"
+	"example.com/cabinet/backend/internal/modules/payments"
 	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/vpn"
 	"example.com/cabinet/backend/internal/platform"
@@ -22,15 +23,15 @@ func NewService(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 	})
 	catalogueOwner := catalogue.New(pool, owner, nil)
 	var subscriptionOwner *subscriptions.Service
-	var service *platform.Service
+	var paymentsOwner *payments.Service
 	vpnOwner := vpn.New(pool, owner, func() *river.Client[pgx.Tx] { return queue }, func() vpn.Settings { return cfg.VPNSettings() }, nil, func(ctx context.Context, tx pgx.Tx, r, o uuid.UUID, status string) error {
 		return subscriptionOwner.RecordTrialOutcomeTx(ctx, tx, r, o, status)
 	}, vpn.PurchaseHooks{Check: func(ctx context.Context, tx pgx.Tx, order, account, operation uuid.UUID) (string, error) {
-		return service.CheckPurchaseAccess(ctx, tx, order, account, operation)
+		return paymentsOwner.CheckPurchaseAccess(ctx, tx, order, account, operation)
 	}, Outcome: func(ctx context.Context, tx pgx.Tx, operation uuid.UUID, status, reason string) error {
-		return service.RecordPurchaseAccessTx(ctx, tx, operation, status, reason)
+		return paymentsOwner.RecordPurchaseAccessTx(ctx, tx, operation, status, reason)
 	}})
 	subscriptionOwner = subscriptions.New(pool, owner, catalogueOwner, vpnOwner, func() subscriptions.Config { return cfg.SubscriptionSettings() }, nil)
-	service = platform.NewServiceWithModules(pool, limiter, queue, cfg, owner, catalogueOwner, subscriptionOwner, vpnOwner)
-	return service
+	paymentsOwner = payments.New(pool, owner, catalogueOwner, vpnOwner, func() *river.Client[pgx.Tx] { return queue }, func() payments.Config { return cfg.PaymentSettings() }, nil)
+	return platform.NewServiceWithModules(pool, limiter, queue, cfg, owner, catalogueOwner, subscriptionOwner, vpnOwner, paymentsOwner)
 }
