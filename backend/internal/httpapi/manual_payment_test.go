@@ -382,6 +382,68 @@ func TestManualPaymentCrossMethodFunding(t *testing.T) {
 	}
 }
 
+func TestManualPaymentTerminalCrossMethodReceipt(t *testing.T) {
+	for _, state := range []string{"rejected", "canceled", "approved", "expired"} {
+		t.Run(state, func(t *testing.T) {
+			s, _, account, plan, actor := manualFixture(t)
+			ctx := context.Background()
+			order := manualOrder(t, s, account, plan)
+			receipts, jobs := 1, 0
+			switch state {
+			case "rejected", "approved":
+				if _, err := s.payments.ReportManualPayment(ctx, account, order.OrderId, uuid.New()); err != nil {
+					t.Fatal(err)
+				}
+				in := payments.ManualPaymentDecisionInput{Decision: "reject", Reason: "Fixture bank check"}
+				if state == "approved" {
+					in.Decision, in.ConfirmedAmountMinor = "approve", &order.Quote.AmountMinor
+					receipts, jobs = 2, 1
+				}
+				if _, err := s.payments.DecideManualPayment(ctx, actor, account, order.OrderId, uuid.New(), in); err != nil {
+					t.Fatal(err)
+				}
+			case "canceled":
+				if _, err := s.payments.CancelPurchaseOrder(ctx, account, order.OrderId, uuid.New()); err != nil {
+					t.Fatal(err)
+				}
+			case "expired":
+				s.now = func() time.Time { return time.Date(2026, 10, 1, 0, 31, 0, 0, time.UTC) }
+				manualOrder(t, s, account, plan)
+			}
+			const snapshot = `SELECT ROW(payment_status,manual_reported_at,manual_decision,manual_decided_at,manual_actor_id,manual_reason,funding_operation_id,paid_at)::text FROM purchase_orders WHERE id=$1`
+			var before, after string
+			if err := s.pool.QueryRow(ctx, snapshot, order.OrderId).Scan(&before); err != nil {
+				t.Fatal(err)
+			}
+			fields := purchaseNotice(s, order.OrderId, "terminal-manual-"+state, "90071992547409.00", "90071992547409.93")
+			for attempt := 0; attempt < 2; attempt++ {
+				if err := s.payments.ReceiveYooMoney(ctx, fields); err != nil {
+					t.Fatalf("signed %s callback/replay lost: %v", state, err)
+				}
+			}
+			if err := s.pool.QueryRow(ctx, snapshot, order.OrderId).Scan(&after); err != nil || before != after {
+				t.Fatalf("manual status/decision/funding changed: %s -> %s: %v", before, after, err)
+			}
+			got, err := s.payments.PurchaseOrder(ctx, account, order.OrderId)
+			if err != nil || !got.ReviewRequired || got.FulfillmentStatus != "needs_review" || got.CanPay || got.CanCancel {
+				t.Fatalf("cross-method review lost: %+v %v", got, err)
+			}
+			var review string
+			if err = s.pool.QueryRow(ctx, "SELECT review_reason FROM purchase_receipts WHERE operation_id=$1", fields.Get("operation_id")).Scan(&review); err != nil || review != "payment_method_mismatch" {
+				t.Fatalf("disputed receipt lost: %s %v", review, err)
+			}
+			manualCounts(t, s, order.OrderId, receipts, jobs)
+			if err = s.fulfillPurchase(ctx, order.OrderId); err != nil {
+				t.Fatal(err)
+			}
+			var noAccess bool
+			if err = s.pool.QueryRow(ctx, "SELECT access_operation_id IS NULL FROM purchase_orders WHERE id=$1", order.OrderId).Scan(&noAccess); err != nil || !noAccess {
+				t.Fatal("cross-method dispute issued access", err)
+			}
+		})
+	}
+}
+
 func TestManualPaymentConfig(t *testing.T) {
 	for _, tc := range []struct{ name, value, path, inline string }{{"invalid-flag", "bad", "", ""}, {"missing-file", "true", "", ""}, {"unreadable", "true", "missing", ""}, {"conflict", "true", "valid", "inline"}, {"empty", "true", "empty", ""}} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -199,7 +199,7 @@ func (s *Service) ReceiveYooMoney(ctx context.Context, fields url.Values) error 
 		if codepro || unaccepted || p.method != "yoomoney" {
 			status = "pending"
 		} // Held or protected is not accessible money.
-		if _, err = tx.Exec(ctx, "UPDATE purchase_orders SET payment_status=CASE WHEN payment_status='paid' THEN 'paid' ELSE $2 END,paid_at=CASE WHEN paid_at IS NOT NULL THEN paid_at WHEN $2='paid' THEN $3 ELSE NULL END,active=false,fulfillment_status=CASE WHEN access_operation_id IS NULL THEN 'needs_review' ELSE fulfillment_status END,review_required=true,review_reason=$4 WHERE id=$1", orderID, status, occurred, review); err != nil {
+		if _, err = tx.Exec(ctx, "UPDATE purchase_orders SET payment_status=CASE WHEN payment_method<>'yoomoney' OR payment_status='paid' THEN payment_status ELSE $2 END,paid_at=CASE WHEN paid_at IS NOT NULL THEN paid_at WHEN $2='paid' THEN $3 ELSE NULL END,active=false,fulfillment_status=CASE WHEN access_operation_id IS NULL THEN 'needs_review' ELSE fulfillment_status END,review_required=true,review_reason=$4 WHERE id=$1", orderID, status, occurred, review); err != nil {
 			return unavailable()
 		}
 		if status == "paid" {
