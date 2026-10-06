@@ -42,6 +42,7 @@ def compose(*args, stdin=None):
                           '--profile', 'restore', '--env-file', str(local.ENV),
                           '-f', 'deploy/acceptance/compose.acceptance.yml',
                           '-f', 'deploy/acceptance/compose.local.yml',
+                          *(['-f', 'deploy/acceptance/compose.native.yml'] if local.PROFILE == 'native' else []),
                           '-f', 'deploy/purchase/compose.yoomoney.yml', *args], stdin=stdin)
 
 
@@ -60,7 +61,9 @@ def prepare():
     config.update(SHOP_PAYMENT_YOOMONEY_ENABLED='true', YOOMONEY_WALLET_ID='410000000000000',
                   YOOMONEY_NOTIFICATION_SECRET_FILE=str(secret))
     local.write('public.env', '\n'.join(k + '=' + v for k, v in config.items()) + '\n')
-    compose('config', '--quiet')
+    configured = json.loads(compose('config', '--format', 'json'))
+    if local.PROFILE == 'native' and configured['services']['backend']['environment'].get('LEGACY_BOT_API_ENABLED') != 'false':
+        raise RuntimeError('native purchase requires disabled legacy bot API')
     print('PASS: owned localhost payment overlay; disposable secret, no provider requests')
 
 
