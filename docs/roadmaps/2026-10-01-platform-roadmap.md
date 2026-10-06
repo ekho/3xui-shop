@@ -179,7 +179,7 @@ reports и operations появляются со своими сценариям�
 Адаптация С10 к accounts/catalogue/subscriptions/vpn локально проверена:
 [новая приёмка](../evidence/s10-modular-integration-acceptance.md); final review
 и единственный fix pass завершены, полная матрица после исправлений 22/22 PASS.
-PR #5 доставлен в v2 source-equal merge c57c5e7; exact-source CI и предварительный release2.0.0-dev.19 с тремя multiarch образами проверены. #17 CLOSED/Project Done. М05 локально реализован и принят: [payments evidence](../evidence/m05-acceptance.md), 22/22 PASS; independent review/CI/delivery pending. После доставки М05 — последовательные ограниченные планы М06.
+PR #5 доставлен в v2 source-equal merge c57c5e7; exact-source CI и предварительный release2.0.0-dev.19 с тремя multiarch образами проверены. #17 CLOSED/Project Done. М05 локально реализован и принят: [payments evidence](../evidence/m05-acceptance.md), 22/22 PASS; review без замечаний, CI/delivery pending. После доставки М05 — последовательные ограниченные планы М06.
 С11–С40 и С42–С47 имеют
 статус **запланирован**. Наличие исходника подтверждает существующее поведение
 бота, а не готовность его реализации на новом стеке.
@@ -433,7 +433,7 @@ fixtures; свежий whole-branch review и обязательный fix pass 
 [операции подписки](../evidence/s07-acceptance.md). С08 и необходимый С41 локально приняты: [профили доступа](../evidence/s08-s41-acceptance.md).
 С11–С40 и С42–С47 ещё не реализованы. С10 доставлен PR #5 в `v2`,
 #17 CLOSED/Project Done; предварительный release2.0.0-dev.19 проверен.
-М01–М04 доставлены в v2; М05 локально принят, review/CI/delivery pending; М06 открыт.
+М01–М04 доставлены в v2; М05 локально принят и review без замечаний, CI/delivery pending; М06 открыт.
 Интеграция С10 и перенос денег М05 сохраняют отдельные exact-revision evidence.
 Пользователь разрешил проектирование С02 при
 ранее открытой приёмке С01; [спецификация С02](../superpowers/specs/2026-10-02-s02-account-security-design.md)

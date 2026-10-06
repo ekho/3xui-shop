@@ -9,8 +9,10 @@
 
 Final product revision: `dcfd61edb2de571c53a65ddb1779e6a2a8c7a538`. Полная матрица **22/22 PASS**,
 суммарно 405.912 секунд выполнения проверок. Native Tasks1–2 выполнены;
-локальная приёмка завершена. Independent review, exact-source PR CI, manual
-merge и preview publication пока pending; #59 остаётся OPEN/In progress.
+локальная приёмка завершена. Свежий whole-branch review Astra/high диапазона
+`c57c5e7..d6bd512`: **0 Critical / 0 Important / 0 Minor**, Ready to merge по коду.
+Reviewer отдельно подтвердил boundary/signature checks, полный matrix не повторял.
+Exact-source PR CI, manual merge и preview publication пока pending; #59 остаётся OPEN.
 
 | Проверка | Результат |
 | --- | --- |
@@ -67,3 +69,8 @@ Local TLS SMTP не подтверждает доставку внешней п�
 - Ruling: Nullable accounts Snapshot compares values and presence — owner DTO returns new pointers on each lookup; addresses do not describe account changes — cost if wrong: false revalidation rejection or unsafe acceptance, covered by existing real-PG preparation/trial tests.
 - Ruling: Retain only existing root money facades during M05 — HTTP/tests need them until M06 adapter move; production hooks call payments directly — cost if wrong: temporary adapter rework in M06, no duplicated payment rules.
 - Task 1: Ruling: Preserve requested MaxAttempts=1000000 and assert actual persisted 32767 — River v0.48.0 driver clamps to math.MaxInt16 (river_pgx_v5_driver.go:443/517), observed real-PG value; prior C10 behavior unchanged — cost if wrong: retry horizon differs; new limits are a separate decision, not this owner extraction.
+
+- Final: Ruling: Preserve the existing River requested/persisted retry limits — users keep the prior recovery horizon; driver clamp 32767 is documented and changing retry policy belongs to a separate decision — cost if wrong: recovery horizon may be misunderstood, not a new M05 data loss.
+- Final: Ruling: Keep temporary HTTP facades and caller-Tx audit writer until M06 — current callers retain their API and atomic audit; money rules already have one owner — cost if wrong: later adapter removal work, no duplicated money rules.
+- Final: Ruling: Accept the bounded local proof without real provider/production/Happ/external mail checks — users receive unchanged C10 behavior; those environments are explicitly excluded from M05 and are not claimed as verified — cost if wrong: external integration defects remain for their own acceptance.
+- Final: Ruling: Require fresh GitHub CI/release/image verification before merge and closure — independent reviewer did not inspect remote state; coordinator will verify the exact source and published merge — cost if wrong: stale remote evidence could incorrectly close delivery; closure stays blocked until live proof.
