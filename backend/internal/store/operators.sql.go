@@ -42,47 +42,6 @@ func (q *Queries) AddOperatorAudit(ctx context.Context, arg AddOperatorAuditPara
 	return err
 }
 
-const decideTrialWeb = `-- name: DecideTrialWeb :one
-UPDATE trial_requests SET status=$2,decided_at=$3,operator_account_id=$4,reason=$5,operation_id=$6
-WHERE id=$1 AND status='pending' RETURNING id, sequence, account_id, status, comment, created_at, decided_at, operator_tg_id, reason, operation_id, previous_request_id, operator_account_id
-`
-
-type DecideTrialWebParams struct {
-	ID                uuid.UUID
-	Status            string
-	DecidedAt         pgtype.Timestamptz
-	OperatorAccountID *uuid.UUID
-	Reason            pgtype.Text
-	OperationID       *uuid.UUID
-}
-
-func (q *Queries) DecideTrialWeb(ctx context.Context, arg DecideTrialWebParams) (TrialRequest, error) {
-	row := q.db.QueryRow(ctx, decideTrialWeb,
-		arg.ID,
-		arg.Status,
-		arg.DecidedAt,
-		arg.OperatorAccountID,
-		arg.Reason,
-		arg.OperationID,
-	)
-	var i TrialRequest
-	err := row.Scan(
-		&i.ID,
-		&i.Sequence,
-		&i.AccountID,
-		&i.Status,
-		&i.Comment,
-		&i.CreatedAt,
-		&i.DecidedAt,
-		&i.OperatorTgID,
-		&i.Reason,
-		&i.OperationID,
-		&i.PreviousRequestID,
-		&i.OperatorAccountID,
-	)
-	return i, err
-}
-
 const operatorAuditPage = `-- name: OperatorAuditPage :many
 SELECT id, created_at, action, account_id, request_id, operation_id, operator_tg_id, reason, operator_account_id, support_message_id, access_operation_id, system_actor, monthly_period FROM audit_events
 WHERE account_id=$1
@@ -120,73 +79,6 @@ func (q *Queries) OperatorAuditPage(ctx context.Context, arg OperatorAuditPagePa
 			&i.AccessOperationID,
 			&i.SystemActor,
 			&i.MonthlyPeriod,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const operatorTrialPage = `-- name: OperatorTrialPage :many
-SELECT t.id, t.sequence, t.account_id, t.status, t.comment, t.created_at, t.decided_at, t.operator_tg_id, t.reason, t.operation_id, t.previous_request_id, t.operator_account_id,o.status AS operation_status,o.created_at AS operation_created_at
-FROM trial_requests t LEFT JOIN trial_operations o ON o.id=t.operation_id
-WHERE t.account_id=$1
- AND ($2::timestamptz IS NULL OR
-      (t.created_at,t.id)<($2::timestamptz,$3::uuid))
-ORDER BY t.created_at DESC,t.id DESC LIMIT 51
-`
-
-type OperatorTrialPageParams struct {
-	AccountID       uuid.UUID
-	BeforeCreatedAt pgtype.Timestamptz
-	BeforeID        uuid.UUID
-}
-
-type OperatorTrialPageRow struct {
-	ID                 uuid.UUID
-	Sequence           pgtype.Int8
-	AccountID          uuid.UUID
-	Status             string
-	Comment            string
-	CreatedAt          pgtype.Timestamptz
-	DecidedAt          pgtype.Timestamptz
-	OperatorTgID       pgtype.Int8
-	Reason             pgtype.Text
-	OperationID        *uuid.UUID
-	PreviousRequestID  *uuid.UUID
-	OperatorAccountID  *uuid.UUID
-	OperationStatus    pgtype.Text
-	OperationCreatedAt pgtype.Timestamptz
-}
-
-func (q *Queries) OperatorTrialPage(ctx context.Context, arg OperatorTrialPageParams) ([]OperatorTrialPageRow, error) {
-	rows, err := q.db.Query(ctx, operatorTrialPage, arg.AccountID, arg.BeforeCreatedAt, arg.BeforeID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []OperatorTrialPageRow
-	for rows.Next() {
-		var i OperatorTrialPageRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Sequence,
-			&i.AccountID,
-			&i.Status,
-			&i.Comment,
-			&i.CreatedAt,
-			&i.DecidedAt,
-			&i.OperatorTgID,
-			&i.Reason,
-			&i.OperationID,
-			&i.PreviousRequestID,
-			&i.OperatorAccountID,
-			&i.OperationStatus,
-			&i.OperationCreatedAt,
 		); err != nil {
 			return nil, err
 		}

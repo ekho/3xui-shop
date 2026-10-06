@@ -67,8 +67,13 @@ Private logs не публикуются. Проверки:
 
 ## Доставка и пределы
 
-Локальная реализация, приёмка и review выполнены; PR CI, merge и preview
-publication этого шага ещё ожидаются. Общая авторизация последовательных PR
+Локальная приёмка и review выполнены. [PR #64](https://github.com/ekho/3xui-shop/pull/64)
+слит в v2: source `8efc8cccac71c44c80f3dbfa0f37cac5fc26ba2f`, merge
+`65560b061438b5ceabb18d10c36502cff24954ff`; parents и tree проверены.
+CI Platform `37386149473`, image builds `37386149769` и preview `37387356724`
+успешны. [2.0.0-dev.15](https://github.com/ekho/3xui-shop/releases/tag/2.0.0-dev.15)
+указывает на этот merge. У всех трёх GHCR images проверены source/version и
+linux/amd64 + linux/arm64. Полный М04/#58 остаётся открытым до М04б. Общая авторизация последовательных PR
 в v2: [решение владельца](https://github.com/ekho/3xui-shop/issues/55#issuecomment-6004574101).
 CI waiver относится только к старому PR #62.
 

@@ -2,9 +2,13 @@ package app
 
 import (
 	"context"
+
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/catalogue"
+	"example.com/cabinet/backend/internal/modules/subscriptions"
+	"example.com/cabinet/backend/internal/modules/vpn"
 	"example.com/cabinet/backend/internal/platform"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -17,5 +21,10 @@ func NewService(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 		return platform.SendSMTP(ctx, cfg, to, subject, body)
 	})
 	catalogueOwner := catalogue.New(pool, owner, nil)
-	return platform.NewServiceWithModules(pool, limiter, queue, cfg, owner, catalogueOwner)
+	var subscriptionOwner *subscriptions.Service
+	vpnOwner := vpn.New(pool, owner, func() *river.Client[pgx.Tx] { return queue }, func() vpn.Settings { return cfg.VPNSettings() }, nil, func(ctx context.Context, tx pgx.Tx, r, o uuid.UUID, status string) error {
+		return subscriptionOwner.RecordTrialOutcomeTx(ctx, tx, r, o, status)
+	})
+	subscriptionOwner = subscriptions.New(pool, owner, catalogueOwner, vpnOwner, func() subscriptions.Config { return cfg.SubscriptionSettings() }, nil)
+	return platform.NewServiceWithModules(pool, limiter, queue, cfg, owner, catalogueOwner, subscriptionOwner, vpnOwner)
 }

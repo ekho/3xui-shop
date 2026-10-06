@@ -46,6 +46,35 @@ func (q *Queries) AccountOperation(ctx context.Context, accountID uuid.UUID) (Tr
 	return i, err
 }
 
+const addOperation = `-- name: AddOperation :exec
+INSERT INTO trial_operations(id,account_id,request_id,status,trial_enabled,period_days,traffic_gb,devices,panel_id,created_at) VALUES($1,$2,$3,'pending',true,$4,$5,$6,$7,$8)
+`
+
+type AddOperationParams struct {
+	ID         uuid.UUID
+	AccountID  uuid.UUID
+	RequestID  uuid.UUID
+	PeriodDays int64
+	TrafficGb  int64
+	Devices    int64
+	PanelID    string
+	CreatedAt  pgtype.Timestamptz
+}
+
+func (q *Queries) AddOperation(ctx context.Context, arg AddOperationParams) error {
+	_, err := q.db.Exec(ctx, addOperation,
+		arg.ID,
+		arg.AccountID,
+		arg.RequestID,
+		arg.PeriodDays,
+		arg.TrafficGb,
+		arg.Devices,
+		arg.PanelID,
+		arg.CreatedAt,
+	)
+	return err
+}
+
 const applyOperation = `-- name: ApplyOperation :execrows
 UPDATE trial_operations SET status='applied',lease_hash=NULL,lease_expires_at=NULL,worker_pid=NULL WHERE id=$1 AND lease_hash=$2 AND lease_expires_at>clock_timestamp() AND status='provisioning'
 `
@@ -61,20 +90,6 @@ func (q *Queries) ApplyOperation(ctx context.Context, arg ApplyOperationParams) 
 		return 0, err
 	}
 	return result.RowsAffected(), nil
-}
-
-const grantApplied = `-- name: GrantApplied :exec
-UPDATE trial_grants SET status='granted',granted_at=coalesce(granted_at,$2) WHERE operation_id=$1
-`
-
-type GrantAppliedParams struct {
-	OperationID uuid.UUID
-	GrantedAt   pgtype.Timestamptz
-}
-
-func (q *Queries) GrantApplied(ctx context.Context, arg GrantAppliedParams) error {
-	_, err := q.db.Exec(ctx, grantApplied, arg.OperationID, arg.GrantedAt)
-	return err
 }
 
 const leaseOperation = `-- name: LeaseOperation :one
@@ -261,4 +276,42 @@ type SaveProvisionTargetParams struct {
 func (q *Queries) SaveProvisionTarget(ctx context.Context, arg SaveProvisionTargetParams) error {
 	_, err := q.db.Exec(ctx, saveProvisionTarget, arg.ID, arg.Target)
 	return err
+}
+
+const trialMetadata = `-- name: TrialMetadata :many
+SELECT id,account_id,request_id,status,created_at FROM trial_operations WHERE id=ANY($1::uuid[])
+`
+
+type TrialMetadataRow struct {
+	ID        uuid.UUID
+	AccountID uuid.UUID
+	RequestID uuid.UUID
+	Status    string
+	CreatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) TrialMetadata(ctx context.Context, ids []uuid.UUID) ([]TrialMetadataRow, error) {
+	rows, err := q.db.Query(ctx, trialMetadata, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TrialMetadataRow
+	for rows.Next() {
+		var i TrialMetadataRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.RequestID,
+			&i.Status,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

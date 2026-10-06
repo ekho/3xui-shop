@@ -2,12 +2,12 @@ package platform
 
 import (
 	"context"
-	"example.com/cabinet/backend/internal/store"
-	"example.com/cabinet/backend/internal/wire"
-	"github.com/google/uuid"
 	"sync"
 	"testing"
 	"time"
+
+	"example.com/cabinet/backend/internal/wire"
+	"github.com/google/uuid"
 )
 
 func operatorActors(t *testing.T) (*Service, uuid.UUID, uuid.UUID) {
@@ -45,8 +45,7 @@ func TestOperatorWebOnlyDecisionAndRole(t *testing.T) {
 	if _, err = s.SubscriptionKey(ctx, customer); err != nil {
 		t.Fatal("web-only own key", err)
 	}
-	q := store.New(s.pool)
-	decision, err := q.TrialByID(ctx, request.RequestId)
+	decision, err := testTrialRow(ctx, s.pool, request.RequestId)
 	if err != nil || decision.OperatorAccountID == nil || *decision.OperatorAccountID != operator || decision.OperatorTgID.Valid {
 		t.Fatal("actor persisted", err)
 	}
@@ -115,7 +114,7 @@ func TestOperatorTelegramOriginHasNoWebCredentials(t *testing.T) {
 	if err != nil || a.Kind != "telegram" || a.EmailKey.Valid || a.PasswordHash.Valid || a.VerifiedAt.Valid || a.TermsVersion.Valid || a.PrivacyVersion.Valid || !sourceEligible(a) {
 		t.Fatal("invented web credentials", err)
 	}
-	r, err := store.New(s.pool).TrialByID(ctx, out.Request.RequestId)
+	r, err := testTrialRow(ctx, s.pool, out.Request.RequestId)
 	if err != nil || r.OperatorAccountID == nil || *r.OperatorAccountID != operator || r.OperatorTgID.Valid {
 		t.Fatal("trial actor", err)
 	}

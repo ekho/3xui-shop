@@ -10,8 +10,6 @@ UPDATE trial_operations SET target=$2 WHERE id=$1 AND target IS NULL;
 UPDATE trial_operations SET write_started=true WHERE id=$1 AND lease_hash=$2 AND lease_expires_at>clock_timestamp() AND status='provisioning';
 -- name: ApplyOperation :execrows
 UPDATE trial_operations SET status='applied',lease_hash=NULL,lease_expires_at=NULL,worker_pid=NULL WHERE id=$1 AND lease_hash=$2 AND lease_expires_at>clock_timestamp() AND status='provisioning';
--- name: GrantApplied :exec
-UPDATE trial_grants SET status='granted',granted_at=coalesce(granted_at,$2) WHERE operation_id=$1;
 -- name: ReviewOperation :execrows
 UPDATE trial_operations SET status='needs_review',lease_hash=NULL,lease_expires_at=NULL,worker_pid=NULL WHERE id=$1 AND ((status='applied' AND sqlc.arg(include_applied)::boolean) OR (status IN ('pending','provisioning') AND lease_hash=sqlc.narg(expected_lease)::bytea));
 -- name: RetryOperation :exec
@@ -24,3 +22,8 @@ UPDATE trial_operations SET traffic_used_bytes=$2,observed_at=$3 WHERE id=$1 AND
 UPDATE trial_operations
 SET traffic_up_bytes=$2,traffic_down_bytes=$3,traffic_used_bytes=$2::bigint+$3::bigint,observed_at=$4,profile_snapshot=sqlc.arg(snapshot)::jsonb
 WHERE id=$1 AND status='applied' AND (traffic_up_bytes IS NULL OR observed_at <= $4::timestamptz);
+-- name: AddOperation :exec
+INSERT INTO trial_operations(id,account_id,request_id,status,trial_enabled,period_days,traffic_gb,devices,panel_id,created_at) VALUES($1,$2,$3,'pending',true,$4,$5,$6,$7,$8);
+
+-- name: TrialMetadata :many
+SELECT id,account_id,request_id,status,created_at FROM trial_operations WHERE id=ANY(sqlc.arg(ids)::uuid[]);

@@ -177,3 +177,17 @@ func TestCatalogueSQLBoundary(t *testing.T) {
 	}
 	checkSQLBoundary(t, "catalogue", ownsCatalogueSQL)
 }
+
+func TestSubscriptionsSQLBoundary(t *testing.T) {
+	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:trial_requests|trial_grants|decision_callbacks)\b`)
+	checkSQLBoundary(t, "subscriptions", func(text string) bool {
+		return pattern.MatchString(strings.ReplaceAll(text, `"`, ""))
+	})
+}
+
+func TestVPNSQLBoundary(t *testing.T) {
+	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:trial_operations|access_operations|monthly_reset_periods)\b`)
+	checkSQLBoundary(t, "vpn", func(text string) bool {
+		return pattern.MatchString(strings.ReplaceAll(text, `"`, ""))
+	})
+}

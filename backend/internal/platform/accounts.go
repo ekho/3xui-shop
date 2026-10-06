@@ -3,8 +3,8 @@ package platform
 import (
 	"context"
 	"errors"
+
 	"example.com/cabinet/backend/internal/modules/accounts"
-	"example.com/cabinet/backend/internal/store"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/jackc/pgx/v5"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -51,9 +51,9 @@ func (s *Service) Authenticate(ctx context.Context, raw string) (wire.AccountRes
 	if err != nil {
 		return wire.AccountResult{}, accountError(err)
 	}
-	available, err := s.canRequestTrial(ctx, store.New(s.pool), legacyAccount(out.Account))
+	available, err := s.subscriptions.CanRequestTrial(ctx, out.Account)
 	if err != nil {
-		return wire.AccountResult{}, err
+		return wire.AccountResult{}, subscriptionError(err)
 	}
 	return wire.AccountResult{Account: publicAccount(out.Account), CsrfToken: out.CsrfToken, Capabilities: wire.Capabilities{TrialAvailable: available}}, nil
 }

@@ -5,12 +5,12 @@ import (
 	"context"
 	"crypto/subtle"
 	"errors"
+
 	"example.com/cabinet/backend/internal/store"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"time"
 )
 
 func (s *Service) ClaimTelegramJobs(ctx context.Context, in wire.ClaimInput) (wire.ClaimResult, error) {
@@ -32,36 +32,11 @@ func (s *Service) ClaimTelegramJobs(ctx context.Context, in wire.ClaimInput) (wi
 	if e != nil {
 		return out, unavailable()
 	}
-	r, e := q.TrialByID(ctx, j.RequestID)
+	card, e := s.subscriptions.CardTx(ctx, tx, j.RequestID, j.ChatID)
 	if e != nil {
-		return out, unavailable()
+		return out, subscriptionError(e)
 	}
-	a, e := s.accountByIDTx(ctx, tx, r.AccountID)
-	if e != nil {
-		return out, unavailable()
-	}
-	state := r.Status
-	if r.OperationID != nil {
-		op, err := q.OperationByID(ctx, *r.OperationID)
-		if err != nil {
-			return out, unavailable()
-		}
-		switch op.Status {
-		case "pending", "provisioning":
-			state = "provisioning"
-		case "needs_review":
-			state = "needs_review"
-		case "applied":
-			state = "active"
-			if op.FirstStartedAt.Valid && !s.now().Before(op.FirstStartedAt.Time.Add(time.Duration(op.PeriodDays)*24*time.Hour)) {
-				state = "expired"
-			}
-		}
-	}
-	payload, e := s.payload(ctx, q, a, r, j.ChatID, state)
-	if e != nil {
-		return out, e
-	}
+	payload := toSubscriptionTelegramPayload(card)
 	out.Jobs = append(out.Jobs, wire.TelegramJob{JobId: j.ID, ChatId: j.ChatID, Kind: wire.TelegramJobKind(j.Kind), Payload: payload, LeaseToken: token, LeaseExpiresAt: j.LeaseExpiresAt.Time})
 	if tx.Commit(ctx) != nil {
 		return wire.ClaimResult{}, unavailable()
