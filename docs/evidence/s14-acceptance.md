@@ -54,3 +54,5 @@ and host trust/VPN remain untouched; own fixture volumes are retained.
 
 Real merchant/API delivery, real crypto payment/net/fiscal/hosted UI and production
 are unverified. External readiness remains before С45–С47.
+
+Delivery after this local checkpoint: [PR75](https://github.com/ekho/3xui-shop/pull/75) merged into v2 at1733d50a9da41280406575beb8c50d9337329ecb, exact c2e01e9 source CI and source-equal merge tree verified. [Actual dev.39 build](https://github.com/ekho/3xui-shop/actions/runs/37512201378), annotated tag/prerelease and three OCI indexes/six platform revision/version/source labels verified. [#21 CLOSED/Project Done](https://github.com/ekho/3xui-shop/issues/21#issuecomment-6023041995). Own fixture stopped; protected immutable execution/delivery evidence retained.
