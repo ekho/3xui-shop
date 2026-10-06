@@ -104,8 +104,8 @@ func checkSQLBoundary(t *testing.T, owner string, ownsSQL func(string) bool) {
 	}
 }
 func TestModuleBoundaries(t *testing.T) {
-	// Only the existing app bridge and legacy HTTP consumers may import
-	// platform/store/wire during the remaining owner extractions.
+	// Modules use public peer contracts. Application composition and HTTP
+	// projections remain outside their dependency graph.
 	cmd := exec.Command("go", "list", "-json", "./internal/modules/...")
 	cmd.Dir = "../.."
 	out, err := cmd.Output()
