@@ -12,8 +12,14 @@ Product revision: `65b215802b78a371b3bb518a0cf7994ec017b38e`. Полная ма�
 завершена. Fresh whole-branch review Astra/high диапазона `b5d8eb3..8e51638`:
 **0 Critical / 0 Important / 0 Minor**, Ready to merge по коду. Reviewer повторил
 boundary/API/all15migration/dependency/diff checks, проверил все22 records/logs;
-полный matrix не повторял. Exact-source PR CI, manual merge и preview publication
-пока pending. #60 остаётся OPEN/In progress до notifications,
+полный matrix не повторял. PR #67 доставлен: source3067bf3413f44b03ed96b918d352722c577a0eaf,
+exact-source CI37410504689/37410504557 SUCCESS, manual merge6cc8d031ea9185bdbfc25affd00c9fc2f873e42e
+с родителями b5d8eb3/3067bf3 и source-equal tree. Preview37411579517 SUCCESS,
+[2.0.0-dev.23](https://github.com/ekho/3xui-shop/releases/tag/2.0.0-dev.23): tag peeled
+к merge, prerelease/not draft, три GHCR indexes и оба linux/amd64,linux/arm64 у
+каждого с правильными revision/version/source labels проверены.
+[Delivery checkpoint](https://github.com/ekho/3xui-shop/issues/60#issuecomment-6009093651).
+#60 остаётся OPEN/In progress до notifications,
 audit и удаления общего platform.Service/store с собственной приёмкой M06.
 
 | Проверка | Результат |
@@ -83,4 +89,4 @@ module directives остаётся; web build успешен, frontend/dependenc
 В private C09 event локальная приёмка ошибочно обозначалась финальной acceptance
 при delivery=pending; checker отклонил это сочетание. Final acceptance исправлена
 на pending до delivery gates. Shared checkpoint описывает только локальные тесты;
-merge/closure не происходили, #60 оставалась OPEN. Правила2.0.0.
+на этапе этой коррекции merge/closure не происходили, #60 оставалась OPEN. Правила2.0.0.

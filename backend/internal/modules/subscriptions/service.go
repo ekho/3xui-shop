@@ -7,6 +7,7 @@ import (
 
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/catalogue"
+	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/vpn"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -30,19 +31,20 @@ func failure(status int, code string) error { return &Error{Status: status, Code
 func unavailable() error                    { return failure(503, "SERVICE_UNAVAILABLE") }
 
 type Service struct {
-	pool      *pgxpool.Pool
-	accounts  *accounts.Service
-	catalogue *catalogue.Service
-	vpn       *vpn.Service
-	config    func() Config
-	now       func() time.Time
+	pool          *pgxpool.Pool
+	accounts      *accounts.Service
+	catalogue     *catalogue.Service
+	vpn           *vpn.Service
+	notifications *notifications.Service
+	config        func() Config
+	now           func() time.Time
 }
 
-func New(pool *pgxpool.Pool, authority *accounts.Service, catalogue *catalogue.Service, vpn *vpn.Service, config func() Config, now func() time.Time) *Service {
+func New(pool *pgxpool.Pool, authority *accounts.Service, catalogue *catalogue.Service, vpn *vpn.Service, notifications *notifications.Service, config func() Config, now func() time.Time) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{pool: pool, accounts: authority, catalogue: catalogue, vpn: vpn, config: config, now: now}
+	return &Service{pool: pool, accounts: authority, catalogue: catalogue, vpn: vpn, notifications: notifications, config: config, now: now}
 }
 func accountError(err error) error {
 	if errors.Is(err, accounts.ErrNotFound) {

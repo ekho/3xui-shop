@@ -20,7 +20,7 @@ Telegram остаётся дополнительным каналом. Перв�
 содержит HTTP, фоновые задания и Telegram в одном процессе. Все 48 сценариев
 сохранены и распределены по владельцам в этой спецификации. Нынешний Python-бот
 полностью удаляется после завершения переноса. М01–М04 доставлены в v2;
-М05 доставлен PR #66, merge b5d8eb3, preview2.0.0-dev.21 проверен; М06 ещё не завершён;
+М05 доставлен PR #66, merge b5d8eb3, preview2.0.0-dev.21 проверен; М06а support доставлен PR #67/preview2.0.0-dev.23; М06 ещё не завершён;
 ранее закрытые функциональные приёмки сохраняют свои исходные ревизии.
 
 Название продукта не используется в именах модулей, команд, cookie, API и документов. Публичный HTTPS-origin кабинета задаётся настройкой `CABINET_ORIGIN`, а не фиксируется в коде.
@@ -179,7 +179,7 @@ reports и operations появляются со своими сценариям�
 Адаптация С10 к accounts/catalogue/subscriptions/vpn локально проверена:
 [новая приёмка](../evidence/s10-modular-integration-acceptance.md); final review
 и единственный fix pass завершены, полная матрица после исправлений 22/22 PASS.
-PR #5 доставлен в v2 source-equal merge c57c5e7; exact-source CI и предварительный release2.0.0-dev.19 с тремя multiarch образами проверены. #17 CLOSED/Project Done. М05 доставлен [PR #66](https://github.com/ekho/3xui-shop/pull/66): [payments evidence](../evidence/m05-acceptance.md), 22/22 PASS, review без замечаний, exact-source CI и preview2.0.0-dev.21 проверены; #59 CLOSED/Project Done. М06 выполняется последовательными ограниченными планами; первым выделяется support ([спецификация М06а](../superpowers/specs/2026-10-06-m06a-support-design.md)), #60 остаётся OPEN до переноса notifications/audit и удаления общего platform/store.
+PR #5 доставлен в v2 source-equal merge c57c5e7; exact-source CI и предварительный release2.0.0-dev.19 с тремя multiarch образами проверены. #17 CLOSED/Project Done. М05 доставлен [PR #66](https://github.com/ekho/3xui-shop/pull/66): [payments evidence](../evidence/m05-acceptance.md), 22/22 PASS, review без замечаний, exact-source CI и preview2.0.0-dev.21 проверены; #59 CLOSED/Project Done. М06а support доставлен [PR #67](https://github.com/ekho/3xui-shop/pull/67)/preview2.0.0-dev.23: [support evidence](../evidence/m06a-acceptance.md). М06b1 выделяет Telegram delivery ([спецификация](../superpowers/specs/2026-10-06-m06b-telegram-delivery-design.md), [локальные проверки](../evidence/m06b1-acceptance.md)); далее email М06b2 → audit М06c → cleanup М06d. #60 остаётся OPEN до всей собственной архитектурной приёмки.
 С11–С40 и С42–С47 имеют
 статус **запланирован**. Наличие исходника подтверждает существующее поведение
 бота, а не готовность его реализации на новом стеке.
@@ -433,7 +433,7 @@ fixtures; свежий whole-branch review и обязательный fix pass 
 [операции подписки](../evidence/s07-acceptance.md). С08 и необходимый С41 локально приняты: [профили доступа](../evidence/s08-s41-acceptance.md).
 С11–С40 и С42–С47 ещё не реализованы. С10 доставлен PR #5 в `v2`,
 #17 CLOSED/Project Done; предварительный release2.0.0-dev.19 проверен.
-М01–М05 доставлены в v2; М05 source-equal merge b5d8eb3 и preview2.0.0-dev.21 проверены; М06 открыт.
+М01–М05 доставлены в v2; М05 source-equal merge b5d8eb3 и preview2.0.0-dev.21 проверены; М06а support доставлен PR #67/dev.23, М06 открыт.
 Интеграция С10 и перенос денег М05 сохраняют отдельные exact-revision evidence.
 Пользователь разрешил проектирование С02 при
 ранее открытой приёмке С01; [спецификация С02](../superpowers/specs/2026-10-02-s02-account-security-design.md)

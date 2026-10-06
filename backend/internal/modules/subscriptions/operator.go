@@ -142,7 +142,7 @@ func (s *Service) ReconsiderOperatorTrial(ctx context.Context, actor, id, key uu
 	if prior, found, replayErr := replay[TrialRequest](ctx, q, principal, "reconsiderTrialRequest", key, hash); found || replayErr != nil {
 		return prior, false, replayErr
 	}
-	r, err := s.reconsiderTrialLocked(ctx, q, a, old, trialActor{accountID: &actor}, reason)
+	r, err := s.reconsiderTrialLocked(ctx, tx, q, a, old, trialActor{accountID: &actor}, reason)
 	if err != nil {
 		return out, false, err
 	}
