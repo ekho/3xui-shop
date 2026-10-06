@@ -202,3 +202,18 @@ func (q *Queries) LockIdempotency(ctx context.Context, arg LockIdempotencyParams
 	_, err := q.db.Exec(ctx, lockIdempotency, arg.Principal, arg.Operation, arg.Key)
 	return err
 }
+
+const lockIdempotencySession = `-- name: LockIdempotencySession :exec
+SELECT pg_advisory_lock(hashtextextended('idem:'||$1::text||':'||$2::text||':'||$3::uuid::text,0))
+`
+
+type LockIdempotencySessionParams struct {
+	Principal string
+	Operation string
+	Key       uuid.UUID
+}
+
+func (q *Queries) LockIdempotencySession(ctx context.Context, arg LockIdempotencySessionParams) error {
+	_, err := q.db.Exec(ctx, lockIdempotencySession, arg.Principal, arg.Operation, arg.Key)
+	return err
+}

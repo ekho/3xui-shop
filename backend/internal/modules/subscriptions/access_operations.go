@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 
 	"example.com/cabinet/backend/internal/modules/catalogue"
 	"example.com/cabinet/backend/internal/modules/subscriptions/internal/store"
@@ -114,28 +115,34 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 		Target uuid.UUID
 		Input  AccessOperationInput
 	}{target, in})
-	tx, err := s.pool.Begin(ctx)
+	owner, err := s.vpn.OpenAccessOwner(ctx, target)
+	if err != nil {
+		return out, unavailable()
+	}
+	defer owner.Release()
+	tx, err := owner.Begin(ctx)
 	if err != nil {
 		return out, unavailable()
 	}
 	defer tx.Rollback(ctx)
-	a, err := s.lockOperatorPair(ctx, tx, actor, target)
-	if err != nil {
-		return out, err
-	}
 	q := store.New(tx)
 	if err = q.LockIdempotency(ctx, store.LockIdempotencyParams{Principal: principal, Operation: "createAccessOperation", Key: key}); err != nil {
 		return out, unavailable()
 	}
+	a, err := s.lockOperatorPair(ctx, tx, actor, target)
+	if err != nil {
+		return out, err
+	}
 	if prior, found, e := replay[AccessOperation](ctx, q, principal, "createAccessOperation", key, hash); found || e != nil {
 		return prior, e
 	}
-	var locked bool
-	if err = tx.QueryRow(ctx, accessOwnerSQL(), target).Scan(&locked); err != nil {
+	if q.LockIdempotencySession(ctx, store.LockIdempotencySessionParams{Principal: principal, Operation: "createAccessOperation", Key: key}) != nil {
 		return out, unavailable()
 	}
-	if !locked {
+	if err = owner.TryLock(ctx); errors.Is(err, vpn.ErrBusy) {
 		return out, failure(409, "ACCESS_OPERATION_CONFLICT")
+	} else if err != nil {
+		return out, unavailable()
 	}
 	active, err := s.vpn.UnresolvedAccessTx(ctx, tx, target)
 	if err != nil {
@@ -150,6 +157,26 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 	}
 	if s.config().PanelID == "" || ((a.AssignedPanelID != nil) && stringValue(a.AssignedPanelID) != s.config().PanelID) {
 		return out, failure(409, "ACCESS_NOT_ELIGIBLE")
+	}
+	baseline, err := s.vpn.AccessBaselineTx(ctx, tx, target)
+	if err != nil {
+		return out, unavailable()
+	}
+	var selected catalogue.CurrentPlan
+	var selectedErr error
+	if in.Kind == "assign_plan" {
+		selected, selectedErr = s.catalogue.CurrentPlanTx(ctx, tx, *in.PlanId)
+	}
+	var unlimited unlimitedPlan
+	var unlimitedErr, monthlyErr error
+	if in.Kind == "set_profile" && *in.Profile == "unlimited" {
+		monthlyErr = s.vpn.CheckMonthlyResetTx(ctx, tx)
+		if monthlyErr == nil {
+			unlimited, unlimitedErr = s.unlimitedAccessPlan(ctx, tx)
+		}
+	}
+	if tx.Commit(ctx) != nil {
+		return out, unavailable()
 	}
 	panel := s.PanelClient()
 	defer panel.Close()
@@ -167,10 +194,11 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 	id := uuid.New()
 	t := vpn.AccessTarget{OperationID: id, PanelID: s.config().PanelID, PanelKey: a.PanelKey, VPNID: a.VpnID, SubID: a.SubID, Banned: a.VpnBanned, PreviousBanned: a.VpnBanned}
 	var planID *uuid.UUID
+	var planTerms *catalogue.Terms
 	var planRev, period pgtype.Int8
 	var profile string
 	if v != nil {
-		profile, err = s.vpn.ConfirmedAccessProfileTx(ctx, tx, a, v, panel, in.Kind == "set_profile" || in.Kind == "set_vpn_ban")
+		profile, err = s.vpn.ConfirmedAccessProfile(ctx, baseline, a, v, panel, in.Kind == "set_profile" || in.Kind == "set_vpn_ban")
 		if err != nil {
 			return out, failure(409, "ACCESS_NOT_ELIGIBLE")
 		}
@@ -236,7 +264,7 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 		}
 		t.ExpiryTimeMS = base + added
 	case "assign_plan":
-		plan, err := s.catalogue.CurrentPlanTx(ctx, tx, *in.PlanId)
+		plan, err := selected, selectedErr
 		if errors.Is(err, catalogue.ErrNotFound) {
 			return out, failure(409, "ACCESS_PLAN_CONFLICT")
 		}
@@ -250,6 +278,7 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 			return out, unavailable()
 		}
 		terms := plan.Terms
+		planTerms = &plan.Terms
 		found := false
 		for _, days := range terms.Periods {
 			if days == *in.PeriodDays {
@@ -289,13 +318,14 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 	case "set_profile":
 		requested := string(*in.Profile)
 		if requested == "unlimited" {
-			if s.vpn.CheckMonthlyResetTx(ctx, tx) != nil {
+			if monthlyErr != nil {
 				return out, unavailable()
 			}
-			plan, e := s.unlimitedAccessPlan(ctx, tx)
+			plan, e := unlimited, unlimitedErr
 			if e != nil {
 				return out, e
 			}
+			planTerms = &plan.Terms
 			t.DeviceCount, t.TrafficLimitBytes, t.ExpiryTimeMS = int64(plan.Terms.Devices), int64(plan.Terms.TrafficGb)*1024*1024*1024, 0
 			// Legacy unlimited grant preserves existing traffic; monthly reset runs by period.
 			if v == nil {
@@ -373,6 +403,66 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 		}
 	} else if v != nil && sameNativeTarget && (in.Kind == "set_profile" && profile == t.Profile || in.Kind == "set_vpn_ban" && a.VpnBanned == t.Banned) && !t.Reset && !t.Enable && (t.Banned && !v.Enabled || !t.Banned && (v.Enabled || in.Kind == "set_profile" && (v.ExpiryTimeMS > 0 && v.ExpiryTimeMS <= now.UnixMilli() || v.TrafficLimitBytes > 0 && v.UsedTraffic != nil && *v.UsedTraffic >= v.TrafficLimitBytes))) {
 		immediate, step = true, "state_unchanged"
+	}
+	tx, err = owner.Begin(ctx)
+	if err != nil {
+		return out, unavailable()
+	}
+	defer tx.Rollback(ctx)
+	current, err := s.lockOperatorPair(ctx, tx, actor, target)
+	if err != nil {
+		return out, err
+	}
+	q = store.New(tx)
+	if q.LockIdempotency(ctx, store.LockIdempotencyParams{Principal: principal, Operation: "createAccessOperation", Key: key}) != nil {
+		return out, unavailable()
+	}
+	if prior, found, e := replay[AccessOperation](ctx, q, principal, "createAccessOperation", key, hash); found || e != nil {
+		return prior, e
+	}
+	if !reflect.DeepEqual(a, current) {
+		return out, failure(409, "ACCESS_NOT_ELIGIBLE")
+	}
+	unresolved, err := s.vpn.UnresolvedTx(ctx, tx, target)
+	if err != nil {
+		return out, unavailable()
+	}
+	if unresolved {
+		return out, failure(409, "ACCESS_OPERATION_CONFLICT")
+	}
+	latest, err := s.vpn.AccessBaselineTx(ctx, tx, target)
+	if err != nil {
+		return out, unavailable()
+	}
+	if !reflect.DeepEqual(baseline, latest) {
+		return out, failure(409, "ACCESS_NOT_ELIGIBLE")
+	}
+	if planID != nil {
+		if in.Kind == "set_profile" && t.Profile == "unlimited" {
+			current, e := s.unlimitedAccessPlan(ctx, tx)
+			if e != nil {
+				return out, e
+			}
+			if current.ID != *planID || current.Revision != planRev.Int64 {
+				return out, failure(409, "ACCESS_PLAN_CONFLICT")
+			}
+		}
+		current, e := s.catalogue.LockCurrentPlan(ctx, tx, *planID)
+		if errors.Is(e, catalogue.ErrNotFound) {
+			return out, failure(409, "ACCESS_PLAN_CONFLICT")
+		}
+		if e != nil && !errors.Is(e, catalogue.ErrInvalidTerms) {
+			return out, unavailable()
+		}
+		if current.Archived || current.Revision != planRev.Int64 || current.Profile != t.Profile {
+			return out, failure(409, "ACCESS_PLAN_CONFLICT")
+		}
+		if e != nil {
+			return out, unavailable()
+		}
+		if planTerms == nil || !reflect.DeepEqual(current.Terms, *planTerms) {
+			return out, failure(409, "ACCESS_PLAN_CONFLICT")
+		}
 	}
 	if immediate {
 		if t.NoClientIntent && step != "state_unchanged" {

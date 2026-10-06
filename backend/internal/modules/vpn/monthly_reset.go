@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 
 	"example.com/cabinet/backend/internal/modules/vpn/internal/store"
 
@@ -150,25 +151,47 @@ func (s *Service) ApplyMonthlyReset(ctx context.Context, account uuid.UUID, peri
 	if account == uuid.Nil || len(period) != 7 {
 		return unavailable()
 	}
-	now := s.now().UTC().Truncate(time.Microsecond)
-	tx, err := s.pool.Begin(ctx)
+	owner, err := s.OpenAccessOwner(ctx, account)
+	if err != nil {
+		return unavailable()
+	}
+	defer owner.Release()
+	tx, err := owner.Begin(ctx)
 	if err != nil {
 		return unavailable()
 	}
 	defer tx.Rollback(ctx)
-	q := store.New(tx)
+	now := s.now().UTC().Truncate(time.Microsecond)
 	a, err := s.lockAccount(ctx, tx, account)
 	if err != nil {
 		return unavailable()
 	}
-	var status string
+	var status, timezone string
 	var deferredAt pgtype.Timestamptz
-	var timezone string
-	err = tx.QueryRow(ctx, "SELECT status,deferred_at,timezone FROM monthly_reset_periods WHERE account_id=$1 AND local_period=$2 FOR UPDATE", account, period).Scan(&status, &deferredAt, &timezone)
-	if errors.Is(err, pgx.ErrNoRows) {
+	readClaim := func() error {
+		return tx.QueryRow(ctx, "SELECT status,deferred_at,timezone FROM monthly_reset_periods WHERE account_id=$1 AND local_period=$2 FOR UPDATE", account, period).Scan(&status, &deferredAt, &timezone)
+	}
+	finishClaim := func(state, action string) error {
+		if _, err := tx.Exec(ctx, "UPDATE monthly_reset_periods SET status=$4,updated_at=$3 WHERE account_id=$1 AND local_period=$2", account, period, now, state); err != nil || monthlyAudit(ctx, tx, account, period, action, nil, now) != nil || tx.Commit(ctx) != nil {
+			return unavailable()
+		}
 		return nil
 	}
-	if err != nil {
+	deferClaim := func() error {
+		if _, err := tx.Exec(ctx, "UPDATE monthly_reset_periods SET deferred_at=COALESCE(deferred_at,$3),updated_at=$3 WHERE account_id=$1 AND local_period=$2", account, period, now); err != nil {
+			return unavailable()
+		}
+		if !deferredAt.Valid && monthlyAudit(ctx, tx, account, period, "monthly_reset_waiting", nil, now) != nil {
+			return unavailable()
+		}
+		if tx.Commit(ctx) != nil {
+			return unavailable()
+		}
+		return river.JobSnooze(30 * time.Second)
+	}
+	if err = readClaim(); errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	} else if err != nil {
 		return unavailable()
 	}
 	if status != "waiting" {
@@ -180,59 +203,79 @@ func (s *Service) ApplyMonthlyReset(ctx context.Context, account uuid.UUID, peri
 	}
 	currentPeriod, _ := monthlyPeriod(now, loc)
 	if currentPeriod != period {
-		if _, err = tx.Exec(ctx, "UPDATE monthly_reset_periods SET status='period_elapsed_unserved',updated_at=$3 WHERE account_id=$1 AND local_period=$2", account, period, now); err != nil || monthlyAudit(ctx, tx, account, period, "monthly_reset_period_elapsed_unserved", nil, now) != nil || tx.Commit(ctx) != nil {
-			return unavailable()
-		}
-		return nil
+		return finishClaim("period_elapsed_unserved", "monthly_reset_period_elapsed_unserved")
 	}
-	var owned bool
-	if err = tx.QueryRow(ctx, accessOwnerSQL(), account).Scan(&owned); err != nil {
+	lockErr := owner.TryLock(ctx)
+	if lockErr != nil && !errors.Is(lockErr, ErrBusy) {
 		return unavailable()
 	}
-	active, err := q.UnresolvedAccessExists(ctx, account)
+	active, err := s.UnresolvedTx(ctx, tx, account)
 	if err != nil {
 		return unavailable()
 	}
-	trial, err := q.UnresolvedTrialExists(ctx, account)
-	if err != nil {
+	if errors.Is(lockErr, ErrBusy) || active {
+		return deferClaim()
+	}
+	if a.AccessProfile == nil || *a.AccessProfile != "unlimited" || a.VpnBanned {
+		return finishClaim("skipped", "monthly_reset_skipped")
+	}
+	if a.AssignedPanelID == nil || *a.AssignedPanelID != s.config().PanelID {
+		return deferClaim()
+	}
+	savedZone := timezone
+	if tx.Commit(ctx) != nil {
 		return unavailable()
-	}
-	deferClaim := func() error {
-		if _, err = tx.Exec(ctx, "UPDATE monthly_reset_periods SET deferred_at=COALESCE(deferred_at,$3),updated_at=$3 WHERE account_id=$1 AND local_period=$2", account, period, now); err != nil {
-			return unavailable()
-		}
-		if !deferredAt.Valid && monthlyAudit(ctx, tx, account, period, "monthly_reset_waiting", nil, now) != nil {
-			return unavailable()
-		}
-		if tx.Commit(ctx) != nil {
-			return unavailable()
-		}
-		return river.JobSnooze(30 * time.Second)
-	}
-	if !owned || active || trial {
-		return deferClaim()
-	}
-	if !(a.AccessProfile != nil) || stringValue(a.AccessProfile) != "unlimited" || a.VpnBanned {
-		if _, err = tx.Exec(ctx, "UPDATE monthly_reset_periods SET status='skipped',updated_at=$3 WHERE account_id=$1 AND local_period=$2", account, period, now); err != nil || monthlyAudit(ctx, tx, account, period, "monthly_reset_skipped", nil, now) != nil || tx.Commit(ctx) != nil {
-			return unavailable()
-		}
-		return nil
-	}
-	if !(a.AssignedPanelID != nil) || stringValue(a.AssignedPanelID) != s.config().PanelID {
-		return deferClaim()
 	}
 	p := s.PanelClient()
 	defer p.Close()
-	v, err := p.GetClient(ctx, a.PanelKey)
-	if err != nil || v == nil || v.VPNID != a.VpnID || v.SubID != a.SubID {
-		return deferClaim()
+	v, readErr := p.GetClient(ctx, a.PanelKey)
+	valid := readErr == nil && v != nil && v.VPNID == a.VpnID && v.SubID == a.SubID
+	var ids []int64
+	if valid {
+		ids, readErr = p.ProfileInboundIDs(ctx, "unlimited")
+		valid = readErr == nil
 	}
-	ids, err := p.ProfileInboundIDs(ctx, "unlimited")
+	if valid {
+		attach, detach, e := p.MembershipDiff(ctx, v.InboundIDs, ids)
+		valid = e == nil && len(attach) == 0 && len(detach) == 0 && v.ExpiryTimeMS == 0
+	}
+	// No network call follows this Begin; the original session remains the owner.
+	tx, err = owner.Begin(ctx)
 	if err != nil {
+		return unavailable()
+	}
+	defer tx.Rollback(ctx)
+	now = s.now().UTC().Truncate(time.Microsecond)
+	current, err := s.lockAccount(ctx, tx, account)
+	if err != nil {
+		return unavailable()
+	}
+	if err = readClaim(); errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	} else if err != nil {
+		return unavailable()
+	}
+	if status != "waiting" {
+		return nil
+	}
+	if timezone != savedZone {
+		return unavailable()
+	}
+	currentPeriod, _ = monthlyPeriod(now, loc)
+	if currentPeriod != period {
+		return finishClaim("period_elapsed_unserved", "monthly_reset_period_elapsed_unserved")
+	}
+	active, err = s.UnresolvedTx(ctx, tx, account)
+	if err != nil {
+		return unavailable()
+	}
+	if active {
 		return deferClaim()
 	}
-	attach, detach, err := p.MembershipDiff(ctx, v.InboundIDs, ids)
-	if err != nil || len(attach) > 0 || len(detach) > 0 || v.ExpiryTimeMS != 0 {
+	if current.AccessProfile == nil || *current.AccessProfile != "unlimited" || current.VpnBanned {
+		return finishClaim("skipped", "monthly_reset_skipped")
+	}
+	if !valid || !reflect.DeepEqual(a, current) {
 		return deferClaim()
 	}
 	id := uuid.New()
@@ -240,8 +283,11 @@ func (s *Service) ApplyMonthlyReset(ctx context.Context, account uuid.UUID, peri
 	desired := AccessDesired{Devices: target.DeviceCount, TrafficLimitBytes: target.TrafficLimitBytes, Profile: "unlimited", ResetTraffic: true, VpnBanned: false}
 	desiredRaw, _ := json.Marshal(desired)
 	targetRaw, _ := json.Marshal(target)
-	if err = q.InsertAccessOperation(ctx, store.InsertAccessOperationParams{ID: id, AccountID: account, Kind: "monthly_reset", Reason: "monthly reset", Desired: desiredRaw, Target: targetRaw, MonthlyPeriod: pgtype.Text{String: period, Valid: true}, CreatedAt: stamp(now)}); err != nil {
+	if err = store.New(tx).InsertAccessOperation(ctx, store.InsertAccessOperationParams{ID: id, AccountID: account, Kind: "monthly_reset", Reason: "monthly reset", Desired: desiredRaw, Target: targetRaw, MonthlyPeriod: pgtype.Text{String: period, Valid: true}, CreatedAt: stamp(now)}); err != nil {
 		return accessConflict(err)
+	}
+	if s.queue == nil || s.queue() == nil {
+		return unavailable()
 	}
 	if _, err = s.queue().InsertTx(ctx, tx, AccessArgs{OperationID: id}, &river.InsertOpts{Queue: "provision", MaxAttempts: 5}); err != nil {
 		return unavailable()

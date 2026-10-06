@@ -17,3 +17,6 @@ SELECT pg_advisory_xact_lock(hashtextextended('idem:'||sqlc.arg(principal)::text
 -- name: AddOperatorAudit :exec
 INSERT INTO audit_events(id,created_at,action,account_id,request_id,operation_id,operator_account_id,reason)
 VALUES($1,$2,$3,$4,$5,$6,$7,$8);
+
+-- name: LockIdempotencySession :exec
+SELECT pg_advisory_lock(hashtextextended('idem:'||sqlc.arg(principal)::text||':'||sqlc.arg(operation)::text||':'||sqlc.arg(key)::uuid::text,0));

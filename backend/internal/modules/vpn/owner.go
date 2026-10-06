@@ -3,6 +3,7 @@ package vpn
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -38,12 +39,11 @@ func (o *AccessOwner) TryLock(ctx context.Context) error {
 	return nil
 }
 func (o *AccessOwner) Release() {
-	if o.locked {
-		releaseOwner(o.conn, o.account)
-	} else {
-		o.conn.Release()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	// The dedicated session owns account-access and, for commands, idempotency.
+	if _, e := o.conn.Exec(ctx, "SELECT pg_advisory_unlock_all()"); e != nil {
+		o.conn.Conn().Close(ctx)
 	}
-}
-func accessOwnerSQL() string {
-	return "SELECT pg_try_advisory_xact_lock(hashtextextended('account-access:'||$1::text,0))"
+	o.conn.Release()
 }
