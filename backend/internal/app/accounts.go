@@ -2,9 +2,11 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/catalogue"
+	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/payments"
 	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/support"
@@ -25,6 +27,13 @@ func NewService(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 	catalogueOwner := catalogue.New(pool, owner, nil)
 	var subscriptionOwner *subscriptions.Service
 	var paymentsOwner *payments.Service
+	notificationsOwner := notifications.New(pool, func() []int64 { return cfg.Operators }, owner.OperatorAllowed, func(ctx context.Context, tx pgx.Tx, request uuid.UUID, chat int64) (json.RawMessage, error) {
+		payload, err := subscriptionOwner.CardTx(ctx, tx, request, chat)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(payload)
+	})
 	vpnOwner := vpn.New(pool, owner, func() *river.Client[pgx.Tx] { return queue }, func() vpn.Settings { return cfg.VPNSettings() }, nil, func(ctx context.Context, tx pgx.Tx, r, o uuid.UUID, status string) error {
 		return subscriptionOwner.RecordTrialOutcomeTx(ctx, tx, r, o, status)
 	}, vpn.PurchaseHooks{Check: func(ctx context.Context, tx pgx.Tx, order, account, operation uuid.UUID) (string, error) {
@@ -32,8 +41,8 @@ func NewService(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 	}, Outcome: func(ctx context.Context, tx pgx.Tx, operation uuid.UUID, status, reason string) error {
 		return paymentsOwner.RecordPurchaseAccessTx(ctx, tx, operation, status, reason)
 	}})
-	subscriptionOwner = subscriptions.New(pool, owner, catalogueOwner, vpnOwner, func() subscriptions.Config { return cfg.SubscriptionSettings() }, nil)
+	subscriptionOwner = subscriptions.New(pool, owner, catalogueOwner, vpnOwner, notificationsOwner, func() subscriptions.Config { return cfg.SubscriptionSettings() }, nil)
 	paymentsOwner = payments.New(pool, owner, catalogueOwner, vpnOwner, func() *river.Client[pgx.Tx] { return queue }, func() payments.Config { return cfg.PaymentSettings() }, nil)
 	supportOwner := support.New(pool, limiter, owner, cfg.RateNamespace, nil)
-	return platform.NewServiceWithModules(pool, limiter, queue, cfg, owner, catalogueOwner, subscriptionOwner, vpnOwner, paymentsOwner, supportOwner)
+	return platform.NewServiceWithModules(pool, limiter, queue, cfg, owner, catalogueOwner, subscriptionOwner, vpnOwner, paymentsOwner, supportOwner, notificationsOwner)
 }

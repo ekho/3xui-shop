@@ -66,16 +66,14 @@ func (s *Service) audit(ctx context.Context, q *store.Queries, action string, ac
 	}
 	return nil
 }
-func (s *Service) payload(ctx context.Context, q *store.Queries, a accounts.Snapshot, r store.TrialRequest, actor int64, status string) (TelegramPayload, error) {
+func (s *Service) payload(ctx context.Context, tx pgx.Tx, a accounts.Snapshot, r store.TrialRequest, actor int64, status string) (TelegramPayload, error) {
 	var target *int64
 	if actor > 0 {
-		message, err := q.LatestTelegramMessage(ctx, store.LatestTelegramMessageParams{RequestID: r.ID, ChatID: actor})
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		message, err := s.notifications.LatestTelegramMessageTx(ctx, tx, r.ID, actor)
+		if err != nil {
 			return TelegramPayload{}, unavailable()
 		}
-		if message.Valid {
-			target = &message.Int64
-		}
+		target = message
 	}
 	var email *string
 	if a.EmailKey != nil {
@@ -91,7 +89,7 @@ func (s *Service) payload(ctx context.Context, q *store.Queries, a accounts.Snap
 	}
 	return out, nil
 }
-func (s *Service) notify(ctx context.Context, q *store.Queries, a accounts.Snapshot, r store.TrialRequest, kind, status string) error {
+func (s *Service) notify(ctx context.Context, tx pgx.Tx, a accounts.Snapshot, r store.TrialRequest, kind, status string) error {
 	seen := map[int64]bool{}
 	if len(s.config().Operators) == 0 {
 		return nil
@@ -104,7 +102,7 @@ func (s *Service) notify(ctx context.Context, q *store.Queries, a accounts.Snaps
 			continue
 		}
 		seen[actor] = true
-		payload, err := s.payload(ctx, q, a, r, actor, status)
+		payload, err := s.payload(ctx, tx, a, r, actor, status)
 		if err != nil {
 			return err
 		}
@@ -112,7 +110,7 @@ func (s *Service) notify(ctx context.Context, q *store.Queries, a accounts.Snaps
 		if err != nil {
 			return unavailable()
 		}
-		if q.AddTelegramDelivery(ctx, store.AddTelegramDeliveryParams{ID: uuid.New(), RequestID: r.ID, OperationID: r.OperationID, ChatID: actor, Kind: kind, Payload: data, CreatedAt: stamp(s.now())}) != nil {
+		if s.notifications.EnqueueTelegramTx(ctx, tx, r.ID, r.OperationID, actor, kind, data, s.now()) != nil {
 			return unavailable()
 		}
 	}
@@ -178,7 +176,7 @@ func (s *Service) CreateTrialRequest(ctx context.Context, accountID, key uuid.UU
 			return out, false, unavailable()
 		}
 		created = true
-		if s.audit(ctx, q, "trial_requested", accountID, &current.ID, nil, 0, "") != nil || s.notify(ctx, q, a, current, "approval_card", "pending") != nil {
+		if s.audit(ctx, q, "trial_requested", accountID, &current.ID, nil, 0, "") != nil || s.notify(ctx, tx, a, current, "approval_card", "pending") != nil {
 			return out, false, unavailable()
 		}
 	}
@@ -202,15 +200,13 @@ func (s *Service) CurrentTrialRequest(ctx context.Context, accountID uuid.UUID) 
 	out := publicTrial(r)
 	return CurrentTrialRequest{Request: &out}, nil
 }
-func (s *Service) decisionResult(ctx context.Context, q *store.Queries, a accounts.Snapshot, r store.TrialRequest, actor int64) (DecisionResult, error) {
-	card, err := s.payload(ctx, q, a, r, actor, r.Status)
+func (s *Service) decisionResult(ctx context.Context, tx pgx.Tx, a accounts.Snapshot, r store.TrialRequest, actor int64) (DecisionResult, error) {
+	card, err := s.payload(ctx, tx, a, r, actor, r.Status)
 	if err != nil {
 		return DecisionResult{}, err
 	}
-	state, err := q.LatestTelegramState(ctx, store.LatestTelegramStateParams{RequestID: r.ID, ChatID: actor})
-	if errors.Is(err, pgx.ErrNoRows) {
-		state = "pending"
-	} else if err != nil {
+	state, err := s.notifications.LatestTelegramStateTx(ctx, tx, r.ID, actor)
+	if err != nil {
 		return DecisionResult{}, unavailable()
 	}
 	return DecisionResult{Request: publicTrial(r), OperationId: r.OperationID, Card: card, DeliveryState: DecisionResultDeliveryState(state)}, nil
@@ -280,7 +276,7 @@ func (s *Service) decideTrialLocked(ctx context.Context, tx pgx.Tx, q *store.Que
 	if err = s.trialActorAudit(ctx, q, "trial_"+desired, a.ID, r.ID, operation, actor, reason); err != nil {
 		return r, err
 	}
-	if err = s.notify(ctx, q, a, r, "request_decided", desired); err != nil {
+	if err = s.notify(ctx, tx, a, r, "request_decided", desired); err != nil {
 		return r, err
 	}
 	return r, nil
@@ -355,7 +351,7 @@ func (s *Service) DecideTrialRequest(ctx context.Context, id uuid.UUID, in Decis
 			return out, err
 		}
 	}
-	out, err = s.decisionResult(ctx, q, a, r, in.OperatorTgId)
+	out, err = s.decisionResult(ctx, tx, a, r, in.OperatorTgId)
 	if err != nil {
 		return out, err
 	}
@@ -408,7 +404,7 @@ func (s *Service) ReconsiderTrialRequest(ctx context.Context, id, key uuid.UUID,
 	if prior, found, e := replay[TrialRequest](ctx, q, principal, "reconsiderTrialRequest", key, hash); found || e != nil {
 		return prior, e
 	}
-	r, err := s.reconsiderTrialLocked(ctx, q, a, old, trialActor{telegramID: in.OperatorTgId}, in.Reason)
+	r, err := s.reconsiderTrialLocked(ctx, tx, q, a, old, trialActor{telegramID: in.OperatorTgId}, in.Reason)
 	if err != nil {
 		return out, err
 	}
@@ -422,7 +418,7 @@ func (s *Service) ReconsiderTrialRequest(ctx context.Context, id, key uuid.UUID,
 	return out, nil
 }
 
-func (s *Service) reconsiderTrialLocked(ctx context.Context, q *store.Queries, a accounts.Snapshot, old store.TrialRequest, actor trialActor, reason string) (store.TrialRequest, error) {
+func (s *Service) reconsiderTrialLocked(ctx context.Context, tx pgx.Tx, q *store.Queries, a accounts.Snapshot, old store.TrialRequest, actor trialActor, reason string) (store.TrialRequest, error) {
 	if err := s.trialEligibility(ctx, q, a); err != nil {
 		return old, err
 	}
@@ -440,7 +436,7 @@ func (s *Service) reconsiderTrialLocked(ctx context.Context, q *store.Queries, a
 	if err = s.trialActorAudit(ctx, q, "trial_reconsidered", a.ID, r.ID, nil, actor, reason); err != nil {
 		return old, err
 	}
-	if err = s.notify(ctx, q, a, r, "approval_card", "pending"); err != nil {
+	if err = s.notify(ctx, tx, a, r, "approval_card", "pending"); err != nil {
 		return old, err
 	}
 	return r, nil

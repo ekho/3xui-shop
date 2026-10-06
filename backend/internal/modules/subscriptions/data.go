@@ -39,7 +39,7 @@ func (s *Service) RecordTrialOutcomeTx(ctx context.Context, tx pgx.Tx, request, 
 	} else if status != "needs_review" {
 		return unavailable()
 	}
-	if s.audit(ctx, q, action, a.ID, &request, &operation, 0, "") != nil || s.notify(ctx, q, a, r, kind, view) != nil {
+	if s.audit(ctx, q, action, a.ID, &request, &operation, 0, "") != nil || s.notify(ctx, tx, a, r, kind, view) != nil {
 		return unavailable()
 	}
 	return nil
@@ -72,7 +72,7 @@ func (s *Service) CardTx(ctx context.Context, tx pgx.Tx, request uuid.UUID, acto
 			}
 		}
 	}
-	return s.payload(ctx, q, a, r, actor, state)
+	return s.payload(ctx, tx, a, r, actor, state)
 }
 func (s *Service) TrialHistory(ctx context.Context, actor, target uuid.UUID, before *time.Time, id *uuid.UUID) ([]OperatorTrialRequest, bool, error) {
 	if e := s.requireOperator(ctx, actor); e != nil {

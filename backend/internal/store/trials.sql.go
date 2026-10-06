@@ -66,33 +66,6 @@ func (q *Queries) AddIdempotency(ctx context.Context, arg AddIdempotencyParams) 
 	return err
 }
 
-const addTelegramDelivery = `-- name: AddTelegramDelivery :exec
-INSERT INTO telegram_deliveries(id,request_id,operation_id,chat_id,kind,payload,state,created_at,available_at) VALUES($1,$2,$3,$4,$5,$6,'pending',$7,$7)
-`
-
-type AddTelegramDeliveryParams struct {
-	ID          uuid.UUID
-	RequestID   uuid.UUID
-	OperationID *uuid.UUID
-	ChatID      int64
-	Kind        string
-	Payload     []byte
-	CreatedAt   pgtype.Timestamptz
-}
-
-func (q *Queries) AddTelegramDelivery(ctx context.Context, arg AddTelegramDeliveryParams) error {
-	_, err := q.db.Exec(ctx, addTelegramDelivery,
-		arg.ID,
-		arg.RequestID,
-		arg.OperationID,
-		arg.ChatID,
-		arg.Kind,
-		arg.Payload,
-		arg.CreatedAt,
-	)
-	return err
-}
-
 const idempotencyByKey = `-- name: IdempotencyByKey :one
 SELECT principal, operation, key, body_hash, result, created_at FROM idempotency_records WHERE principal=$1 AND operation=$2 AND key=$3
 `
@@ -115,38 +88,6 @@ func (q *Queries) IdempotencyByKey(ctx context.Context, arg IdempotencyByKeyPara
 		&i.CreatedAt,
 	)
 	return i, err
-}
-
-const latestTelegramMessage = `-- name: LatestTelegramMessage :one
-SELECT message_id FROM telegram_deliveries WHERE request_id=$1 AND chat_id=$2 AND state='sent' AND message_id IS NOT NULL ORDER BY sequence DESC LIMIT 1
-`
-
-type LatestTelegramMessageParams struct {
-	RequestID uuid.UUID
-	ChatID    int64
-}
-
-func (q *Queries) LatestTelegramMessage(ctx context.Context, arg LatestTelegramMessageParams) (pgtype.Int8, error) {
-	row := q.db.QueryRow(ctx, latestTelegramMessage, arg.RequestID, arg.ChatID)
-	var message_id pgtype.Int8
-	err := row.Scan(&message_id)
-	return message_id, err
-}
-
-const latestTelegramState = `-- name: LatestTelegramState :one
-SELECT state FROM telegram_deliveries WHERE request_id=$1 AND chat_id=$2 ORDER BY sequence DESC LIMIT 1
-`
-
-type LatestTelegramStateParams struct {
-	RequestID uuid.UUID
-	ChatID    int64
-}
-
-func (q *Queries) LatestTelegramState(ctx context.Context, arg LatestTelegramStateParams) (string, error) {
-	row := q.db.QueryRow(ctx, latestTelegramState, arg.RequestID, arg.ChatID)
-	var state string
-	err := row.Scan(&state)
-	return state, err
 }
 
 const lockDecisionCallback = `-- name: LockDecisionCallback :exec

@@ -231,3 +231,23 @@ func TestSupportSQLBoundary(t *testing.T) {
 	}
 	checkSQLBoundary(t, "support", ownsSQL)
 }
+
+func TestNotificationsTelegramSQLBoundary(t *testing.T) {
+	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?telegram_deliveries\b`)
+	ownsSQL := func(text string) bool {
+		return pattern.MatchString(strings.ReplaceAll(text, `"`, ""))
+	}
+	for _, sql := range []string{
+		`SELECT * FROM telegram_deliveries`, `SELECT * FROM trial_requests JOIN telegram_deliveries USING (request_id)`,
+		`UPDATE telegram_deliveries SET state=$1`, `INSERT INTO telegram_deliveries VALUES ($1)`,
+		`DELETE FROM public.telegram_deliveries`, `SELECT * FROM "public"."telegram_deliveries"`,
+	} {
+		if !ownsSQL(sql) {
+			t.Fatal("negative fixture bypassed notification ownership", sql)
+		}
+	}
+	if ownsSQL(`SELECT request_id FROM trial_requests`) {
+		t.Fatal("foreign owner rejected")
+	}
+	checkSQLBoundary(t, "notifications", ownsSQL)
+}

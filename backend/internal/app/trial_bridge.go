@@ -2,15 +2,16 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
+	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/telegram"
 	"example.com/cabinet/backend/internal/platform"
-	"example.com/cabinet/backend/internal/wire"
 )
 
-// TrialBridge adapts owned trial actions and the transitional delivery outbox.
+// TrialBridge adapts owned trial actions and notification delivery to the channel.
 type TrialBridge struct{ svc *platform.Service }
 
 var _ telegram.TrialActions = (*TrialBridge)(nil)
@@ -32,6 +33,10 @@ func bridgeError(err error) error {
 	if errors.As(err, &trialError) {
 		out.Code = trialError.Code
 		out.CurrentRequestStatus, _ = trialError.Details["current_request_status"].(string)
+	}
+	var deliveryError *notifications.Error
+	if errors.As(err, &deliveryError) {
+		out.Code = deliveryError.Code
 	}
 	return out
 }
@@ -64,43 +69,33 @@ func (b *TrialBridge) Reconcile(ctx context.Context, in telegram.SupportAction) 
 	return telegram.Operation{ID: out.OperationId, Status: string(out.Status)}, bridgeError(err)
 }
 func (b *TrialBridge) Claim(ctx context.Context) (*telegram.Delivery, error) {
-	out, err := b.svc.ClaimTelegramJobs(ctx, wire.ClaimInput{Limit: 1})
+	out, err := b.svc.Notifications().ClaimTelegramJobs(ctx, 1)
 	if err != nil {
 		return nil, bridgeError(err)
 	}
-	if len(out.Jobs) == 0 {
+	if len(out) == 0 {
 		return nil, nil
 	}
-	j := out.Jobs[0]
-	return &telegram.Delivery{ID: j.JobId, ChatID: j.ChatId, Kind: string(j.Kind), Card: outboxCard(j.Payload), LeaseToken: j.LeaseToken, LeaseExpiresAt: j.LeaseExpiresAt}, nil
+	j := out[0]
+	var payload subscriptions.TelegramPayload
+	if json.Unmarshal(j.Payload, &payload) != nil {
+		return nil, &telegram.ActionError{Code: "SERVICE_UNAVAILABLE"}
+	}
+	return &telegram.Delivery{ID: j.JobID, ChatID: j.ChatID, Kind: j.Kind, Card: card(payload), LeaseToken: j.LeaseToken, LeaseExpiresAt: j.LeaseExpiresAt}, nil
 }
 func (b *TrialBridge) Complete(ctx context.Context, d telegram.Delivery, out telegram.DeliveryOutcome) error {
-	var result wire.TelegramResult
+	var result json.RawMessage
 	var err error
 	switch out.Kind {
 	case "sent":
-		err = result.FromTelegramSent(wire.TelegramSent{Kind: "sent", ChatId: out.ChatID, MessageId: out.MessageID})
+		result, err = json.Marshal(notifications.TelegramSent{Kind: "sent", ChatId: out.ChatID, MessageId: out.MessageID})
 	case "delivery_failed":
-		err = result.FromTelegramFailed(wire.TelegramFailed{Kind: "delivery_failed", Code: wire.TelegramFailedCode(out.Code)})
+		result, err = json.Marshal(notifications.TelegramFailed{Kind: "delivery_failed", Code: out.Code})
 	default:
 		return &telegram.ActionError{Code: "INVALID_INPUT"}
 	}
 	if err != nil {
 		return &telegram.ActionError{Code: "INVALID_INPUT"}
 	}
-	return bridgeError(b.svc.CompleteTelegramJob(ctx, d.ID, wire.TelegramResultInput{LeaseToken: d.LeaseToken, Result: result}))
-}
-
-func outboxCard(p wire.TelegramPayload) telegram.TrialCard {
-	out := telegram.TrialCard{RequestID: p.RequestId, OperationID: p.OperationId, TargetMessageID: p.TargetMessageId, Comment: p.Comment, CreatedAt: p.CreatedAt, Status: string(p.Status)}
-	if p.Email != nil {
-		out.Email = string(*p.Email)
-	}
-	if p.DisplayName != nil {
-		out.DisplayName = *p.DisplayName
-	}
-	if p.TelegramId != nil {
-		out.TelegramID = *p.TelegramId
-	}
-	return out
+	return bridgeError(b.svc.Notifications().CompleteTelegramJob(ctx, d.ID, d.LeaseToken, result))
 }
