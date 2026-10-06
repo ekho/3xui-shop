@@ -210,3 +210,41 @@ frozen bytes и replay; `restore` сохраняет финансовые фак
 реальные checkout и деньги требуют отдельного стенда с доступом провайдера.
 
 Результаты и границы: [локальная приёмка С15](../../docs/evidence/s15-acceptance.md).
+
+## Продление через YooMoney
+
+Клиент открывает `/cabinet/renew`, выбирает период своего текущего конечного
+тарифа и оплачивает заказ. Пока поддерживаются YooMoney AC/PC и RUB.
+Скрытый собственный тариф доступен; архивный или тариф без RUB-цены — нет.
+Цена и условия фиксируются при создании заказа. Назначение другого тарифа
+до выдачи сохраняет деньги для разбора оператором. UUID, subscription ID,
+ключ панели и сервер сохраняются; срок — max(native expiry, now) + оплаченные
+дни, трафик сбрасывается. Истёкший или исчерпанный доступ включается, ban остаётся.
+
+До реализации достоверного состояния Stars в С35 внешняя покупка и продление
+доступны новым web-аккаунтам без Telegram/legacy ID. Неизвестный рекуррент
+закрывает checkout и выдачу, включая ранее созданный заказ. Нельзя откатывать
+миграцию20 после сохранения продлений: история должна остаться читаемой.
+
+Локальная проверка полностью отделена от реальных денег и пользовательского VPN:
+
+```sh
+LOCAL_PROFILE=native python3 deploy/purchase/renewal-local.py prepare
+LOCAL_PROFILE=native python3 deploy/purchase/renewal-local.py up
+LOCAL_PROFILE=native python3 deploy/purchase/renewal-local.py check
+LOCAL_PROFILE=native python3 deploy/purchase/renewal-local.py restore
+LOCAL_PROFILE=native python3 deploy/purchase/renewal-local.py stop
+```
+
+Используется только собственный `cabinet-c16`, Docker subnet10.253.16.0/28,
+свободные loopback-порты58443,59444–59447, native3X-UI3.7.0 и TLS Mailpit.
+Секреты, dump, отчёты и сертификат остаются в закрытом
+`.superpowers/acceptance/c16-renewal/native`. Системное доверие менять не нужно.
+`check` проверяет active/expired/exhausted, replay, очередное продление и поздние
+ban/plan/identity guards. Исчерпание создаётся синтетическими счётчиками только
+при остановленной панели этого проекта. `restore` задерживает её access job,
+сохраняет funded target, останавливает исходный backend и сравнивает восстановленную
+базу READ ONLY без запуска её исполнителей. После очистки авторизации и повторной
+сверки исходный backend применяет прежний target. `stop` сохраняет данные стенда.
+
+Результаты и ограничения: [локальная приёмка С16](../../docs/evidence/s16-renewal-acceptance.md).
