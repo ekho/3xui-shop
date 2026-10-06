@@ -121,6 +121,11 @@ export const getPurchaseOrder=(id:string,signal?:AbortSignal)=>request<PurchaseO
 export const cancelPurchaseOrder=(id:string,key:string,signal?:AbortSignal)=>request<PurchaseOrder>('orders/'+encodeURIComponent(id)+'/cancel','POST',{},signal,true,key);
 export const getOperatorPurchaseOrder=(clientId:string,signal?:AbortSignal)=>request<CurrentPurchaseOrder>(operatorClientPath(clientId)+'/orders/current','GET',undefined,signal);
 export const reconcilePurchaseOrder=(clientId:string,id:string,input:PurchaseReconcileInput,key:string,signal?:AbortSignal)=>request<PurchaseOrder>(operatorClientPath(clientId)+'/orders/'+encodeURIComponent(id)+'/reconcile','POST',input,signal,true,key);
+export type ManualPaymentDecisionInput=components['schemas']['ManualPaymentDecisionInput'];
+export type ManualPaymentPage=components['schemas']['ManualPaymentPage'];
+export const reportManualPayment=(id:string,key:string,signal?:AbortSignal)=>request<PurchaseOrder>('orders/'+encodeURIComponent(id)+'/manual-report','POST',{},signal,true,key);
+export const decideManualPayment=(clientId:string,id:string,input:ManualPaymentDecisionInput,key:string,signal?:AbortSignal)=>request<PurchaseOrder>(operatorClientPath(clientId)+'/orders/'+encodeURIComponent(id)+'/manual-decision','POST',input,signal,true,key);
+export const getManualPaymentRequests=(after:string|null,signal?:AbortSignal)=>request<ManualPaymentPage>('operator/manual-payments'+(after?'?after='+encodeURIComponent(after):''),'GET',undefined,signal);
 export const getOperatorCatalogue=(page:number,signal?:AbortSignal)=>request<OperatorCatalogueResult>('operator/catalogue?page='+page+'&per_page=50','GET',undefined,signal);
 export const createCataloguePlan=(input:components['schemas']['CataloguePlanCreateInput'],key:string,signal?:AbortSignal)=>request<OperatorCataloguePlan>('operator/catalogue/plans','POST',input,signal,true,key);
 export const reviseCataloguePlan=(id:string,input:components['schemas']['CataloguePlanRevisionInput'],key:string,signal?:AbortSignal)=>request<OperatorCataloguePlan>('operator/catalogue/plans/'+encodeURIComponent(id)+'/revision','POST',input,signal,true,key);
