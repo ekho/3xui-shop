@@ -42,7 +42,7 @@
 - [ ] Run `go -C backend test -race ./internal/platform ./internal/modules/vpn ./internal/modules/subscriptions ./internal/httpapi -run 'Test(Purchase|YooMoney|Access|Monthly|Trial|Provision)' -count=1` with private test file settings. Expected: all required PG/Redis tests execute and PASS.
 - [ ] Validate generation and diff; Conventional Commit with Co-Authored, verify SSH/branch then push integration branch. Expected: source preserved, same PR source unchanged until final delivery.
 
-### Task 2: Полная локальная приёмка и завершение PR #5
+### Task 2: Полная локальная приёмка
 
 **Files:** existing deploy/acceptance and deploy/purchase helpers; docs/evidence/s10-modular-integration-acceptance.md; roadmap/status docs. Private verification driver stays outside Git.
 
@@ -51,6 +51,14 @@
 - [ ] Read current Native helper instructions; use existing local stack and disposable secret. Run full generation/no drift, API compatibility and dependency checks, Go vet/connected race/browser tests, web types/build/full Playwright, runtime config and Python regression. Expected: all PASS, no skipped required integration checks or external payment submit.
 - [ ] Run ordinary native HTTPS/3X-UI 3.7.0 checks then existing purchase prepare/overlay/check/restore on owned fixtures. Verify one access, finite trial identity/remaining period, signed callback repeat, pending paid restart and backup/restore; always stop own native stack. Expected: PASS with declared local limits.
 - [ ] Record exact revision/commands/durations and M04b delivery proof; update roadmap. Expected: local verification and external acceptance clearly separate.
+
+## Finish после Native-задач
+
+Final task command: private `verify-final.py` проверяет всю завершённую матрицу,
+идентичность final product после docs commit, историю, генерацию и совместимость.
+Задача фиксирует локальные проверки; независимый review и delivery выполняются
+после task-done, как требует Native workflow. #17 остаётся открытой до всех gates.
+
 - [ ] One fresh Astra/high whole-branch reviewer; ledger every declined judgment/ruling/minor. Critical/Important receive one RED→GREEN fix pass and required suite; no re-review.
 - [ ] Preserve all rulings in public evidence; export/delete only this plan's Native scratch. Expected: record retained, sibling work preserved.
 - [ ] Inspect final source, verify old afaeacf ancestor and source remote unchanged; fast-forward remote feature/s10-first-purchase, update/attach PR #5. Wait all exact-source CI, check merge effects, merge into v2 with SHA guard and verify merge tree/preview/tag/3 images. Expected: authorized delivery, no auto-merge/production. Close #17/Project Done only after its own gates; proceed to М05.
