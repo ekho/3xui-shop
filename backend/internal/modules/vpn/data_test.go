@@ -15,7 +15,7 @@ func TestAccessOwnerKeepsPhysicalSession(t *testing.T) {
 	e := testkit.Open(t)
 	ctx := context.Background()
 	authority := accounts.New(e.Pool, e.Redis, nil, accounts.Config{}, nil)
-	svc := New(e.Pool, authority, nil, func() Settings { return Settings{} }, e.Clock, nil)
+	svc := New(e.Pool, authority, nil, func() Settings { return Settings{} }, e.Clock, nil, PurchaseHooks{})
 	account := uuid.New()
 	owner, err := svc.OpenAccessOwner(ctx, account)
 	if err != nil {
@@ -80,7 +80,7 @@ func TestTrialOutcomeFailureRollsBack(t *testing.T) {
 					return errors.New("fixture outcome failure")
 				}
 			}
-			svc := New(e.Pool, authority, nil, func() Settings { return Settings{PanelID: "other"} }, e.Clock, outcome)
+			svc := New(e.Pool, authority, nil, func() Settings { return Settings{PanelID: "other"} }, e.Clock, outcome, PurchaseHooks{})
 			if err := svc.Provision(ctx, operation); err == nil {
 				t.Fatal("unsaved outcome accepted")
 			}

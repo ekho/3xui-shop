@@ -18,6 +18,9 @@ type Config struct {
 	PanelDuplicateGuardVerified                                             bool
 	PanelRootCAs                                                            *x509.CertPool
 	AccessResetTimezone                                                     string
+	YooMoneyEnabled                                                         bool
+	YooMoneyWalletID                                                        string
+	YooMoneyNotificationSecret                                              []byte
 
 	Operators         []int64
 	AdapterToken      string
@@ -64,10 +67,25 @@ func SecretFile(name string) (string, error) {
 }
 func LoadConfig() (Config, error) {
 	c := Config{CabinetOrigin: os.Getenv("CABINET_ORIGIN"), TermsVersion: os.Getenv("TERMS_VERSION"), PrivacyVersion: os.Getenv("PRIVACY_VERSION"), SMTPAddress: os.Getenv("SMTP_ADDRESS"), SMTPUser: os.Getenv("SMTP_USER"), SMTPFrom: os.Getenv("SMTP_FROM"), RateNamespace: "platform"}
+	var err error
 	if value := os.Getenv("TRUSTED_PROXY_CIDRS"); value != "" {
 		c.TrustedProxyCIDRs = strings.Split(value, ",")
 	}
 	c.PanelID = os.Getenv("PANEL_ID")
+	c.YooMoneyWalletID = os.Getenv("YOOMONEY_WALLET_ID")
+	if value := os.Getenv("SHOP_PAYMENT_YOOMONEY_ENABLED"); value != "" {
+		c.YooMoneyEnabled, err = strconv.ParseBool(value)
+		if err != nil {
+			return c, errors.New("invalid SHOP_PAYMENT_YOOMONEY_ENABLED")
+		}
+	}
+	if c.YooMoneyEnabled || os.Getenv("YOOMONEY_NOTIFICATION_SECRET_FILE") != "" || os.Getenv("YOOMONEY_NOTIFICATION_SECRET") != "" {
+		secret, e := SecretFile("YOOMONEY_NOTIFICATION_SECRET")
+		if e != nil {
+			return c, e
+		}
+		c.YooMoneyNotificationSecret = []byte(secret)
+	}
 	c.AccessResetTimezone = os.Getenv("ACCESS_RESET_TIMEZONE")
 	if c.AccessResetTimezone == "" {
 		c.AccessResetTimezone = "UTC"
@@ -75,7 +93,6 @@ func LoadConfig() (Config, error) {
 	c.PanelURL = os.Getenv("PANEL_URL")
 	c.SubscriptionBaseURL = os.Getenv("SUBSCRIPTION_BASE_URL")
 	c.PanelUsername = os.Getenv("PANEL_USERNAME")
-	var err error
 	if value := os.Getenv("TRIAL_ENABLED"); value != "" {
 		c.TrialEnabled, err = strconv.ParseBool(value)
 		if err != nil {
@@ -187,6 +204,19 @@ func LoadConfig() (Config, error) {
 	return c, c.Validate()
 }
 func (c Config) Validate() error {
+	if c.YooMoneyEnabled && (c.YooMoneyWalletID == "" || len(c.YooMoneyNotificationSecret) == 0) {
+		return errors.New("enabled YooMoney requires wallet and notification secret file")
+	}
+	if c.YooMoneyWalletID != "" {
+		if len(c.YooMoneyWalletID) < 11 || len(c.YooMoneyWalletID) > 20 {
+			return errors.New("invalid YOOMONEY_WALLET_ID")
+		}
+		for _, digit := range c.YooMoneyWalletID {
+			if digit < '0' || digit > '9' {
+				return errors.New("invalid YOOMONEY_WALLET_ID")
+			}
+		}
+	}
 	zone := c.AccessResetTimezone
 	if zone == "" {
 		zone = "UTC"

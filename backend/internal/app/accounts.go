@@ -22,9 +22,15 @@ func NewService(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 	})
 	catalogueOwner := catalogue.New(pool, owner, nil)
 	var subscriptionOwner *subscriptions.Service
+	var service *platform.Service
 	vpnOwner := vpn.New(pool, owner, func() *river.Client[pgx.Tx] { return queue }, func() vpn.Settings { return cfg.VPNSettings() }, nil, func(ctx context.Context, tx pgx.Tx, r, o uuid.UUID, status string) error {
 		return subscriptionOwner.RecordTrialOutcomeTx(ctx, tx, r, o, status)
-	})
+	}, vpn.PurchaseHooks{Check: func(ctx context.Context, tx pgx.Tx, order, account, operation uuid.UUID) (string, error) {
+		return service.CheckPurchaseAccess(ctx, tx, order, account, operation)
+	}, Outcome: func(ctx context.Context, tx pgx.Tx, operation uuid.UUID, status, reason string) error {
+		return service.RecordPurchaseAccessTx(ctx, tx, operation, status, reason)
+	}})
 	subscriptionOwner = subscriptions.New(pool, owner, catalogueOwner, vpnOwner, func() subscriptions.Config { return cfg.SubscriptionSettings() }, nil)
-	return platform.NewServiceWithModules(pool, limiter, queue, cfg, owner, catalogueOwner, subscriptionOwner, vpnOwner)
+	service = platform.NewServiceWithModules(pool, limiter, queue, cfg, owner, catalogueOwner, subscriptionOwner, vpnOwner)
+	return service
 }

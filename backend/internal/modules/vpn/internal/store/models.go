@@ -34,6 +34,7 @@ type AccessOperation struct {
 	Sequence          int64
 	ExecutionActorID  *uuid.UUID
 	MonthlyPeriod     pgtype.Text
+	PurchaseOrderID   *uuid.UUID
 }
 
 type TrialOperation struct {

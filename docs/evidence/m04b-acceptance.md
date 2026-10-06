@@ -99,8 +99,14 @@ Owner callback test проверяет review-path rollback; прежний post
 GrantApplied failure test и общий caller Tx дополняют его. Отдельного assertion
 rollback assignment в этих тестах нет; это предел указанного доказательства.
 
-CI/merge/preview М04б ещё не подтверждены, #58 остаётся открытой. Локальная
-проверка и review не подменяют эти gates.
+М04б доставлен через [PR #65](https://github.com/ekho/3xui-shop/pull/65): exact-source
+d73c4f1c4d2078ab6dc7b63922ae7a1b6e2ec323, CI37394262146/37394262480 SUCCESS.
+Merge26d4b96733881d89b0538e479c2facdca232f419 имеет ожидаемые parents и
+source-equal tree299901fc81baf04aaba9fdab464a06df9fd15d4a. Preview37395227843 SUCCESS;
+[2.0.0-dev.17](https://github.com/ekho/3xui-shop/releases/tag/2.0.0-dev.17), annotated
+tag и все три multiarch GHCR образа проверены на exact merge/source/version.
+#58 CLOSED/Project Done, actual parent отсутствует. Текущее подтверждение:
+[доставка #58](https://github.com/ekho/3xui-shop/issues/58#issuecomment-6006806107).
 Авторизация последовательных PR в v2 и preliminary releases действует;
 CI waiver старого PR62 не относится к этой ветке.
 

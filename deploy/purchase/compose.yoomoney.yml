@@ -1,0 +1,13 @@
+# Opt-in overlay. Configure the recipient and a notification secret file at deploy time.
+x-payment: &payment
+  environment:
+    SHOP_PAYMENT_YOOMONEY_ENABLED: '${SHOP_PAYMENT_YOOMONEY_ENABLED:-true}'
+    YOOMONEY_WALLET_ID: '${YOOMONEY_WALLET_ID:?required}'
+    YOOMONEY_NOTIFICATION_SECRET_FILE: /run/secrets/yoomoney_notification_secret
+  secrets: [yoomoney_notification_secret]
+services:
+  backend: *payment
+  migrate: *payment
+  reconcile: *payment
+secrets:
+  yoomoney_notification_secret: {file: '${YOOMONEY_NOTIFICATION_SECRET_FILE:?required}'}

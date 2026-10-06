@@ -33,13 +33,37 @@ type Service struct {
 	config   func() Settings
 	now      func() time.Time
 	outcome  func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID, string) error
+	purchase PurchaseHooks
 }
 
-func New(pool *pgxpool.Pool, authority *accounts.Service, queue func() *river.Client[pgx.Tx], config func() Settings, now func() time.Time, outcome func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID, string) error) *Service {
+type PurchaseHooks struct {
+	Check   func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID, uuid.UUID) (string, error)
+	Outcome func(context.Context, pgx.Tx, uuid.UUID, string, string) error
+}
+
+func New(pool *pgxpool.Pool, authority *accounts.Service, queue func() *river.Client[pgx.Tx], config func() Settings, now func() time.Time, outcome func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID, string) error, purchase PurchaseHooks) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{pool: pool, accounts: authority, queue: queue, config: config, now: now, outcome: outcome}
+	return &Service{pool: pool, accounts: authority, queue: queue, config: config, now: now, outcome: outcome, purchase: purchase}
+}
+
+func (s *Service) checkPurchase(ctx context.Context, tx pgx.Tx, order *uuid.UUID, account, operation uuid.UUID) string {
+	if order == nil || s.purchase.Check == nil || s.purchase.Outcome == nil {
+		return "purchase_funding_invalid"
+	}
+	reason, err := s.purchase.Check(ctx, tx, *order, account, operation)
+	if err != nil && reason == "" {
+		return "purchase_funding_invalid"
+	}
+	return reason
+}
+
+func (s *Service) purchaseOutcome(ctx context.Context, tx pgx.Tx, operation uuid.UUID, status, reason string) error {
+	if s.purchase.Outcome == nil {
+		return unavailable()
+	}
+	return s.purchase.Outcome(ctx, tx, operation, status, reason)
 }
 func (s *Service) PanelClient() *PanelClient { return NewPanelClient(s.config().Panel) }
 func (s *Service) recordOutcome(ctx context.Context, tx pgx.Tx, request, operation uuid.UUID, status string) error {

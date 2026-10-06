@@ -22,6 +22,19 @@ async function routes(page:Page,extra?:(route:Route,path:string)=>Promise<boolea
  return route.fulfill({json:{}});
 });}
 
+test('an applied purchase does not replace a newer access operation requiring review',async({page})=>{
+ const oldId='30000000-0000-4000-8000-000000000001';let release!:()=>void;const pending=new Promise<void>(resolve=>release=resolve);
+ await routes(page,async(route,path)=>{
+  if(path.endsWith('/operator/clients/'+clientId)){await route.fulfill({json:card(clientId,{...subscription,access_operation_id:operationId,access_operation_status:'needs_review'})});return true;}
+  if(path.endsWith('/orders/current')){await pending;await route.fulfill({json:{order:{order_id:'80000000-0000-4000-8000-000000000001',action:'purchase',quote:{plan_id:planId,revision:1,devices:2,period_days:30,traffic_gb:20,profile:'regular',amount_minor:'10000',currency:'RUB'},payment_method:'yoomoney',payment_type:'AC',payment_status:'paid',fulfillment_status:'applied',created_at:'2026-10-01T00:00:00Z',expires_at:'2026-10-01T00:30:00Z',expired:true,can_pay:false,can_cancel:false,review_required:false,access_operation_id:oldId,checkout:null}}});return true;}
+  if(path.includes('/access-operations/')){await route.fulfill({json:{...operation,operation_id:path.endsWith(oldId)?oldId:operationId,status:path.endsWith(oldId)?'applied':'needs_review'}});return true;}return false;
+ });
+ await page.goto('/admin/clients/'+clientId+'/show?lang=en');const access=page.getByRole('region',{name:'Access operations'});
+ try{await expect(access.locator('.access-reconcile')).toBeVisible();}finally{release();}
+ const purchase=page.getByRole('region',{name:'First purchase'});await expect(purchase.getByText('Payment received. Access is ready.')).toBeVisible();await expect(access.locator('.access-operation-status')).toContainText(operationId);await expect(access.locator('.access-reconcile')).toBeVisible();
+ await purchase.getByRole('button',{name:'Refresh status'}).click();await expect(purchase.getByText('Payment received. Access is ready.')).toBeVisible();await expect(access.locator('.access-operation-status')).toContainText(operationId);await expect(access.locator('.access-reconcile')).toBeVisible();
+});
+
 test('compensation validates days, preserves reason and one key after lost response, then shows pending',async({page})=>{
  const calls:{body:Model<'AccessOperationInput'>;key:string}[]=[];let release!:()=>void;const pending=new Promise<void>(resolve=>release=resolve);
  await routes(page,async(route,path)=>{if(path.endsWith('/access-operations')){calls.push({body:route.request().postDataJSON(),key:route.request().headers()['idempotency-key']});if(calls.length===1)await route.abort();else{await pending;await route.fulfill({status:202,json:operation});}return true;}return false;});
