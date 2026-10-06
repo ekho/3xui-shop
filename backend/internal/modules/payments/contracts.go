@@ -26,23 +26,28 @@ type PurchaseQuote struct {
 	TrafficGb   int64     `json:"traffic_gb"`
 }
 type PurchaseOrder struct {
-	AccessOperationId *uuid.UUID        `json:"access_operation_id"`
-	Action            string            `json:"action"`
-	CanCancel         bool              `json:"can_cancel"`
-	CanPay            bool              `json:"can_pay"`
-	Checkout          *YooMoneyCheckout `json:"checkout"`
-	CreatedAt         time.Time         `json:"created_at"`
-	Expired           bool              `json:"expired"`
-	ExpiresAt         time.Time         `json:"expires_at"`
-	FulfillmentStatus string            `json:"fulfillment_status"`
-	OrderId           uuid.UUID         `json:"order_id"`
-	PaymentMethod     string            `json:"payment_method"`
-	PaymentStatus     string            `json:"payment_status"`
-	PaymentType       string            `json:"payment_type"`
-	Quote             PurchaseQuote     `json:"quote"`
-	ReviewRequired    bool              `json:"review_required"`
-	ManualPayment     *ManualPayment    `json:"manual_payment,omitempty"`
-	YooKassaCheckout  *YooKassaCheckout `json:"yookassa_checkout,omitempty"`
+	AccessOperationId *uuid.UUID         `json:"access_operation_id"`
+	Action            string             `json:"action"`
+	CanCancel         bool               `json:"can_cancel"`
+	CanPay            bool               `json:"can_pay"`
+	Checkout          *YooMoneyCheckout  `json:"checkout"`
+	CreatedAt         time.Time          `json:"created_at"`
+	Expired           bool               `json:"expired"`
+	ExpiresAt         time.Time          `json:"expires_at"`
+	FulfillmentStatus string             `json:"fulfillment_status"`
+	OrderId           uuid.UUID          `json:"order_id"`
+	PaymentMethod     string             `json:"payment_method"`
+	PaymentStatus     string             `json:"payment_status"`
+	PaymentType       string             `json:"payment_type"`
+	Quote             PurchaseQuote      `json:"quote"`
+	ReviewRequired    bool               `json:"review_required"`
+	ManualPayment     *ManualPayment     `json:"manual_payment,omitempty"`
+	YooKassaCheckout  *YooKassaCheckout  `json:"yookassa_checkout,omitempty"`
+	CryptomusCheckout *CryptomusCheckout `json:"cryptomus_checkout,omitempty"`
+}
+type CryptomusCheckout struct {
+	State string  `json:"state"`
+	URL   *string `json:"url"`
 }
 type YooKassaCheckout struct {
 	State string  `json:"state"`

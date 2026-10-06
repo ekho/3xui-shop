@@ -1126,6 +1126,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/webhooks/cryptomus": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Effective provider IP and documented ordered JSON signature are validated. UTF-8 unique JSON <=16 KiB; signed body only hints an order. Authenticated fixed HTTPS payment/info supplies money facts. Unknown signed order acknowledged without API/funding; browser return never confirms payment. */
+        post: operations["receiveCryptomus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1818,9 +1835,9 @@ export interface components {
         };
         PaymentMethod: {
             /** @enum {string} */
-            id: "yoomoney" | "manual" | "yookassa";
+            id: "yoomoney" | "manual" | "yookassa" | "cryptomus";
             /** @enum {string} */
-            currency: "RUB";
+            currency: "RUB" | "USD";
         };
         PaymentMethods: {
             methods: components["schemas"]["PaymentMethod"][];
@@ -1835,9 +1852,9 @@ export interface components {
             /** Format: int64 */
             period_days: number;
             /** @enum {string} */
-            payment_method: "yoomoney" | "manual" | "yookassa";
+            payment_method: "yoomoney" | "manual" | "yookassa" | "cryptomus";
             /** @enum {string} */
-            payment_type: "AC" | "PC" | "MANUAL" | "YOOKASSA";
+            payment_type: "AC" | "PC" | "MANUAL" | "YOOKASSA" | "CRYPTOMUS";
         };
         PurchaseQuote: {
             /** Format: uuid */
@@ -1855,7 +1872,7 @@ export interface components {
             /** @description Exact integer minor units within signed int64; no floating point. */
             amount_minor: string;
             /** @enum {string} */
-            currency: "RUB";
+            currency: "RUB" | "USD";
         };
         YooMoneyCheckoutFields: {
             receiver: string;
@@ -1883,9 +1900,9 @@ export interface components {
             action: "purchase";
             quote: components["schemas"]["PurchaseQuote"];
             /** @enum {string} */
-            payment_method: "yoomoney" | "manual" | "yookassa";
+            payment_method: "yoomoney" | "manual" | "yookassa" | "cryptomus";
             /** @enum {string} */
-            payment_type: "AC" | "PC" | "MANUAL" | "YOOKASSA";
+            payment_type: "AC" | "PC" | "MANUAL" | "YOOKASSA" | "CRYPTOMUS";
             /** @enum {string} */
             payment_status: "pending" | "paid" | "canceled";
             /** @enum {string} */
@@ -1903,6 +1920,7 @@ export interface components {
             checkout: components["schemas"]["YooMoneyCheckout"] | null;
             manual_payment?: components["schemas"]["ManualPayment"] | null;
             yookassa_checkout?: components["schemas"]["YooKassaCheckout"] | null;
+            cryptomus_checkout?: components["schemas"]["CryptomusCheckout"] | null;
         };
         CurrentPurchaseOrder: {
             order: components["schemas"]["PurchaseOrder"] | null;
@@ -1957,6 +1975,22 @@ export interface components {
             } & {
                 [key: string]: unknown;
             };
+        } & {
+            [key: string]: unknown;
+        };
+        CryptomusCheckout: {
+            /** @enum {string} */
+            state: "preparing" | "ready" | "unavailable";
+            url: string | null;
+        };
+        CryptomusNotification: {
+            /** @enum {string} */
+            type: "payment";
+            /** Format: uuid */
+            uuid: string;
+            /** Format: uuid */
+            order_id: string;
+            sign: string;
         } & {
             [key: string]: unknown;
         };
@@ -8002,6 +8036,49 @@ export interface operations {
                 content?: never;
             };
             /** @description Provider or persistence temporarily unavailable; safe retry. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    receiveCryptomus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CryptomusNotification"];
+            };
+        };
+        responses: {
+            /** @description Acknowledged, not fulfillment confirmation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid body/query/identity. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sender or signature not permitted. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Provider/persistence temporarily unavailable; safe retry. */
             503: {
                 headers: {
                     [name: string]: unknown;

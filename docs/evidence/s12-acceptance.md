@@ -77,7 +77,7 @@ Go-попытка и диагностические failures выше остаю
 | AC04 | Immutable receipt/first known income, NULL net, foreign-method collision; поздние invalid income/refund/currency и противоречие блокируют подготовленный access. Shared prepare/access/reconcile guard не выдаёт доступ без provider proof; replay сохраняет один receipt/job/access. |
 | AC05 | Новый rendered suite17 cases: ru/en/keyboard/preparing→ready, fresh own order перед переходом, lost-response key/body, шесть unsafe URLs, шесть stale-state cases, read403, error/retry/review и return not paid. Старые YooMoney/manual UI проходят в полном156 matrix. Hosted PSP UI перехвачена браузерным тестом. |
 | AC06 | Own cabinet-c12: реальный HTTP и River → native 3X-UI3.7.0, новый доступ и переход с триала с прежним identity/expiry плюс30days, devices/traffic; replay один receipt/job/access, unknown income NULL. Paid-pending dump восстанавливается read-only с checkout digest; auth maintenance идемпотентна, restored writers не запускаются. Только исходный backend возобновляет выдачу одного доступа. |
-| AC07 | Fresh whole-branch review, exact-source CI, ручной PR→v2 и actual merge/preview остаются отдельными gates; результаты публикуются в #20. До их завершения задача остаётся OPEN. |
+| AC07 | Fresh review/one fix pass, exact-source CI, ручной PR74→v2, actual parents/source-equal tree и preview2.0.0-dev.37 проверены; #20 CLOSED/Project Done. |
 
 Review Focus покрыт напрямую: unknown income/cross-method collision — AC04;
 ambiguous POST/deadline/config drift — AC02; body vs authenticated GET/source IP —
@@ -115,3 +115,30 @@ Auth/certificate failures не маскируются. Webhook fixture моде�
 доказывает юридическую или фискальную готовность. Legacy import/cutover/Python removal
 остаются С45–С47; продление/тариф/споры/возвраты/MiniApp — отдельными сценариями,
 promos/referrals — Р7. Закрытие #20 означает собственную локальную приёмку и доставку в v2.
+
+
+## Доставка — 2026-10-06
+
+[PR74](https://github.com/ekho/3xui-shop/pull/74) вручную слит в v2 по текущему мандату.
+Source `8ddd0646140abf16dcc7dafb6e3f077e527553fc`, merge
+`42a791c6894d58b0e88f16a7fa523eb39b2a8b42`; actual parents
+`d7b69ebd96fe09370c5197d60e1dc6e95324c3e3` и source проверены по Git SSH.
+Source-equal tree `c17449d95d3e233540c9d16b6537da70ed9427e4`.
+Exact-source [Platform push](https://github.com/ekho/3xui-shop/actions/runs/37489153079),
+[Platform PR](https://github.com/ekho/3xui-shop/actions/runs/37489323965) и
+[PR images](https://github.com/ekho/3xui-shop/actions/runs/37489322990) SUCCESS.
+
+Actual [v2 preview](https://github.com/ekho/3xui-shop/actions/runs/37491911049) SUCCESS;
+[2.0.0-dev.37](https://github.com/ekho/3xui-shop/releases/tag/2.0.0-dev.37) — non-draft
+prerelease, peeled tag равен actual merge. Anonymous OCI verification проверила
+три version/source indexes и шесть amd64/arm64 revision/version/source labels:
+
+- bot: `sha256:08c88314900b586bf365ddf5ea9ff6735be996a0a49f71bc5682aa4c22ee3fe2`
+- backend: `sha256:014d08f0212c80382fe23d802588e08cc95b698d4927981c1b34b8148a6e90e7`
+- web: `sha256:b03725ecea8b45ca5d0e15d4eed41e78a2bae1020eb7f3691504693cceebcbdb`
+
+[#20 CLOSED/Project Done](https://github.com/ekho/3xui-shop/issues/20#issuecomment-6020325245)
+после собственной приёмки; actual parent отсутствует. #55 — завершённый M01,
+источник архитектуры, не общий эпик. Private source/log/publication manifests
+проверены и сохранены; own SDD удалён. cabinet-c12 остановлен, volumes сохранены.
+Внешние ограничения выше остаются: публикация не является real merchant/production acceptance.

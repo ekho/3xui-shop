@@ -174,3 +174,21 @@ func (a *API) ReceiveYooKassa(c *echo.Context) error {
 	}
 	return c.NoContent(200)
 }
+
+func (a *API) ReceiveCryptomus(c *echo.Context) error {
+	if !a.payments.CryptomusSourceAllowed(c.RealIP()) {
+		return paymentError(&payments.Error{Status: 403, Code: "INVALID_CREDENTIALS"})
+	}
+	media, _, err := mime.ParseMediaType(c.Request().Header.Get("Content-Type"))
+	if err != nil || media != "application/json" || c.Request().URL.RawQuery != "" {
+		return paymentError(&payments.Error{Status: 400, Code: "INVALID_INPUT"})
+	}
+	raw, err := io.ReadAll(io.LimitReader(c.Request().Body, 16385))
+	if err != nil || len(raw) == 0 || len(raw) > 16384 || !utf8.Valid(raw) {
+		return paymentError(&payments.Error{Status: 400, Code: "INVALID_INPUT"})
+	}
+	if err = a.payments.ReceiveCryptomus(c.Request().Context(), raw); err != nil {
+		return paymentError(err)
+	}
+	return c.NoContent(200)
+}

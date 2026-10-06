@@ -9,6 +9,7 @@ import (
 	"example.com/cabinet/backend/internal/modules/payments"
 	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/vpn"
+	"github.com/google/uuid"
 	"net"
 	"net/mail"
 	"net/url"
@@ -65,7 +66,8 @@ func LoadConfig() (Config, error) {
 	c.Subscriptions.PanelID = os.Getenv("PANEL_ID")
 	c.Payments.YooMoneyWalletID = os.Getenv("YOOMONEY_WALLET_ID")
 	c.Payments.YooKassaShopID, c.Payments.ShopEmail = os.Getenv("YOOKASSA_SHOP_ID"), os.Getenv("SHOP_EMAIL")
-	for name, dest := range map[string]*bool{"SHOP_PAYMENT_YOOKASSA_ENABLED": &c.Payments.YooKassaEnabled, "YOOKASSA_TEST_MODE": &c.Payments.YooKassaTestMode} {
+	c.Payments.CryptomusMerchantID = os.Getenv("CRYPTOMUS_MERCHANT_ID")
+	for name, dest := range map[string]*bool{"SHOP_PAYMENT_YOOKASSA_ENABLED": &c.Payments.YooKassaEnabled, "YOOKASSA_TEST_MODE": &c.Payments.YooKassaTestMode, "SHOP_PAYMENT_CRYPTOMUS_ENABLED": &c.Payments.CryptomusEnabled} {
 		if value := os.Getenv(name); value != "" {
 			*dest, err = strconv.ParseBool(value)
 			if err != nil {
@@ -75,6 +77,12 @@ func LoadConfig() (Config, error) {
 	}
 	if c.Payments.YooKassaEnabled || os.Getenv("YOOKASSA_TOKEN_FILE") != "" || os.Getenv("YOOKASSA_TOKEN") != "" {
 		c.Payments.YooKassaToken, err = SecretFile("YOOKASSA_TOKEN")
+		if err != nil {
+			return c, err
+		}
+	}
+	if c.Payments.CryptomusEnabled || c.Payments.CryptomusMerchantID != "" || os.Getenv("CRYPTOMUS_API_KEY_FILE") != "" || os.Getenv("CRYPTOMUS_API_KEY") != "" {
+		c.Payments.CryptomusAPIKey, err = SecretFile("CRYPTOMUS_API_KEY")
 		if err != nil {
 			return c, err
 		}
@@ -222,6 +230,19 @@ func LoadConfig() (Config, error) {
 	return c, c.Validate()
 }
 func (c Config) Validate() error {
+	if c.Payments.CryptomusEnabled || c.Payments.CryptomusMerchantID != "" || c.Payments.CryptomusAPIKey != "" {
+		merchant, err := uuid.Parse(c.Payments.CryptomusMerchantID)
+		if err != nil || merchant == uuid.Nil || merchant.String() != c.Payments.CryptomusMerchantID {
+			return errors.New("invalid CRYPTOMUS_MERCHANT_ID")
+		}
+		key := c.Payments.CryptomusAPIKey
+		if key == "" || len(key) > 512 || !utf8.ValidString(key) || strings.ContainsAny(key, " \t\r\n\x00") {
+			return errors.New("invalid CRYPTOMUS_API_KEY file")
+		}
+		if len(c.HTTP.CabinetOrigin)+len("/orders/")+36 > 255 {
+			return errors.New("Cryptomus return URL exceeds provider limit")
+		}
+	}
 	if c.Payments.YooKassaEnabled || c.Payments.YooKassaToken != "" {
 		shop, err := strconv.ParseUint(c.Payments.YooKassaShopID, 10, 64)
 		if err != nil || shop == 0 || len(c.Payments.YooKassaShopID) > 20 {

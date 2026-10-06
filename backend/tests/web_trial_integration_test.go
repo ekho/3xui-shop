@@ -199,7 +199,7 @@ func openMode(t *testing.T, native bool) *fixture {
 			http.NotFound(w, r)
 			return
 		}
-		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/healthz" || r.URL.Path == "/webhooks/yoomoney" || r.URL.Path == "/webhooks/yookassa" {
+		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/healthz" || r.URL.Path == "/webhooks/yoomoney" || r.URL.Path == "/webhooks/yookassa" || r.URL.Path == "/webhooks/cryptomus" {
 			handler.ServeHTTP(w, r)
 			return
 		}

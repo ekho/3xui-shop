@@ -8430,6 +8430,37 @@
           }
         }
       }
+    },
+    "/webhooks/cryptomus": {
+      "post": {
+        "operationId": "receiveCryptomus",
+        "description": "Effective provider IP and documented ordered JSON signature are validated. UTF-8 unique JSON <=16 KiB; signed body only hints an order. Authenticated fixed HTTPS payment/info supplies money facts. Unknown signed order acknowledged without API/funding; browser return never confirms payment.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CryptomusNotification"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Acknowledged, not fulfillment confirmation."
+          },
+          "400": {
+            "description": "Invalid body/query/identity."
+          },
+          "403": {
+            "description": "Sender or signature not permitted."
+          },
+          "503": {
+            "description": "Provider/persistence temporarily unavailable; safe retry."
+          }
+        }
+      }
     }
   },
   "components": {
@@ -11254,13 +11285,15 @@
             "enum": [
               "yoomoney",
               "manual",
-              "yookassa"
+              "yookassa",
+              "cryptomus"
             ]
           },
           "currency": {
             "type": "string",
             "enum": [
-              "RUB"
+              "RUB",
+              "USD"
             ]
           }
         },
@@ -11278,7 +11311,7 @@
             "items": {
               "$ref": "#/components/schemas/PaymentMethod"
             },
-            "maxItems": 1
+            "maxItems": 4
           }
         },
         "required": [
@@ -11315,7 +11348,8 @@
             "enum": [
               "yoomoney",
               "manual",
-              "yookassa"
+              "yookassa",
+              "cryptomus"
             ]
           },
           "payment_type": {
@@ -11324,7 +11358,8 @@
               "AC",
               "PC",
               "MANUAL",
-              "YOOKASSA"
+              "YOOKASSA",
+              "CRYPTOMUS"
             ]
           }
         },
@@ -11384,7 +11419,8 @@
           "currency": {
             "type": "string",
             "enum": [
-              "RUB"
+              "RUB",
+              "USD"
             ]
           }
         },
@@ -11490,7 +11526,8 @@
             "enum": [
               "yoomoney",
               "manual",
-              "yookassa"
+              "yookassa",
+              "cryptomus"
             ]
           },
           "payment_type": {
@@ -11499,7 +11536,8 @@
               "AC",
               "PC",
               "MANUAL",
-              "YOOKASSA"
+              "YOOKASSA",
+              "CRYPTOMUS"
             ]
           },
           "payment_status": {
@@ -11565,6 +11603,14 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/YooKassaCheckout"
+              }
+            ],
+            "nullable": true
+          },
+          "cryptomus_checkout": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CryptomusCheckout"
               }
             ],
             "nullable": true
@@ -11805,6 +11851,58 @@
           "type",
           "event",
           "object"
+        ]
+      },
+      "CryptomusCheckout": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "preparing",
+              "ready",
+              "unavailable"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "state",
+          "url"
+        ]
+      },
+      "CryptomusNotification": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "payment"
+            ]
+          },
+          "uuid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "order_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sign": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$"
+          }
+        },
+        "required": [
+          "type",
+          "uuid",
+          "order_id",
+          "sign"
         ]
       }
     }

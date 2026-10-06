@@ -23,6 +23,8 @@ type Config struct {
 	ManualCardDetails                        string
 	YooKassaEnabled, YooKassaTestMode        bool
 	YooKassaShopID, YooKassaToken, ShopEmail string
+	CryptomusEnabled                         bool
+	CryptomusMerchantID, CryptomusAPIKey     string
 }
 
 type Error struct {

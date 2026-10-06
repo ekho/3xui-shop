@@ -56,7 +56,23 @@ const purchaseFundingCheck = `SELECT EXISTS(SELECT 1 FROM purchase_orders p JOIN
            AND r.provider_data->>'shop_id'=c.shop_id AND r.provider_data->>'test'=c.test_mode::text
            AND r.provider_data->>'order_id'=p.id::text AND r.provider_data->>'status'='succeeded'
            AND r.provider_data->>'paid'='true' AND r.provider_data->>'amount_minor'=r.gross_minor::text
-           AND r.provider_data->>'refund_minor'='0'))))`
+           AND r.provider_data->>'refund_minor'='0'))
+   OR (p.payment_method='cryptomus' AND p.quote->>'currency'='USD' AND r.currency='USD' AND r.net_minor IS NULL
+       AND r.notification_type IN ('cryptomus.paid','cryptomus.paid_over')
+       AND r.occurred_at>=p.created_at-interval '5 minutes' AND r.occurred_at<=p.expires_at
+       AND EXISTS(SELECT 1 FROM cryptomus_checkouts c WHERE c.order_id=p.id
+           AND c.first_attempt_at IS NOT NULL AND r.operation_id='cryptomus:'||c.invoice_id::text
+           AND r.provider_data->>'provider'='cryptomus' AND r.provider_data->>'invoice_id'=c.invoice_id::text
+           AND r.provider_data->>'merchant_id'=c.merchant_id AND r.provider_data->>'order_id'=p.id::text
+           AND r.notification_type='cryptomus.'||(r.provider_data->>'status')
+           AND r.provider_data->>'payment_status'=r.provider_data->>'status'
+           AND r.provider_data->'is_final'='true'::jsonb AND r.provider_data->>'currency'='USD'
+           AND r.provider_data->>'amount_minor'=r.gross_minor::text
+           AND r.provider_data->>'payer_currency' ~ '^[A-Z0-9]{1,16}$'
+           AND CASE WHEN r.provider_data->>'payment_amount' ~ '^[0-9]{1,40}(\.[0-9]{1,40})?$'
+                     AND r.provider_data->>'payer_amount' ~ '^[0-9]{1,40}(\.[0-9]{1,40})?$'
+                    THEN (r.provider_data->>'payment_amount')::numeric >= (r.provider_data->>'payer_amount')::numeric
+                         AND (r.provider_data->>'payer_amount')::numeric>0 ELSE false END))))`
 
 func scanPurchase(row pgx.Row) (purchaseRow, error) {
 	var p purchaseRow
@@ -104,6 +120,21 @@ func (s *Service) publicPurchase(ctx context.Context, p purchaseRow) (PurchaseOr
 		out.CanPay = canPay && !p.review && state == "ready" && link != nil
 		out.YooKassaCheckout = &YooKassaCheckout{State: state, URL: link}
 	}
+	if p.method == "cryptomus" {
+		var state string
+		var link *string
+		if err := s.pool.QueryRow(ctx, "SELECT state,checkout_url FROM cryptomus_checkouts WHERE order_id=$1", p.id).Scan(&state, &link); err != nil {
+			return PurchaseOrder{}, unavailable()
+		}
+		if !canPay || p.review {
+			state, link = "unavailable", nil
+		}
+		if state != "ready" {
+			link = nil
+		}
+		out.CanPay = canPay && !p.review && state == "ready" && link != nil
+		out.CryptomusCheckout = &CryptomusCheckout{State: state, URL: link}
+	}
 	if canPay && p.method == "yoomoney" {
 		out.Checkout = &YooMoneyCheckout{Action: "https://yoomoney.ru/quickpay/confirm", Method: "POST", Fields: YooMoneyCheckoutFields{Receiver: s.config().YooMoneyWalletID, QuickpayForm: "button", PaymentType: p.paymentType, Sum: fmt.Sprintf("%d.%02d", p.amount/100, p.amount%100), Label: p.id, SuccessURL: strings.TrimRight(s.config().CabinetOrigin, "/") + "/orders/" + p.id.String()}}
 	}
@@ -131,6 +162,9 @@ func (s *Service) PaymentMethods(ctx context.Context, account uuid.UUID) (Paymen
 	if s.methodEnabled("yookassa") {
 		out.Methods = append(out.Methods, PaymentMethod{Id: "yookassa", Currency: "RUB"})
 	}
+	if s.methodEnabled("cryptomus") {
+		out.Methods = append(out.Methods, PaymentMethod{Id: "cryptomus", Currency: "USD"})
+	}
 	if s.methodEnabled("manual") {
 		out.Methods = append(out.Methods, PaymentMethod{Id: "manual", Currency: "RUB"})
 	}
@@ -139,7 +173,7 @@ func (s *Service) PaymentMethods(ctx context.Context, account uuid.UUID) (Paymen
 
 func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUID, in PurchaseOrderInput) (PurchaseOrder, error) {
 	var empty PurchaseOrder
-	if account == uuid.Nil || key == uuid.Nil || in.Action != "purchase" || !((in.PaymentMethod == "yoomoney" && (in.PaymentType == "AC" || in.PaymentType == "PC")) || (in.PaymentMethod == "manual" && in.PaymentType == "MANUAL") || (in.PaymentMethod == "yookassa" && in.PaymentType == "YOOKASSA")) || in.PlanId == uuid.Nil || in.Revision < 1 || in.PeriodDays < 1 || in.PeriodDays > 106751 {
+	if account == uuid.Nil || key == uuid.Nil || in.Action != "purchase" || !((in.PaymentMethod == "yoomoney" && (in.PaymentType == "AC" || in.PaymentType == "PC")) || (in.PaymentMethod == "manual" && in.PaymentType == "MANUAL") || (in.PaymentMethod == "yookassa" && in.PaymentType == "YOOKASSA") || (in.PaymentMethod == "cryptomus" && in.PaymentType == "CRYPTOMUS")) || in.PlanId == uuid.Nil || in.Revision < 1 || in.PeriodDays < 1 || in.PeriodDays > 106751 {
 		return empty, failure(400, "INVALID_INPUT")
 	}
 	hash := bodyHash(in)
@@ -285,10 +319,14 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if err != nil || terms.Hidden || string(terms.Profile) != profile || terms.TrafficGb < 0 || terms.TrafficGb > math.MaxInt64/(1024*1024*1024) {
 		return empty, unavailable()
 	}
+	currency := "RUB"
+	if in.PaymentMethod == "cryptomus" {
+		currency = "USD"
+	}
 	var amount int64
 	found := false
 	for _, price := range terms.Prices {
-		if price.PeriodDays == in.PeriodDays && price.Currency == "RUB" {
+		if price.PeriodDays == in.PeriodDays && price.Currency == currency {
 			amount, err = strconv.ParseInt(price.AmountMinor, 10, 64)
 			if err != nil || amount <= 0 {
 				return empty, failure(409, "PURCHASE_PLAN_CONFLICT")
@@ -300,7 +338,7 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if !found {
 		return empty, failure(409, "PURCHASE_PLAN_CONFLICT")
 	}
-	quote := PurchaseQuote{PlanId: in.PlanId, Revision: in.Revision, PeriodDays: in.PeriodDays, Devices: int64(terms.Devices), TrafficGb: int64(terms.TrafficGb), Profile: profile, AmountMinor: strconv.FormatInt(amount, 10), Currency: "RUB"}
+	quote := PurchaseQuote{PlanId: in.PlanId, Revision: in.Revision, PeriodDays: in.PeriodDays, Devices: int64(terms.Devices), TrafficGb: int64(terms.TrafficGb), Profile: profile, AmountMinor: strconv.FormatInt(amount, 10), Currency: currency}
 	quoteRaw, _ := json.Marshal(quote)
 	id := uuid.New()
 	expires := now.Add(30 * time.Minute)
@@ -319,6 +357,11 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	}
 	if in.PaymentMethod == "yookassa" {
 		if err = s.queueYooKassaTx(ctx, tx, id, quote); err != nil {
+			return empty, err
+		}
+	}
+	if in.PaymentMethod == "cryptomus" {
+		if err = s.queueCryptomusTx(ctx, tx, id, quote); err != nil {
 			return empty, err
 		}
 	}
