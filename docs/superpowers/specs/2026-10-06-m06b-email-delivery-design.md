@@ -4,6 +4,8 @@
 Спецификация принята в рамках разрешённого автономного ведения документов и Native.
 Base fresh origin/v2 `729eea58b9a510ccc8e5ca191673861407d50555`;
 branch feature/m06b-email-delivery. [М06b1 полностью доставлен](https://github.com/ekho/3xui-shop/issues/60#issuecomment-6009555826).
+М06b2 доставлен [PR #69](https://github.com/ekho/3xui-shop/pull/69)/[dev.27](https://github.com/ekho/3xui-shop/releases/tag/2.0.0-dev.27);
+[итоговые факты](https://github.com/ekho/3xui-shop/issues/60#issuecomment-6010525855).
 
 ## Результат и границы
 
@@ -15,7 +17,7 @@ proofs, лимиты, их проверку/отзыв и общий email guard
 архитектурная приёмка. Python retirement — С47. Production, реальные платежи/Telegram,
 установленный Happ/VPN и macOS trust исключены. Только local + ранее разрешённый v2 preview.
 
-## Проверенные исходные факты и выбор
+## Проверенные исходные факты на base729eea5 и выбор
 
 accounts/mail.go сейчас шифрует и отправляет, accounts/private registration/credentials
 queries владеют mail SQL. platform/mail.go содержит TLS SMTP/worker; cmd/server регистрирует
