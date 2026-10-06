@@ -22,7 +22,7 @@ Telegram остаётся дополнительным каналом. Перв�
 полностью удаляется после завершения переноса. М01–М04 доставлены в v2;
 М05 доставлен PR #66/dev.21; М06а/b1/b2/c доставлены PR #67–#70/dev.23–dev.29.
 М06d удалил общие platform/store и прошёл локальные22/22 и154/154 проверки
-([доказательства](../evidence/m06d-acceptance.md)); #60 открыт до review/CI/доставки;
+([доказательства](../evidence/m06d-acceptance.md)); доставлен PR71/dev.31;
 ранее закрытые функциональные приёмки сохраняют свои исходные ревизии.
 
 Название продукта не используется в именах модулей, команд, cookie, API и документов. Публичный HTTPS-origin кабинета задаётся настройкой `CABINET_ORIGIN`, а не фиксируется в коде.
@@ -182,7 +182,7 @@ reports и operations появляются со своими сценариям�
 [новая приёмка](../evidence/s10-modular-integration-acceptance.md); final review
 и единственный fix pass завершены, полная матрица после исправлений 22/22 PASS.
 PR #5 доставлен в v2 source-equal merge c57c5e7; exact-source CI и предварительный release2.0.0-dev.19 с тремя multiarch образами проверены. #17 CLOSED/Project Done. М05 доставлен [PR #66](https://github.com/ekho/3xui-shop/pull/66): [payments evidence](../evidence/m05-acceptance.md), 22/22 PASS, review без замечаний, exact-source CI и preview2.0.0-dev.21 проверены; #59 CLOSED/Project Done. М06а support доставлен [PR #67](https://github.com/ekho/3xui-shop/pull/67)/preview2.0.0-dev.23: [support evidence](../evidence/m06a-acceptance.md). М06b1 Telegram delivery доставлен PR #68/dev.25 ([спецификация](../superpowers/specs/2026-10-06-m06b-telegram-delivery-design.md), [локальные проверки](../evidence/m06b1-acceptance.md)); М06b2 email доставлен [PR #69](https://github.com/ekho/3xui-shop/pull/69)/dev.27 ([доказательства](../evidence/m06b2-acceptance.md)); [audit М06c](../superpowers/specs/2026-10-06-m06c-audit-design.md) прошёл локальную22/22 приёмку ([доказательства](../evidence/m06c-acceptance.md)); доставлен [PR #70](https://github.com/ekho/3xui-shop/pull/70)/dev.29 после fresh review без замечаний и exact-source CI, preview/tag/3multiarch проверены → cleanup М06d локально завершён: [доказательства](../evidence/m06d-acceptance.md),22/22/154 регрессии; сборка использует прямые public owner refs, shared platform/store удалены. #60 CLOSED/Project Done после собственной D01–D08: [PR #71](https://github.com/ekho/3xui-shop/pull/71)/dev.31, source-equal merge c9c075e и exact-source CI/tag/3multiarch проверены; [каноническая доставка](https://github.com/ekho/3xui-shop/issues/60#issuecomment-6013023863).
-С11–С40 и С42–С47 имеют
+С12–С40 и С42–С47 имеют
 статус **запланирован**. Наличие исходника подтверждает существующее поведение
 бота, а не готовность его реализации на новом стеке.
 Графа «сохранить/проверить» задаёт границу будущей спецификации, не подробный API.
@@ -433,9 +433,9 @@ fixtures; свежий whole-branch review и обязательный fix pass 
 разделяет source tests, реальные проверки и будущий cutover. С09 и С07 также
 локально реализованы и приняты: [каталог](../evidence/s09-acceptance.md),
 [операции подписки](../evidence/s07-acceptance.md). С08 и необходимый С41 локально приняты: [профили доступа](../evidence/s08-s41-acceptance.md).
-С11–С40 и С42–С47 ещё не реализованы. С10 доставлен PR #5 в `v2`,
+С12–С40 и С42–С47 ещё не доставлены отдельными сценариями. С11 доставлена PR72/dev.33. С10 доставлен PR #5 в `v2`,
 #17 CLOSED/Project Done; предварительный release2.0.0-dev.19 проверен.
-М01–М05 доставлены в v2; М05 source-equal merge b5d8eb3 и preview2.0.0-dev.21 проверены; М06а/b1/b2/c доставлены PR #67–#70/dev.23–dev.29; М06d локально прошёл22/22 и154/154, #60 CLOSED/Project Done после PR71/dev.31 и собственной D08; С11 локально прошла26/26 и139 browser cases, review/CI/delivery pending; затем отдельная локальная С13 с заглушками по уточнению владельца, без real provider claim.
+М01–М05 доставлены в v2; М05 source-equal merge b5d8eb3 и preview2.0.0-dev.21 проверены; М06а/b1/b2/c доставлены PR #67–#70/dev.23–dev.29; М06d локально прошёл22/22 и154/154, #60 CLOSED/Project Done после PR71/dev.31 и собственной D08; С11 доставлена [PR72](https://github.com/ekho/3xui-shop/pull/72)/[dev.33](https://github.com/ekho/3xui-shop/releases/tag/2.0.0-dev.33):26/26,139 browser cases, fresh review/one Important RED→GREEN fix/full green suite и exact-source CI/parents/tree/tag/3multiarch проверены; [#19 CLOSED/Project Done](https://github.com/ekho/3xui-shop/issues/19#issuecomment-6015652047). Далее отдельная локальная С13 с заглушками по уточнению владельца; [spec](../superpowers/specs/2026-10-06-s13-yoomoney-local-design.md)/[Native plan](../superpowers/plans/2026-10-06-s13-yoomoney-local.md), #18 остаётся OPEN до собственной приёмки/доставки. Real provider delivery не заявляется проверенной.
 Интеграция С10 и перенос денег М05 сохраняют отдельные exact-revision evidence.
 Пользователь разрешил проектирование С02 при
 ранее открытой приёмке С01; [спецификация С02](../superpowers/specs/2026-10-02-s02-account-security-design.md)

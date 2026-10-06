@@ -32,10 +32,10 @@
 
 **Interfaces:** Consumes existing purchaseFixture/purchaseNotice/New(app.NewModules)/supportRequest и public payments operations, прежние logs26-stage product d407ad3. Produces two connected HTTP acceptance tests and criterion/equivalence report; новых public signatures нет.
 
-- [ ] **Step 1:** На actual handler/изолированной PG/Redis через existing fixtures добавить TestYooMoneyHTTPReceiptBoundary и TestYooMoneyHTTPReceiptConflict, точные assertions AC02–AC04. Поведение уже реализовано: сначала проверяется существующий код, искусственный RED не создаётся; любой выявленный дефект требует отдельного RED→GREEN fix.
-- [ ] **Step 2:** `go -C backend test -race ./internal/httpapi ./internal/modules/payments -run 'TestYooMoney|TestRegression(Purchase|YooMoney)|TestManualPayment.*CrossMethod' -count=1`. TEST_DATABASE_URL_FILE/TEST_REDIS_URL_FILE только собственные protected files. Expected all selected tests PASS, no skip; сохранить full log.
-- [ ] **Step 3:** Проверить equivalence native product/API/migrations/deps к product d407ad3 исключая docs и новые tests; проверить26 успешных source records/logs и Native export SHA256 manifest. Зафиксировать AC01/AC05 из прежних доказательств и actual С11 delivery, сохранив точные уровни/ограничения. Expected production diff empty, доступные логи, шесть AC mapped.
-- [ ] **Step 4:** Проверить `git diff --check`, semantic names и spec/plan self-review; commit tests/evidence/docs. `task-done` запускает final evidence verifier, а не повтор неизменённых suite/build/native. Expected proof/text/source consistency PASS.
+- [x] **Step 1:** На actual handler/изолированной PG/Redis через existing fixtures добавить TestYooMoneyHTTPReceiptBoundary и TestYooMoneyHTTPReceiptConflict, точные assertions AC02–AC04. Поведение уже реализовано: сначала проверяется существующий код, искусственный RED не создаётся; любой выявленный дефект требует отдельного RED→GREEN fix.
+- [x] **Step 2:** `go -C backend test -race ./internal/httpapi ./internal/modules/payments -run 'TestYooMoney|TestRegression(Purchase|YooMoney)|TestManualPayment.*CrossMethod' -count=1`. TEST_DATABASE_URL_FILE/TEST_REDIS_URL_FILE только собственные protected files. Expected all selected tests PASS, no skip; сохранить full log.
+- [x] **Step 3:** Проверить equivalence native product/API/migrations/deps к product d407ad3 исключая docs и новые tests; проверить26 успешных source records/logs и Native export SHA256 manifest. Зафиксировать AC01/AC05 из прежних доказательств и actual С11 delivery, сохранив точные уровни/ограничения. Expected production diff empty, доступные логи, шесть AC mapped.
+- [x] **Step 4:** Проверить `git diff --check`, semantic names и spec/plan self-review; commit tests/evidence/docs. `task-done` запускает final evidence verifier, а не повтор неизменённых suite/build/native. Expected proof/text/source consistency PASS.
 
 ## Finish
 
