@@ -1,4 +1,4 @@
-"""Disposable signed Cryptomus API fixture. Never calls the provider."""
+"""Disposable signed Cryptomus/Heleket API fixture. Never calls a provider."""
 import base64
 from datetime import datetime, timezone
 from hashlib import md5, sha256
@@ -76,7 +76,7 @@ class Stub(BaseHTTPRequestHandler):
                                    'status': 'check', 'payment_status': 'check', 'is_final': False,
                                    'payment_amount': None, 'payer_amount': None, 'merchant_amount': None, 'payer_currency': None,
                                    'created_at': now, 'updated_at': now, 'expired_at': int(time.time()) + 1800,
-                                   'url': 'https://pay.cryptomus.com/pay/' + pid}
+                                   'url': 'https://' + ('new-pay.heleket.com' if self.server.provider == 'heleket' else 'pay.cryptomus.com') + '/pay/' + pid}
                         db.execute('INSERT INTO payments(key,id,request,payload) VALUES(?,?,?,?)', (key, pid, raw, json.dumps(payment)))
                         fault = db.execute("SELECT value FROM settings WHERE key='fail_next'").fetchone()
                         code, value = (500 if fault and fault[0] else 200), {'state': 0, 'result': payment}
@@ -112,12 +112,13 @@ class Stub(BaseHTTPRequestHandler):
     do_POST = serve_request
 
 
-def self_check():
+def self_check(provider='cryptomus'):
     with tempfile.TemporaryDirectory() as root:
         path = str(Path(root) / 'stub.db')
         initialize(path)
         server = ThreadingHTTPServer(('127.0.0.1', 0), Stub)
         server.db, server.key, server.merchant = path, 'synthetic-fixture-key', str(uuid4())
+        server.provider = provider
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
 
@@ -135,7 +136,7 @@ def self_check():
         try:
             key = str(uuid4())
             request = json.dumps({'order_id': key, 'amount': '2.00', 'currency': 'USD', 'lifetime': 1800,
-                                  'is_payment_multiple': False, 'url_callback': 'https://localhost/webhooks/cryptomus',
+                                  'is_payment_multiple': False, 'url_callback': 'https://localhost/webhooks/' + provider,
                                   'url_return': 'https://localhost/orders/' + key, 'url_success': 'https://localhost/orders/' + key}).encode()
             assert send('/v1/payment', request, authorized=False)[0] == 401
             assert send('/control', {'fail_next_creation': True})[0] == 200
@@ -143,6 +144,8 @@ def self_check():
             code, value = send('/v1/payment', request)
             invoice = value['result']['uuid']
             assert code == 200 and value['result']['status'] == 'check'
+            host = 'new-pay.heleket.com' if provider == 'heleket' else 'pay.cryptomus.com'
+            assert value['result']['url'] == 'https://' + host + '/pay/' + invoice
             assert send('/v1/payment', request + b' ')[0] == 409
             assert send('/v1/payment/info', {'order_id': key})[1]['result']['uuid'] == invoice
             initialize(path)  # Reopening the persistent state does not recreate the invoice.
@@ -158,17 +161,21 @@ def self_check():
             server.shutdown()
             server.server_close()
             thread.join()
-    print('PASS: signed API, frozen unique order, ambiguous500, persisted invoice, info and paid/paid_over')
+    print('PASS: ' + provider + ' signed API, own checkout host, frozen unique order, ambiguous500, persisted invoice, info and paid/paid_over')
 
 
 def main():
     if sys.argv[1:] == ['--self-check']:
-        return self_check()
+        for provider in ('cryptomus', 'heleket'):
+            self_check(provider)
+        return
     path = os.environ['STUB_DATABASE']
     initialize(path)
     server = ThreadingHTTPServer(('0.0.0.0', 443), Stub)
-    server.db, server.merchant = path, os.environ['CRYPTOMUS_MERCHANT_ID']
-    server.key = Path(os.environ['CRYPTOMUS_API_KEY_FILE']).read_text().strip()
+    server.provider = os.environ.get('STUB_PROVIDER', 'cryptomus')
+    prefix = {'cryptomus': 'CRYPTOMUS', 'heleket': 'HELEKET'}[server.provider]
+    server.db, server.merchant = path, os.environ[prefix + '_MERCHANT_ID']
+    server.key = Path(os.environ[prefix + '_API_KEY_FILE']).read_text().strip()
     tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     tls.minimum_version = ssl.TLSVersion.TLSv1_2
     tls.load_cert_chain(os.environ['STUB_CERT_FILE'], os.environ['STUB_KEY_FILE'])

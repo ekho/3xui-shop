@@ -1,0 +1,43 @@
+# Own API stub; DNS and CA apply only to this Docker project.
+x-stub-trust: &stub-trust
+  environment: {SSL_CERT_FILE: /run/secrets/heleket_stub_ca}
+  secrets: [heleket_stub_ca]
+services:
+  backend:
+    <<: *stub-trust
+    depends_on:
+      heleket-stub: {condition: service_healthy}
+  migrate: *stub-trust
+  reconcile: *stub-trust
+  heleket-stub:
+    image: python:3.14.0-alpine3.22@sha256:8373231e1e906ddfb457748bfc032c4c06ada8c759b7b62d9c73ec2a3c56e710
+    user: '${APP_RUNTIME_UID:-10001}:${APP_RUNTIME_GID:-10001}'
+    entrypoint: [python, /fixture/cryptomus-stub.py]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    sysctls: {net.ipv4.ip_unprivileged_port_start: '0'}
+    environment:
+      PYTHONDONTWRITEBYTECODE: '1'
+      STUB_PROVIDER: heleket
+      STUB_DATABASE: /data/stub.db
+      HELEKET_MERCHANT_ID: '${HELEKET_MERCHANT_ID:?required}'
+      HELEKET_API_KEY_FILE: /run/secrets/heleket_api_key
+      STUB_CERT_FILE: /run/secrets/heleket_stub_cert
+      STUB_KEY_FILE: /run/secrets/heleket_stub_key
+    secrets: [heleket_api_key, heleket_stub_cert, heleket_stub_key]
+    volumes:
+      - '../purchase/cryptomus-stub.py:/fixture/cryptomus-stub.py:ro'
+      - '${LOCAL_STATE_DIR:?required}/psp-data:/data'
+    ports: ['127.0.0.1:58450:443']
+    networks:
+      default: {aliases: [api.heleket.com]}
+    healthcheck:
+      test: [CMD, python, -c, "import socket; socket.create_connection(('127.0.0.1',443),2).close()"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+secrets:
+  heleket_stub_ca: {file: '${LOCAL_STATE_DIR:?required}/psp-ca.pem'}
+  heleket_stub_cert: {file: '${LOCAL_STATE_DIR:?required}/psp-cert.pem'}
+  heleket_stub_key: {file: '${LOCAL_STATE_DIR:?required}/psp-key.pem'}

@@ -25,6 +25,8 @@ type Config struct {
 	YooKassaShopID, YooKassaToken, ShopEmail string
 	CryptomusEnabled                         bool
 	CryptomusMerchantID, CryptomusAPIKey     string
+	HeleketEnabled                           bool
+	HeleketMerchantID, HeleketAPIKey         string
 }
 
 type Error struct {

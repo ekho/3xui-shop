@@ -25,6 +25,8 @@ func (s *Service) methodEnabled(method string) bool {
 		return c.YooKassaEnabled
 	case "cryptomus":
 		return c.CryptomusEnabled
+	case "heleket":
+		return c.HeleketEnabled
 	default:
 		return false
 	}

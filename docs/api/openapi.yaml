@@ -8461,6 +8461,37 @@
           }
         }
       }
+    },
+    "/webhooks/heleket": {
+      "post": {
+        "operationId": "receiveHeleket",
+        "description": "Heleket effective IP 31.133.220.8 and own documented ordered JSON signature are validated. UTF-8 unique JSON <=16 KiB; signed body only hints an order. Authenticated fixed api.heleket.com payment/info supplies money facts. Unknown signed order acknowledged without API/funding; browser return never confirms payment.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeleketNotification"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Acknowledged, not fulfillment confirmation."
+          },
+          "400": {
+            "description": "Invalid body/query/identity."
+          },
+          "403": {
+            "description": "Sender or signature not permitted."
+          },
+          "503": {
+            "description": "Provider/persistence temporarily unavailable; safe retry."
+          }
+        }
+      }
     }
   },
   "components": {
@@ -11286,7 +11317,8 @@
               "yoomoney",
               "manual",
               "yookassa",
-              "cryptomus"
+              "cryptomus",
+              "heleket"
             ]
           },
           "currency": {
@@ -11311,7 +11343,7 @@
             "items": {
               "$ref": "#/components/schemas/PaymentMethod"
             },
-            "maxItems": 4
+            "maxItems": 5
           }
         },
         "required": [
@@ -11349,7 +11381,8 @@
               "yoomoney",
               "manual",
               "yookassa",
-              "cryptomus"
+              "cryptomus",
+              "heleket"
             ]
           },
           "payment_type": {
@@ -11359,7 +11392,8 @@
               "PC",
               "MANUAL",
               "YOOKASSA",
-              "CRYPTOMUS"
+              "CRYPTOMUS",
+              "HELEKET"
             ]
           }
         },
@@ -11527,7 +11561,8 @@
               "yoomoney",
               "manual",
               "yookassa",
-              "cryptomus"
+              "cryptomus",
+              "heleket"
             ]
           },
           "payment_type": {
@@ -11537,7 +11572,8 @@
               "PC",
               "MANUAL",
               "YOOKASSA",
-              "CRYPTOMUS"
+              "CRYPTOMUS",
+              "HELEKET"
             ]
           },
           "payment_status": {
@@ -11611,6 +11647,14 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/CryptomusCheckout"
+              }
+            ],
+            "nullable": true
+          },
+          "heleket_checkout": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/HeleketCheckout"
               }
             ],
             "nullable": true
@@ -11876,6 +11920,58 @@
         ]
       },
       "CryptomusNotification": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "payment"
+            ]
+          },
+          "uuid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "order_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sign": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$"
+          }
+        },
+        "required": [
+          "type",
+          "uuid",
+          "order_id",
+          "sign"
+        ]
+      },
+      "HeleketCheckout": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "preparing",
+              "ready",
+              "unavailable"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "state",
+          "url"
+        ]
+      },
+      "HeleketNotification": {
         "type": "object",
         "additionalProperties": true,
         "properties": {

@@ -32,6 +32,9 @@ func purchaseOrderResult(p payments.PurchaseOrder) wire.PurchaseOrder {
 	if c := p.CryptomusCheckout; c != nil {
 		out.CryptomusCheckout = &wire.CryptomusCheckout{State: wire.CryptomusCheckoutState(c.State), Url: c.URL}
 	}
+	if c := p.HeleketCheckout; c != nil {
+		out.HeleketCheckout = &wire.HeleketCheckout{State: wire.HeleketCheckoutState(c.State), Url: c.URL}
+	}
 	return out
 }
 

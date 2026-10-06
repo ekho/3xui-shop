@@ -167,3 +167,46 @@ unique order_id,500,info и paid/paid_over без Docker и внешней се�
 и живое VPN-соединение не используются.
 
 Результаты и границы проверки: [локальная приёмка С14](../../docs/evidence/s14-acceptance.md).
+
+## Heleket
+
+Добавьте `-f deploy/purchase/compose.heleket.yml`.
+Настройки задаются при деплое: `SHOP_PAYMENT_HELEKET_ENABLED=false` по умолчанию,
+`HELEKET_MERCHANT_ID` — canonical UUID, `HELEKET_API_KEY_FILE` — абсолютный путь к
+закрытому файлу. Inline `HELEKET_API_KEY` запрещён; парные retained credentials
+проверяются и после отключения новых продаж. Секретов в frontend/image нет.
+
+Публичный proxy передаёт точный `POST /webhooks/heleket` в backend. Разрешён
+только effective IP31.133.220.8 и собственная подпись; forwarded header не
+заменяет источник. Fixed API api.heleket.com; HTTPS checkout допускает только
+new-pay.heleket.com или pay.heleket.com. Authenticated info подтверждает деньги;
+return/webhook сами их не подтверждают. Не открывайте `/internal/*` публично.
+
+Цена invoice в USD, crypto payer/payment/merchant facts отдельно, USD-net
+неизвестен/NULL. Paid_over не добавляет доступ сверх тарифа. Underpayment,
+late/canceled/refund/AML или противоречивые facts требуют review. Frozen
+order/merchant/bytes и invoice сохраняются; неизвестный результат после expiry
+проверяется только через info, без refresh. Cryptomus settings/host/IP/history
+остаются отдельными. Реальные merchant/payment/public delivery не проверены.
+
+Для собственного стенда создайте закрытый `LOCAL_STATE_DIR` с `runtime.json`:
+
+```json
+{"project":"cabinet-c15","postgres_user":"cabinet_c15","base_database":"cabinet_c15","fixture_prefixes":{"purchase":"c15-purchase-"}}
+```
+
+Запускайте `python3 deploy/purchase/heleket-local.py prepare`, затем `up`,
+`check`, `restore` и `stop` с `LOCAL_PROFILE=native` и абсолютным
+`LOCAL_STATE_DIR`. Этот путь использует общий проверенный драйвер двух
+провайдеров, собственные Heleket FILE secrets/TLS/DNS/таблицы/River kind и
+3X-UI3.7.0. Нужны свободные порты58443,59444–59447,58450 и подсеть10.253.15.0/28;
+Cryptomus стенд перед этим остановите. Доверие сертификатам Mac и живое VPN
+не меняются. `check` проверяет новые аккаунты, переход с триала,500/restart,
+frozen bytes и replay; `restore` сохраняет финансовые факты в резервной копии
+без запуска её writers и разрешает выдачу только исходному backend.
+
+`python3 deploy/purchase/cryptomus-stub.py --self-check` проверяет оба
+конкретных протокола локально. Документированная доставка webhook с vendor IP,
+реальные checkout и деньги требуют отдельного стенда с доступом провайдера.
+
+Результаты и границы: [локальная приёмка С15](../../docs/evidence/s15-acceptance.md).

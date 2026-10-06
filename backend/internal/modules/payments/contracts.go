@@ -44,8 +44,13 @@ type PurchaseOrder struct {
 	ManualPayment     *ManualPayment     `json:"manual_payment,omitempty"`
 	YooKassaCheckout  *YooKassaCheckout  `json:"yookassa_checkout,omitempty"`
 	CryptomusCheckout *CryptomusCheckout `json:"cryptomus_checkout,omitempty"`
+	HeleketCheckout   *HeleketCheckout   `json:"heleket_checkout,omitempty"`
 }
 type CryptomusCheckout struct {
+	State string  `json:"state"`
+	URL   *string `json:"url"`
+}
+type HeleketCheckout struct {
 	State string  `json:"state"`
 	URL   *string `json:"url"`
 }

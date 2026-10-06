@@ -67,7 +67,8 @@ func LoadConfig() (Config, error) {
 	c.Payments.YooMoneyWalletID = os.Getenv("YOOMONEY_WALLET_ID")
 	c.Payments.YooKassaShopID, c.Payments.ShopEmail = os.Getenv("YOOKASSA_SHOP_ID"), os.Getenv("SHOP_EMAIL")
 	c.Payments.CryptomusMerchantID = os.Getenv("CRYPTOMUS_MERCHANT_ID")
-	for name, dest := range map[string]*bool{"SHOP_PAYMENT_YOOKASSA_ENABLED": &c.Payments.YooKassaEnabled, "YOOKASSA_TEST_MODE": &c.Payments.YooKassaTestMode, "SHOP_PAYMENT_CRYPTOMUS_ENABLED": &c.Payments.CryptomusEnabled} {
+	c.Payments.HeleketMerchantID = os.Getenv("HELEKET_MERCHANT_ID")
+	for name, dest := range map[string]*bool{"SHOP_PAYMENT_YOOKASSA_ENABLED": &c.Payments.YooKassaEnabled, "YOOKASSA_TEST_MODE": &c.Payments.YooKassaTestMode, "SHOP_PAYMENT_CRYPTOMUS_ENABLED": &c.Payments.CryptomusEnabled, "SHOP_PAYMENT_HELEKET_ENABLED": &c.Payments.HeleketEnabled} {
 		if value := os.Getenv(name); value != "" {
 			*dest, err = strconv.ParseBool(value)
 			if err != nil {
@@ -83,6 +84,12 @@ func LoadConfig() (Config, error) {
 	}
 	if c.Payments.CryptomusEnabled || c.Payments.CryptomusMerchantID != "" || os.Getenv("CRYPTOMUS_API_KEY_FILE") != "" || os.Getenv("CRYPTOMUS_API_KEY") != "" {
 		c.Payments.CryptomusAPIKey, err = SecretFile("CRYPTOMUS_API_KEY")
+		if err != nil {
+			return c, err
+		}
+	}
+	if c.Payments.HeleketEnabled || c.Payments.HeleketMerchantID != "" || os.Getenv("HELEKET_API_KEY_FILE") != "" || os.Getenv("HELEKET_API_KEY") != "" {
+		c.Payments.HeleketAPIKey, err = SecretFile("HELEKET_API_KEY")
 		if err != nil {
 			return c, err
 		}
@@ -241,6 +248,19 @@ func (c Config) Validate() error {
 		}
 		if len(c.HTTP.CabinetOrigin)+len("/orders/")+36 > 255 {
 			return errors.New("Cryptomus return URL exceeds provider limit")
+		}
+	}
+	if c.Payments.HeleketEnabled || c.Payments.HeleketMerchantID != "" || c.Payments.HeleketAPIKey != "" {
+		merchant, err := uuid.Parse(c.Payments.HeleketMerchantID)
+		if err != nil || merchant == uuid.Nil || merchant.String() != c.Payments.HeleketMerchantID {
+			return errors.New("invalid HELEKET_MERCHANT_ID")
+		}
+		key := c.Payments.HeleketAPIKey
+		if key == "" || len(key) > 512 || !utf8.ValidString(key) || strings.ContainsAny(key, " \t\r\n\x00") {
+			return errors.New("invalid HELEKET_API_KEY file")
+		}
+		if len(c.HTTP.CabinetOrigin)+len("/orders/")+36 > 255 {
+			return errors.New("Heleket return URL exceeds provider limit")
 		}
 	}
 	if c.Payments.YooKassaEnabled || c.Payments.YooKassaToken != "" {

@@ -5,8 +5,9 @@
 [Native plan](../superpowers/plans/2026-10-06-s14-cryptomus.md), [решения](s14-decisions.md).
 Backend checkpoint cbf857d, UI b14ff8e; whole-branch review 42a791c..1ac06ec.
 Два Important исправлены в одном проходе; текущие исполняемые inputs сверены
-по 515 SHA256. Финальный source/CI/merge/preview фиксируются в PR и #21;
-delivery пока открыт.
+по 515 SHA256. Ниже сохранён исторический checkpoint до доставки.
+С14 доставлен через PR75/dev.39; итоговые CI/merge/preview и CLOSED/Project Done
+указаны в последнем абзаце. Статусы pending в таблице относятся к checkpoint.
 
 Покупка выбирает серверную USD цену. Только signed API info с final paid/paid_over,
 точным invoice principal и достаточной crypto оплатой сохраняет один receipt и
@@ -54,3 +55,5 @@ and host trust/VPN remain untouched; own fixture volumes are retained.
 
 Real merchant/API delivery, real crypto payment/net/fiscal/hosted UI and production
 are unverified. External readiness remains before С45–С47.
+
+Delivery after this local checkpoint: [PR75](https://github.com/ekho/3xui-shop/pull/75) merged into v2 at1733d50a9da41280406575beb8c50d9337329ecb, exact c2e01e9 source CI and source-equal merge tree verified. [Actual dev.39 build](https://github.com/ekho/3xui-shop/actions/runs/37512201378), annotated tag/prerelease and three OCI indexes/six platform revision/version/source labels verified. [#21 CLOSED/Project Done](https://github.com/ekho/3xui-shop/issues/21#issuecomment-6023041995). Own fixture stopped; protected immutable execution/delivery evidence retained.
