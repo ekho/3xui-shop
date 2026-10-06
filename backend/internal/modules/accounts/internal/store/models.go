@@ -85,17 +85,6 @@ type LegacyApprovalSnapshot struct {
 	DecidedBy          pgtype.Int8
 }
 
-type MailDelivery struct {
-	ID                    uuid.UUID
-	ChallengeID           *uuid.UUID
-	EmailKey              string
-	Ciphertext            []byte
-	CreatedAt             pgtype.Timestamptz
-	DeliveredAt           pgtype.Timestamptz
-	Kind                  string
-	CredentialChallengeID *uuid.UUID
-}
-
 type RegistrationChallenge struct {
 	ID             uuid.UUID
 	EmailKey       string

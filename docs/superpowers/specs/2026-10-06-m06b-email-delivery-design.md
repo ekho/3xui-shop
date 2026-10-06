@@ -100,6 +100,8 @@ HTTP/browser consumers и mail job ciphertext/ID/job args продолжают �
 
 - Actual SQL-boundary RED на accounts mail SQL → GREEN; mail больше не входит accountSQL
   matcher, собственный notifications matcher ловит SELECT/JOIN/UPDATE/INSERT/DELETE/quoted public.
+  Сохраняется прежнее эксплуатационное исключение post_restore_auth.sql: очистка после
+  restore при закрытом ingress и остановленных writers/mail workers, без изменения процедуры.
 - Actual real TLS DATA hold показывает SQL Tx RED → GREEN (xact_start отсутствует), recipient
   guard остаётся, account row свободен. Existing password/reset/cancel race и новый restriction
   case проходят; после revoke старое письмо не отправляется/старый proof не принимается.

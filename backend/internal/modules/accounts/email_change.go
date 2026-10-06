@@ -12,7 +12,7 @@ import (
 
 func (s *Service) revokeEmailChange(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
 	q := store.New(tx)
-	if q.RevokeEmailChangeProofs(ctx, &id) != nil || q.ClearRevokedCredentialMail(ctx, &id) != nil {
+	if q.RevokeEmailChangeProofs(ctx, &id) != nil || s.clearRevokedCredentialMail(ctx, tx, id) != nil {
 		return unavailable()
 	}
 	return nil
@@ -147,7 +147,7 @@ func (s *Service) ConfirmEmailChange(ctx context.Context, in EmailChangeConfirmI
 		return out, err
 	}
 	now := s.now()
-	if q.ConfirmCredentialProof(ctx, store.ConfirmCredentialProofParams{ID: proof.ID, ConfirmedAt: stamp(now)}) != nil || q.ClearCredentialMail(ctx, &proof.ID) != nil {
+	if q.ConfirmCredentialProof(ctx, store.ConfirmCredentialProofParams{ID: proof.ID, ConfirmedAt: stamp(now)}) != nil || s.mail.ClearCredentialMailTx(ctx, tx, []uuid.UUID{proof.ID}) != nil {
 		return out, unavailable()
 	}
 	if !pair[1-selected].ConfirmedAt.Valid {

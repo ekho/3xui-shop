@@ -257,7 +257,7 @@ func TestEmailChangeMailBudget(t *testing.T) {
 }
 
 func TestEmailChangeConcurrency(t *testing.T) {
-	for _, mutation := range []string{"password", "reset", "cancel"} {
+	for _, mutation := range []string{"password", "reset", "cancel", "restriction"} {
 		t.Run(mutation, func(t *testing.T) {
 			s, e := fixture(t)
 			ctx := context.Background()
@@ -266,6 +266,13 @@ func TestEmailChangeConcurrency(t *testing.T) {
 			var resetToken string
 			if mutation == "reset" {
 				_, _, resetToken, _ = resetProof(t, s, e, "old@example.test")
+			}
+			var operator uuid.UUID
+			if mutation == "restriction" {
+				operator = verified(t, s, e, "mail-operator@example.test")
+				if err := s.ChangeOperatorRole(ctx, operator, true); err != nil {
+					t.Fatal(err)
+				}
 			}
 			_, proofs := emailPair(t, s, e, raw, "aaa-target@example.test")
 			smtp := testkit.MailServer(t)
@@ -279,7 +286,7 @@ func TestEmailChangeConcurrency(t *testing.T) {
 			case <-time.After(5 * time.Second):
 				t.Fatal("SMTP did not reach DATA")
 			}
-			// The worker holds email/proof/delivery, but must not hold account during SMTP.
+			// The worker serializes the recipient, but must not hold account during SMTP.
 			probe, err := e.Pool.Begin(ctx)
 			if err != nil {
 				t.Fatal(err)
@@ -301,6 +308,8 @@ func TestEmailChangeConcurrency(t *testing.T) {
 					err = s.CompletePasswordReset(ctx, wire.PasswordResetCompleteInput{Token: &resetToken, NewPassword: resetPassword}, "127.0.0.1")
 				case "cancel":
 					err = s.CancelEmailChange(ctx, raw)
+				case "restriction":
+					_, err = s.SetOperatorRestriction(ctx, operator, id, uuid.New(), wire.OperatorRestrictionInput{Restricted: true, Reason: "mail guard ordering"})
 				}
 				finished <- err
 			}()
@@ -323,8 +332,12 @@ func TestEmailChangeConcurrency(t *testing.T) {
 			if len(smtp.Letters()) != 1 {
 				t.Fatal("unexpected SMTP retries")
 			}
+			wantStatus := 400
+			if mutation == "restriction" {
+				wantStatus = 403
+			}
 			for _, proof := range proofs {
-				if _, err = s.ConfirmEmailChange(ctx, wire.EmailChangeConfirmInput{Token: &proof.Token}, "127.0.0.1"); status(err) != 400 {
+				if _, err = s.ConfirmEmailChange(ctx, wire.EmailChangeConfirmInput{Token: &proof.Token}, "127.0.0.1"); status(err) != wantStatus {
 					t.Fatal("canceled email proof survived")
 				}
 			}

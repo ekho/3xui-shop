@@ -119,7 +119,7 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (RegistrationA
 	if err = q.RevokeChallenges(ctx, email); err != nil {
 		return out, unavailable()
 	}
-	if err = q.RevokeRegistrationMail(ctx, email); err != nil {
+	if err = s.mail.ClearRegistrationMailTx(ctx, tx, email); err != nil {
 		return out, unavailable()
 	}
 	payload := mailPayload{Locale: string(in.Locale), Type: "login"}
@@ -285,7 +285,7 @@ func (s *Service) VerifyEmail(ctx context.Context, in VerifyInput) (VerifyResult
 		}
 		return out, unavailable()
 	}
-	if q.ConsumeChallenge(ctx, c.ID) != nil || q.RevokeRegistrationMail(ctx, email) != nil || tx.Commit(ctx) != nil {
+	if q.ConsumeChallenge(ctx, c.ID) != nil || s.mail.ClearRegistrationMailTx(ctx, tx, email) != nil || tx.Commit(ctx) != nil {
 		return out, unavailable()
 	}
 	out.Verified = true

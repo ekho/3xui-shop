@@ -1,21 +1,18 @@
 package accounts
 
 import (
-	"context"
 	"errors"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
+	"example.com/cabinet/backend/internal/modules/notifications"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
-	"github.com/riverqueue/river"
 	"time"
 )
 
 type Config struct {
-	CabinetOrigin, TermsVersion, PrivacyVersion, RateNamespace string
-	MailKey, CodeKey                                           []byte
-	Operators                                                  []int64
-	Now                                                        func() time.Time
+	TermsVersion, PrivacyVersion, RateNamespace string
+	CodeKey                                     []byte
+	Operators                                   []int64
+	Now                                         func() time.Time
 }
 
 // Error carries safe domain failure data; transports translate the status hint.
@@ -35,23 +32,16 @@ var ErrNotFound = errors.New("account not found")
 type Service struct {
 	pool      *pgxpool.Pool
 	limiter   *redis.Client
-	queue     *river.Client[pgx.Tx]
+	mail      *notifications.MailService
 	cfg       Config
 	now       func() time.Time
 	hashSlots chan struct{}
-	sender    func(context.Context, string, string, string) error
 }
 
-func New(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[pgx.Tx], cfg Config, sender func(context.Context, string, string, string) error) *Service {
+func New(pool *pgxpool.Pool, limiter *redis.Client, mail *notifications.MailService, cfg Config) *Service {
 	now := cfg.Now
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{pool: pool, limiter: limiter, queue: queue, cfg: cfg, now: now, hashSlots: make(chan struct{}, 2), sender: sender}
+	return &Service{pool: pool, limiter: limiter, mail: mail, cfg: cfg, now: now, hashSlots: make(chan struct{}, 2)}
 }
-
-type MailArgs struct {
-	DeliveryID uuid.UUID `json:"delivery_id"`
-}
-
-func (MailArgs) Kind() string { return "mail_delivery" }

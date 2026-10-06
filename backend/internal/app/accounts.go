@@ -21,9 +21,13 @@ import (
 
 // NewService is the production composition root during the remaining extractions.
 func NewService(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[pgx.Tx], cfg platform.Config) *platform.Service {
-	owner := accounts.New(pool, limiter, queue, accounts.Config{CabinetOrigin: cfg.CabinetOrigin, TermsVersion: cfg.TermsVersion, PrivacyVersion: cfg.PrivacyVersion, RateNamespace: cfg.RateNamespace, MailKey: cfg.MailKey, CodeKey: cfg.CodeKey, Operators: cfg.Operators}, func(ctx context.Context, to, subject, body string) error {
-		return platform.SendSMTP(ctx, cfg, to, subject, body)
-	})
+	var owner *accounts.Service
+	mailOwner := notifications.NewMail(pool, queue, cfg.MailSettings, func(ctx context.Context, email string, work func(*pgxpool.Conn) error) error {
+		return owner.WithMailGuard(ctx, email, work)
+	}, func(ctx context.Context, tx pgx.Tx, r, c *uuid.UUID) (bool, error) {
+		return owner.MailProofValidTx(ctx, tx, r, c)
+	}, nil)
+	owner = accounts.New(pool, limiter, mailOwner, accounts.Config{TermsVersion: cfg.TermsVersion, PrivacyVersion: cfg.PrivacyVersion, RateNamespace: cfg.RateNamespace, CodeKey: cfg.CodeKey, Operators: cfg.Operators})
 	catalogueOwner := catalogue.New(pool, owner, nil)
 	var subscriptionOwner *subscriptions.Service
 	var paymentsOwner *payments.Service
@@ -44,5 +48,5 @@ func NewService(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 	subscriptionOwner = subscriptions.New(pool, owner, catalogueOwner, vpnOwner, notificationsOwner, func() subscriptions.Config { return cfg.SubscriptionSettings() }, nil)
 	paymentsOwner = payments.New(pool, owner, catalogueOwner, vpnOwner, func() *river.Client[pgx.Tx] { return queue }, func() payments.Config { return cfg.PaymentSettings() }, nil)
 	supportOwner := support.New(pool, limiter, owner, cfg.RateNamespace, nil)
-	return platform.NewServiceWithModules(pool, limiter, queue, cfg, owner, catalogueOwner, subscriptionOwner, vpnOwner, paymentsOwner, supportOwner, notificationsOwner)
+	return platform.NewServiceWithModules(pool, limiter, queue, cfg, owner, catalogueOwner, subscriptionOwner, vpnOwner, paymentsOwner, supportOwner, notificationsOwner, mailOwner)
 }

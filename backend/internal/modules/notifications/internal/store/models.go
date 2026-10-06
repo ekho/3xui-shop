@@ -9,6 +9,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type MailDelivery struct {
+	ID                    uuid.UUID
+	ChallengeID           *uuid.UUID
+	EmailKey              string
+	Ciphertext            []byte
+	CreatedAt             pgtype.Timestamptz
+	DeliveredAt           pgtype.Timestamptz
+	Kind                  string
+	CredentialChallengeID *uuid.UUID
+}
+
 type TelegramDelivery struct {
 	ID             uuid.UUID
 	Sequence       pgtype.Int8

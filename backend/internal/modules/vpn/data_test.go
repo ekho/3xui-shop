@@ -14,7 +14,7 @@ import (
 func TestAccessOwnerKeepsPhysicalSession(t *testing.T) {
 	e := testkit.Open(t)
 	ctx := context.Background()
-	authority := accounts.New(e.Pool, e.Redis, nil, accounts.Config{}, nil)
+	authority := accounts.New(e.Pool, e.Redis, nil, accounts.Config{})
 	svc := New(e.Pool, authority, nil, func() Settings { return Settings{} }, e.Clock, nil, PurchaseHooks{})
 	account := uuid.New()
 	owner, err := svc.OpenAccessOwner(ctx, account)
@@ -73,7 +73,7 @@ func TestTrialOutcomeFailureRollsBack(t *testing.T) {
 			if err = tx.Commit(ctx); err != nil {
 				t.Fatal(err)
 			}
-			authority := accounts.New(e.Pool, e.Redis, nil, accounts.Config{}, nil)
+			authority := accounts.New(e.Pool, e.Redis, nil, accounts.Config{})
 			var outcome func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID, string) error
 			if mode == "failed" {
 				outcome = func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID, string) error {
