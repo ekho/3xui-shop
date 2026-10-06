@@ -16,7 +16,7 @@ spec = importlib.util.spec_from_file_location('acceptance_local', ROOT / 'deploy
 local = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(local)
 STATE = local.acceptance_state('account-restrictions')
-FIXTURE_PURPOSES = ('account-restrictions', 'subscription-operations', 'access-profiles')
+FIXTURE_PURPOSES = ('account-restrictions', 'subscription-operations', 'access-profiles', 'purchase')
 
 
 def own_uuid(value):

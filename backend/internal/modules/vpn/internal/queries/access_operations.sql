@@ -11,8 +11,8 @@ SELECT EXISTS(SELECT 1 FROM access_operations WHERE account_id=$1 AND status IN 
 -- name: UnresolvedTrialExists :one
 SELECT EXISTS(SELECT 1 FROM trial_operations WHERE account_id=$1 AND status IN ('pending','provisioning','needs_review'));
 -- name: InsertAccessOperation :exec
-INSERT INTO access_operations(id,account_id,operator_account_id,execution_actor_id,kind,status,reason,plan_id,plan_revision,period_days,desired,target,completed_steps,monthly_period,created_at,updated_at)
-VALUES($1,$2,$3,$3,$4,'pending',$5,$6,$7,$8,$9,$10,'["prepared"]'::jsonb,sqlc.narg(monthly_period)::text,$11,$11);
+INSERT INTO access_operations(id,account_id,operator_account_id,execution_actor_id,kind,status,reason,plan_id,plan_revision,period_days,desired,target,completed_steps,monthly_period,purchase_order_id,created_at,updated_at)
+VALUES($1,$2,$3,$3,$4,'pending',$5,$6,$7,$8,$9,$10,'["prepared"]'::jsonb,sqlc.narg(monthly_period)::text,sqlc.narg(purchase_order_id)::uuid,$11,$11);
 -- name: LeaseAccessOperation :one
 UPDATE access_operations SET status='provisioning',attempts=attempts+1,lease_hash=$2,lease_expires_at=clock_timestamp()+interval '3 minutes',updated_at=$3
 WHERE id=$1 AND status IN ('pending','provisioning') RETURNING *;
@@ -32,4 +32,4 @@ UPDATE access_operations SET status='pending',lease_hash=NULL,lease_expires_at=N
 UPDATE access_operations SET status='applied',lease_hash=NULL,lease_expires_at=NULL,review_reason=NULL,completed_steps=completed_steps||'["readback_confirmed"]'::jsonb,updated_at=$3
 WHERE id=$1 AND lease_hash=$2 AND status='provisioning' AND lease_expires_at>clock_timestamp();
 -- name: RequeueAccess :execrows
-UPDATE access_operations SET status='pending',attempts=0,reset_acknowledged=$2,execution_actor_id=sqlc.arg(execution_actor_id)::uuid,review_reason=NULL,updated_at=$3 WHERE id=$1 AND status='needs_review';
+UPDATE access_operations SET status='pending',attempts=0,reset_acknowledged=$2,execution_actor_id=CASE WHEN kind='purchase' THEN NULL ELSE sqlc.arg(execution_actor_id)::uuid END,review_reason=NULL,updated_at=$3 WHERE id=$1 AND status='needs_review';

@@ -94,6 +94,7 @@ func run() error {
 	workers := river.NewWorkers()
 	river.AddWorker(workers, &vpn.ProvisionWorker{Service: svc.VPN()})
 	river.AddWorker(workers, &vpn.AccessWorker{Service: svc.VPN()})
+	river.AddWorker(workers, &platform.PurchaseWorker{Service: svc})
 	river.AddWorker(workers, &vpn.MonthlyResetWorker{Service: svc.VPN()})
 	queues := map[string]river.QueueConfig{"provision": {MaxWorkers: 2}}
 	if os.Args[1] == "serve" {

@@ -45,6 +45,7 @@ type TrialState struct {
 type AccessState struct {
 	ID, AccountID                   uuid.UUID
 	OperatorAccountID               *uuid.UUID
+	PurchaseOrderID                 *uuid.UUID
 	Kind, Status, Reason            string
 	Desired, Target, CompletedSteps json.RawMessage
 	CreatedAt, UpdatedAt            time.Time
@@ -58,6 +59,7 @@ type TrialMetadata struct {
 type AccessWrite struct {
 	ID, AccountID             uuid.UUID
 	OperatorAccountID, PlanID *uuid.UUID
+	PurchaseOrderID           *uuid.UUID
 	Kind, Reason, Step        string
 	Revision, PeriodDays      *int64
 	Desired, Target           json.RawMessage
@@ -89,7 +91,7 @@ func trialState(v store.TrialOperation) TrialState {
 	return TrialState{ID: v.ID, AccountID: v.AccountID, RequestID: v.RequestID, Status: v.Status, PanelID: v.PanelID, PeriodDays: v.PeriodDays, TrafficGb: v.TrafficGb, Devices: v.Devices, FirstStartedAt: timePtr(v.FirstStartedAt), ObservedAt: timePtr(v.ObservedAt), CreatedAt: v.CreatedAt.Time, Target: v.Target, ProfileSnapshot: v.ProfileSnapshot, TrafficUpBytes: intPtr(v.TrafficUpBytes), TrafficDownBytes: intPtr(v.TrafficDownBytes), TrafficUsedBytes: intPtr(v.TrafficUsedBytes)}
 }
 func accessState(v store.AccessOperation) AccessState {
-	return AccessState{ID: v.ID, AccountID: v.AccountID, OperatorAccountID: v.OperatorAccountID, Kind: v.Kind, Status: v.Status, Reason: v.Reason, Desired: v.Desired, Target: v.Target, CompletedSteps: v.CompletedSteps, CreatedAt: v.CreatedAt.Time, UpdatedAt: v.UpdatedAt.Time, ReviewReason: textPtr(v.ReviewReason)}
+	return AccessState{ID: v.ID, AccountID: v.AccountID, OperatorAccountID: v.OperatorAccountID, PurchaseOrderID: v.PurchaseOrderID, Kind: v.Kind, Status: v.Status, Reason: v.Reason, Desired: v.Desired, Target: v.Target, CompletedSteps: v.CompletedSteps, CreatedAt: v.CreatedAt.Time, UpdatedAt: v.UpdatedAt.Time, ReviewReason: textPtr(v.ReviewReason)}
 }
 func (s *Service) queries(tx pgx.Tx) *store.Queries {
 	if tx == nil {
@@ -183,7 +185,7 @@ func (s *Service) QueueAccessTx(ctx context.Context, tx pgx.Tx, in AccessWrite) 
 		if s.queue == nil || s.queue() == nil {
 			return AccessState{}, unavailable()
 		}
-		if e := s.queries(tx).InsertAccessOperation(ctx, store.InsertAccessOperationParams{ID: in.ID, AccountID: in.AccountID, OperatorAccountID: in.OperatorAccountID, Kind: in.Kind, Reason: in.Reason, PlanID: in.PlanID, PlanRevision: nullableInt(in.Revision), PeriodDays: nullableInt(in.PeriodDays), Desired: in.Desired, Target: in.Target, CreatedAt: stamp(in.CreatedAt)}); e != nil {
+		if e := s.queries(tx).InsertAccessOperation(ctx, store.InsertAccessOperationParams{ID: in.ID, AccountID: in.AccountID, OperatorAccountID: in.OperatorAccountID, PurchaseOrderID: in.PurchaseOrderID, Kind: in.Kind, Reason: in.Reason, PlanID: in.PlanID, PlanRevision: nullableInt(in.Revision), PeriodDays: nullableInt(in.PeriodDays), Desired: in.Desired, Target: in.Target, CreatedAt: stamp(in.CreatedAt)}); e != nil {
 			return AccessState{}, accessConflict(e)
 		}
 		if _, e := s.queue().InsertTx(ctx, tx, AccessArgs{OperationID: in.ID}, &river.InsertOpts{Queue: "provision", MaxAttempts: 5}); e != nil {
@@ -216,6 +218,11 @@ func (s *Service) RequeueAccessTx(ctx context.Context, tx pgx.Tx, id, a, actor u
 	}
 	if _, e = s.queue().InsertTx(ctx, tx, AccessArgs{OperationID: id}, &river.InsertOpts{Queue: "provision", MaxAttempts: 5}); e != nil {
 		return AccessState{}, unavailable()
+	}
+	if r.Kind == "purchase" {
+		if e = s.purchaseOutcome(ctx, tx, id, "queued", ""); e != nil {
+			return AccessState{}, e
+		}
 	}
 	r.Status = "pending"
 	r.UpdatedAt = stamp(at)

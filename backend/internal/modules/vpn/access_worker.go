@@ -94,11 +94,21 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 			}
 		}
 		if ambiguous || op.WriteStarted || op.ResetStarted || op.Attempts >= 5 || lost.Load() {
-			n, e := store.New(s.pool).AccessNeedsReview(other, store.AccessNeedsReviewParams{ID: id, LeaseHash: lease, ReviewReason: pgtype.Text{String: code, Valid: true}, UpdatedAt: stamp(s.now())})
+			tx, e := s.pool.Begin(other)
+			if e != nil {
+				return unavailable()
+			}
+			defer tx.Rollback(other)
+			n, e := store.New(tx).AccessNeedsReview(other, store.AccessNeedsReviewParams{ID: id, LeaseHash: lease, ReviewReason: pgtype.Text{String: code, Valid: true}, UpdatedAt: stamp(s.now())})
 			if e != nil || n != 1 {
 				return unavailable()
 			}
-			return nil
+			if op.Kind == "purchase" {
+				if e = s.purchaseOutcome(other, tx, id, "needs_review", code); e != nil {
+					return unavailable()
+				}
+			}
+			return tx.Commit(other)
 		}
 		n, e := store.New(s.pool).AccessRetry(other, store.AccessRetryParams{ID: id, LeaseHash: lease, UpdatedAt: stamp(s.now())})
 		if e != nil || n != 1 {
@@ -132,11 +142,22 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	if err != nil || a.PanelKey != t.PanelKey || a.VpnID != t.VPNID || a.SubID != t.SubID || a.VpnBanned != expectedBan || ((a.AssignedPanelID != nil) && stringValue(a.AssignedPanelID) != t.PanelID) {
 		return cleanup("identity_changed", true)
 	}
+	if op.Kind == "purchase" {
+		if a.Restricted || a.VpnBanned || op.PurchaseOrderID == nil {
+			return cleanup("purchase_guard_changed", true)
+		}
+		if reason := s.checkPurchase(ctx, nil, op.PurchaseOrderID, op.AccountID, op.ID); reason != "" {
+			return cleanup(reason, true)
+		}
+	}
 	executor := op.ExecutionActorID
-	if executor == nil && op.Kind != "monthly_reset" {
+	if op.Kind == "purchase" {
+		executor = nil
+	}
+	if executor == nil && op.Kind != "monthly_reset" && op.Kind != "purchase" {
 		executor = op.OperatorAccountID // Operations written before migration 13.
 	}
-	if executor == nil && op.Kind != "monthly_reset" {
+	if executor == nil && op.Kind != "monthly_reset" && op.Kind != "purchase" {
 		return cleanup("actor_missing", true)
 	}
 	if executor != nil && s.accounts.RequireOperator(ctx, *executor) != nil {
@@ -171,8 +192,11 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		if executor != nil && s.accounts.RequireOperator(ctx, *executor) != nil {
 			return false
 		}
+		if op.Kind == "purchase" && s.checkPurchase(ctx, nil, op.PurchaseOrderID, op.AccountID, op.ID) != "" {
+			return false
+		}
 		current, e := s.accountByID(ctx, op.AccountID)
-		if e != nil || current.PanelKey != t.PanelKey || current.VpnID != t.VPNID || current.SubID != t.SubID || current.VpnBanned != expectedBan || op.Kind == "monthly_reset" && (!(current.AccessProfile != nil) || stringValue(current.AccessProfile) != "unlimited") {
+		if e != nil || current.PanelKey != t.PanelKey || current.VpnID != t.VPNID || current.SubID != t.SubID || current.VpnBanned != expectedBan || op.Kind == "purchase" && current.Restricted || op.Kind == "monthly_reset" && (!(current.AccessProfile != nil) || stringValue(current.AccessProfile) != "unlimited") {
 			return false
 		}
 		n, e := store.New(s.pool).MarkAccessWrite(ctx, store.MarkAccessWriteParams{ID: id, LeaseHash: lease, UpdatedAt: stamp(s.now())})
@@ -340,6 +364,16 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		tx.Rollback(ctx)
 		return cleanup("identity_changed", true)
 	}
+	if op.Kind == "purchase" {
+		if a.Restricted {
+			tx.Rollback(ctx)
+			return cleanup("purchase_guard_changed", true)
+		}
+		if reason := s.checkPurchase(ctx, tx, op.PurchaseOrderID, op.AccountID, op.ID); reason != "" {
+			tx.Rollback(ctx)
+			return cleanup(reason, true)
+		}
+	}
 	n, err := final.AccessApplied(ctx, store.AccessAppliedParams{ID: id, LeaseHash: lease, UpdatedAt: stamp(s.now())})
 	if err != nil || n != 1 {
 		tx.Rollback(ctx)
@@ -354,6 +388,12 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	if err = s.accounts.SetAccessMetadata(ctx, tx, a.ID, t.Profile, t.Banned); err != nil {
 		tx.Rollback(ctx)
 		return cleanup("profile_save_failed", true)
+	}
+	if op.Kind == "purchase" {
+		if err = s.purchaseOutcome(ctx, tx, id, "applied", ""); err != nil {
+			tx.Rollback(ctx)
+			return cleanup("purchase_status_failed", true)
+		}
 	}
 	if op.Kind == "monthly_reset" {
 		err = monthlyAudit(ctx, tx, a.ID, op.MonthlyPeriod.String, "monthly_reset_applied", &id, s.now())

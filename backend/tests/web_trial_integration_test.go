@@ -15,7 +15,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/oapi-codegen/runtime/types"
+	"github.com/pressly/goose/v3"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"io"
@@ -193,7 +195,7 @@ func openMode(t *testing.T, native bool) *fixture {
 			http.NotFound(w, r)
 			return
 		}
-		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/healthz" {
+		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/healthz" || r.URL.Path == "/webhooks/yoomoney" {
 			handler.ServeHTTP(w, r)
 			return
 		}
@@ -630,12 +632,15 @@ func TestWebTrialBackupRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(restored.Close)
-	// Model a backup made before the kind rename while retaining the live job.
-	if tag, updateErr := restored.Exec(ctx, `UPDATE river_job SET kind='legacy_job' WHERE kind='trial_provision' AND args->>'operation_id'=$1`, op.String()); updateErr != nil || tag.RowsAffected() != 1 {
-		t.Fatal("restored running job rename fixture", updateErr)
+	// Reapply the latest additive layer on the restored database while retaining its running job.
+	metadataDB := stdlib.OpenDBFromPool(restored)
+	defer metadataDB.Close()
+	provider, err := goose.NewProvider(goose.DialectPostgres, metadataDB, os.DirFS(filepath.Join(f.root, "backend/db/migrations")))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if tag, updateErr := restored.Exec(ctx, `DELETE FROM goose_db_version WHERE version_id=14 AND is_applied`); updateErr != nil || tag.RowsAffected() != 1 {
-		t.Fatal("restored migration version fixture", updateErr)
+	if _, err = provider.Down(ctx); err != nil {
+		t.Fatal("restored latest migration downgrade", err)
 	}
 	if err = db.Migrate(ctx, restored); err != nil {
 		t.Fatal("restored additive migration")

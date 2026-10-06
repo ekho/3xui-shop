@@ -34,6 +34,7 @@ type AccessOperation struct {
 	Sequence          int64
 	ExecutionActorID  *uuid.UUID
 	MonthlyPeriod     pgtype.Text
+	PurchaseOrderID   *uuid.UUID
 }
 
 type Account struct {
@@ -183,6 +184,40 @@ type MonthlyResetPeriod struct {
 type OperatorAccount struct {
 	AccountID uuid.UUID
 	GrantedAt pgtype.Timestamptz
+}
+
+type PurchaseOrder struct {
+	ID                 uuid.UUID
+	AccountID          uuid.UUID
+	IdempotencyKey     uuid.UUID
+	BodyHash           []byte
+	Quote              []byte
+	AmountMinor        int64
+	PaymentType        string
+	PaymentStatus      string
+	FulfillmentStatus  string
+	Active             bool
+	ReviewRequired     bool
+	ReviewReason       pgtype.Text
+	AccessOperationID  *uuid.UUID
+	CreatedAt          pgtype.Timestamptz
+	ExpiresAt          pgtype.Timestamptz
+	PaidAt             pgtype.Timestamptz
+	FundingOperationID pgtype.Text
+}
+
+type PurchaseReceipt struct {
+	OperationID      string
+	OrderID          uuid.UUID
+	OccurredAt       pgtype.Timestamptz
+	GrossMinor       int64
+	NetMinor         int64
+	Currency         string
+	NotificationType string
+	Codepro          bool
+	Unaccepted       bool
+	ReviewReason     pgtype.Text
+	CreatedAt        pgtype.Timestamptz
 }
 
 type RegistrationChallenge struct {

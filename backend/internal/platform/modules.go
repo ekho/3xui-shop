@@ -37,7 +37,7 @@ func (s *Service) VPN() *vpn.Service                     { return s.vpn }
 func (s *Service) connectSubscriptions() {
 	s.vpn = vpn.New(s.pool, s.accounts, func() *river.Client[pgx.Tx] { return s.queue }, func() vpn.Settings { return s.cfg.VPNSettings() }, func() time.Time { return s.now() }, func(ctx context.Context, tx pgx.Tx, r, o uuid.UUID, status string) error {
 		return s.subscriptions.RecordTrialOutcomeTx(ctx, tx, r, o, status)
-	})
+	}, vpn.PurchaseHooks{Check: s.CheckPurchaseAccess, Outcome: s.RecordPurchaseAccessTx})
 	s.subscriptions = subscriptions.New(s.pool, s.accounts, s.catalogue, s.vpn, func() subscriptions.Config { return s.cfg.SubscriptionSettings() }, func() time.Time { return s.now() })
 }
 

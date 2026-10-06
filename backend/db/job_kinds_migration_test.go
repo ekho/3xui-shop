@@ -64,7 +64,7 @@ func TestSemanticJobKindMigrationPreservesRiverHistory(t *testing.T) {
 	e := testkit.Open(t) // Fresh database runs the guard before River creates its tables.
 	ctx := context.Background()
 	provider := jobKindProvider(t, e)
-	if _, err := provider.Down(ctx); err != nil {
+	if _, err := provider.DownTo(ctx, 13); err != nil {
 		t.Fatal(err)
 	}
 	account, mail, trial, access := seedJobKindSources(t, e)
@@ -120,7 +120,7 @@ func TestSemanticJobKindMigrationRejectsUnknownAtomically(t *testing.T) {
 	e := testkit.Open(t)
 	ctx := context.Background()
 	provider := jobKindProvider(t, e)
-	if _, err := provider.Down(ctx); err != nil {
+	if _, err := provider.DownTo(ctx, 13); err != nil {
 		t.Fatal(err)
 	}
 	account, mail, trial, _ := seedJobKindSources(t, e)
