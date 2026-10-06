@@ -309,7 +309,7 @@ func TestRegressionTrialDecisionAtomicityEligibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base := s.cfg
+	base := *s.cfg
 	for _, tc := range []struct{ days, traffic, devices int64 }{{0, 15, 1}, {-1, 15, 1}, {3, -1, 1}, {3, 15, -1}, {math.MaxInt64, 15, 1}, {3, math.MaxInt64, 1}, {3, 15, math.MaxInt64}} {
 		s.cfg.Subscriptions.TrialPeriodDays = tc.days
 		s.cfg.Subscriptions.TrialTrafficGB = tc.traffic
@@ -321,7 +321,7 @@ func TestRegressionTrialDecisionAtomicityEligibility(t *testing.T) {
 			t.Fatal("invalid settings side effect")
 		}
 	}
-	s.cfg = base
+	*s.cfg = base
 	e.Pool.Exec(ctx, `UPDATE accounts SET restricted=true WHERE id=$1`, account)
 	if _, err = s.decideTrialRequest(ctx, r.RequestId, decision(101, "approve")); status(err) != 403 {
 		t.Fatal("restricted approve")

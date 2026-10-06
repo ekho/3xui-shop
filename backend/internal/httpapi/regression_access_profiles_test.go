@@ -278,6 +278,7 @@ func TestRegressionAccessUnlimitedRejectsUnreadySources(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		name, code string
+		noQueue    bool
 		prepare    func(*testing.T, *regressionFixture, *fakePanel, uuid.UUID)
 	}{
 		{name: "no_hidden_plan", code: "ACCESS_PLAN_CONFLICT"},
@@ -294,9 +295,8 @@ func TestRegressionAccessUnlimitedRejectsUnreadySources(t *testing.T) {
 		{name: "invalid_traffic", code: "ACCESS_PLAN_CONFLICT", prepare: func(t *testing.T, s *regressionFixture, _ *fakePanel, _ uuid.UUID) {
 			insertCorruptPlan(t, s, `{"devices":7,"traffic_gb":100001,"profile":"unlimited","hidden":true,"periods":[],"prices":[]}`)
 		}},
-		{name: "missing_scheduler_queue", code: "SERVICE_UNAVAILABLE", prepare: func(t *testing.T, s *regressionFixture, _ *fakePanel, _ uuid.UUID) {
+		{name: "missing_scheduler_queue", code: "SERVICE_UNAVAILABLE", noQueue: true, prepare: func(t *testing.T, s *regressionFixture, _ *fakePanel, _ uuid.UUID) {
 			seed(t, s)
-			s.queue = nil
 		}},
 		{name: "invalid_scheduler_timezone", code: "SERVICE_UNAVAILABLE", prepare: func(t *testing.T, s *regressionFixture, _ *fakePanel, _ uuid.UUID) {
 			seed(t, s)
@@ -319,6 +319,11 @@ func TestRegressionAccessUnlimitedRejectsUnreadySources(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, e, p, actor, target, _ := accessActors(t)
+			if tc.noQueue {
+				clock := s.now
+				s = newRegressionFixture(s.pool, s.limiter, nil, *s.cfg)
+				s.now = clock
+			}
 			if tc.prepare != nil {
 				tc.prepare(t, s, p, actor)
 			}
