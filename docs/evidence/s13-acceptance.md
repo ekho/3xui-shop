@@ -55,7 +55,19 @@ HTTP поведение до этого не проверялось, это не
 
 ## Обзор и доставка
 
-Итоговый обзор, CI/merge и собственный preview С13 ещё не завершены.
+Один fresh Astra/high whole-branch обзор base5144fc2..1d1a2ce/all7files: **Critical0/Important0/Minor0**, Ready to merge после exact-source CI. Reviewer сам проверил полный focused log/equivalence/native export; fix pass и повторного review не потребовалось. Deferred minors отсутствуют.
+
+Все семь Declined to judge оценены координатором:
+
+- Final: Ruling: Real transfer/wallet configuration/provider delivery remain outside C13 — accepted local-stub contract replaces their prerequisite and synthetic receipts prove only the local boundary — cost if wrong: real provider readiness still requires authorized resources and separate acceptance.
+- Final: Ruling: Legacy pending/import/callback cutover/enabled-method reconciliation/Python removal remain C45–C47 — unknown-label200 prevents false binding and proves no migration — cost if wrong: legacy money/configuration gaps must still be reconciled before production cutover.
+- Final: Ruling: Dispute/refund resolution and the fate of already issued access after a later conflicting fact remain C19/C20 — C13 retains the monetary fact and blocks new preparation; no automatic financial resolution or access revocation is promised — cost if wrong: support needs the later resolution workflow, and retained money is not settled money.
+- Final: Ruling: True codepro/unaccepted cases are defensive synthetic checks — current official provider documents describe false; no real held/protected payment feature is claimed — cost if wrong: actual future provider behavior needs fresh authoritative contract verification.
+- Final: Ruling: Full browser→real backend→provider end-to-end is not claimed — browser interception, connected real handler/DB and source-equivalent native HTTPS/River/3X-UI are separate evidence levels — cost if wrong: a future external browser/provider path may still expose a integration gap.
+- Final: Ruling: Production/Happ/VPN/trust/live Telegram/SMTP/target-host performance remain outside local C13 — no such actions or success claims occurred under this scope — cost if wrong: external performance/delivery readiness remains unverified.
+- Final: Ruling: Own C13 exact-source CI/manual merge/actual preview/tag/images/issue closure remain coordinator gates — C11 dev33 is verified predecessor delivery and does not satisfy them — cost if wrong: unverified C13 artifacts could be called delivered; #18 stays OPEN until actual proofs.
+
+CI/merge и собственный preview С13 ещё не завершены.
 С11 отдельно доставлена [PR72](https://github.com/ekho/3xui-shop/pull/72),
 [2.0.0-dev.33](https://github.com/ekho/3xui-shop/releases/tag/2.0.0-dev.33), #19 CLOSED/Project Done;
 эта доставка не подменяет delivery gates С13. Полные обезличенные записи и логи сохранены в собственном private acceptance export.

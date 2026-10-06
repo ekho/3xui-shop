@@ -39,8 +39,8 @@
 
 ## Finish
 
-- [ ] Один fresh Astra/high read-only reviewer всего диапазона + Review Focus + ledger. Critical/Important — один fix pass с RED→GREEN и green affected suite; без re-review. Каждый Declined-to-judge → Final ruling/cost, minors deferred.
-- [ ] Опубликовать все rulings/minors в evidence, сохранить проверенный export и удалить только собственный SDD scratch.
+- [x] Один fresh Astra/high read-only reviewer всего диапазона + Review Focus + ledger. Critical/Important — один fix pass с RED→GREEN и green affected suite; без re-review. Каждый Declined-to-judge → Final ruling/cost, minors deferred.
+- [x] Опубликовать все rulings/minors в evidence, сохранить проверенный export и удалить только собственный SDD scratch.
 - [ ] Exact-source CI и ручной v2 merge под source guard; actual parents/source-equal tree + действительный preview/tag/3indexes/6labels проверить. С11 source-equivalent delivery отражена отдельно от С13.
 - [ ] Только после собственных AC/source/delivery #18 CLOSED/Project Done; затем следующая готовая задача. Реальную доставку/legacy/production не считать проверенными.
 
