@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 	_ "time/tzdata"
+	"unicode/utf8"
 )
 
 type Config struct {
@@ -62,6 +63,18 @@ func LoadConfig() (Config, error) {
 	}
 	c.Subscriptions.PanelID = os.Getenv("PANEL_ID")
 	c.Payments.YooMoneyWalletID = os.Getenv("YOOMONEY_WALLET_ID")
+	if value := os.Getenv("SHOP_PAYMENT_MANUAL_ENABLED"); value != "" {
+		c.Payments.ManualEnabled, err = strconv.ParseBool(value)
+		if err != nil {
+			return c, errors.New("invalid SHOP_PAYMENT_MANUAL_ENABLED")
+		}
+	}
+	if c.Payments.ManualEnabled || os.Getenv("MANUAL_CARD_DETAILS_FILE") != "" || os.Getenv("MANUAL_CARD_DETAILS") != "" {
+		c.Payments.ManualCardDetails, err = SecretFile("MANUAL_CARD_DETAILS")
+		if err != nil {
+			return c, err
+		}
+	}
 	if value := os.Getenv("SHOP_PAYMENT_YOOMONEY_ENABLED"); value != "" {
 		c.Payments.YooMoneyEnabled, err = strconv.ParseBool(value)
 		if err != nil {
@@ -193,6 +206,9 @@ func LoadConfig() (Config, error) {
 	return c, c.Validate()
 }
 func (c Config) Validate() error {
+	if c.Payments.ManualEnabled && (!utf8.ValidString(c.Payments.ManualCardDetails) || strings.ContainsRune(c.Payments.ManualCardDetails, '\x00') || utf8.RuneCountInString(c.Payments.ManualCardDetails) > 2000 || strings.TrimSpace(c.Payments.ManualCardDetails) == "") {
+		return errors.New("enabled manual payment requires valid MANUAL_CARD_DETAILS file")
+	}
 	if c.Payments.YooMoneyEnabled && (c.Payments.YooMoneyWalletID == "" || len(c.Payments.YooMoneyNotificationSecret) == 0) {
 		return errors.New("enabled YooMoney requires wallet and notification secret file")
 	}

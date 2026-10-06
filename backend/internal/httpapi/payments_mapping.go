@@ -23,6 +23,9 @@ func purchaseOrderResult(p payments.PurchaseOrder) wire.PurchaseOrder {
 	if c := p.Checkout; c != nil {
 		out.Checkout = &wire.YooMoneyCheckout{Action: wire.YooMoneyCheckoutAction(c.Action), Method: wire.YooMoneyCheckoutMethod(c.Method), Fields: wire.YooMoneyCheckoutFields{Label: c.Fields.Label, PaymentType: wire.YooMoneyCheckoutFieldsPaymentType(c.Fields.PaymentType), QuickpayForm: wire.YooMoneyCheckoutFieldsQuickpayForm(c.Fields.QuickpayForm), Receiver: c.Fields.Receiver, SuccessURL: c.Fields.SuccessURL, Sum: c.Fields.Sum}}
 	}
+	if m := p.ManualPayment; m != nil {
+		out.ManualPayment = &wire.ManualPayment{CanReport: m.CanReport, DecidedAt: m.DecidedAt, Instructions: m.Instructions, Reason: m.Reason, ReportedAt: m.ReportedAt, State: wire.ManualPaymentState(m.State)}
+	}
 	return out
 }
 

@@ -176,6 +176,8 @@ func (s *Service) ReceiveYooMoney(ctx context.Context, fields url.Values) error 
 		return unavailable()
 	}
 	switch {
+	case p.method != "yoomoney":
+		review = "payment_method_mismatch"
 	case typ != "p2p-incoming" && typ != "card-incoming", currency != "643", codepro, unaccepted, net <= 0, net > gross, gross != p.amount:
 		review = "payment_mismatch"
 	case p.paymentStatus == "canceled", occurred.After(p.expires):
@@ -194,7 +196,7 @@ func (s *Service) ReceiveYooMoney(ctx context.Context, fields url.Values) error 
 	}
 	if review != "" {
 		status := "paid"
-		if codepro || unaccepted {
+		if codepro || unaccepted || p.method != "yoomoney" {
 			status = "pending"
 		} // Held or protected is not accessible money.
 		if _, err = tx.Exec(ctx, "UPDATE purchase_orders SET payment_status=CASE WHEN payment_status='paid' THEN 'paid' ELSE $2 END,paid_at=CASE WHEN paid_at IS NOT NULL THEN paid_at WHEN $2='paid' THEN $3 ELSE NULL END,active=false,fulfillment_status=CASE WHEN access_operation_id IS NULL THEN 'needs_review' ELSE fulfillment_status END,review_required=true,review_reason=$4 WHERE id=$1", orderID, status, occurred, review); err != nil {
