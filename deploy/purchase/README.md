@@ -240,9 +240,12 @@ LOCAL_PROFILE=native python3 deploy/purchase/renewal-local.py stop
 свободные loopback-порты58443,59444–59447, native3X-UI3.7.0 и TLS Mailpit.
 Секреты, dump, отчёты и сертификат остаются в закрытом
 `.superpowers/acceptance/c16-renewal/native`. Системное доверие менять не нужно.
-`check` проверяет active/expired/exhausted, replay, очередное продление и поздние
-ban/plan/identity guards. Исчерпание создаётся синтетическими счётчиками только
-при остановленной панели этого проекта. `restore` задерживает её access job,
+`check` проверяет active/expired/exhausted, replay, очередное продление, покупку
+после возврата к триалу и поздние ban/plan/identity guards. Исчерпание создаётся
+синтетическими счётчиками при остановленной панели этого проекта. SQLite
+обрабатывается внутри Docker VM, в контейнере из закреплённой Python базы
+Dockerfile.bot, с отключённой сетью и только собственным panel DB mount.
+`restore` задерживает её access job,
 сохраняет funded target, останавливает исходный backend и сравнивает восстановленную
 базу READ ONLY без запуска её исполнителей. После очистки авторизации и повторной
 сверки исходный backend применяет прежний target. `stop` сохраняет данные стенда.

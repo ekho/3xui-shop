@@ -7,7 +7,6 @@ import json
 import os
 from pathlib import Path
 import socket
-import sqlite3
 import subprocess
 import sys
 import time
@@ -119,14 +118,23 @@ def expire_or_exhaust(account, exhausted):
         # Synthetic counters only, while this project's panel writer is stopped.
         compose('stop', 'panel')
         try:
-            with sqlite3.connect(STATE / 'panel-db/x-ui.db') as db:
-                assert db.execute('SELECT count(*) FROM clients WHERE email=? AND uuid=? AND sub_id=?',
-                    (row['panel_key'], row['vpn_id'], row['sub_id'])).fetchone()[0] == 1
-                total = before['client']['totalGB']
-                assert total > 0
-                changed = db.execute('UPDATE client_traffics SET up=?,down=0 WHERE email=?',
-                    (total + 1, row['panel_key'])).rowcount
-                assert changed == len(before['inboundIds']) and changed > 0
+            # SQLite WAL must stay in the Docker VM; a Mac-side connection can see stale state.
+            script = '''import json,sqlite3,sys
+row,total,memberships=json.load(sys.stdin)
+assert total>0
+with sqlite3.connect('/panel/x-ui.db') as db:
+    assert db.execute('SELECT count(*) FROM clients WHERE email=? AND uuid=? AND sub_id=? AND enable=0',
+        (row['panel_key'],row['vpn_id'],row['sub_id'])).fetchone()[0]==1
+    changed=db.execute('UPDATE client_traffics SET up=?,down=0 WHERE email=?',
+        (total+1,row['panel_key'])).rowcount
+    assert changed==memberships and changed>0
+'''
+            image = (ROOT / 'deploy/acceptance/Dockerfile.bot').read_text().splitlines()[0].split()[1]
+            local.command(['docker', 'run', '--rm', '--pull', 'missing', '--network', 'none',
+                '--read-only', '--user', str(os.getuid()) + ':' + str(os.getgid()), '-i',
+                '--mount', 'type=bind,source=' + str(STATE / 'panel-db') + ',target=/panel',
+                '--entrypoint', 'python', image, '-c', script],
+                stdin=json.dumps([row, before['client']['totalGB'], len(before['inboundIds'])]).encode())
         finally:
             compose('up', '--no-build', '--pull', 'never', '--no-deps', '-d', 'panel')
         def panel_ready():
@@ -256,7 +264,7 @@ def check():
             assert saved['paid'] and saved['funded'] and saved['action'] == 'purchase'
             assert saved['receipts'] == saved['jobs'] == 1 and saved['access_status'] == 'applied'
             assert saved['target']['reset'] and native(account)['usedTraffic'] == 0
-            assert after['enabled'] and after['limit_ip'] == terms['devices']
+            assert after['enabled'] and after['limit_ip'] == terms['devices'] + 1
             assert after['traffic_bytes'] == terms['traffic_gb'] * 1024**3
             assert purchase.account_row(account)['assigned_panel_id'] == allocated['assigned_panel_id']
             assert native(account)['client']['uuid'] == allocated['vpn_id']

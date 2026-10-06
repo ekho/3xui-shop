@@ -44,8 +44,29 @@ Behavioral RED: оба перехода отказывают PURCHASE_NOT_ELIGIB
 Buy plan отсутствует после can_purchase=true (34.478s). После исправления
 оба перехода, настоящая повторная purchase и все пять funding paths прошли
 connected race (24.256s); 43/43 старых/новых purchase/renewal UI cases PASS18.491s.
-Проверки disputed/unresolved/late assignment, новый native trial-first-purchase,
-текущая полная регрессия и доставка остаются открытыми до их фактического результата.
+Disputed/unresolved/late assignment PASS9.425s; окончательный полный Go набор
+также включает запрет второй покупки, пока новая выдача не закончилась.
+
+| Проверка после единственного review fix | Фактический результат |
+| --- | --- |
+| Полный Go race/real browser | 705 PASS в13 test packages,587.325s; FAIL/SKIP/race отсутствуют. |
+| Полный web | 234/234 PASS106.225s; прежние сценарии и7 новых rendered purchase guards. |
+| Python baseline | 105 PASS15.210s с защищёнными абсолютными файлами regression DB/Redis. |
+| Native3.7.0 | Все7 случаев PASS29.803s; исходные6 плюс trial-first-purchase с настоящими receipt/River/panel, неизменными IDs/server, одним target/reset и восстановленным renew. |
+| Backup/restart | PASS4.793s: READ ONLY restored financial/identity/proof/target digest равен; восстановленные workers не запускались, исходный применил сохранённый target один раз. |
+| Source/generation/static | Go/TS generation, vet, runtime config и semantic names PASS. Backend/web/Python source c859ca2;487 product input hashes совпадают. Последующее изменение затронуло только native checker и документацию. |
+
+После исправления checker сначала неверно ожидал limitIp=device count,
+вместо существующего device count+1. Следующий запуск остановился на проверке
+SQLite identity при подготовке exhausted fixture. Диагностика сравнила один
+клиент: после bulkDisable Docker SQLite/API видели enable=0, Mac SQLite —1.
+Запись тестовых счётчиков перенесена в Docker VM, в эфемерный Python контейнер
+из уже закреплённой базы Dockerfile.bot: сеть отключена, корневая ФС read-only,
+смонтирована только собственная panel DB, panel writer остановлен. SQL параметры
+и проверки identity/disable сохранены. Полный исправленный native check выше
+прошёл; эти изменения не затрагивают runtime приложения.
+Все failed records сохранены; доставка текущего окончательного SHA проверяется
+отдельно в PR/#23, включая CI, ручное слияние в v2 и опубликованный preview.
 
 | Критерий | Исполняемое доказательство |
 | --- | --- |
