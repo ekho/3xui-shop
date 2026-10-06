@@ -81,10 +81,26 @@ compiled Go process остановлен после commit и перезапущ
 - Task 2 Ruling: final plan guard uses existing catalogue.LockCurrentPlan, with captured used metadata/terms compared — preserves selected revision until commit without HTTP under lock — cost if wrong: a catalogue change during preparation must return conflict, not queue stale desired access.
 - Task 2 Ruling: compare only stable baseline operation IDs/status/targets, excluding mutable cached observations — only these fields define confirmed access, observed_at refresh is not an identity change — cost if wrong: an omitted eligibility field could permit a stale operation; role/account/unresolved/plan guards remain separately checked.
 
+- Final: Ruling: combined callback evidence is accepted from the owner review-path failure test, retained post-readback GrantApplied failure test and same-Tx source — reviewer found no correctness defect; assignment rollback is not a standalone asserted case — cost if wrong: a future boundary regression needs an explicit assignment assertion.
+- Final: Ruling: production, real payments/Telegram, external SMTP, Happ/system trust and target performance remain excluded — accepted local scope and user constraints — cost if wrong: local success does not prove those external environments.
+- Final: Ruling: 3X-UI duplicate-create guarantee remains unattested and automatic uncertain-create retry stays disabled — owned3.7.0 preflight did not establish uniqueness — cost if wrong: enabling a retry could create duplicate clients.
+- Final: Ruling: C10/PR5, M05/M06 and C47 are downstream acceptance — this branch completes the agreed subscriptions/VPN boundary only — cost if wrong: premature migration/removal would lose remaining functionality.
+- Final: Ruling: actual CI, merge, images and prerelease remain coordinator delivery gates — local matrix and source review are not publication proof — cost if wrong: #58 would be closed without usable delivered artifacts.
+- Final: Ruling: existing absence of repository-local AGENTS.md/SECURITY.md is recorded without adding unrelated policy files — supplied instructions and enabled security baseline were applied — cost if wrong: a future operator must make local supported surfaces explicit.
+
 ## Ревью, доставка и пределы
 
-Fresh whole-branch Astra/high review готовится. CI/merge/preview М04б ещё не
-подтверждены, #58 остаётся открытой. Локальная проверка не подменяет эти gates.
+Fresh Astra/high reviewer проверил все67 изменённых файлов и потребителей
+в диапазоне65560b0..f939e98. Critical/Important/Minor0; источник готов к merge.
+22 DTO сохранили fields/order/tags и pointer/slice shapes; SQL access и его
+generated queries совпадают с прежними. Fix pass и re-review не потребовались.
+
+Owner callback test проверяет review-path rollback; прежний post-readback
+GrantApplied failure test и общий caller Tx дополняют его. Отдельного assertion
+rollback assignment в этих тестах нет; это предел указанного доказательства.
+
+CI/merge/preview М04б ещё не подтверждены, #58 остаётся открытой. Локальная
+проверка и review не подменяют эти gates.
 Авторизация последовательных PR в v2 и preliminary releases действует;
 CI waiver старого PR62 не относится к этой ветке.
 
