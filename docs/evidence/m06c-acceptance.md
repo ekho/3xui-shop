@@ -7,7 +7,7 @@
 
 Product revision `73668ab42d95c782a3d04fd8d7098381c3f219ba`.
 Полная матрица **22/22 PASS**,441.224s на одной committed product revision. Go **14 пакетов PASS** с `RUN_BROWSER_TESTS=1 go -C backend test -race ./... -count=1` (platform208.700s, connected consumers102.927s); Python **105/105**, Playwright **127/127**. Собственный native stack остановлен; API/all15 migrations/dependencies/generation сохранены.
-Whole-branch review, exact-source CI, manual v2 merge и preview ещё ожидаются.
+Единственный fresh whole-branch review Astra/high на d23c848..9411983 завершён: Critical0/Important0/Minor0, Ready to merge после обязательных проверок доставки. Exact-source CI, manual v2 merge и preview ещё ожидаются; source не менялся после локальной матрицы.
 #60 OPEN/In progress до удаления shared platform/store М06d и собственной архитектурной приёмки всего М06.
 
 | Этап | Seconds | Result |
@@ -64,4 +64,13 @@ Task-done выполнил широкую focused real PG/Redis race на commit
 
 ## Final rulings
 
-Единственный fresh reviewer ещё ожидается.
+Все шесть пунктов Declined to judge оценены координатором по фактическому поведению. Findings и deferred minors отсутствуют; fix pass/re-review не требуются.
+
+- Final: Ruling: New reports, retention and metadata mirror remain C26/C29 — customers keep the existing audit history unchanged; open #36/#39 own the future features — cost if wrong: a later report/history read model must be designed, neither task is declared complete.
+- Final: Ruling: Shared platform.Service/store removal and whole-M06 architecture acceptance remain M06d — existing consumers use tested transitional composition and #60 stays OPEN/In progress — cost if wrong: a remaining facade could hide unwanted coupling; M06d has an explicit deletion/import/SQL acceptance gate.
+- Final: Ruling: Python retirement remains C47 — current Python runtime is preserved until the roadmap covers its features and controlled cutover is accepted — cost if wrong: temporary dual-language maintenance continues; no second handler is activated in production.
+- Final: Ruling: Production, real Telegram/payment-provider, installed Happ/VPN/macOS trust and external SMTP delivery are excluded — local controlled adapters/TLS tests are the authorized proof; users receive no claim of production or deliverability readiness — cost if wrong: external acceptance still requires resources and separate exact-target authority.
+- Final: Ruling: No new browser-to-real-backend trial/support run for this ownership transfer — unchanged API and actual browser, connected app/HTTP and native replay/restore proofs cover their stated boundaries separately; a new end-to-end result is not claimed — cost if wrong: integration between those boundaries could still need a dedicated future surface proof; existing mandatory full22 remains green.
+- Final: Ruling: Historical RED/GREEN and M06b2 publication use coordinator-owned evidence; current GitHub must be checked by coordinator — actual failure/pass logs and live source-equal base were read, remote canonical owner/authority and v2 re-fetched; exact final CI/merge/release/image checks remain mandatory — cost if wrong: stale or unverifiable remote evidence blocks delivery, not a reason to infer success from reviewer approval.
+
+Ревью проверило полный diff41 файлов, доступность22 логов и результаты матрицы, самостоятельно повторило сравнение API/all15 migrations/dependencies, product-equivalence и whitespace. Полную матрицу повторно не запускало; remote delivery проверяет координатор.
