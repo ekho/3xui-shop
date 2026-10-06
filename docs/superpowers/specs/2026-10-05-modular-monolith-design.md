@@ -4,8 +4,9 @@
 М01–М05 доставлены в v2 и прошли локальную приёмку; М06 выполняется по частям
 (support → notifications → audit → удаление общего platform/store).
 М06а support доставлен PR #67/preview2.0.0-dev.23; М06b1 Telegram outbox доставлен PR #68/dev.25
-([спецификация](2026-10-06-m06b-telegram-delivery-design.md)); далее [email М06b2](2026-10-06-m06b-email-delivery-design.md),
-audit М06c и cleanup М06d. #60 остаётся OPEN.
+([спецификация](2026-10-06-m06b-telegram-delivery-design.md)); [email М06b2](2026-10-06-m06b-email-delivery-design.md)
+доставлен PR #69/dev.27 после единственного review fix pass и новой22-stage приёмки.
+[Audit М06c](2026-10-06-m06c-audit-design.md) имеет локальную22/22 приёмку ([доказательства](../../evidence/m06c-acceptance.md)); fresh review завершён без замечаний, CI/merge/preview ожидаются. Далее cleanup М06d, #60 остаётся OPEN.
 
 Основание — новое требование владельца: весь backend, включая функциональность
 ботов, реализуется слабосвязанными модулями монолита; нынешний Python-бот в итоге

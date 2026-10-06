@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"example.com/cabinet/backend/internal/modules/audit_reports"
 
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/catalogue"
@@ -48,5 +49,6 @@ func NewService(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 	subscriptionOwner = subscriptions.New(pool, owner, catalogueOwner, vpnOwner, notificationsOwner, func() subscriptions.Config { return cfg.SubscriptionSettings() }, nil)
 	paymentsOwner = payments.New(pool, owner, catalogueOwner, vpnOwner, func() *river.Client[pgx.Tx] { return queue }, func() payments.Config { return cfg.PaymentSettings() }, nil)
 	supportOwner := support.New(pool, limiter, owner, cfg.RateNamespace, nil)
-	return platform.NewServiceWithModules(pool, limiter, queue, cfg, owner, catalogueOwner, subscriptionOwner, vpnOwner, paymentsOwner, supportOwner, notificationsOwner, mailOwner)
+	auditOwner := auditreports.New(pool)
+	return platform.NewServiceWithModules(pool, limiter, queue, cfg, owner, catalogueOwner, subscriptionOwner, vpnOwner, paymentsOwner, supportOwner, notificationsOwner, mailOwner, auditOwner)
 }

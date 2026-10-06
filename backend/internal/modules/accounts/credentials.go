@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"example.com/cabinet/backend/internal/modules/accounts/internal/store"
+	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -74,7 +75,7 @@ func (s *Service) revokeCredentialProofs(ctx context.Context, tx pgx.Tx, account
 	return nil
 }
 func (s *Service) credentialAudit(ctx context.Context, tx pgx.Tx, id uuid.UUID, action string) error {
-	if err := store.New(tx).AddAudit(ctx, store.AddAuditParams{ID: uuid.New(), CreatedAt: stamp(s.now()), Action: action, AccountID: id}); err != nil {
+	if err := auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), CreatedAt: s.now(), Action: action, AccountID: id}); err != nil {
 		return unavailable()
 	}
 	return nil

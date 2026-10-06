@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"example.com/cabinet/backend/internal/modules/accounts/internal/store"
+	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -71,7 +71,7 @@ func (s *Service) SetOperatorRestriction(ctx context.Context, actor, target, key
 		if in.Restricted {
 			action = "account_restricted"
 		}
-		if err := q.AddOperatorAudit(ctx, store.AddOperatorAuditParams{ID: uuid.New(), CreatedAt: stamp(now), Action: action, AccountID: target, OperatorAccountID: &actor, Reason: pgtype.Text{String: reason, Valid: true}}); err != nil {
+		if err := auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), CreatedAt: now, Action: action, AccountID: target, OperatorAccountID: &actor, Reason: &reason}); err != nil {
 			return out, unavailable()
 		}
 		a.RestrictionChangedAt = stamp(now)

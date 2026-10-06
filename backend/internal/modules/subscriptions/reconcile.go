@@ -80,7 +80,7 @@ func (s *Service) reconcileOperationLocked(ctx context.Context, tx pgx.Tx, q *st
 	if err = s.vpn.RequeueTrialTx(ctx, tx, id); err != nil {
 		return out, unavailable()
 	}
-	if err = s.trialActorAudit(ctx, q, "provision_reconcile_requested", a.ID, op.RequestID, &id, actor, reason); err != nil {
+	if err = s.trialActorAudit(ctx, tx, "provision_reconcile_requested", a.ID, op.RequestID, &id, actor, reason); err != nil {
 		return out, err
 	}
 	return ReconcileResult{OperationId: id, Status: "provisioning"}, nil

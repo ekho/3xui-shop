@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"example.com/cabinet/backend/internal/modules/support/internal/store"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -188,16 +189,16 @@ func (s *Service) SupportHistory(ctx context.Context, actor, target uuid.UUID, o
 	return s.supportPage(ctx, actor, target, operator, before)
 }
 
-func (s *Service) supportAudit(ctx context.Context, q *store.Queries, action string, target, actor uuid.UUID, operator bool, messageID *uuid.UUID, reason string) error {
+func (s *Service) supportAudit(ctx context.Context, tx pgx.Tx, action string, target, actor uuid.UUID, operator bool, messageID *uuid.UUID, reason string) error {
 	var operatorID *uuid.UUID
 	if operator {
 		operatorID = &actor
 	}
-	var why pgtype.Text
+	var why *string
 	if reason != "" {
-		why = pgtype.Text{String: reason, Valid: true}
+		why = &reason
 	}
-	if q.AddSupportAudit(ctx, store.AddSupportAuditParams{ID: uuid.New(), CreatedAt: stamp(s.now()), Action: action, AccountID: target, OperatorAccountID: operatorID, Reason: why, SupportMessageID: messageID}) != nil {
+	if auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), CreatedAt: s.now(), Action: action, AccountID: target, OperatorAccountID: operatorID, Reason: why, SupportMessageID: messageID}) != nil {
 		return unavailable()
 	}
 	return nil
@@ -270,7 +271,7 @@ func (s *Service) CreateSupportMessage(ctx context.Context, actor, target uuid.U
 		return out, false, unavailable()
 	}
 	out = publicSupportMessage(m, c)
-	if err = s.supportAudit(ctx, q, "support_message", target, actor, operator, &m.ID, ""); err != nil {
+	if err = s.supportAudit(ctx, tx, "support_message", target, actor, operator, &m.ID, ""); err != nil {
 		return out, false, err
 	}
 	if err = s.saveIdempotency(ctx, q, principal, "createSupportMessage", key, hash, out); err != nil {
@@ -348,7 +349,7 @@ func (s *Service) SetSupportState(ctx context.Context, actor, target uuid.UUID, 
 	if err := q.UpdateSupportState(ctx, store.UpdateSupportStateParams{ID: c.ID, Status: state, UpdatedAt: stamp(s.now())}); err != nil {
 		return unavailable()
 	}
-	if err := s.supportAudit(ctx, q, "support_state_"+state, target, actor, operator, nil, ""); err != nil {
+	if err := s.supportAudit(ctx, tx, "support_state_"+state, target, actor, operator, nil, ""); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -384,7 +385,7 @@ func (s *Service) SetSupportBan(ctx context.Context, actor, target uuid.UUID, ba
 	if banned {
 		action = "support_banned"
 	}
-	if err := s.supportAudit(ctx, q, action, target, actor, true, nil, reason); err != nil {
+	if err := s.supportAudit(ctx, tx, action, target, actor, true, nil, reason); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {

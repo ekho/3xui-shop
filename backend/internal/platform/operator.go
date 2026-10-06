@@ -3,6 +3,7 @@ package platform
 import (
 	"context"
 	"errors"
+	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"strconv"
 	"strings"
 	"unicode"
@@ -13,7 +14,6 @@ import (
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -45,35 +45,23 @@ func operatorClient(a store.Account) wire.OperatorClient {
 	return out
 }
 
-func operatorAudit(e store.AuditEvent) wire.OperatorAuditEvent {
-	out := wire.OperatorAuditEvent{Id: e.ID, CreatedAt: e.CreatedAt.Time, Action: e.Action,
+func operatorAudit(e auditreports.Event) wire.OperatorAuditEvent {
+	out := wire.OperatorAuditEvent{Id: e.ID, CreatedAt: e.CreatedAt, Action: e.Action,
 		RequestId: e.RequestID, OperationId: e.OperationID,
-		OperatorAccountId: e.OperatorAccountID, SupportMessageId: e.SupportMessageID, AccessOperationId: e.AccessOperationID}
-	if e.OperatorTgID.Valid {
-		id := strconv.FormatInt(e.OperatorTgID.Int64, 10)
+		OperatorAccountId: e.OperatorAccountID, SupportMessageId: e.SupportMessageID, AccessOperationId: e.AccessOperationID,
+		Reason: e.Reason, SystemActor: e.SystemActor, MonthlyPeriod: e.MonthlyPeriod}
+	if e.OperatorTgID != nil {
+		id := strconv.FormatInt(*e.OperatorTgID, 10)
 		out.OperatorTgId = &id
-	}
-	if e.Reason.Valid {
-		out.Reason = &e.Reason.String
-	}
-	if e.SystemActor.Valid {
-		out.SystemActor = &e.SystemActor.Bool
-	}
-	if e.MonthlyPeriod.Valid {
-		out.MonthlyPeriod = &e.MonthlyPeriod.String
 	}
 	return out
 }
-func operatorAuditRows(rows []store.AuditEvent) ([]wire.OperatorAuditEvent, bool) {
-	more := len(rows) > 50
-	if more {
-		rows = rows[:50]
-	}
+func operatorAuditRows(rows []auditreports.Event) []wire.OperatorAuditEvent {
 	out := make([]wire.OperatorAuditEvent, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, operatorAudit(row))
 	}
-	return out, more
+	return out
 }
 func legacySnapshot(r accounts.LegacyApprovalUser) *wire.OperatorLegacyApproval {
 	out := &wire.OperatorLegacyApproval{SourceLegacyUserId: strconv.FormatInt(r.SourceLegacyUserID, 10), SourceTgId: strconv.FormatInt(r.SourceTgID, 10), Status: wire.OperatorLegacyApprovalStatus(r.Status)}
@@ -175,16 +163,13 @@ func (s *Service) OperatorClientHistory(ctx context.Context, actor, target uuid.
 	if in.BeforeSourceId != nil || (in.BeforeCreatedAt == nil) != (in.BeforeId == nil) {
 		return out, failure(400, "INVALID_INPUT")
 	}
-	var before pgtype.Timestamptz
 	var id uuid.UUID
 	if in.BeforeCreatedAt != nil {
-		before = stamp(*in.BeforeCreatedAt)
 		id = *in.BeforeId
 		if id == uuid.Nil {
 			return out, failure(400, "INVALID_INPUT")
 		}
 	}
-	q := store.New(s.pool)
 	if in.Kind == "trials" {
 		rows, more, err := s.subscriptions.TrialHistory(ctx, actor, target, in.BeforeCreatedAt, in.BeforeId)
 		if err != nil {
@@ -192,11 +177,11 @@ func (s *Service) OperatorClientHistory(ctx context.Context, actor, target uuid.
 		}
 		out.TrialRequests, out.HasMore = wireTrialHistory(rows), more
 	} else {
-		rows, err := q.OperatorAuditPage(ctx, store.OperatorAuditPageParams{AccountID: target, BeforeCreatedAt: before, BeforeID: id})
+		rows, more, err := s.auditReports.Page(ctx, target, in.BeforeCreatedAt, id)
 		if err != nil {
 			return out, unavailable()
 		}
-		out.AuditEvents, out.HasMore = operatorAuditRows(rows)
+		out.AuditEvents, out.HasMore = operatorAuditRows(rows), more
 	}
 	return out, nil
 }
@@ -207,7 +192,6 @@ func (s *Service) OperatorClient(ctx context.Context, actor, target uuid.UUID) (
 	if err != nil {
 		return out, err
 	}
-	q := store.New(s.pool)
 	legacy, err := s.accounts.LegacyApproval(ctx, target)
 	if err == nil {
 		out.LegacyApproval = legacySnapshot(legacy)
@@ -223,13 +207,13 @@ func (s *Service) OperatorClient(ctx context.Context, actor, target uuid.UUID) (
 	if err != nil {
 		return out, unavailable()
 	}
-	audit, err := q.OperatorAuditPage(ctx, store.OperatorAuditPageParams{AccountID: target})
+	audit, auditMore, err := s.auditReports.Page(ctx, target, nil, uuid.Nil)
 	if err != nil {
 		return out, unavailable()
 	}
 	out.Client = operatorClient(a)
 	out.TrialRequests, out.TrialHasMore = wireTrialHistory(trials), more
-	out.AuditEvents, out.AuditHasMore = operatorAuditRows(audit)
+	out.AuditEvents, out.AuditHasMore = operatorAuditRows(audit), auditMore
 	if s.cfg.PanelID != "" {
 		out.Server = &wire.OperatorServer{PanelId: s.cfg.PanelID, Enabled: s.cfg.TrialEnabled}
 	}

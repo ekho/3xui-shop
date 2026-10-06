@@ -33,9 +33,6 @@ VALUES($1,'telegram',$2,$3,$4,$5,$6,$7,'regular');
 -- name: AccountByTelegramID :one
 SELECT * FROM accounts WHERE telegram_id=$1;
 
--- name: AddOperatorAudit :exec
-INSERT INTO audit_events(id,created_at,action,account_id,request_id,operation_id,operator_account_id,reason)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8);
 -- name: OperatorExists :one
 SELECT EXISTS(SELECT 1 FROM operator_accounts WHERE account_id=$1);
 -- name: LockOperatorRole :one

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"reflect"
 
 	"example.com/cabinet/backend/internal/modules/catalogue"
@@ -464,6 +465,7 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 			return out, failure(409, "ACCESS_PLAN_CONFLICT")
 		}
 	}
+	auditReason := strings.TrimSpace(in.Reason)
 	if immediate {
 		if t.NoClientIntent && step != "state_unchanged" {
 			if err = s.accounts.SetAccessMetadata(ctx, tx, target, t.Profile, t.Banned); err != nil {
@@ -474,7 +476,7 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 			return out, vpnError(err)
 		}
 		out = AccessOperation{OperationId: id, AccountId: target, OperatorAccountId: &actor, Kind: AccessOperationKind(in.Kind), Status: "applied", CreatedAt: now, UpdatedAt: now, Reason: strings.TrimSpace(in.Reason), Desired: desired, CompletedSteps: []AccessOperationCompletedSteps{AccessOperationCompletedSteps(step)}}
-		if _, err = tx.Exec(ctx, "INSERT INTO audit_events(id,created_at,action,account_id,operator_account_id,reason,access_operation_id) VALUES($1,$2,'access_applied',$3,$4,$5,$6)", uuid.New(), now, target, actor, strings.TrimSpace(in.Reason), id); err != nil {
+		if err = auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), CreatedAt: now, Action: "access_applied", AccountID: target, OperatorAccountID: &actor, Reason: &auditReason, AccessOperationID: &id}); err != nil {
 			return out, unavailable()
 		}
 		if err = s.saveIdempotency(ctx, q, principal, "createAccessOperation", key, hash, out); err != nil {
@@ -488,7 +490,7 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 	if _, err = s.vpn.QueueAccessTx(ctx, tx, vpn.AccessWrite{ID: id, AccountID: target, OperatorAccountID: &actor, Kind: string(in.Kind), Reason: strings.TrimSpace(in.Reason), PlanID: planID, Revision: desired.Revision, PeriodDays: desired.PeriodDays, Desired: desiredRaw, Target: targetRaw, CreatedAt: now}); err != nil {
 		return out, vpnError(err)
 	}
-	if _, err = tx.Exec(ctx, "INSERT INTO audit_events(id,created_at,action,account_id,operator_account_id,reason,access_operation_id) VALUES($1,$2,$3,$4,$5,$6,$7)", uuid.New(), now, "access_requested", target, actor, strings.TrimSpace(in.Reason), id); err != nil {
+	if err = auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), CreatedAt: now, Action: "access_requested", AccountID: target, OperatorAccountID: &actor, Reason: &auditReason, AccessOperationID: &id}); err != nil {
 		return out, unavailable()
 	}
 	out = AccessOperation{OperationId: id, AccountId: target, OperatorAccountId: &actor, Kind: AccessOperationKind(in.Kind), Status: "pending", CreatedAt: now, UpdatedAt: now, Reason: strings.TrimSpace(in.Reason), Desired: desired, CompletedSteps: []AccessOperationCompletedSteps{"prepared"}}
@@ -553,7 +555,8 @@ func (s *Service) ReconcileAccessOperation(ctx context.Context, actor, target, i
 	if err != nil {
 		return out, vpnError(err)
 	}
-	if _, err = tx.Exec(ctx, "INSERT INTO audit_events(id,created_at,action,account_id,operator_account_id,reason,access_operation_id) VALUES($1,$2,$3,$4,$5,$6,$7)", uuid.New(), now, "access_reconcile_requested", target, actor, strings.TrimSpace(in.Reason), id); err != nil {
+	auditReason := strings.TrimSpace(in.Reason)
+	if err = auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), CreatedAt: now, Action: "access_reconcile_requested", AccountID: target, OperatorAccountID: &actor, Reason: &auditReason, AccessOperationID: &id}); err != nil {
 		return out, unavailable()
 	}
 	r.Status = "pending"

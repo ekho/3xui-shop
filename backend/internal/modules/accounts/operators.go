@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"example.com/cabinet/backend/internal/modules/accounts/internal/store"
+	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -177,7 +178,7 @@ func (s *Service) ChangeOperatorRole(ctx context.Context, target uuid.UUID, gran
 		if grant {
 			action = "operator_granted"
 		}
-		if err = q.AddOperatorAudit(ctx, store.AddOperatorAuditParams{ID: uuid.New(), CreatedAt: stamp(s.now()), Action: action, AccountID: target}); err != nil {
+		if err = auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), CreatedAt: s.now(), Action: action, AccountID: target}); err != nil {
 			return unavailable()
 		}
 	}

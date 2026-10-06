@@ -40,34 +40,6 @@ func (q *Queries) AckSupportOperator(ctx context.Context, arg AckSupportOperator
 	return err
 }
 
-const addSupportAudit = `-- name: AddSupportAudit :exec
-INSERT INTO audit_events(id,created_at,action,account_id,operator_account_id,reason,support_message_id)
-VALUES($1,$2,$3,$4,$5,$6,$7)
-`
-
-type AddSupportAuditParams struct {
-	ID                uuid.UUID
-	CreatedAt         pgtype.Timestamptz
-	Action            string
-	AccountID         uuid.UUID
-	OperatorAccountID *uuid.UUID
-	Reason            pgtype.Text
-	SupportMessageID  *uuid.UUID
-}
-
-func (q *Queries) AddSupportAudit(ctx context.Context, arg AddSupportAuditParams) error {
-	_, err := q.db.Exec(ctx, addSupportAudit,
-		arg.ID,
-		arg.CreatedAt,
-		arg.Action,
-		arg.AccountID,
-		arg.OperatorAccountID,
-		arg.Reason,
-		arg.SupportMessageID,
-	)
-	return err
-}
-
 const addSupportMessage = `-- name: AddSupportMessage :one
 INSERT INTO support_messages(id,conversation_id,sender_account_id,sender_kind,text,created_at,attachment_name,attachment_bytes)
 VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, conversation_id, sequence, sender_account_id, sender_kind, text, created_at, attachment_name, attachment_bytes
