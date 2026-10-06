@@ -84,8 +84,8 @@ func TestPurchaseMissingHooksFailClosed(t *testing.T) {
 			if missing == "check" && (err != nil || p.adds != 0 || final.FulfillmentStatus != "needs_review") {
 				t.Fatal("missing funding hook did not stop native write", err)
 			}
-			if missing == "outcome" && (err == nil || status != "provisioning" || final.FulfillmentStatus != "running" || p.adds != 1) {
-				t.Fatal("missing outcome committed a partial result", err)
+			if missing == "outcome" && (err == nil || status != "provisioning" || final.FulfillmentStatus != "running" || p.adds != 0) {
+				t.Fatalf("missing outcome: adds=%d access=%s fulfillment=%s error=%v", p.adds, status, final.FulfillmentStatus, err)
 			}
 		})
 	}

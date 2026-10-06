@@ -49,7 +49,7 @@ func New(pool *pgxpool.Pool, authority *accounts.Service, queue func() *river.Cl
 }
 
 func (s *Service) checkPurchase(ctx context.Context, tx pgx.Tx, order *uuid.UUID, account, operation uuid.UUID) string {
-	if order == nil || s.purchase.Check == nil {
+	if order == nil || s.purchase.Check == nil || s.purchase.Outcome == nil {
 		return "purchase_funding_invalid"
 	}
 	reason, err := s.purchase.Check(ctx, tx, *order, account, operation)
