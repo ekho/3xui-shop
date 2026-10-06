@@ -201,12 +201,19 @@ def create_order(opener, login, plan, manual=False):
     return value
 
 
+def manual_api(*args):
+    try:
+        return local.api(*args)
+    except HTTPError as error:
+        return error.code, error.headers, None
+
+
 def manual_decision(operator, actor, login, purchase, *, key=None, decision='approve'):
     body = {'decision': decision, 'reason': 'Synthetic fixture funds checked; no bank transfer'}
     if decision == 'approve':
         body['confirmed_amount_minor'] = purchase['quote']['amount_minor']
     path = '/api/v1/operator/clients/' + owned(login['account']['account_id']) + '/orders/' + str(UUID(purchase['order_id'])) + '/manual-decision'
-    return local.api(operator, path, body, actor['csrf_token'], key or str(uuid4()))
+    return manual_api(operator, path, body, actor['csrf_token'], key or str(uuid4()))
 
 
 def manual_report(opener, login, purchase):
@@ -220,7 +227,7 @@ def manual_report(opener, login, purchase):
         'jobs',(SELECT count(*) FROM river_job WHERE kind='purchase_fulfillment'
           AND args->>'order_id'=:'order'));""", order=purchase['order_id'])
     assert json.loads(raw) == {'receipts': 0, 'jobs': 0}, 'report confirmed money or provisioned'
-    assert local.api(opener, '/api/v1/orders/' + purchase['order_id'] + '/cancel', {}, login['csrf_token'], str(uuid4()))[0] == 409
+    assert manual_api(opener, '/api/v1/orders/' + purchase['order_id'] + '/cancel', {}, login['csrf_token'], str(uuid4()))[0] == 409
 
 
 def check(manual=False):
@@ -253,7 +260,7 @@ def check(manual=False):
         if manual:
             assert manual_decision(operator, actor, login, purchase)[0] == 409, 'unreported payment approved'
             assert manual_decision(opener, login, login, purchase)[0] == 403, 'customer approved own money'
-            assert local.api(operator, '/api/v1/orders/' + purchase['order_id'] + '/manual-report', {}, actor['csrf_token'], str(uuid4()))[0] == 404, 'foreign report permitted'
+            assert manual_api(operator, '/api/v1/orders/' + purchase['order_id'] + '/manual-report', {}, actor['csrf_token'], str(uuid4()))[0] == 404, 'foreign report permitted'
             manual_report(opener, login, purchase)
             queue = local.api(operator, '/api/v1/operator/manual-payments')[2]
             assert any(item['order']['order_id'] == purchase['order_id'] for item in queue['items'])
