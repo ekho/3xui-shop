@@ -29,6 +29,9 @@ func purchaseOrderResult(p payments.PurchaseOrder) wire.PurchaseOrder {
 	if k := p.YooKassaCheckout; k != nil {
 		out.YookassaCheckout = &wire.YooKassaCheckout{State: wire.YooKassaCheckoutState(k.State), Url: k.URL}
 	}
+	if c := p.CryptomusCheckout; c != nil {
+		out.CryptomusCheckout = &wire.CryptomusCheckout{State: wire.CryptomusCheckoutState(c.State), Url: c.URL}
+	}
 	return out
 }
 

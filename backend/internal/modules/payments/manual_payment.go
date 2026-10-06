@@ -23,6 +23,8 @@ func (s *Service) methodEnabled(method string) bool {
 		return c.ManualEnabled && validText(c.ManualCardDetails, 1, 2000)
 	case "yookassa":
 		return c.YooKassaEnabled
+	case "cryptomus":
+		return c.CryptomusEnabled
 	default:
 		return false
 	}
