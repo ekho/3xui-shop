@@ -191,3 +191,23 @@ func TestVPNSQLBoundary(t *testing.T) {
 		return pattern.MatchString(strings.ReplaceAll(text, `"`, ""))
 	})
 }
+
+func TestPaymentsSQLBoundary(t *testing.T) {
+	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:purchase_orders|purchase_receipts)\b`)
+	ownsSQL := func(text string) bool {
+		return pattern.MatchString(strings.ReplaceAll(text, `"`, ""))
+	}
+	for _, sql := range []string{
+		`SELECT * FROM purchase_orders`, `UPDATE purchase_receipts SET review_reason=$1`,
+		`INSERT INTO purchase_orders VALUES ($1)`, `DELETE FROM public.purchase_receipts`,
+		`WITH p AS (SELECT * FROM "public"."purchase_orders") SELECT * FROM p`,
+	} {
+		if !ownsSQL(sql) {
+			t.Fatal("negative fixture bypassed payment ownership", sql)
+		}
+	}
+	if ownsSQL(`SELECT purchase_order_id FROM access_operations`) {
+		t.Fatal("foreign owner rejected")
+	}
+	checkSQLBoundary(t, "payments", ownsSQL)
+}

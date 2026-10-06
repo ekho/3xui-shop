@@ -1,15 +1,15 @@
-package platform
+package payments
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"example.com/cabinet/backend/internal/modules/vpn"
-	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 	"math"
+	"reflect"
 	"time"
 )
 
@@ -84,14 +84,14 @@ func (s *Service) FulfillPurchase(parent context.Context, id uuid.UUID) error {
 	if err != nil || closeErr != nil {
 		return unavailable()
 	}
-	if a.Restricted || a.VpnBanned || a.AccessProfile.String == "unlimited" || a.PanelKey == "" || a.VpnID == uuid.Nil || a.SubID == "" || (a.AssignedPanelID.Valid && a.AssignedPanelID.String != s.cfg.PanelID) || s.cfg.PanelID == "" {
+	if a.Restricted || a.VpnBanned || stringValue(a.AccessProfile) == "unlimited" || a.PanelKey == "" || a.VpnID == uuid.Nil || a.SubID == "" || (a.AssignedPanelID != nil && stringValue(a.AssignedPanelID) != s.config().PanelID) || s.config().PanelID == "" {
 		return s.purchaseReview(ctx, id, "account_not_eligible")
 	}
-	var quote wire.PurchaseQuote
+	var quote PurchaseQuote
 	if json.Unmarshal(p.quote, &quote) != nil || quote.Devices < 1 || quote.Devices >= math.MaxInt64 || quote.TrafficGb < 0 || quote.TrafficGb > math.MaxInt64/(1024*1024*1024) || quote.PeriodDays < 1 || quote.PeriodDays > 106751 || (quote.Profile != "regular" && quote.Profile != "euru") {
 		return s.purchaseReview(ctx, id, "invalid_quote")
 	}
-	panel := NewPanelClient(s.cfg)
+	panel := s.vpn.PanelClient()
 	defer panel.Close()
 	view, err := panel.GetClient(ctx, a.PanelKey)
 	if err != nil {
@@ -99,20 +99,20 @@ func (s *Service) FulfillPurchase(parent context.Context, id uuid.UUID) error {
 	}
 	now := s.now().UTC().Truncate(time.Microsecond)
 	opID := uuid.New()
-	t := accessTarget{OperationID: opID, PanelID: s.cfg.PanelID, PanelKey: a.PanelKey, VPNID: a.VpnID, SubID: a.SubID, DeviceCount: quote.Devices, TrafficLimitBytes: quote.TrafficGb * 1024 * 1024 * 1024, Profile: string(quote.Profile), Reset: true}
+	t := vpn.AccessTarget{OperationID: opID, PanelID: s.config().PanelID, PanelKey: a.PanelKey, VPNID: a.VpnID, SubID: a.SubID, DeviceCount: quote.Devices, TrafficLimitBytes: quote.TrafficGb * 1024 * 1024 * 1024, Profile: string(quote.Profile), Reset: true}
 	if view == nil {
-		if a.HadSubscription || a.AssignedPanelID.Valid {
+		if a.HadSubscription || a.AssignedPanelID != nil {
 			return s.purchaseReview(ctx, id, "missing_client")
 		}
 		t.Missing = true
 	} else {
-		if !a.AssignedPanelID.Valid || view.VPNID != a.VpnID || view.SubID != a.SubID || view.ExpiryTimeMS <= 0 {
+		if a.AssignedPanelID == nil || view.VPNID != a.VpnID || view.SubID != a.SubID || view.ExpiryTimeMS <= 0 {
 			return s.purchaseReview(ctx, id, "identity_changed")
 		}
-		if a.AccessProfile.String != "regular" && a.AccessProfile.String != "euru" {
+		if stringValue(a.AccessProfile) != "regular" && stringValue(a.AccessProfile) != "euru" {
 			return s.purchaseReview(ctx, id, "profile_unknown")
 		}
-		previousProfile, profileErr := panel.ProfileInboundIDs(ctx, a.AccessProfile.String)
+		previousProfile, profileErr := panel.ProfileInboundIDs(ctx, stringValue(a.AccessProfile))
 		if profileErr != nil {
 			return unavailable()
 		}
@@ -146,7 +146,7 @@ func (s *Service) FulfillPurchase(parent context.Context, id uuid.UUID) error {
 	}
 	t.ExpiryTimeMS = base + add
 	expires := time.UnixMilli(t.ExpiryTimeMS)
-	desired := wire.AccessDesired{ExpiresAt: &expires, Devices: t.DeviceCount, TrafficLimitBytes: t.TrafficLimitBytes, Profile: wire.AccessDesiredProfile(t.Profile), PlanId: &quote.PlanId, Revision: &quote.Revision, PeriodDays: &quote.PeriodDays, ResetTraffic: true, VpnBanned: false}
+	desired := vpn.AccessDesired{ExpiresAt: &expires, Devices: t.DeviceCount, TrafficLimitBytes: t.TrafficLimitBytes, Profile: t.Profile, PlanId: &quote.PlanId, Revision: &quote.Revision, PeriodDays: &quote.PeriodDays, ResetTraffic: true, VpnBanned: false}
 	desiredRaw, _ := json.Marshal(desired)
 	targetRaw, _ := json.Marshal(t)
 	tx, err := owner.Begin(ctx)
@@ -180,7 +180,7 @@ func (s *Service) FulfillPurchase(parent context.Context, id uuid.UUID) error {
 	if !funded {
 		return reviewTx("funding_invalid")
 	}
-	if current.Restricted || current.VpnBanned || current.PanelKey != a.PanelKey || current.VpnID != a.VpnID || current.SubID != a.SubID || current.AssignedPanelID != a.AssignedPanelID || current.AccessProfile != a.AccessProfile || current.HadSubscription != a.HadSubscription {
+	if current.Restricted || current.VpnBanned || current.PanelKey != a.PanelKey || current.VpnID != a.VpnID || current.SubID != a.SubID || !reflect.DeepEqual(current.AssignedPanelID, a.AssignedPanelID) || !reflect.DeepEqual(current.AccessProfile, a.AccessProfile) || current.HadSubscription != a.HadSubscription {
 		return reviewTx("account_changed")
 	}
 	active, err := s.vpn.UnresolvedTx(ctx, tx, p.account)

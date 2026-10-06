@@ -38,7 +38,7 @@ func paidPurchase(t *testing.T) (*Service, *testkit.Env, uuid.UUID, wire.Purchas
 func TestPurchasePretargetRecoveryClearsFulfillmentReview(t *testing.T) {
 	s, e, account, order := paidPurchase(t)
 	ctx := context.Background()
-	if err := s.purchaseReview(ctx, order.OrderId, "access_conflict"); err != nil {
+	if _, err := s.pool.Exec(ctx, "UPDATE purchase_orders SET fulfillment_status='needs_review',review_required=true,review_reason=$2 WHERE id=$1 AND payment_status='paid' AND access_operation_id IS NULL", order.OrderId, "access_conflict"); err != nil {
 		t.Fatal(err)
 	}
 	actor := verified(t, s, e, "purchase-pretarget-operator@example.test")
@@ -106,7 +106,7 @@ func TestPurchaseReceiptDisputeSurvivesFulfillmentRecovery(t *testing.T) {
 	if err := s.ReceiveYooMoney(ctx, purchaseNotice(s, order.OrderId, "second-real-transfer", "90071992547409.00", "90071992547409.93")); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.purchaseReview(ctx, order.OrderId, "access_conflict"); err != nil {
+	if _, err := s.pool.Exec(ctx, "UPDATE purchase_orders SET fulfillment_status='needs_review',review_required=true,review_reason=$2 WHERE id=$1 AND payment_status='paid' AND access_operation_id IS NULL", order.OrderId, "access_conflict"); err != nil {
 		t.Fatal(err)
 	}
 	actor := verified(t, s, e, "purchase-dispute-operator@example.test")

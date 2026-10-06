@@ -1,0 +1,70 @@
+package payments
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// Field order and tags preserve persisted body hashes and replay results.
+type PurchaseOrderInput struct {
+	Action        string    `json:"action"`
+	PaymentMethod string    `json:"payment_method"`
+	PaymentType   string    `json:"payment_type"`
+	PeriodDays    int64     `json:"period_days"`
+	PlanId        uuid.UUID `json:"plan_id"`
+	Revision      int64     `json:"revision"`
+}
+type PurchaseQuote struct {
+	AmountMinor string    `json:"amount_minor"`
+	Currency    string    `json:"currency"`
+	Devices     int64     `json:"devices"`
+	PeriodDays  int64     `json:"period_days"`
+	PlanId      uuid.UUID `json:"plan_id"`
+	Profile     string    `json:"profile"`
+	Revision    int64     `json:"revision"`
+	TrafficGb   int64     `json:"traffic_gb"`
+}
+type PurchaseOrder struct {
+	AccessOperationId *uuid.UUID        `json:"access_operation_id"`
+	Action            string            `json:"action"`
+	CanCancel         bool              `json:"can_cancel"`
+	CanPay            bool              `json:"can_pay"`
+	Checkout          *YooMoneyCheckout `json:"checkout"`
+	CreatedAt         time.Time         `json:"created_at"`
+	Expired           bool              `json:"expired"`
+	ExpiresAt         time.Time         `json:"expires_at"`
+	FulfillmentStatus string            `json:"fulfillment_status"`
+	OrderId           uuid.UUID         `json:"order_id"`
+	PaymentMethod     string            `json:"payment_method"`
+	PaymentStatus     string            `json:"payment_status"`
+	PaymentType       string            `json:"payment_type"`
+	Quote             PurchaseQuote     `json:"quote"`
+	ReviewRequired    bool              `json:"review_required"`
+}
+type CurrentPurchaseOrder struct {
+	Order *PurchaseOrder `json:"order"`
+}
+type PaymentMethod struct {
+	Currency string `json:"currency"`
+	Id       string `json:"id"`
+}
+type PaymentMethods struct {
+	Methods []PaymentMethod `json:"methods"`
+}
+type PurchaseReconcileInput struct {
+	Reason string `json:"reason"`
+}
+type YooMoneyCheckout struct {
+	Action string                 `json:"action"`
+	Fields YooMoneyCheckoutFields `json:"fields"`
+	Method string                 `json:"method"`
+}
+type YooMoneyCheckoutFields struct {
+	Label        uuid.UUID `json:"label"`
+	PaymentType  string    `json:"paymentType"`
+	QuickpayForm string    `json:"quickpay-form"`
+	Receiver     string    `json:"receiver"`
+	SuccessURL   string    `json:"successURL"`
+	Sum          string    `json:"sum"`
+}

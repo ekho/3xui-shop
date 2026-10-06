@@ -82,7 +82,9 @@ receipt dispute сохраняется отдельно от успешного 
 
 PurchaseWorker переносится в payments. Persisted kind `purchase_fulfillment`,
 args `{"order_id": UUID}`, queue `provision`, timeout 2m5s и retry правило
-сохраняются. Server регистрирует owner worker напрямую. `platform` оставляет
+сохраняются. Прежний InsertOpts.MaxAttempts=1000000 также сохраняется; установленный
+River driver ограничивает persisted max_attempts значением 32767 (int16).
+Server регистрирует owner worker напрямую. `platform` оставляет
 только временные HTTP/test facades; копии денежных правил и лишние worker
 aliases удаляются. Private signature vector test переносится с implementation;
 root/app интеграционные fixtures подписывают notices через testkit signer;
