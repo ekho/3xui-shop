@@ -12,7 +12,17 @@ Final product revision: `dcfd61edb2de571c53a65ddb1779e6a2a8c7a538`. Полная
 локальная приёмка завершена. Свежий whole-branch review Astra/high диапазона
 `c57c5e7..d6bd512`: **0 Critical / 0 Important / 0 Minor**, Ready to merge по коду.
 Reviewer отдельно подтвердил boundary/signature checks, полный matrix не повторял.
-Exact-source PR CI, manual merge и preview publication пока pending; #59 остаётся OPEN.
+Exact-source CI source `b2815af182ce81763a2bc585ecfbc6ef834e960b`:
+[Platform checks](https://github.com/ekho/3xui-shop/actions/runs/37406740703) и
+[V2 PR images](https://github.com/ekho/3xui-shop/actions/runs/37406740784) SUCCESS.
+[PR #66](https://github.com/ekho/3xui-shop/pull/66) вручную слит в `v2`:
+merge `b5d8eb315b02c23ee7a132d9845edbd759b3117b`, parents `c57c5e7`/`b2815af`,
+source-equal tree `64d148e9c8da795e4682e2b2965809763189558d` проверены.
+[Preview run](https://github.com/ekho/3xui-shop/actions/runs/37407798946) SUCCESS;
+[2.0.0-dev.21](https://github.com/ekho/3xui-shop/releases/tag/2.0.0-dev.21) —
+prerelease, tag указывает на этот merge. Три GHCR images, linux/amd64+arm64
+и revision/version labels проверены. [#59 CLOSED/Project Done](https://github.com/ekho/3xui-shop/issues/59#issuecomment-6008608774).
+Это доставка в v2 с предварительным релизом; production не менялся.
 
 | Проверка | Результат |
 | --- | --- |
