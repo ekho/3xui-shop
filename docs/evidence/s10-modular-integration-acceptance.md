@@ -8,17 +8,19 @@ merge в ветку от v2 26d4b96733881d89b0538e479c2facdca232f419. Стары
 
 ## Ревизия и результат
 
-Полная локальная матрица: `760fbe8cb84ba842a4c29419374140ffc36c4b22`, **22/22 PASS**, суммарно
-406.513 секунд выполнения проверок.
-Implementation/local verification завершены; свежий final review и delivery
-пока pending. #17 остаётся открытой до отдельных review/CI/merge/preview gates.
+Полная локальная матрица: `76edf16e174090835a47b93801ea0504b2ccd367`, **22/22 PASS**, суммарно
+405.703 секунд выполнения проверок.
+Implementation/local verification завершены. Свежий Astra/high review
+26d4b96..eca1b1c нашёл два Important; оба исправлены одним RED→GREEN pass,
+после него повторена вся матрица. Critical/Minor отсутствуют; re-review не проводился.
+CI и доставка пока pending; #17 остаётся открытой до CI/merge/preview gates.
 
 | Проверка | Результат |
 | --- | --- |
 | Генерация и совместимость | `make -C backend generate`, web `api:generate`, no drift; JSON semantic comparison сохраняет все 54 прежних paths/87 schemas; API С10 и migration15 идентичны afaeacf, migrations1–14 и зависимости идентичны v2. |
 | Статические проверки | Semantic naming, Go vet, TypeScript, web test build и runtime-config PASS. |
-| Go и подключённые потребители | `RUN_BROWSER_TESTS=1 go -C backend test -race ./... -count=1`, настоящие изолированные PostgreSQL/Redis; все 13 пакетов с тестами PASS, platform190.713s, connected tests101.798s. |
-| Web/Python | Playwright **126/126**, Python **105/105** PASS. Форма YooMoney перехватывается до внешнего запроса. |
+| Go и подключённые потребители | `RUN_BROWSER_TESTS=1 go -C backend test -race ./... -count=1`, настоящие изолированные PostgreSQL/Redis; все 13 пакетов с тестами PASS, platform186.798s, connected tests99.485s. |
+| Web/Python | Playwright **127/127**, Python **105/105** PASS. Форма YooMoney перехватывается до внешнего запроса. |
 | Контейнеры | Compose config/build backend/gateway/bot, HTTPS/routing/secrets/migration/restore smoke PASS. Legacy image собирается, процесс Python не запускается в native profile. |
 | Native process | Go HTTP/jobs и simulated Bot API, TLS SMTP, HTTPS и настоящая 3X-UI **3.7.0**; остановка compiled backend после commit и restart сохраняют operation/grant/keys. Telegram выключен. |
 | Покупка | Existing `deploy/purchase/local.py prepare/check`: подписанный localhost callback выдаёт новый доступ и переводит конечный триал без смены идентификаторов/grant, оставшийся срок сохраняется. Test/tampered notice не оплачивает; повтор receipt не увеличивает доступ. |
@@ -45,7 +47,8 @@ rollback/missing-hooks/preparation tests тоже сначала дали RED. F
 native writes при отсутствующем любом purchase hook, повторную account guard
 после panel read, отсутствие SQL Tx во время HTTP и отказ при потере той же
 physical ownership session. Последний nil-outcome guard: actual RED yYWnyp,
-GREEN sXfpzb; затем полная матрица повторена на указанной final product revision.
+GREEN sXfpzb; полная матрица на 760fbe8 сохранена как предшествующее доказательство.
+После двух замечаний final review матрица повторена на указанной final product revision.
 
 Старый purchase Docker-helper не сохранял native overlay, а legacy API по
 умолчанию включён. Сохранённый runnable `prepare` проверяет итоговый Compose flag:
@@ -84,3 +87,35 @@ Happ, VPN/trust macOS не проверялись и не менялись. Вн
 - Task 2: Ruling: fail closed for a missing Outcome before panel writes as well as before DB commit — Review Focus requires no paid access with missing hooks; the first nil-outcome test allowed one native add despite rollback — change the expected counter to zero, RED yYWnyp5177ms, one shared check guards every purchase write — cost if wrong: a miswired money outcome would leave a native effect without local fulfillment.
 - Task 2: Ruling: final review/publication bullets are Finish gates after Native task completion, not prerequisites to dispatch the final reviewer — the original placement formed a cycle — task completion records implementation/local proof only; issue remains OPEN until independent review, exact-source CI, merge and preview proof — cost if wrong: premature delivery claim; C09 still separates the states.
 - Task 2: Ruling: final task command validates the completed full matrix and unchanged product at the documentation revision, then regenerates/checks compatibility — full suite already ran once on the final product, avoid a duplicate merely for docs — cost if wrong: changed product requires fresh relevant/full verification and cannot pass the source-identity check.
+
+## Final review и единственный fix pass
+
+1. Более старая applied-покупка заменяла в React-admin более новую access-операцию
+   needs_review и скрывала сверку. Built-UI regression RED IEYlnW15823ms. Теперь
+   subscription operation имеет приоритет, purchase используется только при её
+   отсутствии; это общее место для результата чтения и повтора подготовки.
+2. Checkout разрешал отключённого конечного клиента с ещё действующим сроком,
+   хотя worker после оплаты отказывал с disabled_client. Real PG/TLS-panel
+   regression RED bfDU6o5361ms. Перед checkout применяется тот же осторожный
+   guard; истёкший отключённый триал сохраняет прежнюю допустимость. Тест
+   подтверждает отсутствие заказа, новых jobs/access и panel writes при отказе.
+
+GREEN money/HTTP race aiCNjJ22827ms; два затронутых UI файла **29/29**
+1yimvG23801ms. Затем текущие backend/UI прошли всю матрицу 22/22, Python105
+и Playwright127. Предыдущая матрица 760fbe8 не используется как доказательство
+этих исправлений.
+
+Final Ruling: real YooMoney/production judgment отложен — C13 владеет внешней
+приёмкой, текущая граница локальная — цена ошибки: synthetic callback не
+доказывает доставку от провайдера.
+
+Final Ruling: installed Happ/VPN/trust macOS judgment исключён по решению
+владельца — остаётся собственная Docker-панель — цена ошибки: выдача доступа
+не доказывает соединение установленного клиента.
+
+Final Ruling: payments extraction/Python retirement не входят в этот review —
+их владельцы М05/С47 — цена ошибки: завершение С10 не означает удаление legacy.
+
+Final Ruling: CI/merge/preview judgment остаётся координатору — публикации ещё
+не было — цена ошибки: локальная матрица не доказывает доставку. Exact-source CI,
+manual SHA-guarded merge и три multiarch образа проверяются перед закрытием #17.

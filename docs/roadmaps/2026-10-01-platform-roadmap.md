@@ -177,7 +177,8 @@ reports и operations появляются со своими сценариям�
 [итоговая приёмка всех31 AC и совместимости](../evidence/access-management-acceptance.md). С10 локально реализован и принят с первым адаптером YooMoney:
 [Evidence С10 в PR #5](https://github.com/ekho/3xui-shop/blob/afaeacf652964453ddd61883aa6da6a0d285783c/docs/evidence/s10-acceptance.md). Реальный перевод YooMoney, внешняя приёмка С13 и перенос старых платежей остаются открытыми.
 Адаптация С10 к accounts/catalogue/subscriptions/vpn локально проверена:
-[новая приёмка](../evidence/s10-modular-integration-acceptance.md); final review,
+[новая приёмка](../evidence/s10-modular-integration-acceptance.md); final review
+и единственный fix pass завершены, полная матрица после исправлений 22/22 PASS.
 CI и доставка PR #5 ещё не завершены. Следующий этап — М05 после доставки С10.
 С11–С40 и С42–С47 имеют
 статус **запланирован**. Наличие исходника подтверждает существующее поведение
