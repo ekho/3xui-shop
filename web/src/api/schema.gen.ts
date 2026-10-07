@@ -1262,6 +1262,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/telegram/mini-app/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Validate signed Telegram initData. Requires configured bot; no browser cookie is created. Explicit first-use consent; bearer returned only in no-store body. */
+        post: operations["createMiniAppSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/telegram/mini-app/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Unknown query parameters and JSON fields are rejected. JSON body maximum 16 KiB. */
+        get: operations["getMiniAppAccount"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/telegram/mini-app/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Revoke only this Telegram session; available to restricted accounts with Origin and session CSRF. */
+        post: operations["logoutMiniAppAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2296,6 +2347,50 @@ export interface components {
             refund: components["schemas"]["PaymentRefund"] | null;
             financial_review_open: boolean;
             can_confirm_refund: boolean;
+        };
+        MiniAppSessionInput: {
+            init_data: string;
+            accepted_terms_version?: string;
+            accepted_privacy_version?: string;
+        };
+        MiniAppAccount: {
+            /** Format: uuid */
+            account_id: string;
+            /** Format: email */
+            email: string | null;
+            email_verified: boolean;
+            display_name: string | null;
+            /** Format: int64 */
+            telegram_id: number;
+            /** @enum {boolean} */
+            telegram_linked: true;
+            /** @enum {string} */
+            locale: "ru" | "en";
+        };
+        MiniAppAccountResult: {
+            account: components["schemas"]["MiniAppAccount"];
+            csrf_token: string;
+            capabilities: components["schemas"]["Capabilities"];
+        };
+        MiniAppSessionResult: {
+            account: components["schemas"]["MiniAppAccount"];
+            csrf_token: string;
+            capabilities: components["schemas"]["Capabilities"];
+            session_token: string;
+        };
+        MiniAppErrorBody: {
+            /** @enum {string} */
+            code: "INVALID_INPUT" | "INVALID_CREDENTIALS" | "EMAIL_VERIFICATION_REQUIRED" | "ACCOUNT_RESTRICTED" | "TRIAL_DISABLED" | "TRIAL_ALREADY_USED" | "TRIAL_RECONSIDERATION_REQUIRED" | "REQUEST_STATE_CONFLICT" | "OPERATION_NOT_READY" | "IDEMPOTENCY_CONFLICT" | "RATE_LIMITED" | "SERVICE_UNAVAILABLE" | "OPERATOR_ACCOUNT_PROTECTED" | "CATALOGUE_REVISION_CONFLICT" | "CATALOGUE_LAST_VISIBLE" | "CATALOGUE_DEVICES_CONFLICT" | "ACCESS_OPERATION_CONFLICT" | "ACCESS_NOT_ELIGIBLE" | "ACCESS_PLAN_CONFLICT" | "ACCESS_RECONCILE_REQUIRED" | "CONSENT_REQUIRED";
+            message: string;
+            /** Format: uuid */
+            request_id: string;
+            /** @enum {string} */
+            current_request_status?: "pending" | "approved" | "rejected";
+            /** Format: uuid */
+            operation_id?: string | null;
+        };
+        MiniAppError: {
+            error: components["schemas"]["MiniAppErrorBody"];
         };
     };
     responses: never;
@@ -8872,6 +8967,268 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PaymentRefund"];
                 };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    /** @description Seconds before retry */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    createMiniAppSession: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MiniAppSessionInput"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MiniAppSessionResult"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MiniAppError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MiniAppError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MiniAppError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MiniAppError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MiniAppError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    /** @description Seconds before retry */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MiniAppError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MiniAppError"];
+                };
+            };
+        };
+    };
+    getMiniAppAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MiniAppAccountResult"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    /** @description Seconds before retry */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    logoutMiniAppAccount: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Safe error */
             400: {

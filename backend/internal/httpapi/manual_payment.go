@@ -23,7 +23,7 @@ func (a *API) ReportManualPayment(c *echo.Context) error {
 	if _, err = decode[wire.ManualPaymentReportInput](a, c, "ManualPaymentReportInput"); err != nil {
 		return err
 	}
-	out, err := a.payments.ReportManualPayment(c.Request().Context(), account.Account.AccountId, id, key)
+	out, err := a.payments.ReportManualPayment(c.Request().Context(), account.Account.ID, id, key)
 	if err != nil {
 		return paymentError(err)
 	}

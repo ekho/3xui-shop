@@ -83,6 +83,18 @@ def run():
             assert "frame-ancestors 'none'" in one_header(headers,'Content-Security-Policy')
             assert one_header(headers,'X-Content-Type-Options')=='nosniff'
             assert one_header(headers,'Cache-Control')=='no-store'
+            # Same image, dedicated Mini HTML/CSP; ordinary web/admin cannot be framed.
+            for path in ('/mini-app', '/mini-app/cabinet/history'):
+                mini_status, mini_headers, mini_body = get(path)
+                assert mini_status == 200 and b'__emailToken' not in mini_body
+                assert b'https://telegram.org' in mini_body
+                policy = one_header(mini_headers, 'Content-Security-Policy')
+                assert "script-src 'self' https://telegram.org;" in policy
+                assert 'frame-ancestors https://web.telegram.org' in policy
+                assert 'unsafe-inline' not in policy and '*' not in policy
+                assert one_header(mini_headers, 'Cache-Control') == 'no-store'
+                assert one_header(mini_headers, 'Referrer-Policy') == 'no-referrer'
+            assert "frame-ancestors 'none'" in one_header(get('/admin/clients')[1], 'Content-Security-Policy')
             status,headers,body=get('/config.json')
             assert status==200
             assert one_header(headers,'Content-Type').startswith('application/json')

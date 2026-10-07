@@ -841,6 +841,9 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "miniAppBearer": []
           }
         ],
         "requestBody": {
@@ -955,6 +958,9 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "miniAppBearer": []
           }
         ]
       }
@@ -1059,6 +1065,9 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "miniAppBearer": []
           }
         ]
       }
@@ -1174,6 +1183,9 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "miniAppBearer": []
           }
         ]
       }
@@ -2139,6 +2151,9 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "miniAppBearer": []
           }
         ]
       }
@@ -2877,6 +2892,9 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "miniAppBearer": []
           }
         ],
         "parameters": [],
@@ -2991,6 +3009,9 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "miniAppBearer": []
           }
         ],
         "parameters": [
@@ -3133,6 +3154,9 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "miniAppBearer": []
           }
         ],
         "parameters": [
@@ -3299,6 +3323,9 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "miniAppBearer": []
           }
         ],
         "parameters": [
@@ -3434,6 +3461,9 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "miniAppBearer": []
           }
         ],
         "parameters": [
@@ -4451,6 +4481,9 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "miniAppBearer": []
           }
         ],
         "parameters": [
@@ -5939,6 +5972,9 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "miniAppBearer": []
           }
         ],
         "parameters": [],
@@ -7256,6 +7292,9 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "miniAppBearer": []
           }
         ],
         "parameters": [],
@@ -7360,6 +7399,9 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "miniAppBearer": []
           }
         ],
         "parameters": [
@@ -7474,6 +7516,9 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "miniAppBearer": []
           }
         ],
         "parameters": [
@@ -8500,6 +8545,9 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "miniAppBearer": []
           }
         ],
         "parameters": [],
@@ -8604,6 +8652,9 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "miniAppBearer": []
           }
         ],
         "parameters": [],
@@ -8708,6 +8759,9 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "miniAppBearer": []
           }
         ],
         "parameters": [
@@ -9222,6 +9276,345 @@
           }
         }
       }
+    },
+    "/api/v1/telegram/mini-app/session": {
+      "post": {
+        "operationId": "createMiniAppSession",
+        "description": "Validate signed Telegram initData. Requires configured bot; no browser cookie is created. Explicit first-use consent; bearer returned only in no-store body.",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MiniAppSessionResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MiniAppError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MiniAppError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MiniAppError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MiniAppError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MiniAppError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MiniAppError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                },
+                "description": "Seconds before retry"
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MiniAppError"
+                }
+              }
+            }
+          }
+        },
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MiniAppSessionInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/telegram/mini-app/account": {
+      "get": {
+        "operationId": "getMiniAppAccount",
+        "description": "Unknown query parameters and JSON fields are rejected. JSON body maximum 16 KiB.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MiniAppAccountResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                },
+                "description": "Seconds before retry"
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "miniAppBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/telegram/mini-app/logout": {
+      "post": {
+        "operationId": "logoutMiniAppAccount",
+        "description": "Revoke only this Telegram session; available to restricted accounts with Origin and session CSRF.",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                },
+                "description": "Seconds before retry"
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "miniAppBearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -9235,6 +9628,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Dedicated bot-adapter credential. No subscription-key access."
+      },
+      "miniAppBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Opaque Telegram client session; never credentials/operator/external checkout. Browser cookie is independent."
       }
     },
     "schemas": {
@@ -13390,6 +13788,194 @@
           "refund",
           "financial_review_open",
           "can_confirm_refund"
+        ]
+      },
+      "MiniAppSessionInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "init_data"
+        ],
+        "properties": {
+          "init_data": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12288
+          },
+          "accepted_terms_version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "accepted_privacy_version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        }
+      },
+      "MiniAppAccount": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "account_id",
+          "email",
+          "email_verified",
+          "display_name",
+          "telegram_id",
+          "telegram_linked",
+          "locale"
+        ],
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "nullable": true
+          },
+          "email_verified": {
+            "type": "boolean"
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "telegram_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 4503599627370495
+          },
+          "telegram_linked": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "locale": {
+            "type": "string",
+            "enum": [
+              "ru",
+              "en"
+            ]
+          }
+        }
+      },
+      "MiniAppAccountResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/MiniAppAccount"
+          },
+          "csrf_token": {
+            "type": "string"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/Capabilities"
+          }
+        },
+        "required": [
+          "account",
+          "csrf_token",
+          "capabilities"
+        ]
+      },
+      "MiniAppSessionResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/MiniAppAccount"
+          },
+          "csrf_token": {
+            "type": "string"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/Capabilities"
+          },
+          "session_token": {
+            "type": "string",
+            "pattern": "^mini_[A-Za-z0-9_-]{43}$"
+          }
+        },
+        "required": [
+          "account",
+          "csrf_token",
+          "capabilities",
+          "session_token"
+        ]
+      },
+      "MiniAppErrorBody": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "INVALID_INPUT",
+              "INVALID_CREDENTIALS",
+              "EMAIL_VERIFICATION_REQUIRED",
+              "ACCOUNT_RESTRICTED",
+              "TRIAL_DISABLED",
+              "TRIAL_ALREADY_USED",
+              "TRIAL_RECONSIDERATION_REQUIRED",
+              "REQUEST_STATE_CONFLICT",
+              "OPERATION_NOT_READY",
+              "IDEMPOTENCY_CONFLICT",
+              "RATE_LIMITED",
+              "SERVICE_UNAVAILABLE",
+              "OPERATOR_ACCOUNT_PROTECTED",
+              "CATALOGUE_REVISION_CONFLICT",
+              "CATALOGUE_LAST_VISIBLE",
+              "CATALOGUE_DEVICES_CONFLICT",
+              "ACCESS_OPERATION_CONFLICT",
+              "ACCESS_NOT_ELIGIBLE",
+              "ACCESS_PLAN_CONFLICT",
+              "ACCESS_RECONCILE_REQUIRED",
+              "CONSENT_REQUIRED"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "current_request_status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ]
+          },
+          "operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "request_id"
+        ]
+      },
+      "MiniAppError": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/MiniAppErrorBody"
+          }
+        },
+        "required": [
+          "error"
         ]
       }
     }

@@ -429,7 +429,7 @@ func (s *Service) PurchaseOrder(ctx context.Context, account, id uuid.UUID) (Pur
 
 func (s *Service) CurrentPurchaseOrder(ctx context.Context, account uuid.UUID) (CurrentPurchaseOrder, error) {
 	var out CurrentPurchaseOrder
-	if _, err := s.PaymentMethods(ctx, account); err != nil {
+	if err := s.requirePaymentReader(ctx, account); err != nil {
 		return out, err
 	}
 	p, err := scanPurchase(s.pool.QueryRow(ctx, "SELECT "+purchaseColumns+" FROM purchase_orders WHERE account_id=$1 ORDER BY CASE WHEN NOT ("+purchaseRefundClosed+") AND (review_required OR fulfillment_status='needs_review') THEN 0 WHEN NOT ("+purchaseRefundClosed+") AND payment_status='paid' AND fulfillment_status<>'applied' THEN 1 WHEN active AND payment_status='pending' THEN 2 ELSE 3 END,created_at DESC,id DESC LIMIT 1", account))

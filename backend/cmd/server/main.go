@@ -90,6 +90,7 @@ func run() error {
 			return errors.New("disable legacy bot API before enabling native Telegram")
 		}
 		tg, e = app.NewTelegram(tgConfig, svc.Subscriptions, svc.Notifications, nil)
+		svc.MiniApp = app.NewTelegramMiniApp(tgConfig, svc.Accounts, cfg.Accounts.Now)
 		if e != nil {
 			return e
 		}

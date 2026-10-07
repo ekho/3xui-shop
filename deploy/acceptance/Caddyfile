@@ -8,13 +8,16 @@
   defer
   Referrer-Policy no-referrer
   X-Content-Type-Options nosniff
-  Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-PgqzSxMpLRBzUhg2SooHKWZ2oAc0yWVxeNMrpG5YqoM='; style-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self' https://yoomoney.ru; frame-ancestors 'none'"
   Cache-Control no-store
  }
 }
 https://{$CABINET_HOST}:8443 {
  tls /run/secrets/public_cert /run/secrets/public_key
  import headers
+ @browserSecurity not path /mini-app /mini-app/*
+ header @browserSecurity Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-PgqzSxMpLRBzUhg2SooHKWZ2oAc0yWVxeNMrpG5YqoM='; style-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self' https://yoomoney.ru; frame-ancestors 'none'" {
+  defer
+ }
  @maintenance expression `{env.CABINET_MAINTENANCE} == "true"`
  handle @maintenance {
   respond "Service maintenance" 503
@@ -44,6 +47,13 @@ https://{$CABINET_HOST}:8443 {
   root * /run/web-public
   file_server
  }
+ @mini path /mini-app /mini-app/*
+ handle @mini {
+  header Content-Security-Policy "default-src 'self'; script-src 'self' https://telegram.org; style-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors https://web.telegram.org"
+  root * /srv
+  try_files /mini-app.html
+  file_server
+ }
  handle {
   root * /srv
   try_files {path} /index.html
@@ -51,6 +61,7 @@ https://{$CABINET_HOST}:8443 {
  }
 }
 https://gateway:9443 {
+ header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
  tls /run/secrets/adapter_cert /run/secrets/adapter_key
  import headers
  handle /internal/* {

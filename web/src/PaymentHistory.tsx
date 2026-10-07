@@ -2,7 +2,7 @@ import {useEffect,useId,useRef,useState,type ReactNode} from 'react';
 import {PaymentCase} from './PaymentCase';
 import * as api from './api/client';
 import {displayPrice,type Currency} from './catalogueMoney';
-import {text,link,errorText,type Lang} from './i18n';
+import {text,link,loginRedirect,errorText,type Lang} from './i18n';
 
 type Kind=api.PaymentHistoryInput['kind'];
 type View={key:string;page?:api.PaymentHistoryPage;busy:boolean;error?:string;denied?:boolean;append?:boolean};
@@ -31,7 +31,7 @@ export function PaymentHistory({lang,clientId,onDenied,onChanged}:{lang:Lang;cli
    if(c.signal.aborted||request.current!==c)return;
    const denied=error instanceof api.ApiError&&(error.status===401||error.status===403);
    setView({key,busy:false,page:denied?undefined:previous,error:errorText(error,lang),denied,append});
-   if(denied){if(clientId)onDenied?.();else if(error instanceof api.ApiError&&error.status===401)location.replace(link('/login',lang));}
+   if(denied){if(clientId)onDenied?.();else if(error instanceof api.ApiError&&error.status===401)loginRedirect(lang);}
   }
  }
  useEffect(()=>{setSelection(undefined);void load();return()=>request.current?.abort();},[clientId,kind,lang]);

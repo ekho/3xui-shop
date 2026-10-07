@@ -16,7 +16,7 @@ func (a *API) GetPaymentHistory(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.payments.PaymentHistory(c.Request().Context(), account.Account.AccountId, payments.PaymentHistoryInput{Kind: string(in.Kind), BeforeCreatedAt: in.BeforeCreatedAt, BeforeId: in.BeforeId})
+	out, err := a.payments.PaymentHistory(c.Request().Context(), account.Account.ID, payments.PaymentHistoryInput{Kind: string(in.Kind), BeforeCreatedAt: in.BeforeCreatedAt, BeforeId: in.BeforeId})
 	if err != nil {
 		return paymentError(err)
 	}

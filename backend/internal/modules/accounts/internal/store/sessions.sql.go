@@ -40,7 +40,7 @@ func (q *Queries) AddSession(ctx context.Context, arg AddSessionParams) error {
 const authenticateSession = `-- name: AuthenticateSession :one
 UPDATE sessions SET last_seen=GREATEST(last_seen,$1::timestamptz)
 WHERE id_hash=$2 AND absolute_expires_at>$1::timestamptz AND last_seen>$1::timestamptz-INTERVAL '7 days'
-RETURNING id_hash, account_id, csrf_token, created_at, last_seen, absolute_expires_at
+RETURNING id_hash, account_id, csrf_token, created_at, last_seen, absolute_expires_at, auth_source, telegram_id
 `
 
 type AuthenticateSessionParams struct {
@@ -58,6 +58,8 @@ func (q *Queries) AuthenticateSession(ctx context.Context, arg AuthenticateSessi
 		&i.CreatedAt,
 		&i.LastSeen,
 		&i.AbsoluteExpiresAt,
+		&i.AuthSource,
+		&i.TelegramID,
 	)
 	return i, err
 }
@@ -89,7 +91,7 @@ func (q *Queries) HasOtherSessions(ctx context.Context, arg HasOtherSessionsPara
 }
 
 const lookupLiveSession = `-- name: LookupLiveSession :one
-SELECT id_hash, account_id, csrf_token, created_at, last_seen, absolute_expires_at FROM sessions WHERE id_hash=$1 AND absolute_expires_at>$2::timestamptz AND last_seen>$2::timestamptz-INTERVAL '7 days'
+SELECT id_hash, account_id, csrf_token, created_at, last_seen, absolute_expires_at, auth_source, telegram_id FROM sessions WHERE id_hash=$1 AND absolute_expires_at>$2::timestamptz AND last_seen>$2::timestamptz-INTERVAL '7 days'
 `
 
 type LookupLiveSessionParams struct {
@@ -107,6 +109,8 @@ func (q *Queries) LookupLiveSession(ctx context.Context, arg LookupLiveSessionPa
 		&i.CreatedAt,
 		&i.LastSeen,
 		&i.AbsoluteExpiresAt,
+		&i.AuthSource,
+		&i.TelegramID,
 	)
 	return i, err
 }

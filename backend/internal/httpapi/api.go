@@ -14,6 +14,7 @@ import (
 	"example.com/cabinet/backend/internal/modules/payments"
 	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/support"
+	"example.com/cabinet/backend/internal/modules/telegram"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/google/uuid"
@@ -30,6 +31,7 @@ import (
 )
 
 type API struct {
+	miniApp        *telegram.MiniApp
 	accounts       *accounts.Service
 	catalogueOwner *catalogue.Service
 	subscriptions  *subscriptions.Service
@@ -54,7 +56,7 @@ func failure(status int, code string) error {
 }
 func unavailable() error { return failure(503, "SERVICE_UNAVAILABLE") }
 func newAPI(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, contract *openapi3.T) *API {
-	return &API{accounts: modules.Accounts, catalogueOwner: modules.Catalogue, subscriptions: modules.Subscriptions, payments: modules.Payments, supportOwner: modules.Support, notifications: modules.Notifications, auditReports: modules.AuditReports, pool: pool, cfg: cfg, contract: contract}
+	return &API{miniApp: modules.MiniApp, accounts: modules.Accounts, catalogueOwner: modules.Catalogue, subscriptions: modules.Subscriptions, payments: modules.Payments, supportOwner: modules.Support, notifications: modules.Notifications, auditReports: modules.AuditReports, pool: pool, cfg: cfg, contract: contract}
 }
 
 func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig) *echo.Echo {
@@ -116,6 +118,12 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig) *echo.Ech
 			ctx, cancel := context.WithTimeout(c.Request().Context(), 15*time.Second)
 			defer cancel()
 			c.SetRequest(c.Request().WithContext(ctx))
+			if strings.HasPrefix(c.Path(), "/api/") && c.Request().Header.Get("Authorization") != "" && !miniAppRouteAllowed(c.Path(), c.Request().Method) {
+				return failure(403, "INVALID_CREDENTIALS")
+			}
+			if len(c.Request().Header.Values("Authorization")) > 1 {
+				return failure(401, "INVALID_CREDENTIALS")
+			}
 			if strings.HasPrefix(c.Path(), "/internal/") {
 				if cfg.AdapterToken == "" || subtle.ConstantTimeCompare([]byte(c.Request().Header.Get("Authorization")), []byte("Bearer "+cfg.AdapterToken)) != 1 {
 					return &apiError{Status: 401, Code: "INVALID_CREDENTIALS"}
@@ -135,6 +143,9 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig) *echo.Ech
 		}
 		return c.JSON(200, map[string]bool{"ok": true})
 	})
+	e.POST("/api/v1/telegram/mini-app/session", a.CreateMiniAppSession)
+	e.GET("/api/v1/telegram/mini-app/account", a.GetMiniAppAccount)
+	e.POST("/api/v1/telegram/mini-app/logout", a.LogoutMiniAppAccount)
 	e.POST("/api/v1/auth/register", a.RegisterAccount)
 	e.POST("/api/v1/auth/verify-email", a.VerifyEmail)
 	e.POST("/api/v1/auth/resend-verification", a.ResendVerification)
@@ -285,17 +296,27 @@ func (a *API) LoginAccount(c *echo.Context) error {
 	c.SetCookie(&http.Cookie{Name: "__Host-session", Value: raw, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, Path: "/", MaxAge: 30 * 24 * 3600})
 	return c.JSON(200, out)
 }
-func (a *API) auth(c *echo.Context, write bool) (wire.AccountResult, error) {
-	cookie, err := c.Cookie("__Host-session")
-	if err != nil {
-		return wire.AccountResult{}, &apiError{Status: 401, Code: "INVALID_CREDENTIALS"}
+func (a *API) auth(c *echo.Context, write bool) (accounts.Authentication, error) {
+	var out accounts.Authentication
+	var err error
+	if c.Request().Header.Get("Authorization") != "" {
+		if !miniAppRouteAllowed(c.Path(), c.Request().Method) {
+			return out, failure(403, "INVALID_CREDENTIALS")
+		}
+		out, err = a.miniAppAuth(c, false)
+	} else {
+		cookie, e := c.Cookie("__Host-session")
+		if e != nil {
+			return out, failure(401, "INVALID_CREDENTIALS")
+		}
+		out, err = a.accounts.Authenticate(c.Request().Context(), cookie.Value)
+		err = accountError(err)
 	}
-	out, err := a.authenticate(c.Request().Context(), cookie.Value)
 	if err != nil {
 		return out, err
 	}
 	if write && subtle.ConstantTimeCompare([]byte(c.Request().Header.Get("X-CSRF-Token")), []byte(out.CsrfToken)) != 1 {
-		return out, &apiError{Status: 403, Code: "INVALID_CREDENTIALS"}
+		return out, failure(403, "INVALID_CREDENTIALS")
 	}
 	return out, nil
 }
@@ -304,7 +325,11 @@ func (a *API) GetAccount(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(200, out)
+	available, err := a.subscriptions.CanRequestTrial(c.Request().Context(), out.Account)
+	if err != nil {
+		return subscriptionError(err)
+	}
+	return c.JSON(200, wire.AccountResult{Account: publicAccount(out.Account), CsrfToken: out.CsrfToken, Capabilities: wire.Capabilities{TrialAvailable: available}})
 }
 func (a *API) LogoutAccount(c *echo.Context) error {
 	if err := requireEmptyBody(c); err != nil {
@@ -362,7 +387,7 @@ func (a *API) CreateTrialRequest(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, created, err := a.createTrialRequest(c.Request().Context(), account.Account.AccountId, key, in)
+	out, created, err := a.createTrialRequest(c.Request().Context(), account.Account.ID, key, in)
 	if err != nil {
 		return err
 	}
@@ -377,7 +402,7 @@ func (a *API) GetCurrentTrialRequest(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.currentTrialRequest(c.Request().Context(), account.Account.AccountId)
+	out, err := a.currentTrialRequest(c.Request().Context(), account.Account.ID)
 	if err != nil {
 		return err
 	}
@@ -423,7 +448,7 @@ func (a *API) GetSubscription(c *echo.Context) error {
 	if e != nil {
 		return e
 	}
-	out, e := a.subscription(c.Request().Context(), account.Account.AccountId)
+	out, e := a.subscription(c.Request().Context(), account.Account.ID)
 	if e != nil {
 		return e
 	}
@@ -434,7 +459,7 @@ func (a *API) GetSubscriptionKey(c *echo.Context) error {
 	if e != nil {
 		return e
 	}
-	out, e := a.subscriptionKey(c.Request().Context(), account.Account.AccountId)
+	out, e := a.subscriptionKey(c.Request().Context(), account.Account.ID)
 	if e != nil {
 		return e
 	}

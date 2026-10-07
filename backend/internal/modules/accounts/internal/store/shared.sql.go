@@ -62,7 +62,7 @@ func (q *Queries) IdempotencyByKey(ctx context.Context, arg IdempotencyByKeyPara
 }
 
 const lockAccount = `-- name: LockAccount :one
-SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id, access_profile FROM accounts WHERE id=$1 FOR UPDATE
+SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id, access_profile, policy_accepted_at, telegram_start_param FROM accounts WHERE id=$1 FOR UPDATE
 `
 
 func (q *Queries) LockAccount(ctx context.Context, id uuid.UUID) (Account, error) {
@@ -92,6 +92,8 @@ func (q *Queries) LockAccount(ctx context.Context, id uuid.UUID) (Account, error
 		&i.RestrictionChangedAt,
 		&i.RestrictionOperatorAccountID,
 		&i.AccessProfile,
+		&i.PolicyAcceptedAt,
+		&i.TelegramStartParam,
 	)
 	return i, err
 }

@@ -17,7 +17,7 @@ func (a *API) GetPaymentMethods(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.paymentMethods(c.Request().Context(), account.Account.AccountId)
+	out, err := a.paymentMethods(c.Request().Context(), account.Account.ID)
 	if err != nil {
 		return err
 	}
@@ -29,7 +29,7 @@ func (a *API) GetRenewalOffer(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	p, err := a.payments.RenewalOffer(c.Request().Context(), account.Account.AccountId)
+	p, err := a.payments.RenewalOffer(c.Request().Context(), account.Account.ID)
 	if err != nil {
 		return paymentError(err)
 	}
@@ -41,7 +41,7 @@ func (a *API) GetPlanChangeContext(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	p, err := a.payments.PlanChangeContext(c.Request().Context(), account.Account.AccountId)
+	p, err := a.payments.PlanChangeContext(c.Request().Context(), account.Account.ID)
 	if err != nil {
 		return paymentError(err)
 	}
@@ -61,7 +61,7 @@ func (a *API) CreatePurchaseOrder(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.createPurchaseOrder(c.Request().Context(), account.Account.AccountId, key, in)
+	out, err := a.createPurchaseOrder(c.Request().Context(), account.Account.ID, key, in)
 	if err != nil {
 		return err
 	}
@@ -73,9 +73,17 @@ func (a *API) GetCurrentPurchaseOrder(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.currentPurchaseOrder(c.Request().Context(), account.Account.AccountId)
+	out, err := a.currentPurchaseOrder(c.Request().Context(), account.Account.ID)
 	if err != nil {
 		return err
+	}
+	if c.Request().Header.Get("Authorization") != "" {
+		if out.Order != nil {
+			projected := miniAppReadOnlyOrder(c, *out.Order)
+			out.Order = &projected
+		}
+		allowed := false
+		out.CanPurchase = &allowed
 	}
 	return c.JSON(200, out)
 }
@@ -89,11 +97,11 @@ func (a *API) GetPurchaseOrder(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.purchaseOrder(c.Request().Context(), account.Account.AccountId, id)
+	out, err := a.purchaseOrder(c.Request().Context(), account.Account.ID, id)
 	if err != nil {
 		return err
 	}
-	return c.JSON(200, out)
+	return c.JSON(200, miniAppReadOnlyOrder(c, out))
 }
 
 func (a *API) CancelPurchaseOrder(c *echo.Context) error {
@@ -113,11 +121,11 @@ func (a *API) CancelPurchaseOrder(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.cancelPurchaseOrder(c.Request().Context(), account.Account.AccountId, id, key)
+	out, err := a.cancelPurchaseOrder(c.Request().Context(), account.Account.ID, id, key)
 	if err != nil {
 		return err
 	}
-	return c.JSON(200, out)
+	return c.JSON(200, miniAppReadOnlyOrder(c, out))
 }
 
 func (a *API) GetOperatorPurchaseOrder(c *echo.Context) error {

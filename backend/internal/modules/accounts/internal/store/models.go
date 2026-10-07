@@ -33,6 +33,8 @@ type Account struct {
 	RestrictionChangedAt         pgtype.Timestamptz
 	RestrictionOperatorAccountID *uuid.UUID
 	AccessProfile                pgtype.Text
+	PolicyAcceptedAt             pgtype.Timestamptz
+	TelegramStartParam           pgtype.Text
 }
 
 type CredentialChallenge struct {
@@ -107,4 +109,6 @@ type Session struct {
 	CreatedAt         pgtype.Timestamptz
 	LastSeen          pgtype.Timestamptz
 	AbsoluteExpiresAt pgtype.Timestamptz
+	AuthSource        string
+	TelegramID        pgtype.Int8
 }
