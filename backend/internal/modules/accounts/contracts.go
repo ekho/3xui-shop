@@ -23,6 +23,8 @@ type Snapshot struct {
 	Kind                            string
 	DisplayName                     *string
 	CreatedAt, RestrictionChangedAt *time.Time
+	PolicyAcceptedAt                *time.Time
+	TelegramStartParam              *string
 	RestrictionOperatorAccountID    *uuid.UUID
 	AccessProfile                   *string
 }
@@ -110,11 +112,20 @@ type TelegramInput struct {
 	DisplayName, Locale string
 }
 
+// TelegramSessionInput is trusted identity supplied only after Telegram signature validation.
+type TelegramSessionInput struct {
+	TelegramInput
+	StartParam, AcceptedTermsVersion, AcceptedPrivacyVersion string
+}
+
 // SourceEligible is the common source-identity predicate, without subscription rules.
 func SourceEligible(a Snapshot) bool {
- switch a.Kind {
- case "web":return a.VerifiedAt!=nil && a.EmailKey!=nil && a.PasswordSet
- case "telegram":return a.TelegramID!=nil && *a.TelegramID>0 && a.DisplayName!=nil
- default:return false
- }
+	switch a.Kind {
+	case "web":
+		return a.VerifiedAt != nil && a.EmailKey != nil && a.PasswordSet
+	case "telegram":
+		return a.TelegramID != nil && *a.TelegramID > 0 && a.DisplayName != nil
+	default:
+		return false
+	}
 }

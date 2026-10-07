@@ -7,14 +7,18 @@ import (
 )
 
 func (a *API) operatorAuth(c *echo.Context, write bool) (wire.AccountResult, error) {
-	account, err := a.auth(c, write)
+	empty := wire.AccountResult{}
+	if c.Request().Header.Get("Authorization") != "" {
+		return empty, failure(403, "INVALID_CREDENTIALS")
+	}
+	out, err := a.auth(c, write)
 	if err != nil {
-		return account, err
+		return empty, err
 	}
-	if err = a.requireSupportOperator(c.Request().Context(), account.Account.AccountId); err != nil {
-		return account, err
+	if err = a.requireSupportOperator(c.Request().Context(), out.Account.ID); err != nil {
+		return empty, err
 	}
-	return account, nil
+	return wire.AccountResult{Account: publicAccount(out.Account), CsrfToken: out.CsrfToken}, nil
 }
 func (a *API) GetOperatorSession(c *echo.Context) error {
 	account, err := a.operatorAuth(c, false)

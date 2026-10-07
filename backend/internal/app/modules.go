@@ -10,6 +10,7 @@ import (
 	"example.com/cabinet/backend/internal/modules/payments"
 	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/support"
+	"example.com/cabinet/backend/internal/modules/telegram"
 	"example.com/cabinet/backend/internal/modules/vpn"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -21,6 +22,7 @@ import (
 
 // Modules is the assembled application; business operations stay with their owners.
 type Modules struct {
+	MiniApp       *telegram.MiniApp
 	Accounts      *accounts.Service
 	Catalogue     *catalogue.Service
 	Subscriptions *subscriptions.Service

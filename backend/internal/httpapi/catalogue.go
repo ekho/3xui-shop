@@ -13,7 +13,7 @@ func (a *API) GetCatalogue(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.catalogue(c.Request().Context(), account.Account.AccountId)
+	out, err := a.catalogue(c.Request().Context(), account.Account.ID)
 	if err != nil {
 		return err
 	}

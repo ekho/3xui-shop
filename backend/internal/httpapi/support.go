@@ -21,7 +21,7 @@ func (a *API) supportActor(c *echo.Context, write, operator bool) (uuid.UUID, uu
 	if err != nil {
 		return uuid.Nil, uuid.Nil, err
 	}
-	actor := account.Account.AccountId
+	actor := account.Account.ID
 	if !operator {
 		return actor, actor, nil
 	}
@@ -221,7 +221,7 @@ func (a *API) GetSupportAttachment(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	name, body, err := a.supportAttachment(c.Request().Context(), account.Account.AccountId, id)
+	name, body, err := a.supportAttachment(c.Request().Context(), account.Account.ID, id)
 	if err != nil {
 		return err
 	}

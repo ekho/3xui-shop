@@ -140,6 +140,9 @@ func (s *Service) sessionByRaw(ctx context.Context, q *store.Queries, raw string
 	if err != nil {
 		return session, unavailable()
 	}
+	if session.AuthSource != "web" {
+		return session, failure(401, "INVALID_CREDENTIALS")
+	}
 	account, err := q.AccountByID(ctx, session.AccountID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return session, failure(401, "INVALID_CREDENTIALS")

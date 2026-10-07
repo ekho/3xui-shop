@@ -91,19 +91,25 @@ func historyInput(in PaymentHistoryInput) error {
 	return nil
 }
 
-func (s *Service) PaymentHistory(ctx context.Context, account uuid.UUID, in PaymentHistoryInput) (PaymentHistoryPage, error) {
+func (s *Service) requirePaymentReader(ctx context.Context, account uuid.UUID) error {
 	a, err := s.accountByID(ctx, account)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return PaymentHistoryPage{}, failure(401, "INVALID_CREDENTIALS")
+		return failure(401, "INVALID_CREDENTIALS")
 	}
 	if err != nil {
-		return PaymentHistoryPage{}, err
+		return err
 	}
 	if !accounts.SourceEligible(a) {
-		return PaymentHistoryPage{}, failure(401, "INVALID_CREDENTIALS")
+		return failure(401, "INVALID_CREDENTIALS")
 	}
 	if a.Restricted {
-		return PaymentHistoryPage{}, failure(403, "ACCOUNT_RESTRICTED")
+		return failure(403, "ACCOUNT_RESTRICTED")
+	}
+	return nil
+}
+func (s *Service) PaymentHistory(ctx context.Context, account uuid.UUID, in PaymentHistoryInput) (PaymentHistoryPage, error) {
+	if err := s.requirePaymentReader(ctx, account); err != nil {
+		return PaymentHistoryPage{}, err
 	}
 	return s.paymentHistory(ctx, account, in)
 }

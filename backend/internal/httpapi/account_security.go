@@ -38,6 +38,13 @@ func sessionRaw(c *echo.Context) (string, error) {
 	return cookie.Value, nil
 }
 func (a *API) GetSessionContext(c *echo.Context) error {
+	if c.Request().Header.Get("Authorization") != "" {
+		out, err := a.miniAppAuth(c, true)
+		if err != nil {
+			return err
+		}
+		return c.JSON(200, wire.SessionContext{CsrfToken: out.CsrfToken})
+	}
 	raw, err := sessionRaw(c)
 	if err != nil {
 		return err

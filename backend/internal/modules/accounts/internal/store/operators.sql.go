@@ -13,7 +13,7 @@ import (
 )
 
 const accountByTelegramID = `-- name: AccountByTelegramID :one
-SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id, access_profile FROM accounts WHERE telegram_id=$1
+SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id, access_profile, policy_accepted_at, telegram_start_param FROM accounts WHERE telegram_id=$1
 `
 
 func (q *Queries) AccountByTelegramID(ctx context.Context, telegramID pgtype.Int8) (Account, error) {
@@ -43,6 +43,8 @@ func (q *Queries) AccountByTelegramID(ctx context.Context, telegramID pgtype.Int
 		&i.RestrictionChangedAt,
 		&i.RestrictionOperatorAccountID,
 		&i.AccessProfile,
+		&i.PolicyAcceptedAt,
+		&i.TelegramStartParam,
 	)
 	return i, err
 }
@@ -156,7 +158,7 @@ func (q *Queries) RevokeOperator(ctx context.Context, accountID uuid.UUID) (int6
 }
 
 const searchOperatorClients = `-- name: SearchOperatorClients :many
-SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id, access_profile FROM accounts
+SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id, access_profile, policy_accepted_at, telegram_start_param FROM accounts
 WHERE $1::text='' OR
  strpos(lower(COALESCE(email_key,'')),lower($1::text))>0 OR
  strpos(lower(COALESCE(display_name,'')),lower($1::text))>0 OR
@@ -204,6 +206,8 @@ func (q *Queries) SearchOperatorClients(ctx context.Context, arg SearchOperatorC
 			&i.RestrictionChangedAt,
 			&i.RestrictionOperatorAccountID,
 			&i.AccessProfile,
+			&i.PolicyAcceptedAt,
+			&i.TelegramStartParam,
 		); err != nil {
 			return nil, err
 		}
