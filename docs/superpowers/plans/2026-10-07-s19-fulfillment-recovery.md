@@ -64,3 +64,5 @@
 ## После трёх задач
 
 Одна свежая Astra/high read-only whole-branch review по spec/plan/base/head/current evidence. Каждый finding — severity по эффекту/ruling/cost; один авторский Critical/Important TDD fix pass, Minor deferred, без re-review. Архивировать только свой SDD перед удалением после commit fixes. Push exact SSH/current source, PR в v2 без auto-merge; проверить required actual source gates и немедленно exact SHA/target/parents/tree, merge вручную. Проверить actual v2 prerelease/tag commit и три OCI indexes/source-version labels обеих платформ. Только actual local acceptance+delivery закрывает #26 и Project Done. Затем следующая готовая задача С20/#27, по очереди.
+
+Final review: один Important расширил тот же client-card fix на Admin.tsx, один Minor (дополнительные key assertions) deferred. Авторский cache test RED→GREEN, current web300/Python110 и повтор native paid proof PASS; retained fixture catalogue reuse исправлен в том же pass. Go/contract source unchanged, full checks retained; no re-review. Все rulings/cost — в evidence.

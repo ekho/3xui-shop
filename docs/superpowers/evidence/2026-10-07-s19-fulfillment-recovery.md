@@ -1,6 +1,6 @@
 # С19 — Локальная приёмка восстановления выдачи
 
-Owner [#26](https://github.com/ekho/3xui-shop/issues/26), canonical `2026-10-07-s19-fulfillment-recovery-v1`. [Спецификация](../specs/2026-10-07-s19-fulfillment-recovery-design.md), [Native-план](../plans/2026-10-07-s19-fulfillment-recovery.md). База origin/v2 `5246923c6a7fe92a1f29693d401fde292368d63d`; реализация проверена на `872a9eb1c09efa5ba403950e3e12d713b04b8593`. Последующие изменения этого отчёта/плана не меняют runtime inputs. Ревью и доставка пока pending; локальная приёмка не означает production-готовность.
+Owner [#26](https://github.com/ekho/3xui-shop/issues/26), canonical `2026-10-07-s19-fulfillment-recovery-v1`. [Спецификация](../specs/2026-10-07-s19-fulfillment-recovery-design.md), [Native-план](../plans/2026-10-07-s19-fulfillment-recovery.md). База origin/v2 `5246923c6a7fe92a1f29693d401fde292368d63d`; исходная реализация проверена на `872a9eb1c09efa5ba403950e3e12d713b04b8593`, единственная fresh review — на `b63f399739b1e2c700b2523023331d30505a04f4`. Авторский fix pass и текущие source manifests приведены ниже. Доставка pending до actual CI/merge/prerelease; локальная приёмка не означает production-готовность.
 
 ## Изменение
 
@@ -27,23 +27,23 @@ Owner [#26](https://github.com/ekho/3xui-shop/issues/26), canonical `2026-10-07-
 
 ## Выполненные команды
 
-Все записи завершены с exit 0 на неизменённых inputs. Приватный verifier повторно сверяет текущие файлы, input manifest, log SHA-256 и runtime inputs; дорогие suites не повторяются только ради оформления task-done.
+Все итоговые проверки завершены с exit 0 на неизменённых inputs; Task1 40/40 — историческое RED→GREEN доказательство до final fix, а актуальный весь web проверен 300/300. Приватный verifier повторно сверяет текущие файлы, input manifest, log SHA-256 и runtime inputs; дорогие suites не повторяются только ради оформления task-done.
 
 | Проверка | Результат |
 | --- | --- |
-| `npm run typecheck`; focused purchase/subscription-operations Playwright | PASS; 40/40, 29.669 s |
+| `npm run typecheck`; focused purchase/subscription-operations Playwright | Task1 baseline PASS; 40/40, 29.669 s; current typecheck PASS, 2.273 s |
 | `python3 -m unittest tests.test_paid_recovery_acceptance -v` | RED→GREEN 3/3, 0.538 s; signature vector/0600/default-off и оба compose consumers |
 | Go focused `Regression(Purchase\|YooMoney\|AccessConcurrent\|AccessReconcile)` с `-race` | PASS, 47.432 s package time |
-| `LOCAL_RUNTIME=native LOCAL_YOOMONEY_FIXTURE_ENABLED=true python3 deploy/acceptance/local.py up` | PASS, 33.260 s; собственный Docker-проект |
-| Та же конфигурация, `python3 deploy/acceptance/local.py paid-recovery` | PASS, 9.225 s; actual paid process restarts/readback |
+| `LOCAL_PROFILE=native LOCAL_YOOMONEY_FIXTURE_ENABLED=true python3 deploy/acceptance/local.py up` | Initial PASS, 33.260 s; final current up --reuse-images PASS, 5.925 s; собственный Docker-проект |
+| Та же конфигурация, `python3 deploy/acceptance/local.py paid-recovery` | Initial PASS, 9.225 s; final current PASS, 8.367 s; actual paid process restarts/readback |
 | `make generate`; `npm run api:generate`; `make vet` | PASS; generated drift отсутствует |
 | `RUN_BROWSER_TESTS=1 go test ./... -count=1 -race -timeout=20m -json` | PASS, 806 test/subtest passes, 346 top-level tests, 13 tested packages, 680.144 s. 0 failures/0 skipped tests; 12 пакетов без test files. Flags совпадают с `make test-integration`, `-json` меняет только вывод. |
-| `npm run build`; `node scripts/runtime-config.test.mjs` | PASS, 3.867 s / 0.107 s |
-| Полная `npm run test:e2e` | PASS, 299/299, 128.008 s |
-| `poetry run python -m unittest discover -s tests -v` | PASS, 110/110, 16.998 s |
+| `npm run build`; `node scripts/runtime-config.test.mjs` | Final current PASS, 2.852 s / 0.097 s |
+| Полная `npm run test:e2e` | Final current PASS, 300/300, 128.526 s |
+| `poetry run python -m unittest discover -s tests -v` | Final current PASS, 110/110, 14.740 s |
 | `python3 deploy/acceptance/check_names.py`; `git diff --check` | PASS |
 
-Manifest SHA-256 backend `e41345ab6d3cc052e8edd94f6d713fd816b66adbfea73e1cff67a605684ded0a`; web `5b732004e8a58b09d2f1f80d17795c71bf1d9a56b455c2cb68d15672ee87ba16`; Python/deploy `2c2fb74e694df28bf1af39cc9d76cb4e15f300292c49fbad72d1112f6e8563cc`. Go JSON-log SHA-256 `1034c7b919e84c1096f5c0601980e8b75c8d932ae5b565bf6c14dbc83f02eedb`; web full log `92cf3cc1f10b01093c18be1ac0b496f178d161741484c40694a8d314236d470d`; native paid log `90d40a903126abb720550f7021c990f1a5de3012109f3d2e00aa832380ec7e40`. Полные source-bound записи и fixture proof остаются приватными; секреты, персональные данные и VPN-ключи не публикуются.
+Manifest SHA-256 backend `e41345ab6d3cc052e8edd94f6d713fd816b66adbfea73e1cff67a605684ded0a`; web `7c9c686edee51f844919e11f80a6347e9b9172e86ffaa1e9ec0ed8f1fe0ff16d`; Python/deploy `6c7a5b3294a39d2152dcd5ed0f01b1eee2c996a236ee26ce087fb058cf2c33fb`. Go JSON-log SHA-256 `1034c7b919e84c1096f5c0601980e8b75c8d932ae5b565bf6c14dbc83f02eedb`; web full log `2b263548eaa718e7bb84f30615b508a26491189476f53e7df2ffe0022e79d747`; native paid log `90d40a903126abb720550f7021c990f1a5de3012109f3d2e00aa832380ec7e40`. Полные source-bound записи и fixture proof остаются приватными; секреты, персональные данные и VPN-ключи не публикуются.
 
 ## Среда и ограничения
 
@@ -60,4 +60,20 @@ C13 external acceptance остаётся OPEN: нет публичного callb
 3. Полные/дорогие checks выполняются один раз на изменённых inputs, task-done сверяет завершённые source-bound records. Цена ошибки — инвалидировать запись и выполнить затронутую проверку.
 4. Полная Go integration использует Makefile flags с `-json` для точного подсчёта; семантика tests/browser flag сохранена. Цена ошибки — повторить `make test-integration`.
 
-Final review, его rulings/deferred minors и delivery evidence будут дописаны по фактическому результату. Повторного обзора не планируется.
+5. Parent cache хранит purchase operation вместе с владельцем, хотя исходный список Task1 не называл Admin.tsx: уже принятый ID пересекал ту же границу карточки клиента. API и scope сохраняются. Цена ошибки — убрать узкий cache fix и повторить затронутые web checks.
+6. Реальные платежи/public callback/production оставлены reviewer без оценки: это запрещённые внешние targets; локальные stubs удовлетворяют current DoD, C13/С45–С47 остаются open. Цена ошибки — отдельная разрешённая внешняя приёмка.
+7. Refund/disputed-funding, Stars и maintenance оставлены без оценки: владельцы С20/С34–С35/С42 сохраняют эти сценарии, прежние funding guards проверены. Цена ошибки — уточнить соответствующий сценарий и его consumer checks.
+8. Automatic unknown-create retry оставлен без оценки: actual3.7.0 preflight не доказывает uniqueness, прежняя disabled policy сохраняется. Цена ошибки — отдельно доказать uniqueness до изменения политики.
+9. Повторный owned paid fixture использует существующий visible тариф с полностью совпадающими условиями: retained state вызвал HTTP409 при попытке заново занять devices=2; signup/trial завершены, подтверждены существующая строка и catalogue uniqueness guard. Financial schema/guards и данные не удалялись. Цена ошибки — остановить свой fixture и уточнить его setup.
+
+## Единственное финальное ревью и fix pass
+
+Fresh Astra/high reviewer прочитал всю ветку 5246923..b63f399, spec/plan/ledger/evidence. Critical нет; один Important исправлен автором в одном pass. Уже полученный ID операции клиента A сохранялся в ClientCard без владельца и попадал к B, если B/orders/current задержан либо завершился ошибкой. Теперь cache содержит clientId+operationId, fallback допускается только для совпадающего clientId.
+
+Rendered `accepted purchase operation stays with its client while the next order read fails`: корректный behavioral RED — после перехода к B на странице оставался A-id (expected0/received1); GREEN — нет A-id и GET чужого access, пока B read задержан и после его HTTP503. Typecheck и вся web suite 300/300 PASS. Initial locator strict-mode ошибка была исправлена до behavioral RED и не считалась доказательством продукта.
+
+Повтор native proof сначала обнаружил HTTP409 подготовки уже существующего тарифа. Local helper читает свой public catalogue и использует exact matching visible plan, сохраняя первоначальный create для пустого каталога. Повтор actual paid-recovery на retained own DB прошёл: тот же compiled runtime, два restart, readback и одинаковые per-order counts/target. Полная Python110/110 повторена после helper change, own stack down PASS. Go/contract inputs не менялись и их завершённая full race/browser проверка сохранена.
+
+Deferred Minor: дополнительные assertions смены order ID/reason/operation ID. Существующие checks доказывают неизменённый preparation key и смену reset consent; код включает ID/input, отдельного дефекта ключа reviewer не обнаружил. Полная заявленная матрица этих дополнительных assertions не считается доказанной.
+
+Повторного обзора нет. [PR80](https://github.com/ekho/3xui-shop/pull/80) направлен в v2; actual source CI/guarded manual merge/annotated prerelease и три OCI indexes подтверждаются отдельным public completion checkpoint, закрытие #26 допускается только после них.

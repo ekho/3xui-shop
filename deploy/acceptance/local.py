@@ -574,11 +574,15 @@ def native_paid_restart():
     write('native-operator-account', str(UUID(account)))
     compose('exec', '-T', 'backend', '/server', 'operator', 'grant', '--account-file', '/run/secrets/native_operator_account')
     _, _, login = api(opener, '/api/v1/auth/login', credentials)
-    status, _, plan = api(opener, '/api/v1/operator/catalogue/plans', {
-        'terms': {'devices': 2, 'traffic_gb': 1, 'profile': 'regular', 'hidden': False, 'periods': [30],
-                  'prices': [{'period_days': 30, 'currency': c, 'amount_minor': '10000' if c == 'RUB' else '0'} for c in ('RUB', 'USD', 'XTR')]},
-        'reason': 'Owned paid recovery fixture'}, login['csrf_token'], str(uuid4()))
-    assert status == 201, 'fixture catalogue creation failed'
+    terms = {'devices': 2, 'traffic_gb': 1, 'profile': 'regular', 'hidden': False, 'periods': [30],
+             'prices': [{'period_days': 30, 'currency': c, 'amount_minor': '10000' if c == 'RUB' else '0'} for c in ('RUB', 'USD', 'XTR')]}
+    status, _, catalogue = api(opener, '/api/v1/catalogue')
+    assert status == 200, 'fixture catalogue read failed'
+    plan = next((p for p in catalogue['plans'] if all(p[k] == v for k, v in terms.items())), None)
+    if plan is None:
+        status, _, plan = api(opener, '/api/v1/operator/catalogue/plans', {'terms': terms,
+            'reason': 'Owned paid recovery fixture'}, login['csrf_token'], str(uuid4()))
+        assert status == 201, 'fixture catalogue creation failed'
     status, _, order = api(opener, '/api/v1/orders', {'action': 'purchase', 'plan_id': plan['plan_id'], 'revision': plan['revision'],
                          'period_days': 30, 'payment_method': 'yoomoney', 'payment_type': 'AC'}, login['csrf_token'], str(uuid4()))
     assert status == 201 and order['payment_status'] == 'pending', 'fixture order creation failed'
