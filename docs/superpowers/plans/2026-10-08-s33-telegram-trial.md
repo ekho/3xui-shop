@@ -76,19 +76,19 @@ Origin/CSRF/Idempotency-Key; optional trial_mode=activate, прежний TrialR
 
 ### Task 4: Native-путь и итоговая приёмка
 
-**Files:** backend/tests/native_telegram_trial_test.go (новый), существующие fixture
+**Files:** backend/tests/native_telegram_trial_test.go (новый), web/tests/real.spec.ts, существующие fixture
 helpers при необходимости; docs/superpowers/evidence/2026-10-08-s33-telegram-trial.md.
 **Interfaces:** consumes T1–T3, current-source module graph, existing workers/TG transport.
 
-- [ ] RED integration: signed identity → actual HTTP activation → worker → owned
+- [x] RED integration: signed identity → actual HTTP activation → worker → owned
   3X-UI 3.7.0, остановка Telegram/whole-graph restart, needs_review/reconcile,
   единственные grant/op/identity; браузер использует реальный backend.
-- [ ] Run focused `go test ./tests -run 'TestNativeTelegramTrial' -count=1 -timeout=5m`.
+- [x] Run focused `go test ./tests -run 'TestNativeTrialTelegramActivation' -count=1 -timeout=5m`.
   Expected: наблюдаемая цепочка и отсутствие duplicate. Если T1–T3 уже покрыли
   поведение, явно записать GREEN integration, не выдумывать RED.
-- [ ] Run full Go/race with RUN_BROWSER_TESTS=1/NATIVE_DOCKER_STATE, web e2e,
+- [x] Run full Go/race with RUN_BROWSER_TESTS=1/NATIVE_DOCKER_STATE, web e2e,
   Python suite, vet, deterministic generation. Expected: PASS без actual skips.
-- [ ] Record фактические counts/limits/rulings; task-done подтверждает full Go.
+- [x] Record фактические counts/limits/rulings; task-done подтверждает full Go.
 - [ ] Commit evidence, один fresh final reviewer; один author fix pass если нужен.
 - [ ] PR/v2, exact-source CI, manual merge, actual preview tag/images/configs;
   completion #31/Project Done только после фактических receipt.

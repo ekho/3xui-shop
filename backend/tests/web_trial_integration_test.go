@@ -207,7 +207,11 @@ func openMode(t *testing.T, native bool, miniKey ...ed25519.PublicKey) *fixture 
 		}
 		path := filepath.Join(f.root, "web", "dist", filepath.Clean("/"+r.URL.Path))
 		if info, err := os.Stat(path); err != nil || info.IsDir() {
-			path = filepath.Join(f.root, "web", "dist", "index.html")
+			entry := "index.html"
+			if r.URL.Path == "/mini-app" || strings.HasPrefix(r.URL.Path, "/mini-app/") {
+				entry = "mini-app.html"
+			}
+			path = filepath.Join(f.root, "web", "dist", entry)
 		}
 		http.ServeFile(w, r, path)
 	}))

@@ -12,7 +12,7 @@ type trialRow struct {
 	ID                                                uuid.UUID
 	Sequence                                          pgtype.Int8
 	AccountID                                         uuid.UUID
-	Status, Comment                                   string
+	Status, Comment, DecisionSource                   string
 	CreatedAt, DecidedAt                              pgtype.Timestamptz
 	OperatorTgID                                      pgtype.Int8
 	Reason                                            pgtype.Text
