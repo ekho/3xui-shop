@@ -1,4 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
+import {useLocation} from 'react-router-dom';
 import QRCode from 'qrcode';
 import {text,otherImportText,type Lang} from './i18n';
 
@@ -14,7 +15,9 @@ const external={target:'_blank',rel:'noreferrer noopener'} as const;
 
 export function Connection({lang,subscriptionURL,busy,onReveal,onHide}:{lang:Lang;subscriptionURL:string;busy:boolean;onReveal:()=>void;onHide:()=>void}){
  const key=subscriptionURL;
- const t=text(lang);const[platform,setPlatform]=useState<Platform>('ios');const[region,setRegion]=useState<keyof typeof ios>('global');const[copyStatus,setCopyStatus]=useState('');const[showQR,setShowQR]=useState(false);const[qrReady,setQrReady]=useState(false);const[qrError,setQrError]=useState('');const input=useRef<HTMLInputElement>(null);const canvas=useRef<HTMLCanvasElement>(null);
+ const requested=new URLSearchParams(useLocation().search).get('platform');const selected=requested&&['ios','android','macos','windows','other'].includes(requested)?requested as Platform:undefined;
+ const t=text(lang);const[platform,setPlatform]=useState<Platform>(selected??'ios');const[region,setRegion]=useState<keyof typeof ios>('global');const[copyStatus,setCopyStatus]=useState('');const[showQR,setShowQR]=useState(false);const[qrReady,setQrReady]=useState(false);const[qrError,setQrError]=useState('');const input=useRef<HTMLInputElement>(null);const canvas=useRef<HTMLCanvasElement>(null);
+ useEffect(()=>{if(selected)setPlatform(selected);},[selected]);
  useEffect(()=>{setCopyStatus('');setShowQR(false);setQrReady(false);setQrError('');if(canvas.current){canvas.current.width=0;canvas.current.height=0;}},[key]);
  useEffect(()=>{if(!showQR||!key)return;let current=true;const scratch=document.createElement('canvas');setQrReady(false);setQrError('');
   void QRCode.toCanvas(scratch,key,{errorCorrectionLevel:'M',margin:2,width:220}).then(()=>{const target=canvas.current;if(!current||!target)return;target.width=scratch.width;target.height=scratch.height;const context=target.getContext('2d');if(!context)throw new Error('canvas');context.drawImage(scratch,0,0);setQrReady(true);}).catch(()=>{if(current)setQrError(t.qrUnavailable);});

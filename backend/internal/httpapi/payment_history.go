@@ -16,7 +16,7 @@ func (a *API) GetPaymentHistory(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.payments.PaymentHistory(c.Request().Context(), account.Account.ID, payments.PaymentHistoryInput{Kind: string(in.Kind), BeforeCreatedAt: in.BeforeCreatedAt, BeforeId: in.BeforeId})
+	out, err := a.payments.PaymentHistory(c.Request().Context(), account.Account.ID, payments.PaymentHistoryInput{Kind: string(in.Kind), BeforeCreatedAt: in.BeforeCreatedAt, BeforeId: in.BeforeId, LegacySourceId: in.LegacySourceId})
 	if err != nil {
 		return paymentError(err)
 	}
@@ -35,7 +35,7 @@ func (a *API) GetOperatorPaymentHistory(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.payments.OperatorPaymentHistory(c.Request().Context(), actor.Account.AccountId, id, payments.PaymentHistoryInput{Kind: string(in.Kind), BeforeCreatedAt: in.BeforeCreatedAt, BeforeId: in.BeforeId})
+	out, err := a.payments.OperatorPaymentHistory(c.Request().Context(), actor.Account.AccountId, id, payments.PaymentHistoryInput{Kind: string(in.Kind), BeforeCreatedAt: in.BeforeCreatedAt, BeforeId: in.BeforeId, LegacySourceId: in.LegacySourceId})
 	if err != nil {
 		return paymentError(err)
 	}

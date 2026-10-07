@@ -8,11 +8,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/payments"
 	"example.com/cabinet/backend/internal/modules/telegram/internal/botapi"
+	"github.com/google/uuid"
 )
 
 type Client struct {
@@ -75,10 +77,18 @@ func clientText(lang, ru, en string) string {
 	return en
 }
 func (c *Client) route(path, lang string) string {
-	if strings.HasPrefix(path, "/orders/") {
-		return c.origin + "/mini-app" + path + "?lang=" + lang
+	prefix := "/mini-app/cabinet"
+	if strings.HasPrefix(path, "/orders/") || strings.HasPrefix(path, "/catalogue") {
+		prefix = "/mini-app"
 	}
-	return c.origin + "/mini-app/cabinet" + path + "?lang=" + lang
+	u, err := url.Parse(c.origin + prefix + path)
+	if err != nil {
+		return c.origin + "/mini-app/cabinet?lang=" + lang
+	}
+	q := u.Query()
+	q.Set("lang", lang)
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 func (c *Client) send(ctx context.Context, chat int64, lang, path, source string) error {
 	b := botapi.Button{Text: clientText(lang, "Открыть кабинет", "Open cabinet"), WebApp: &botapi.WebAppInfo{URL: c.route(path, lang)}}
@@ -124,6 +134,9 @@ func (c *Client) deliver(parent context.Context, j notifications.ClientJob) erro
 	})
 }
 func (c *Client) handle(ctx context.Context, u botapi.Update) (bool, error) {
+	if u.Callback != nil {
+		return c.callback(ctx, u.Callback)
+	}
 	m := u.Message
 	if m == nil || !clientActor(m.From, m) {
 		return false, nil
@@ -154,4 +167,101 @@ func (c *Client) handle(ctx context.Context, u botapi.Update) (bool, error) {
 		source = fields[1]
 	}
 	return true, c.send(ctx, m.Chat.ID, lang, path, source)
+}
+
+func (c *Client) callback(parent context.Context, q *botapi.Callback) (bool, error) {
+	path, state := "", q.Data
+	legacySubscription := strings.HasPrefix(state, "subscription:")
+	closeNotice := strings.HasPrefix(state, "cn1:")
+	if !legacySubscription && !closeNotice {
+		switch state {
+		case "start", "main_menu", "profile", "show_key", "download", "platform", "platform_ios", "platform_android", "platform_macos", "platform_windows", "download_show_qr", "support", "how_to_connect", "vpn_not_working", "subscription", "close_notification", "redirect_to_download":
+		default:
+			return false, nil
+		}
+	}
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
+	defer cancel()
+	lang := clientLang(q.From)
+	refuse := func() (bool, error) {
+		return true, cosmetic(c.api.AnswerCallback(ctx, q.ID, clientText(lang, "Кнопка недоступна. Используйте /start.", "This button is unavailable. Use /start."), true))
+	}
+	m := q.Message
+	if !clientActor(&q.From, m) || m.From == nil || !m.From.IsBot || m.From.ID != c.botID || len(q.ID) == 0 || len(q.ID) > 128 || !utf8.ValidString(q.ID) || strings.ContainsRune(q.ID, '\x00') || len(q.Data) > 64 || !utf8.ValidString(q.Data) || m.ReplyMarkup == nil {
+		return refuse()
+	}
+	button := false
+	for _, row := range m.ReplyMarkup.Rows {
+		for _, b := range row {
+			if b.Data == q.Data {
+				button = true
+			}
+		}
+	}
+	if !button {
+		return refuse()
+	}
+	if closeNotice {
+		raw := strings.TrimPrefix(q.Data, "cn1:")
+		id, err := uuid.Parse(raw)
+		if err != nil || id == uuid.Nil || id.String() != raw {
+			return refuse()
+		}
+		valid, err := c.notices.CloseClient(ctx, id, q.From.ID, m.ID, func() error { return cosmetic(c.api.ClearKeyboard(ctx, q.From.ID, m.ID)) })
+		if err != nil {
+			return true, err
+		}
+		if !valid {
+			return refuse()
+		}
+		return true, cosmetic(c.api.AnswerCallback(ctx, q.ID, "", false))
+	}
+	if legacySubscription {
+		var err error
+		state, err = payments.LegacyTelegramButton(q.Data, q.From.ID)
+		if err != nil {
+			return refuse()
+		}
+	}
+	switch state {
+	case "show_key", "download", "platform", "download_show_qr", "how_to_connect", "redirect_to_download":
+		path = "#connection-title"
+	case "platform_ios", "platform_android", "platform_macos", "platform_windows":
+		path = "?platform=" + strings.TrimPrefix(state, "platform_") + "#connection-title"
+	case "support", "vpn_not_working":
+		path = "/support"
+	case "subscription", "process", "devices", "duration", "promocode", "back_to_duration", "back_to_payment":
+		path = "/catalogue"
+	case "extend":
+		path = "/renew"
+	case "change":
+		path = "/change-plan"
+	default:
+		if strings.HasPrefix(state, "pay_") {
+			ref, err := c.payments.LegacyTelegramReference(ctx, q.From.ID, q.Data)
+			if err != nil {
+				var e *payments.Error
+				if errors.As(err, &e) && (e.Status == 400 || e.Status == 401 || e.Status == 403) {
+					return refuse()
+				}
+				return true, err
+			}
+			path = "/history?kind=legacy"
+			if ref != nil {
+				path += "&legacy_source_id=" + *ref
+			}
+		}
+	}
+	if state == "close_notification" || state == "redirect_to_download" {
+		if err := cosmetic(c.api.ClearKeyboard(ctx, q.From.ID, m.ID)); err != nil {
+			return true, err
+		}
+		if state == "close_notification" {
+			return true, cosmetic(c.api.AnswerCallback(ctx, q.ID, "", false))
+		}
+	}
+	if err := c.send(ctx, q.From.ID, lang, path, ""); err != nil {
+		return true, err
+	}
+	return true, cosmetic(c.api.AnswerCallback(ctx, q.ID, "", false))
 }

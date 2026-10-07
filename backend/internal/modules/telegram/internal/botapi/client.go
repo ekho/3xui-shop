@@ -31,6 +31,7 @@ type Message struct {
 	Chat              Chat            `json:"chat"`
 	Text              string          `json:"text"`
 	Date              int64           `json:"date"`
+	ReplyMarkup       *InlineKeyboard `json:"reply_markup"`
 	SuccessfulPayment json.RawMessage `json:"successful_payment"`
 	RefundedPayment   json.RawMessage `json:"refunded_payment"`
 }

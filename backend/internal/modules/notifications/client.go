@@ -184,3 +184,40 @@ func (s *Service) DeliverClient(parent context.Context, j ClientJob, send func()
 	}
 	return nil
 }
+
+func (s *Service) CloseClient(parent context.Context, id uuid.UUID, tg, message int64, close func() error) (bool, error) {
+	if id == uuid.Nil || tg <= 0 || tg > 1<<52-1 || message <= 0 || close == nil {
+		return false, failure(400, "INVALID_INPUT")
+	}
+	if s.clientGuard == nil {
+		return false, unavailable()
+	}
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
+	defer cancel()
+	var account uuid.UUID
+	var version int64
+	err := s.pool.QueryRow(ctx, `SELECT account_id,credential_version FROM client_telegram_deliveries WHERE id=$1 AND telegram_id=$2 AND message_id=$3 AND state='sent'`, id, tg, message).Scan(&account, &version)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, unavailable()
+	}
+	closed := false
+	valid, err := s.clientGuard(ctx, account, tg, version, func(tx pgx.Tx) error {
+		var found uuid.UUID
+		err := tx.QueryRow(ctx, `SELECT id FROM client_telegram_deliveries WHERE id=$1 AND account_id=$2 AND credential_version=$3 AND telegram_id=$4 AND message_id=$5 AND state='sent' FOR UPDATE`, id, account, version, tg, message).Scan(&found)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return unavailable()
+		}
+		if err = close(); err != nil {
+			return err
+		}
+		closed = true
+		return nil
+	})
+	return valid && closed, err
+}

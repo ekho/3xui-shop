@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
-	"strings"
 	"time"
 
 	"example.com/cabinet/backend/internal/modules/accounts"
@@ -17,6 +16,7 @@ type PaymentHistoryInput struct {
 	Kind            string
 	BeforeCreatedAt *time.Time
 	BeforeId        *string
+	LegacySourceId  *string
 }
 type PaymentHistoryPage struct {
 	Kind               string
@@ -68,6 +68,12 @@ func historyInput(in PaymentHistoryInput) error {
 	}
 	if (in.BeforeCreatedAt == nil) != (in.BeforeId == nil) {
 		return failure(400, "INVALID_INPUT")
+	}
+	if in.LegacySourceId != nil {
+		id, err := strconv.ParseInt(*in.LegacySourceId, 10, 64)
+		if in.Kind != "legacy" || in.BeforeCreatedAt != nil || err != nil || id <= 0 || strconv.FormatInt(id, 10) != *in.LegacySourceId {
+			return failure(400, "INVALID_INPUT")
+		}
 	}
 	if in.BeforeCreatedAt == nil {
 		return nil
@@ -196,7 +202,7 @@ func (s *Service) paymentHistory(ctx context.Context, account uuid.UUID, in Paym
 		}
 	case "legacy":
 		rows, err := s.pool.Query(ctx, `SELECT source_id,created_at,updated_at,status,subscription,source_tg_id FROM legacy_payment_transactions
- WHERE account_id=$1 AND ($2::timestamptz IS NULL OR (created_at,source_id)<($2,$3::bigint)) ORDER BY created_at DESC,source_id DESC LIMIT 51`, account, in.BeforeCreatedAt, in.BeforeId)
+ WHERE account_id=$1 AND ($2::timestamptz IS NULL OR (created_at,source_id)<($2,$3::bigint)) AND ($4::bigint IS NULL OR source_id=$4) ORDER BY created_at DESC,source_id DESC LIMIT 51`, account, in.BeforeCreatedAt, in.BeforeId, in.LegacySourceId)
 		if err != nil {
 			return out, unavailable()
 		}
@@ -225,58 +231,11 @@ func (s *Service) paymentHistory(ctx context.Context, account uuid.UUID, in Paym
 }
 
 func legacyPaymentQuote(packed string, tgID int64) (*string, *LegacyQuote) {
-	p := strings.Split(packed, ":")
-	if len(p) != 9 || p[0] != "subscription" || (p[2] != "0" && p[2] != "1") || (p[3] != "0" && p[3] != "1") {
+	b, err := decodeLegacySubscription(packed, tgID)
+	if err != nil || b.method == nil || b.quote.Devices <= 0 || b.quote.PeriodDays <= 0 {
 		return nil, nil
 	}
-	id, err := strconv.ParseInt(p[4], 10, 64)
-	if err != nil || (id != 0 && id != tgID) {
-		return nil, nil
-	}
-	devices, err := strconv.ParseInt(p[5], 10, 64)
-	if err != nil || devices <= 0 {
-		return nil, nil
-	}
-	days, err := strconv.ParseInt(p[6], 10, 64)
-	if err != nil || days <= 0 {
-		return nil, nil
-	}
-	traffic, err := strconv.ParseInt(p[7], 10, 64)
-	if err != nil || traffic < 0 {
-		return nil, nil
-	}
-	amount, err := minorUnits(p[8])
-	if err != nil {
-		return nil, nil
-	}
-	method, currency := "", ""
-	switch p[1] {
-	case "pay_yoomoney":
-		method, currency = "yoomoney", "RUB"
-	case "pay_yookassa":
-		method, currency = "yookassa", "RUB"
-	case "pay_manual":
-		method, currency = "manual", "RUB"
-	case "pay_cryptomus":
-		method, currency = "cryptomus", "USD"
-	case "pay_heleket":
-		method, currency = "heleket", "USD"
-	case "pay_telegram_stars":
-		if amount%100 != 0 {
-			return nil, nil
-		}
-		method, currency = "telegram_stars", "XTR"
-		amount /= 100
-	default:
-		return nil, nil
-	}
-	action := "purchase"
-	if p[2] == "1" {
-		action = "renew"
-	} else if p[3] == "1" {
-		action = "change_plan"
-	}
-	return &method, &LegacyQuote{Action: action, AmountMinor: strconv.FormatInt(amount, 10), Currency: currency, Devices: devices, PeriodDays: days, TrafficGb: traffic}
+	return b.method, &b.quote
 }
 
 const receiptColumns = `r.operation_id,r.order_id,

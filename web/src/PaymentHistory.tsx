@@ -1,4 +1,5 @@
 import {useEffect,useId,useRef,useState,type ReactNode} from 'react';
+import {useLocation,useNavigate} from 'react-router-dom';
 import {PaymentCase} from './PaymentCase';
 import * as api from './api/client';
 import {displayPrice,type Currency} from './catalogueMoney';
@@ -9,15 +10,20 @@ type View={key:string;page?:api.PaymentHistoryPage;busy:boolean;error?:string;de
 type Quote=api.PaymentHistoryPage['orders'][number]['quote']|NonNullable<api.PaymentHistoryPage['legacy_transactions'][number]['quote']>;
 
 export function PaymentHistory({lang,clientId,onDenied,onChanged}:{lang:Lang;clientId?:string;onDenied?:()=>void;onChanged?:()=>void}){
- const t=text(lang),id=useId();const[kind,setKind]=useState<Kind>('orders');const key=(clientId??'self')+'/'+kind+'/'+lang;
+ const t=text(lang),id=useId(),route=useLocation(),navigate=useNavigate(),params=new URLSearchParams(route.search);const[kind,setKind]=useState<Kind>(!clientId&&params.get('kind')==='legacy'?'legacy':'orders');
+ const candidate=params.get('legacy_source_id');const source=!clientId&&kind==='legacy'&&params.get('kind')==='legacy'&&params.getAll('legacy_source_id').length===1&&candidate&&/^[1-9][0-9]{0,18}$/.test(candidate)&&BigInt(candidate)<=9223372036854775807n?candidate:undefined;
+ const key=(clientId??'self')+'/'+kind+'/'+lang+'/'+(source??'all');
+ function clearFilter(next:Kind=kind){params.delete('legacy_source_id');params.set('kind',next);navigate({pathname:route.pathname,search:'?'+params.toString(),hash:route.hash},{replace:true});}
  const[view,setView]=useState<View>({key,busy:true});const request=useRef<AbortController|undefined>(undefined);
  const[selection,setSelection]=useState<{key:string;orderId:string;receiptId?:string}>();const opener=useRef<HTMLButtonElement|null>(null),heading=useRef<HTMLHeadingElement>(null);
  function openCase(button:HTMLButtonElement,orderId:string,receiptId?:string){opener.current=button;setSelection({key,orderId,receiptId});}
  function closeCase(){setSelection(undefined);(opener.current?.isConnected?opener.current:heading.current)?.focus();}
  const current:View=view.key===key?view:{key,busy:true};const page=current.page;
  async function load(append=false){
+  if(append&&source)return;
   if(append&&(!page?.has_more||current.busy))return;
   const input:api.PaymentHistoryInput={kind};
+  if(source)input.legacy_source_id=source;
   if(append&&page){const row=kind==='orders'?page.orders.at(-1):kind==='receipts'?page.receipts.at(-1):kind==='refunds'?page.refunds?.at(-1):page.legacy_transactions.at(-1);if(!row)return;input.before_created_at=row.created_at;input.before_id='operation_id' in row?row.operation_id:'source_id' in row?row.source_id:'refund_id' in row?row.refund_id:row.order_id;}
   request.current?.abort();const c=new AbortController();request.current=c;const previous=page;
   setView({key,busy:true,page:previous});
@@ -34,7 +40,8 @@ export function PaymentHistory({lang,clientId,onDenied,onChanged}:{lang:Lang;cli
    if(denied){if(clientId)onDenied?.();else if(error instanceof api.ApiError&&error.status===401)loginRedirect(lang);}
   }
  }
- useEffect(()=>{setSelection(undefined);void load();return()=>request.current?.abort();},[clientId,kind,lang]);
+ useEffect(()=>{if(!clientId)setKind(params.get('kind')==='legacy'?'legacy':'orders');},[route.search,clientId]);
+ useEffect(()=>{setSelection(undefined);void load();return()=>request.current?.abort();},[clientId,kind,lang,source]);
  const field=(name:string,value:ReactNode)=><div key={name}><dt>{name}</dt><dd>{value}</dd></div>;
  const date=(value:string)=><time dateTime={value}>{new Date(value).toLocaleString(lang==='ru'?'ru-RU':'en-US')}</time>;
  const money=(value:string,currency:Currency|null)=>currency?displayPrice(value,currency,lang):value+' '+t.historyMinorUnits;
@@ -48,7 +55,8 @@ export function PaymentHistory({lang,clientId,onDenied,onChanged}:{lang:Lang;cli
  const count=page?(kind==='orders'?page.orders.length:kind==='receipts'?page.receipts.length:kind==='refunds'?(page.refunds?.length??0):page.legacy_transactions.length):0;
  return <section className={clientId?'payment-history':'card payment-history'} aria-labelledby={id+'-title'} aria-busy={current.busy}>
   {clientId?<h2 id={id+'-title'} ref={heading} tabIndex={-1}>{t.paymentHistory}</h2>:<><h1 id={id+'-title'} ref={heading} tabIndex={-1}>{t.paymentHistory}</h1><p><a href={link('/cabinet',lang)}>{t.cabinet}</a></p></>}
-  <div className="catalogue-selectors"><label htmlFor={id+'-kind'}>{t.historyKind}<select id={id+'-kind'} value={kind} disabled={current.denied} onChange={event=>setKind(event.target.value as Kind)}><option value="orders">{t.historyOrders}</option><option value="receipts">{t.historyReceipts}</option><option value="refunds">{t.historyRefunds}</option><option value="legacy">{t.historyLegacy}</option></select></label><button disabled={current.busy||current.denied} onClick={()=>void load()}>{t.historyRefresh}</button></div>
+  <div className="catalogue-selectors"><label htmlFor={id+'-kind'}>{t.historyKind}<select id={id+'-kind'} value={kind} disabled={current.denied} onChange={event=>{const next=event.target.value as Kind;setKind(next);if(params.has('legacy_source_id'))clearFilter(next);}}><option value="orders">{t.historyOrders}</option><option value="receipts">{t.historyReceipts}</option><option value="refunds">{t.historyRefunds}</option><option value="legacy">{t.historyLegacy}</option></select></label><button disabled={current.busy||current.denied} onClick={()=>void load()}>{t.historyRefresh}</button></div>
+  {source?<p>{t.historyOpenedRecord}: <code>{source}</code> <button disabled={current.denied} onClick={()=>clearFilter()}>{t.historyFullArchive}</button></p>:null}
   <p className="help">{t.historyHelp}</p>
   {current.busy?<p role="status">{t.loading}</p>:null}
   {current.error?<div className="error" role="alert"><p>{current.error}</p>{!current.denied?<button disabled={current.busy} onClick={()=>void load(current.append)}>{t.retry}</button>:null}</div>:null}
@@ -59,7 +67,7 @@ export function PaymentHistory({lang,clientId,onDenied,onChanged}:{lang:Lang;cli
    {page&&kind==='refunds'?page.refunds?.map(row=><li key={row.refund_id}><article className="admin-client"><h3>{t.historyRefunds}: <code>{row.refund_id}</code></h3><dl className="stats-grid">{field(t.orderId,<code>{row.order_id}</code>)}{field(t.historyReceiptID,<code>{row.receipt_operation_id}</code>)}{field(t.paymentChoice,methods[row.payment_method])}{field(t.historyGross,money(row.receipt_gross_minor,row.receipt_currency))}{field(t.refundAmount,row.returned_amount+' '+row.returned_currency)}{field(t.source,t.historyOperator)}{field(t.refundReference,row.reference)}{field(t.reason,row.reason)}{field(t.created,date(row.created_at))}</dl>{clientId?<button onClick={event=>openCase(event.currentTarget,row.order_id,row.receipt_operation_id)}>{t.caseOpen}</button>:null}</article></li>):null}
    {page&&kind==='legacy'?page.legacy_transactions.map(row=><li key={row.source_id}><article className="admin-client"><h3>{t.historyLegacyID}: <code>{row.source_id}</code></h3><dl className="stats-grid">{field(t.historyPaymentStatus,oldStatus[row.payment_status])}{field(t.historyFulfillmentStatus,t.historyUnknownAccess)}{field(t.paymentChoice,row.payment_method?methods[row.payment_method]:t.unknown)}{row.quote?<>{field(t.orderPurpose,actions[row.quote.action])}{terms(row.quote)}</>:field(t.historyTerms,t.unknown)}{field(t.created,date(row.created_at))}{field(t.historyUpdated,date(row.updated_at))}</dl></article></li>):null}
   </ul>
-  {page?.has_more?<button disabled={current.busy} onClick={()=>void load(true)}>{t.historyMore}</button>:null}
+  {page?.has_more&&!source?<button disabled={current.busy} onClick={()=>void load(true)}>{t.historyMore}</button>:null}
   {clientId&&selection?.key===key&&!current.denied?<PaymentCase key={JSON.stringify([key,selection.orderId,selection.receiptId??null])} clientId={clientId} orderId={selection.orderId} receiptId={selection.receiptId} lang={lang} onDenied={()=>onDenied?.()} onChanged={()=>{void load();onChanged?.();}} onClose={closeCase}/>:null}
  </section>;
 }
