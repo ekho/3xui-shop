@@ -269,7 +269,7 @@ func launchNative(t *testing.T, f *fixture, bot *nativeBot, enabled, provision b
 	if err = worker.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	tg, err := app.NewTelegram(telegram.Config{Enabled: enabled, Token: "123456789:abcdefghijklmnopqrstuvwxyz012345678", Operators: f.cfg.Accounts.Operators}, f.svc.Subscriptions, f.svc.Notifications, &http.Client{Transport: bot})
+	tg, err := app.NewTelegram(telegram.Config{Enabled: enabled, Token: "123456789:abcdefghijklmnopqrstuvwxyz012345678", Operators: f.cfg.Accounts.Operators}, f.svc, "", &http.Client{Transport: bot})
 	if err != nil {
 		t.Fatal(err)
 	}

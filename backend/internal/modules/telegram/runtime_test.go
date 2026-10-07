@@ -29,7 +29,7 @@ func (o *outboxRecorder) Complete(_ context.Context, _ Delivery, in DeliveryOutc
 }
 func runtimeFixture(t *testing.T, h *http.Client, a TrialActions, o Outbox) *Runtime {
 	t.Helper()
-	r, err := New(Config{Enabled: true, Token: testToken, Operators: []int64{101, 202}}, h, a, o)
+	r, err := New(Config{Enabled: true, Token: testToken, Operators: []int64{101, 202}}, h, a, o, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func TestTelegramDisabledWithoutToken(t *testing.T) {
 	if err != nil || cfg.Enabled {
 		t.Fatal("disabled reads token", err)
 	}
-	r, err := New(cfg, nil, nil, nil)
+	r, err := New(cfg, nil, nil, nil, nil)
 	if err != nil || r.State().Enabled {
 		t.Fatal(err)
 	}

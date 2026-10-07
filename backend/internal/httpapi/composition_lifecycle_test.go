@@ -23,7 +23,7 @@ func TestNativeLifecycleTelegramFailure(t *testing.T) {
 			h := &http.Client{Transport: transportFunc(func(*http.Request) (*http.Response, error) {
 				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":false,"error_code":` + code + `}`))}, nil
 			})}
-			tg, err := app.NewTelegram(telegram.Config{Enabled: true, Token: "123456789:abcdefghijklmnopqrstuvwxyz012345678", Operators: []int64{101}}, modules.Subscriptions, modules.Notifications, h)
+			tg, err := app.NewTelegram(telegram.Config{Enabled: true, Token: "123456789:abcdefghijklmnopqrstuvwxyz012345678", Operators: []int64{101}}, modules.Modules, "", h)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -81,7 +81,7 @@ func TestNativeLifecycleDrain(t *testing.T) {
 		stopped <- "cancelled"
 		return nil, r.Context().Err()
 	})}
-	tg, err := app.NewTelegram(telegram.Config{Enabled: true, Token: "123456789:abcdefghijklmnopqrstuvwxyz012345678", Operators: []int64{101, 202}}, modules.Subscriptions, modules.Notifications, h)
+	tg, err := app.NewTelegram(telegram.Config{Enabled: true, Token: "123456789:abcdefghijklmnopqrstuvwxyz012345678", Operators: []int64{101, 202}}, modules.Modules, "", h)
 	if err != nil {
 		t.Fatal(err)
 	}
