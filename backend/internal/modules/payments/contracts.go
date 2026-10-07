@@ -8,22 +8,28 @@ import (
 
 // Field order and tags preserve persisted body hashes and replay results.
 type PurchaseOrderInput struct {
-	Action        string    `json:"action"`
-	PaymentMethod string    `json:"payment_method"`
-	PaymentType   string    `json:"payment_type"`
-	PeriodDays    int64     `json:"period_days"`
-	PlanId        uuid.UUID `json:"plan_id"`
-	Revision      int64     `json:"revision"`
+	Action                  string     `json:"action"`
+	PaymentMethod           string     `json:"payment_method"`
+	PaymentType             string     `json:"payment_type"`
+	PeriodDays              int64      `json:"period_days"`
+	PlanId                  uuid.UUID  `json:"plan_id"`
+	Revision                int64      `json:"revision"`
+	SourceAccessOperationId *uuid.UUID `json:"source_access_operation_id,omitempty"`
 }
 type PurchaseQuote struct {
-	AmountMinor string    `json:"amount_minor"`
-	Currency    string    `json:"currency"`
-	Devices     int64     `json:"devices"`
-	PeriodDays  int64     `json:"period_days"`
-	PlanId      uuid.UUID `json:"plan_id"`
-	Profile     string    `json:"profile"`
-	Revision    int64     `json:"revision"`
-	TrafficGb   int64     `json:"traffic_gb"`
+	AmountMinor             string     `json:"amount_minor"`
+	Currency                string     `json:"currency"`
+	Devices                 int64      `json:"devices"`
+	PeriodDays              int64      `json:"period_days"`
+	PlanId                  uuid.UUID  `json:"plan_id"`
+	Profile                 string     `json:"profile"`
+	Revision                int64      `json:"revision"`
+	SourceAccessOperationId *uuid.UUID `json:"source_access_operation_id,omitempty"`
+	TrafficGb               int64      `json:"traffic_gb"`
+}
+type PlanChangeContext struct {
+	CurrentPlanId           uuid.UUID `json:"current_plan_id"`
+	SourceAccessOperationId uuid.UUID `json:"source_access_operation_id"`
 }
 type PurchaseOrder struct {
 	AccessOperationId *uuid.UUID         `json:"access_operation_id"`

@@ -178,18 +178,23 @@ func (q *Queries) AppendAccessStep(ctx context.Context, arg AppendAccessStepPara
 	return result.RowsAffected(), nil
 }
 
-const currentAccessPlanID = `-- name: CurrentAccessPlanID :one
-SELECT plan_id FROM access_operations WHERE account_id=$1 AND status='applied'
+const currentAccessPlanSource = `-- name: CurrentAccessPlanSource :one
+SELECT id,plan_id FROM access_operations WHERE account_id=$1 AND status='applied'
  AND (kind IN ('purchase','assign_plan','starter_trial')
       OR (kind='set_profile' AND (plan_id IS NOT NULL OR desired->>'reset_traffic'='true')))
  ORDER BY sequence DESC LIMIT 1
 `
 
-func (q *Queries) CurrentAccessPlanID(ctx context.Context, accountID uuid.UUID) (*uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, currentAccessPlanID, accountID)
-	var plan_id *uuid.UUID
-	err := row.Scan(&plan_id)
-	return plan_id, err
+type CurrentAccessPlanSourceRow struct {
+	ID     uuid.UUID
+	PlanID *uuid.UUID
+}
+
+func (q *Queries) CurrentAccessPlanSource(ctx context.Context, accountID uuid.UUID) (CurrentAccessPlanSourceRow, error) {
+	row := q.db.QueryRow(ctx, currentAccessPlanSource, accountID)
+	var i CurrentAccessPlanSourceRow
+	err := row.Scan(&i.ID, &i.PlanID)
+	return i, err
 }
 
 const insertAccessOperation = `-- name: InsertAccessOperation :exec

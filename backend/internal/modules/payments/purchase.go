@@ -191,7 +191,7 @@ func (s *Service) PaymentMethods(ctx context.Context, account uuid.UUID) (Paymen
 
 func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUID, in PurchaseOrderInput) (PurchaseOrder, error) {
 	var empty PurchaseOrder
-	if account == uuid.Nil || key == uuid.Nil || (in.Action != "purchase" && in.Action != "renew") || (in.Action == "renew" && in.PaymentMethod != "yoomoney") || !((in.PaymentMethod == "yoomoney" && (in.PaymentType == "AC" || in.PaymentType == "PC")) || (in.PaymentMethod == "manual" && in.PaymentType == "MANUAL") || (in.PaymentMethod == "yookassa" && in.PaymentType == "YOOKASSA") || (in.PaymentMethod == "cryptomus" && in.PaymentType == "CRYPTOMUS") || (in.PaymentMethod == "heleket" && in.PaymentType == "HELEKET")) || in.PlanId == uuid.Nil || in.Revision < 1 || in.PeriodDays < 1 || in.PeriodDays > 106751 {
+	if account == uuid.Nil || key == uuid.Nil || (in.Action != "purchase" && in.Action != "renew" && in.Action != "change_plan") || (in.Action == "change_plan") != (in.SourceAccessOperationId != nil) || (in.SourceAccessOperationId != nil && *in.SourceAccessOperationId == uuid.Nil) || !((in.PaymentMethod == "yoomoney" && (in.PaymentType == "AC" || in.PaymentType == "PC")) || (in.PaymentMethod == "manual" && in.PaymentType == "MANUAL") || (in.PaymentMethod == "yookassa" && in.PaymentType == "YOOKASSA") || (in.PaymentMethod == "cryptomus" && in.PaymentType == "CRYPTOMUS") || (in.PaymentMethod == "heleket" && in.PaymentType == "HELEKET")) || in.PlanId == uuid.Nil || in.Revision < 1 || in.PeriodDays < 1 || in.PeriodDays > 106751 {
 		return empty, failure(400, "INVALID_INPUT")
 	}
 	hash := bodyHash(in)
@@ -237,8 +237,8 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if !independentBilling(pre) {
 		return empty, failure(409, "EXTERNAL_BILLING_UNVERIFIED")
 	}
-	if in.Action == "renew" {
-		if err = s.requireRenewalPlan(ctx, preTx, account, in.PlanId); err != nil {
+	if in.Action != "purchase" {
+		if err = s.requireOrderPlan(ctx, preTx, account, in.Action, in.PlanId, in.SourceAccessOperationId); err != nil {
 			return empty, err
 		}
 	}
@@ -258,7 +258,7 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 		return empty, unavailable()
 	}
 	if pre.AssignedPanelID != nil {
-		if v == nil || v.VPNID != pre.VpnID || v.SubID != pre.SubID || v.ExpiryTimeMS <= 0 || (!v.Enabled && v.ExpiryTimeMS > s.now().UnixMilli() && (in.Action != "renew" || !subscriptions.CanActivateRenewal(v, s.now()))) || (stringValue(pre.AccessProfile) != "regular" && stringValue(pre.AccessProfile) != "euru") {
+		if v == nil || v.VPNID != pre.VpnID || v.SubID != pre.SubID || v.ExpiryTimeMS <= 0 || (!v.Enabled && v.ExpiryTimeMS > s.now().UnixMilli() && (in.Action == "purchase" || !subscriptions.CanActivateRenewal(v, s.now()))) || (stringValue(pre.AccessProfile) != "regular" && stringValue(pre.AccessProfile) != "euru") {
 			return empty, failure(409, "PURCHASE_NOT_ELIGIBLE")
 		}
 		ids, e := panel.ProfileInboundIDs(ctx, stringValue(pre.AccessProfile))
@@ -306,8 +306,8 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if !independentBilling(a) {
 		return empty, failure(409, "EXTERNAL_BILLING_UNVERIFIED")
 	}
-	if in.Action == "renew" {
-		if err = s.requireRenewalPlan(ctx, tx, account, in.PlanId); err != nil {
+	if in.Action != "purchase" {
+		if err = s.requireOrderPlan(ctx, tx, account, in.Action, in.PlanId, in.SourceAccessOperationId); err != nil {
 			return empty, err
 		}
 	}
@@ -372,7 +372,7 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if !found {
 		return empty, failure(409, "PURCHASE_PLAN_CONFLICT")
 	}
-	quote := PurchaseQuote{PlanId: in.PlanId, Revision: in.Revision, PeriodDays: in.PeriodDays, Devices: int64(terms.Devices), TrafficGb: int64(terms.TrafficGb), Profile: profile, AmountMinor: strconv.FormatInt(amount, 10), Currency: currency}
+	quote := PurchaseQuote{PlanId: in.PlanId, Revision: in.Revision, PeriodDays: in.PeriodDays, Devices: int64(terms.Devices), TrafficGb: int64(terms.TrafficGb), Profile: profile, AmountMinor: strconv.FormatInt(amount, 10), Currency: currency, SourceAccessOperationId: in.SourceAccessOperationId}
 	quoteRaw, _ := json.Marshal(quote)
 	id := uuid.New()
 	expires := now.Add(30 * time.Minute)

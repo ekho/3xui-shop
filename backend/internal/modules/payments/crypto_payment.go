@@ -609,7 +609,7 @@ func (s *Service) recordCrypto(ctx context.Context, c cryptoRow, payment cryptoP
 		if _, err = tx.Exec(ctx, "UPDATE purchase_orders SET active=false WHERE account_id=$1 AND id<>$2", p.account, c.order); err != nil {
 			return false, unavailable()
 		}
-		if _, err = s.queue().InsertTx(ctx, tx, PurchaseArgs{OrderID: c.order}, &river.InsertOpts{Queue: "provision", MaxAttempts: 1000000}); err != nil {
+		if _, err = s.queueFundedPurchaseTx(ctx, tx, p); err != nil {
 			return false, unavailable()
 		}
 	}

@@ -133,7 +133,7 @@ func (s *Service) FulfillPurchase(parent context.Context, id uuid.UUID) error {
 		t.PreviousTrafficLimitBytes = view.TrafficLimitBytes
 		t.PreviousInboundIDs = append([]int64{}, view.InboundIDs...)
 		if !view.Enabled {
-			if view.ExpiryTimeMS > now.UnixMilli() && (p.action != "renew" || !subscriptions.CanActivateRenewal(view, now)) {
+			if view.ExpiryTimeMS > now.UnixMilli() && (p.action == "purchase" || !subscriptions.CanActivateRenewal(view, now)) {
 				return s.purchaseReview(ctx, id, "disabled_client")
 			}
 			t.Enable = true
@@ -145,7 +145,7 @@ func (s *Service) FulfillPurchase(parent context.Context, id uuid.UUID) error {
 	}
 	t.InboundIDs = ids
 	base := now.UnixMilli()
-	if t.PreviousExpiryMS > base {
+	if p.action != "change_plan" && t.PreviousExpiryMS > base {
 		base = t.PreviousExpiryMS
 	}
 	add := quote.PeriodDays * int64(24*time.Hour/time.Millisecond)
