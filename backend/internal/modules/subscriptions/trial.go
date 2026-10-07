@@ -25,6 +25,88 @@ import (
 
 func (s *Service) operatorAllowed(actor int64) bool { return s.accounts.OperatorAllowed(actor) }
 
+// TrialMode preserves the account's original registration policy across linking.
+func (s *Service) TrialMode(a accounts.Snapshot) string {
+	if a.SourceKind == "telegram" && a.LegacyUserID == nil {
+		return "activate"
+	}
+	return "request"
+}
+
+func (s *Service) automaticTrialSource(a accounts.Snapshot) error {
+	if s.TrialMode(a) != "activate" {
+		return failure(403, "TRIAL_APPROVAL_REQUIRED")
+	}
+	if a.Restricted {
+		return failure(403, "ACCOUNT_RESTRICTED")
+	}
+	if a.VpnBanned || !accounts.SourceEligible(a) || a.TelegramID == nil || a.TelegramLoginDisabled || a.PolicyAcceptedAt == nil || stringValue(a.TermsVersion) == "" || stringValue(a.PrivacyVersion) == "" {
+		return failure(403, "TRIAL_UNAVAILABLE")
+	}
+	return nil
+}
+
+// ActivateTelegramTrial shares the existing grant and provision pipeline.
+func (s *Service) ActivateTelegramTrial(ctx context.Context, accountID, key uuid.UUID) (TrialRequest, bool, error) {
+	var out TrialRequest
+	if accountID == uuid.Nil || key == uuid.Nil {
+		return out, false, failure(400, "INVALID_INPUT")
+	}
+	principal, operation := "account:"+accountID.String(), "activateTelegramTrial"
+	hash := bodyHash(struct{}{})
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return out, false, unavailable()
+	}
+	defer tx.Rollback(ctx)
+	q := store.New(tx)
+	if q.LockIdempotency(ctx, store.LockIdempotencyParams{Principal: principal, Operation: operation, Key: key}) != nil {
+		return out, false, unavailable()
+	}
+	a, err := s.lockAccount(ctx, tx, accountID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return out, false, failure(404, "INVALID_INPUT")
+	}
+	if err != nil {
+		return out, false, unavailable()
+	}
+	if err = s.automaticTrialSource(a); err != nil {
+		return out, false, err
+	}
+	if prior, found, e := replay[TrialRequest](ctx, q, principal, operation, key, hash); found || e != nil {
+		return prior, false, e
+	}
+	if err = s.trialEligibility(ctx, q, a); err != nil {
+		return out, false, err
+	}
+	current, err := q.CurrentTrial(ctx, accountID)
+	if err == nil {
+		if current.Status == "rejected" {
+			return out, false, failure(409, "TRIAL_RECONSIDERATION_REQUIRED")
+		}
+		return out, false, failure(409, "REQUEST_STATE_CONFLICT")
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return out, false, unavailable()
+	}
+	current, err = q.AddTrial(ctx, store.AddTrialParams{ID: uuid.New(), AccountID: accountID, CreatedAt: stamp(s.now())})
+	if err != nil {
+		return out, false, unavailable()
+	}
+	current, err = s.decideTrialLocked(ctx, tx, q, a, current, trialActor{automatic: true}, "approve", "")
+	if err != nil {
+		return out, false, err
+	}
+	out = publicTrial(current)
+	if err = s.saveIdempotency(ctx, q, principal, operation, key, hash, out); err != nil {
+		return out, false, err
+	}
+	if tx.Commit(ctx) != nil {
+		return out, false, unavailable()
+	}
+	return out, true, nil
+}
+
 func publicTrial(r store.TrialRequest) TrialRequest {
 	var decided *time.Time
 	if r.DecidedAt.Valid {
@@ -223,6 +305,7 @@ func (s *Service) decisionResult(ctx context.Context, tx pgx.Tx, a accounts.Snap
 type trialActor struct {
 	telegramID int64
 	accountID  *uuid.UUID
+	automatic  bool
 }
 
 func (s *Service) trialActorAudit(ctx context.Context, tx pgx.Tx, action string, account, request uuid.UUID, operation *uuid.UUID, actor trialActor, reason string) error {
@@ -273,7 +356,9 @@ func (s *Service) decideTrialLocked(ctx context.Context, tx pgx.Tx, q *store.Que
 	}
 	var err error
 	why := pgtype.Text{String: reason, Valid: reason != ""}
-	if actor.accountID == nil {
+	if actor.automatic {
+		r, err = q.DecideTrialAutomatic(ctx, store.DecideTrialAutomaticParams{ID: r.ID, DecidedAt: stamp(s.now()), OperationID: operation})
+	} else if actor.accountID == nil {
 		r, err = q.DecideTrial(ctx, store.DecideTrialParams{ID: r.ID, Status: desired, DecidedAt: stamp(s.now()), OperatorTgID: pgtype.Int8{Int64: actor.telegramID, Valid: true}, Reason: why, OperationID: operation})
 	} else {
 		r, err = q.DecideTrialWeb(ctx, store.DecideTrialWebParams{ID: r.ID, Status: desired, DecidedAt: stamp(s.now()), OperatorAccountID: actor.accountID, Reason: why, OperationID: operation})
@@ -281,7 +366,11 @@ func (s *Service) decideTrialLocked(ctx context.Context, tx pgx.Tx, q *store.Que
 	if err != nil {
 		return r, unavailable()
 	}
-	if err = s.trialActorAudit(ctx, tx, "trial_"+desired, a.ID, r.ID, operation, actor, reason); err != nil {
+	action := "trial_" + desired
+	if actor.automatic {
+		action = "trial_activated_telegram"
+	}
+	if err = s.trialActorAudit(ctx, tx, action, a.ID, r.ID, operation, actor, reason); err != nil {
 		return r, err
 	}
 	if err = s.notify(ctx, tx, a, r, "request_decided", desired); err != nil {
@@ -451,7 +540,11 @@ func (s *Service) reconsiderTrialLocked(ctx context.Context, tx pgx.Tx, q *store
 }
 
 func (s *Service) canRequestTrial(ctx context.Context, q *store.Queries, account accounts.Snapshot) (bool, error) {
-	if len(s.config().Operators) == 0 {
+	if s.TrialMode(account) == "activate" {
+		if err := s.automaticTrialSource(account); err != nil {
+			return false, nil
+		}
+	} else if len(s.config().Operators) == 0 {
 		available, err := s.accounts.AnyWebOperator(ctx, nil)
 		if err != nil {
 			return false, unavailable()

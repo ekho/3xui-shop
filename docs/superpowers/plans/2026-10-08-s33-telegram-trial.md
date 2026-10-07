@@ -34,15 +34,15 @@ db/migrations/00027_telegram_trial.sql; httpapi/telegram_trial_test.go (новы
 **Interfaces:** consumes accounts.Snapshot/SourceKind + vpn.ReserveTrialTx;
 produces ActivateTelegramTrial(ctx,account,key)(TrialRequest,bool,error), TrialMode(snapshot) string.
 
-- [ ] RED: реальные PG тесты auto без оператора/replay/concurrent/rollback,
+- [x] RED: реальные PG тесты auto без оператора/replay/concurrent/rollback,
   исходный web deny, TG+credentials allow, legacy/restricted/disabled/used deny,
   pending/rejected manual не обходятся, SQL actor/Down факты сохранены.
-- [ ] Run `go test ./internal/httpapi ./db -run 'TestTelegramTrial' -count=1 -timeout=5m`.
+- [x] Run `go test ./internal/httpapi ./db -run 'TestTelegramTrial' -count=1 -timeout=5m`.
   Expected: отсутствующая активация/автоматическое provenance.
-- [ ] Implement минимальный source guard, новый тип решения и reservation через
+- [x] Implement минимальный source guard, новый тип решения и reservation через
   decideTrialLocked; новый audit action, без approval_card и второго worker.
-- [ ] Verify тот же command с -race. Expected: PASS и старые facts сохранены.
-- [ ] Commit `feat(subscriptions): activate ordinary telegram trial atomically`.
+- [x] Verify тот же command с -race. Expected: PASS и старые facts сохранены.
+- [x] Commit `feat(subscriptions): activate ordinary telegram trial atomically`.
 
 ### Task 2: HTTP-контракт и capability
 

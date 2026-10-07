@@ -20,6 +20,10 @@ INSERT INTO decision_callbacks(id,request_id,operator_tg_id,body_hash,result,cre
 UPDATE trial_requests SET status=$2,decided_at=$3,operator_account_id=$4,reason=$5,operation_id=$6
 WHERE id=$1 AND status='pending' RETURNING *;
 
+-- name: DecideTrialAutomatic :one
+UPDATE trial_requests SET status='approved',decision_source='telegram_auto',decided_at=$2,operation_id=$3
+WHERE id=$1 AND status='pending' RETURNING *;
+
 -- name: GrantApplied :exec
 UPDATE trial_grants SET status='granted',granted_at=coalesce(granted_at,$2) WHERE operation_id=$1;
 

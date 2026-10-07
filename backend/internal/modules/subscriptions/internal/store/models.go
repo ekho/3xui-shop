@@ -40,4 +40,5 @@ type TrialRequest struct {
 	OperationID       *uuid.UUID
 	PreviousRequestID *uuid.UUID
 	OperatorAccountID *uuid.UUID
+	DecisionSource    string
 }
