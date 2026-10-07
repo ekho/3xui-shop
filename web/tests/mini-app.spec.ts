@@ -7,16 +7,17 @@ const none:Model<'Subscription'>={status:'none',devices:0,traffic_limit_bytes:0,
 const emptySupport:Model<'SupportResult'>={conversation:null,messages:[],has_more:false,oldest_sequence:null};
 const emptyHistory:Model<'PaymentHistoryPage'>={kind:'orders',orders:[],receipts:[],legacy_transactions:[],refunds:[],has_more:false};
 
-type Options={sdk?:'ready'|'empty'|'fail'|'timeout'|'broken-methods';consent?:boolean;sub?:Model<'Subscription'>;extra?:(r:Route,path:string)=>Promise<boolean>};
+type Options={sdk?:'ready'|'empty'|'fail'|'timeout'|'broken-methods';readLaunch?:boolean;consent?:boolean;sub?:Model<'Subscription'>;extra?:(r:Route,path:string)=>Promise<boolean>};
 async function fixture(page:Page,options:Options={}){
  const calls:{path:string;authorization:boolean;cookie:boolean;body:any}[]=[];let sessions=0;let sdkMode=options.sdk;
+ let pendingSDK:Route|undefined;
  await page.route('https://telegram.org/js/telegram-web-app.js',async r=>{
-  if(sdkMode==='fail')return r.abort();if(sdkMode==='timeout')return;
-  const raw=sdkMode==='empty'?'':launch;
+  if(sdkMode==='fail')return r.abort();if(sdkMode==='timeout'){pendingSDK=r;return;}
+  const raw=sdkMode==='empty'?"''":options.readLaunch?"new URLSearchParams(location.hash.slice(1)).get('tgWebAppData')??''":JSON.stringify(launch);
   await r.fulfill({contentType:'application/javascript',body:`
   window.__sdk={opened:[],handlers:{},back:null,stale:sessionStorage.getItem('__telegram__initParams')};
-  window.Telegram={WebApp:{initData:${JSON.stringify(raw)},initDataUnsafe:{user:{id:999999}},version:'9.6',platform:'web',themeParams:{bg_color:'#17212b',text_color:'#ffffff',secondary_bg_color:'#242f3d',button_color:'#2481cc',button_text_color:'#ffffff',link_color:'#6ab3f3'},viewportStableHeight:640,safeAreaInset:{top:12,bottom:10,left:0,right:0},contentSafeAreaInset:{top:8,bottom:6,left:0,right:0},ready(){${sdkMode==='broken-methods'?'throw new Error("owned SDK method failure")':''}},expand(){},onEvent(n,f){window.__sdk.handlers[n]=f},offEvent(n){delete window.__sdk.handlers[n]},BackButton:{show(){},hide(){},onClick(f){window.__sdk.back=f},offClick(){window.__sdk.back=null}},openLink(url){window.__sdk.opened.push(url)}}};
-  sessionStorage.setItem('__telegram__initParams',JSON.stringify({tgWebAppData:${JSON.stringify(raw)}}));`});
+  window.Telegram={WebApp:{initData:${raw},initDataUnsafe:{user:{id:999999}},version:'9.6',platform:'web',themeParams:{bg_color:'#17212b',text_color:'#ffffff',secondary_bg_color:'#242f3d',button_color:'#2481cc',button_text_color:'#ffffff',link_color:'#6ab3f3'},viewportStableHeight:640,safeAreaInset:{top:12,bottom:10,left:0,right:0},contentSafeAreaInset:{top:8,bottom:6,left:0,right:0},ready(){${sdkMode==='broken-methods'?'throw new Error("owned SDK method failure")':''}},expand(){},onEvent(n,f){window.__sdk.handlers[n]=f},offEvent(n){delete window.__sdk.handlers[n]},BackButton:{show(){},hide(){},onClick(f){window.__sdk.back=f},offClick(){window.__sdk.back=null}},openLink(url){window.__sdk.opened.push(url)}}};
+  sessionStorage.setItem('__telegram__initParams',JSON.stringify({tgWebAppData:window.Telegram.WebApp.initData}));`});
  });
  await page.route('**/api/v1/**',async r=>{
   const req=r.request(),path=new URL(req.url()).pathname;
@@ -39,7 +40,7 @@ async function fixture(page:Page,options:Options={}){
   if(path==='/api/v1/payment-history')return r.fulfill({json:emptyHistory});
   return r.fulfill({status:404,json:{error:{code:'INVALID_INPUT',message:'INVALID_INPUT',request_id:''}}});
  });
- return {calls,sessions:()=>sessions,sdk:(mode:Options['sdk'])=>{sdkMode=mode}};
+ return {calls,sessions:()=>sessions,sdk:async(mode:Options['sdk'])=>{sdkMode=mode;await pendingSDK?.abort();pendingSDK=undefined;}};
 }
 const storage=async(page:Page)=>page.evaluate(()=>JSON.stringify(localStorage)+JSON.stringify(sessionStorage));
 
@@ -123,9 +124,11 @@ test('Mini App rejected signed launch asks to reopen without an email-password e
  await expect(page.getByRole('button',{name:'Retry'})).toHaveCount(0);expect(f.calls).toHaveLength(1);
 });
 
-test('Mini App SDK failed load can be retried once it becomes available',async({page})=>{
- const f=await fixture(page,{sdk:'fail'});await page.goto('/mini-app?lang=en');await expect(page.getByRole('alert')).toBeVisible();
- f.sdk('ready');await page.getByRole('button',{name:'Retry',exact:true}).click();await expect(page.getByRole('heading',{name:'Mini client'})).toBeVisible();expect(f.sessions()).toBe(1);
+for(const mode of ['fail','timeout'] as const)test('Mini App SDK '+mode+' retry keeps launch data only until sign-in',async({page})=>{
+ const f=await fixture(page,{sdk:mode,readLaunch:true});await page.goto('/mini-app?lang=en#tgWebAppData='+encodeURIComponent(launch));await expect(page.getByRole('alert')).toBeVisible();
+ expect(new URL(page.url()).hash).toBe('');expect(await storage(page)).not.toMatch(/owned-signed|__telegram__initParams/);
+ await f.sdk('ready');await page.getByRole('button',{name:'Retry',exact:true}).click();await expect(page.getByRole('heading',{name:'Mini client'})).toBeVisible();expect(f.sessions()).toBe(1);expect(f.calls[0]?.body?.init_data).toBe(launch);
+ expect(new URL(page.url()).hash).toBe('');expect(await storage(page)).not.toMatch(/owned-signed|mini_|csrf_token|__telegram__initParams/);
 });
 const plan:Model<'CataloguePlanSnapshot'>={plan_id:'70000000-0000-4000-8000-000000000001',revision:3,devices:2,traffic_gb:20,profile:'regular',hidden:false,periods:[30],prices:[{period_days:30,currency:'RUB',amount_minor:'12345'},{period_days:30,currency:'USD',amount_minor:'200'},{period_days:30,currency:'XTR',amount_minor:'1'}]};
 test('Mini App catalogue shows common prices without external checkout requests',async({page})=>{

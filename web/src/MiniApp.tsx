@@ -15,8 +15,9 @@ export function MiniApp({lang,children}:{lang:Lang;children:ReactNode}){
   const ended=()=>{controller.abort();login.current?.abort();raw.current='';api.clearSession();setState('ended');setBusy(false);};
   const hide=()=>endMiniSession('closed');window.addEventListener(miniSessionEnded,ended);window.addEventListener('pagehide',hide);
   setState('loading');void loadTelegram(controller.signal).then(sdk=>{if(controller.signal.aborted)return;setApp(sdk);optionalSDK(()=>sdk.ready?.());optionalSDK(()=>sdk.expand?.());if(typeof sdk.initData!=='string'||!sdk.initData){setState('empty');return;}raw.current=sdk.initData;void signIn(controller.signal);}).catch(()=>{if(!controller.signal.aborted){setError('');setState('error');}});
-  return()=>{controller.abort();login.current?.abort();raw.current='';api.clearSession();clearMiniLaunch(true);window.removeEventListener(miniSessionEnded,ended);window.removeEventListener('pagehide',hide);};
+  return()=>{controller.abort();login.current?.abort();raw.current='';api.clearSession();clearMiniLaunch();window.removeEventListener(miniSessionEnded,ended);window.removeEventListener('pagehide',hide);};
  },[retry]);
+ useEffect(()=>()=>clearMiniLaunch(true),[]);
  useEffect(()=>{if(!app)return;const theme=()=>applyMiniTheme(app);theme();const events=['themeChanged','viewportChanged','safeAreaChanged','contentSafeAreaChanged'];for(const event of events)optionalSDK(()=>app.onEvent?.(event,theme));return()=>{for(const event of events)optionalSDK(()=>app.offEvent?.(event,theme));};},[app]);
  useEffect(()=>{
   const click=(event:MouseEvent)=>{if(event.defaultPrevented||event.button!==0||event.ctrlKey||event.metaKey||event.altKey||event.shiftKey)return;const anchor=(event.target as Element)?.closest<HTMLAnchorElement>('a[href]');if(!anchor||anchor.hasAttribute('download'))return;const url=new URL(anchor.href);if(url.origin===location.origin&&(url.pathname==='/mini-app'||url.pathname.startsWith('/mini-app/'))){event.preventDefault();navigate(url.pathname+url.search);}else if(url.protocol==='https:'||url.origin===location.origin&&url.pathname==='/cabinet'){event.preventDefault();openMiniBrowser(url.href);}};
