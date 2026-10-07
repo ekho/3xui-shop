@@ -29,9 +29,9 @@ test('renewal uses one own plan and a frozen retry',async({page})=>{
  await page.setViewportSize({width:375,height:812});await page.goto('/cabinet/renew?lang=en');
  await expect(page.getByRole('heading',{name:'Renew subscription'})).toBeVisible();
  await expect(page.getByRole('button',{name:'Select plan'})).toHaveCount(0);
- await expect(page.getByLabel('Currency')).toHaveValue('RUB');expect(await page.getByLabel('Currency').locator('option').count()).toBe(1);
+ await expect(page.getByLabel('Currency')).toHaveValue('RUB');expect(await page.getByLabel('Currency').locator('option').count()).toBe(2);
  await page.getByRole('combobox',{name:'Period',exact:true}).selectOption('90');await page.getByLabel('Wallet', {exact:true}).check();
- await expect(page.getByLabel('Manual transfer', {exact:true})).toHaveCount(0);await expect(page.getByLabel('Cryptomus', {exact:true})).toHaveCount(0);
+ await expect(page.getByLabel('Manual transfer', {exact:true})).toBeVisible();await expect(page.getByLabel('Cryptomus', {exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Renew subscription',exact:true}).click();expect(calls).toHaveLength(0);
  await page.getByRole('button',{name:'Confirm renewal'}).click();await expect(page.getByRole('alert')).toBeVisible();
  await page.getByRole('button',{name:'Confirm renewal'}).click();await expect(page).toHaveURL(/\/orders\/80000000/);
@@ -63,8 +63,8 @@ for(const [code,status,message] of [
  await page.goto('/cabinet/renew?lang=en');const alert=page.getByRole('alert');await expect(alert).toBeVisible();if(code!=='SERVICE_UNAVAILABLE')await expect(alert).toContainText(message);await expect(page.getByRole('button',{name:'Renew subscription',exact:true})).toHaveCount(0);await expect(page.getByRole('link',{name:'Current order'})).toBeVisible();failed=false;await page.getByRole('button',{name:'Retry',exact:true}).click();await expect(page.getByRole('button',{name:'Renew subscription',exact:true})).toBeEnabled();expect(writes).toBe(0);
 });
 
-test('disabled YooMoney keeps the current price visible without other renewal methods',async({page})=>{
- await routes(page,async(route,path)=>{if(path.endsWith('/payment-methods')){await route.fulfill({json:{methods:[{id:'manual',currency:'RUB'},{id:'cryptomus',currency:'USD'}]}});return true;}return false;});await page.goto('/cabinet/renew?lang=en');await expect(page.getByText('Price: 123.45 RUB')).toBeVisible();await expect(page.getByText('Payment is currently unavailable. You can still view plans.')).toBeVisible();await expect(page.getByRole('radio')).toHaveCount(0);await expect(page.getByRole('button',{name:'Renew subscription',exact:true})).toHaveCount(0);
+test('disabled YooMoney preserves enabled manual and USD renewal methods',async({page})=>{
+ await routes(page,async(route,path)=>{if(path.endsWith('/payment-methods')){await route.fulfill({json:{methods:[{id:'manual',currency:'RUB'},{id:'cryptomus',currency:'USD'}]}});return true;}return false;});await page.goto('/cabinet/renew?lang=en');await expect(page.getByText('Price: 123.45 RUB')).toBeVisible();await expect(page.getByRole('radio',{name:'Bank card',exact:true})).toHaveCount(0);await expect(page.getByRole('radio',{name:'Manual transfer',exact:true})).toBeChecked();await page.getByRole('radio',{name:'Cryptomus',exact:true}).check();await expect(page.getByRole('combobox',{name:'Currency',exact:true})).toHaveValue('USD');await expect(page.getByText('Price: 2.00 USD',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Renew subscription',exact:true})).toBeEnabled();
 });
 
 for(const previous of [order,{...order,payment_status:'paid' as const,fulfillment_status:'needs_review' as const,review_required:true,can_pay:false,checkout:null}])

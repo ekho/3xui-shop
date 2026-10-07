@@ -110,6 +110,8 @@ export type CatalogueResult=components['schemas']['CatalogueResult'];
 export type OperatorCatalogueResult=components['schemas']['OperatorCatalogueResult'];
 export const getCatalogue=(signal?:AbortSignal)=>request<CatalogueResult>('catalogue','GET',undefined,signal);
 export const getRenewalOffer=(signal?:AbortSignal)=>request<CataloguePlanSnapshot>('subscription/renewal','GET',undefined,signal);
+export type PlanChangeContext=components['schemas']['PlanChangeContext'];
+export const getPlanChangeContext=(signal?:AbortSignal)=>request<PlanChangeContext>('subscription/plan-change','GET',undefined,signal);
 export type PaymentMethods=components['schemas']['PaymentMethods'];
 export type PurchaseOrderInput=components['schemas']['PurchaseOrderInput'];
 export type PurchaseOrder=components['schemas']['PurchaseOrder'];
