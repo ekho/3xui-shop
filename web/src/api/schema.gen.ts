@@ -1228,6 +1228,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/operator/clients/{id}/orders/{order_id}/payment-case": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Verified unrestricted operator reads a saved selected payment case; private no-store, Origin/CSRF, no provider or panel call. Strict JSON <=16 KiB. */
+        post: operations["getOperatorPaymentCase"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operator/clients/{id}/orders/{order_id}/refunds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Record an operator-confirmed full refund already performed externally. Does not send money or alter live access. Strict Origin/CSRF/idempotency; exact original receipt binding. */
+        post: operations["confirmPurchaseRefund"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2020,6 +2054,8 @@ export interface components {
             yookassa_checkout?: components["schemas"]["YooKassaCheckout"] | null;
             cryptomus_checkout?: components["schemas"]["CryptomusCheckout"] | null;
             heleket_checkout?: components["schemas"]["HeleketCheckout"] | null;
+            /** @description All saved receipts have an operator-confirmed full refund. Original paid/access facts remain unchanged. */
+            fully_refunded?: boolean;
         };
         CurrentPurchaseOrder: {
             /** @description Whether an applied historical order permits a new first purchase after proved starter-plan clearing. Omitted or false preserves the historical paid-order block; live price, method, pending and account checks still apply at creation. */
@@ -2120,7 +2156,7 @@ export interface components {
         /** @description Both cursor values must be present or absent. Microsecond created_at and kind-specific ID: nonzero UUID (orders), saved operation_id (receipts), positive int64 decimal (legacy). Descending immutable created_at/ID; 50 rows per page. No query parameters. */
         PaymentHistoryInput: {
             /** @enum {string} */
-            kind: "orders" | "receipts" | "legacy";
+            kind: "orders" | "receipts" | "legacy" | "refunds";
             /** Format: date-time */
             before_created_at?: string | null;
             before_id?: string | null;
@@ -2212,11 +2248,54 @@ export interface components {
         };
         PaymentHistoryPage: {
             /** @enum {string} */
-            kind: "orders" | "receipts" | "legacy";
+            kind: "orders" | "receipts" | "legacy" | "refunds";
             has_more: boolean;
             orders: components["schemas"]["PaymentHistoryOrder"][];
             receipts: components["schemas"]["PaymentHistoryReceipt"][];
             legacy_transactions: components["schemas"]["LegacyPaymentHistoryItem"][];
+            refunds?: components["schemas"]["PaymentRefund"][];
+        };
+        PaymentCaseInput: {
+            receipt_operation_id?: string | null;
+        };
+        PurchaseRefundInput: {
+            receipt_operation_id: string;
+            reference: string;
+            reason: string;
+            /** @enum {boolean} */
+            confirm_full: true;
+            /** @enum {boolean} */
+            keep_access: true;
+            returned_amount?: string;
+        };
+        PaymentRefund: {
+            /** Format: uuid */
+            refund_id: string;
+            /** Format: uuid */
+            order_id: string;
+            receipt_operation_id: string;
+            /** @enum {string} */
+            payment_method: "yoomoney" | "manual" | "yookassa" | "cryptomus" | "heleket";
+            /** Format: date-time */
+            created_at: string;
+            receipt_gross_minor: string;
+            /** @enum {string} */
+            receipt_currency: "RUB" | "USD";
+            returned_amount: string;
+            returned_currency: string;
+            reference: string;
+            reason: string;
+            /** Format: uuid */
+            operator_account_id: string;
+            /** @enum {string} */
+            source: "operator";
+        };
+        PaymentCase: {
+            order: components["schemas"]["PurchaseOrder"];
+            receipt: components["schemas"]["PaymentHistoryReceipt"] | null;
+            refund: components["schemas"]["PaymentRefund"] | null;
+            financial_review_open: boolean;
+            can_confirm_refund: boolean;
         };
     };
     responses: never;
@@ -8653,6 +8732,197 @@ export interface operations {
             /** @description Safe error */
             404: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    getOperatorPaymentCase: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token": string;
+            };
+            path: {
+                id: string;
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaymentCaseInput"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentCase"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    /** @description Seconds before retry */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    confirmPurchaseRefund: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token": string;
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurchaseRefundInput"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentRefund"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    /** @description Seconds before retry */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {

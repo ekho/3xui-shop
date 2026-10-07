@@ -47,6 +47,7 @@ type PurchaseOrder struct {
 	PaymentType       string             `json:"payment_type"`
 	Quote             PurchaseQuote      `json:"quote"`
 	ReviewRequired    bool               `json:"review_required"`
+	FullyRefunded     bool               `json:"fully_refunded,omitempty"`
 	ManualPayment     *ManualPayment     `json:"manual_payment,omitempty"`
 	YooKassaCheckout  *YooKassaCheckout  `json:"yookassa_checkout,omitempty"`
 	CryptomusCheckout *CryptomusCheckout `json:"cryptomus_checkout,omitempty"`
