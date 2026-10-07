@@ -2,11 +2,13 @@
 
 Owner #29, contract `2026-10-07-s31-account-identity-v1`.
 Base `f9ddf123b3b6be92d2e83b0b15b3b8909a29c5cd`;
-product checkpoint `6fd9ec1b7d06e0fc931bbd2539383c1d61e671db`.
+final product checkpoint `63079a96fe349bc972e7e9037441ee853b01973f`.
+Первый полный прогон: product `6fd9ec1b7d06e0fc931bbd2539383c1d61e671db`, 922 PASS.
 Native inline: четыре авторские задачи, затем один свежий whole-branch
 Astra/high reviewer, один авторский Critical/Important RED→GREEN pass;
-Minor откладываются, повторного ревью нет. На этом checkpoint ревью и доставка
-ещё предстоят. Состояние GitHub/PR/выпуска фиксируется отдельно после публикации.
+Minor откладываются, повторного ревью нет. Один свежий review завершён,
+один Important исправлен автором с RED→GREEN и полной backend регрессией.
+Состояние GitHub/PR/выпуска фиксируется отдельно после публикации.
 
 ## Что проверено
 
@@ -25,7 +27,7 @@ quarantine. Recovery не выполняет автоматический login.
 
 | Проверка | Результат |
 | --- | --- |
-| Полный Go `go test ./... -count=1 -race -timeout=20m -json` с TestKit, real-browser и native Docker | 922 PASS, 0 FAIL; все 13 пакетов с тестами PASS |
+| Полный Go `go test ./... -count=1 -race -timeout=20m -json` с TestKit, real-browser и native Docker | 923 PASS, 0 FAIL; все 13 пакетов с тестами PASS |
 | `go vet ./...` | PASS |
 | Полная обычная browser suite, отдельно от build/embedded browser, собственный output | 353 PASS, 2.7 min |
 | C31 browser identity/recovery cases | 19 PASS в полном прогоне; RU/EN, keyboard, expiry/conflict, late responses, logout и idempotency |
@@ -130,3 +132,38 @@ native SMTP/panel и compiled restart доказательства сохран�
 новых identity facts: восстановление старой версии требует отдельного runbook
 с сохранением этих данных.
 
+
+## Final whole-branch review
+
+Один свежий /root/c31_final_review, Astra/high, read-only на
+9eb171a51499fe4276576221d12ad54e1dbfde76: один Important F1, без Critical/Minor.
+Author regrade сохраняет Important. ConfirmTelegramLink сначала блокировал
+текущий email, а при отзыве proofs — полный sorted набор recipients; прежняя
+смена email брала этот набор сразу. Новый connected тест
+TestIdentityLinkEmailChangeLockOrder удерживает link-proof row, наблюдает
+pg_blocking_pids и устанавливает точную последовательность двух операций.
+
+Actual RED 3.951 s: link успешен, конкурентная email change получает
+SERVICE_UNAVAILABLE. Минимальное исправление берёт credentialEmails и блокирует
+весь sorted набор перед link proof; GREEN 4.223 s. Тот же UUID/access,
+единственный audit и отзыв прежних email-change proofs проверены. Полный
+backend suite после изменения: 923 PASS/0 FAIL, 13 packages PASS, vet PASS.
+Неизменившиеся browser353/Python110/compiled recovery/Caddy/API evidence
+сохраняются на их checkpoint; текущий source CI/build проверяется при доставке.
+Исправлен только lock acquisition, без API/schema/frontend изменения.
+Повторного review нет. Deferred minors: нет.
+
+8. Finalization ruling: enabled TradeOS 2.0.0 GitLab registry не поддерживает
+   ekho/3xui-shop. Используются live GitHub exact-source CI/shared contract/
+   dependency/target/parents/tree и ручной SHA guard.
+   Цена: нет cooperative ownership ref для посторонних GitHub writers;
+   неожиданное target/parent движение требует отдельной диагностики.
+9. Final ruling (Declined to judge): внешняя/production приёмка остаётся
+   С45–С47; здесь только собственные локальные ресурсы.
+   Цена: локальный успех не подтверждает реальный SMTP/payment/Telegram.
+10. Final ruling (Declined to judge): CI/merge/release/images проверяет
+    coordinator на фактических revisions перед закрытием.
+    Цена: до этих доказательств delivery/overall acceptance pending.
+11. Final ruling (Declined to judge): точная причина первого browser timeout
+    остаётся гипотезой; доказана serial recovery.
+    Цена: первоначальная transient причина не установлена.
