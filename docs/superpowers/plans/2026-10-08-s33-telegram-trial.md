@@ -89,6 +89,6 @@ helpers при необходимости; docs/superpowers/evidence/2026-10-08-
 - [x] Run full Go/race with RUN_BROWSER_TESTS=1/NATIVE_DOCKER_STATE, web e2e,
   Python suite, vet, deterministic generation. Expected: PASS без actual skips.
 - [x] Record фактические counts/limits/rulings; task-done подтверждает full Go.
-- [ ] Commit evidence, один fresh final reviewer; один author fix pass если нужен.
+- [x] Commit evidence, один fresh final reviewer; один author fix pass если нужен.
 - [ ] PR/v2, exact-source CI, manual merge, actual preview tag/images/configs;
   completion #31/Project Done только после фактических receipt.

@@ -1,6 +1,6 @@
 # С33.Р4 — обычный Telegram-триал
 
-Реализация и локальная приёмка завершены; независимое ревью и доставка учитываются отдельно.
+Реализация, локальная приёмка и независимое ревью завершены; доставка учитывается отдельно.
 Владелец #31, контракт 2026-10-08-s33-telegram-trial-v1.
 База 71bc325bf1153f1a1d40b2ff9d8f6749038db29b; один Go-процесс HTTP/River/Telegram.
 
@@ -61,6 +61,15 @@ fixtures. Полные mock-browser проверки покрывают ru/en, d
 - Первая generation fingerprint ошибочно выбрала SQL-input directories;
   исправленная проверка всех 39 выходных файлов доказала их детерминизм.
 
+## Независимое ревью
+
+ONE fresh /root/c33_final_review (gpt-6-astra/high), весь диапазон71bc325..13daaa2.
+0Critical/Important/Minor; author fix pass не понадобился, повторного review нет.
+Reviewer проверил точный tested diff и39 выходных hashes. Дополнительный
+current-source race browser с NATIVE_DOCKER_STATE unset, как в первом CI этапе,
+PASS10.932s: lost add response не является неопределённостью после успешного
+чтения и Matches сохранённого target. Оснований менять fault fixture нет.
+
 ## Rulings
 
 1. Initial web policy uses immutable SourceKind, TG credentials do not erase original source — agreed account contract — wrong source would misclassify trial eligibility.
@@ -90,6 +99,8 @@ fixtures. Полные mock-browser проверки покрывают ru/en, d
 13. extend the shared owned test row rather than use lax mapping or weaken DB constraints — new provenance column is part of the persisted contract — ignoring it would hide incorrect manual actor provenance.
 
 14. Task4 helper completion denotes implementation/local verification only; final review and delivery retain explicit pending plan gates — Native final review follows task completion by design — conflating those states could close #31 before reviewed merge/image receipts.
+
+15. keep the native fallback losing-reply fixture unchanged — actual stub-profile racePASS10.932s and VPN readback prove saved target after a lost write response; suspected blocker falsified — changing the fixture would remove recovery coverage without fixing a defect.
 
 ## Границы приёмки
 
