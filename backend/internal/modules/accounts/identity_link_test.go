@@ -219,3 +219,84 @@ func TestIdentityLegacyUnlinkDenied(t *testing.T) {
 		t.Fatal("legacy UI capabilities differ from write guard")
 	}
 }
+
+// Catches a link confirmation taking the current email before an earlier-sorted
+// recipient of a pending email change. The proof row pins the exact interleaving.
+func TestIdentityLinkEmailChangeLockOrder(t *testing.T) {
+	s, e, cfg := fixture(t)
+	ctx := context.Background()
+	a, rawA := identityWebFixture(t, s, e, cfg, "z@example.test")
+	e.Advance(61 * time.Second) // Existing mail cooldown after registration.
+	if _, err := s.RequestEmailChange(ctx, rawA, EmailChangeInput{CurrentPassword: identityWebPassword, NewEmail: "a@example.test"}, "127.0.0.1"); err != nil {
+		t.Fatal(err)
+	}
+	e.Advance(61 * time.Second) // The pending target may subsequently register.
+	b, rawB := identityWebFixture(t, s, e, cfg, "a@example.test")
+	in := identityLinkInput(t, s, rawA, 9601)
+	var proof uuid.UUID
+	if err := e.Pool.QueryRow(ctx, `SELECT id FROM credential_challenges WHERE purpose='telegram_link' AND token_hash=$1`, digest(in.LinkToken)).Scan(&proof); err != nil {
+		t.Fatal(err)
+	}
+	hold, err := e.Pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer hold.Rollback(ctx)
+	var holdPID int
+	if err = hold.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&holdPID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = hold.Exec(ctx, `SELECT id FROM credential_challenges WHERE id=$1 FOR UPDATE`, proof); err != nil {
+		t.Fatal(err)
+	}
+	workerCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	waitBlocked := func(blocker int) int {
+		t.Helper()
+		deadline := time.NewTimer(3 * time.Second)
+		defer deadline.Stop()
+		tick := time.NewTicker(10 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			select {
+			case <-deadline.C:
+				t.Fatal("operation did not reach the held database lock")
+			case <-tick.C:
+				var pid int
+				if err := e.Pool.QueryRow(ctx, `SELECT COALESCE((SELECT pid FROM pg_stat_activity WHERE datname=current_database() AND $1::int=ANY(pg_blocking_pids(pid)) AND wait_event_type='Lock' LIMIT 1),0)`, blocker).Scan(&pid); err != nil {
+					t.Fatal(err)
+				}
+				if pid != 0 {
+					return pid
+				}
+			}
+		}
+	}
+	linkDone, changeDone := make(chan error, 1), make(chan error, 1)
+	go func() { _, err := s.ConfirmTelegramLink(workerCtx, in); linkDone <- err }()
+	linkPID := waitBlocked(holdPID)
+	go func() {
+		_, err := s.RequestEmailChange(workerCtx, rawB, EmailChangeInput{CurrentPassword: identityWebPassword, NewEmail: "z@example.test"}, "127.0.0.1")
+		changeDone <- err
+	}()
+	waitBlocked(linkPID)
+	if err = hold.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	linkErr, changeErr := <-linkDone, <-changeDone
+	if linkErr != nil || !hasStatus(changeErr, 409) {
+		t.Fatalf("link must succeed and occupied email must conflict, without deadlock/503: link=%v change=%v", linkErr, changeErr)
+	}
+	stillA, err := s.Lookup(ctx, a.Account.ID)
+	if err != nil || stillA.TelegramID == nil || *stillA.TelegramID != 9601 || stillA.VpnID != a.Account.VpnID || stillA.SubID != a.Account.SubID || stillA.PanelKey != a.Account.PanelKey {
+		t.Fatal("link lost its original owner/access", err)
+	}
+	stillB, err := s.Lookup(ctx, b.Account.ID)
+	if err != nil || stillB.EmailKey == nil || *stillB.EmailKey != "a@example.test" || stillB.TelegramID != nil {
+		t.Fatal("conflicting email change moved another identity", err)
+	}
+	var grants, pending int
+	if err = e.Pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM audit_events WHERE account_id=$1 AND action='telegram_linked'),(SELECT count(*) FROM credential_challenges WHERE account_id=$1 AND purpose IN ('email_change_old','email_change_new') AND NOT revoked)`, a.Account.ID).Scan(&grants, &pending); err != nil || grants != 1 || pending != 0 {
+		t.Fatal("link grant or old email proof revocation changed", err)
+	}
+}

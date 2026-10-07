@@ -111,7 +111,11 @@ func (s *Service) ConfirmTelegramLink(ctx context.Context, in ConfirmTelegramLin
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return empty, unavailable()
 	}
-	if err = s.lockCredentialEmails(ctx, tx, []string{a.EmailKey.String}); err != nil {
+	emails, err := s.credentialEmails(ctx, tx, a)
+	if err != nil {
+		return empty, err
+	}
+	if err = s.lockCredentialEmails(ctx, tx, emails); err != nil {
 		return empty, err
 	}
 	proof, err = q.LockCredentialProof(ctx, proof.ID)
