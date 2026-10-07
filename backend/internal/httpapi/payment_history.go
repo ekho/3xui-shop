@@ -43,6 +43,13 @@ func (a *API) GetOperatorPaymentHistory(c *echo.Context) error {
 }
 func paymentHistoryResult(page payments.PaymentHistoryPage) wire.PaymentHistoryPage {
 	out := wire.PaymentHistoryPage{Kind: wire.PaymentHistoryPageKind(page.Kind), HasMore: page.HasMore, Orders: []wire.PaymentHistoryOrder{}, Receipts: []wire.PaymentHistoryReceipt{}, LegacyTransactions: []wire.LegacyPaymentHistoryItem{}}
+	if page.Kind == "refunds" {
+		refunds := []wire.PaymentRefund{}
+		for _, f := range page.Refunds {
+			refunds = append(refunds, paymentRefundResult(f))
+		}
+		out.Refunds = &refunds
+	}
 	for _, p := range page.Orders {
 		out.Orders = append(out.Orders, wire.PaymentHistoryOrder{OrderId: p.OrderId, Action: wire.PaymentHistoryOrderAction(p.Action), PaymentMethod: wire.PaymentHistoryOrderPaymentMethod(p.PaymentMethod), PaymentType: wire.PaymentHistoryOrderPaymentType(p.PaymentType), PaymentStatus: wire.PaymentHistoryOrderPaymentStatus(p.PaymentStatus), FulfillmentStatus: wire.PaymentHistoryOrderFulfillmentStatus(p.FulfillmentStatus), ReviewRequired: p.ReviewRequired, ReviewReason: p.ReviewReason, AccessOperationId: p.AccessOperationId, CreatedAt: p.CreatedAt, ExpiresAt: p.ExpiresAt, Quote: wire.PurchaseQuote{AmountMinor: p.Quote.AmountMinor, Currency: wire.PurchaseQuoteCurrency(p.Quote.Currency), Devices: p.Quote.Devices, PeriodDays: p.Quote.PeriodDays, PlanId: p.Quote.PlanId, Profile: wire.PurchaseQuoteProfile(p.Quote.Profile), Revision: p.Quote.Revision, SourceAccessOperationId: p.Quote.SourceAccessOperationId, TrafficGb: p.Quote.TrafficGb}})
 	}

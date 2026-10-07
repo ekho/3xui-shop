@@ -283,12 +283,12 @@ func TestVPNSQLBoundary(t *testing.T) {
 }
 
 func TestPaymentsSQLBoundary(t *testing.T) {
-	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:purchase_orders|purchase_receipts)\b`)
+	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:purchase_orders|purchase_receipts|purchase_refunds)\b`)
 	ownsSQL := func(text string) bool {
 		return pattern.MatchString(strings.ReplaceAll(text, `"`, ""))
 	}
 	for _, sql := range []string{
-		`SELECT * FROM purchase_orders`, `UPDATE purchase_receipts SET review_reason=$1`,
+		`SELECT * FROM purchase_orders`, `UPDATE purchase_receipts SET review_reason=$1`, `SELECT * FROM purchase_refunds`, `DELETE FROM public.purchase_refunds`,
 		`INSERT INTO purchase_orders VALUES ($1)`, `DELETE FROM public.purchase_receipts`,
 		`WITH p AS (SELECT * FROM "public"."purchase_orders") SELECT * FROM p`,
 	} {

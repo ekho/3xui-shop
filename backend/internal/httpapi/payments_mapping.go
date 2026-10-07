@@ -20,6 +20,10 @@ func paymentError(err error) error {
 func purchaseOrderResult(p payments.PurchaseOrder) wire.PurchaseOrder {
 	out := wire.PurchaseOrder{AccessOperationId: p.AccessOperationId, Action: wire.PurchaseOrderAction(p.Action), CanCancel: p.CanCancel, CanPay: p.CanPay, CreatedAt: p.CreatedAt, Expired: p.Expired, ExpiresAt: p.ExpiresAt, FulfillmentStatus: wire.PurchaseOrderFulfillmentStatus(p.FulfillmentStatus), OrderId: p.OrderId, PaymentMethod: wire.PurchaseOrderPaymentMethod(p.PaymentMethod), PaymentStatus: wire.PurchaseOrderPaymentStatus(p.PaymentStatus), PaymentType: wire.PurchaseOrderPaymentType(p.PaymentType), ReviewRequired: p.ReviewRequired,
 		Quote: wire.PurchaseQuote{AmountMinor: p.Quote.AmountMinor, Currency: wire.PurchaseQuoteCurrency(p.Quote.Currency), Devices: p.Quote.Devices, PeriodDays: p.Quote.PeriodDays, PlanId: p.Quote.PlanId, Profile: wire.PurchaseQuoteProfile(p.Quote.Profile), Revision: p.Quote.Revision, SourceAccessOperationId: p.Quote.SourceAccessOperationId, TrafficGb: p.Quote.TrafficGb}}
+	if p.FullyRefunded {
+		value := true
+		out.FullyRefunded = &value
+	}
 	if c := p.Checkout; c != nil {
 		out.Checkout = &wire.YooMoneyCheckout{Action: wire.YooMoneyCheckoutAction(c.Action), Method: wire.YooMoneyCheckoutMethod(c.Method), Fields: wire.YooMoneyCheckoutFields{Label: c.Fields.Label, PaymentType: wire.YooMoneyCheckoutFieldsPaymentType(c.Fields.PaymentType), QuickpayForm: wire.YooMoneyCheckoutFieldsQuickpayForm(c.Fields.QuickpayForm), Receiver: c.Fields.Receiver, SuccessURL: c.Fields.SuccessURL, Sum: c.Fields.Sum}}
 	}

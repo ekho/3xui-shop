@@ -85,7 +85,7 @@ func (s *Service) purchaseHistoryBlockedTx(ctx context.Context, tx pgx.Tx, accou
 		q = tx
 	}
 	var blocked bool
-	err := q.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE account_id=$1 AND id<>$2 AND (review_required OR fulfillment_status='needs_review' OR payment_status='paid' AND (NOT $3::boolean OR fulfillment_status<>'applied')))", account, except, ignoreApplied).Scan(&blocked)
+	err := q.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE account_id=$1 AND id<>$2 AND ((NOT ("+purchaseRefundClosed+") AND (review_required OR fulfillment_status='needs_review' OR payment_status='paid' AND fulfillment_status<>'applied')) OR payment_status='paid' AND fulfillment_status='applied' AND NOT $3::boolean))", account, except, ignoreApplied).Scan(&blocked)
 	if err != nil {
 		return false, unavailable()
 	}

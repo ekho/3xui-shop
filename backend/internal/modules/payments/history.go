@@ -23,6 +23,7 @@ type PaymentHistoryPage struct {
 	Orders             []HistoryOrder
 	Receipts           []HistoryReceipt
 	LegacyTransactions []LegacyPayment
+	Refunds            []PaymentRefund
 	HasMore            bool
 }
 type HistoryOrder struct {
@@ -62,7 +63,7 @@ type LegacyQuote struct {
 }
 
 func historyInput(in PaymentHistoryInput) error {
-	if in.Kind != "orders" && in.Kind != "receipts" && in.Kind != "legacy" {
+	if in.Kind != "orders" && in.Kind != "receipts" && in.Kind != "legacy" && in.Kind != "refunds" {
 		return failure(400, "INVALID_INPUT")
 	}
 	if (in.BeforeCreatedAt == nil) != (in.BeforeId == nil) {
@@ -76,7 +77,7 @@ func historyInput(in PaymentHistoryInput) error {
 		return failure(400, "INVALID_INPUT")
 	}
 	switch in.Kind {
-	case "orders":
+	case "orders", "refunds":
 		id, err := uuid.Parse(*in.BeforeId)
 		if err != nil || id == uuid.Nil {
 			return failure(400, "INVALID_INPUT")
@@ -146,50 +147,17 @@ func (s *Service) paymentHistory(ctx context.Context, account uuid.UUID, in Paym
 			out.Orders = out.Orders[:50]
 		}
 	case "receipts":
-		rows, err := s.pool.Query(ctx, `SELECT r.operation_id,r.order_id,
- CASE WHEN r.provider_data->>'provider' IN ('yookassa','cryptomus','heleket') THEN r.provider_data->>'provider'
- WHEN r.notification_type='manual_confirmation' THEN 'manual' ELSE 'yoomoney' END,
- r.created_at,r.occurred_at,r.gross_minor,r.net_minor,r.currency,r.notification_type,COALESCE(p.funding_operation_id=r.operation_id,false),r.review_reason,r.codepro,r.unaccepted,
- CASE WHEN r.provider_data->>'provider' IN ('cryptomus','heleket') THEN r.provider_data->>'payment_amount' END,
- CASE WHEN r.provider_data->>'provider' IN ('cryptomus','heleket') THEN r.provider_data->>'payer_amount' END,
- CASE WHEN r.provider_data->>'provider' IN ('cryptomus','heleket') THEN r.provider_data->>'merchant_amount' END,
- CASE WHEN r.provider_data->>'provider' IN ('cryptomus','heleket') THEN r.provider_data->>'payer_currency' END
- FROM purchase_receipts r JOIN purchase_orders p ON p.id=r.order_id WHERE p.account_id=$1 AND ($2::timestamptz IS NULL OR (r.created_at,r.operation_id)<($2,$3::text)) ORDER BY r.created_at DESC,r.operation_id DESC LIMIT 51`, account, in.BeforeCreatedAt, in.BeforeId)
+		rows, err := s.pool.Query(ctx, "SELECT "+receiptColumns+` FROM purchase_receipts r JOIN purchase_orders p ON p.id=r.order_id WHERE p.account_id=$1 AND ($2::timestamptz IS NULL OR (r.created_at,r.operation_id)<($2,$3::text)) ORDER BY r.created_at DESC,r.operation_id DESC LIMIT 51`, account, in.BeforeCreatedAt, in.BeforeId)
 		if err != nil {
 			return out, unavailable()
 		}
 		defer rows.Close()
 		for rows.Next() {
-			var receipt HistoryReceipt
-			var gross int64
-			var net *int64
-			var notification string
-			var paymentAmount, payerAmount, merchantAmount, payerCurrency *string
-			if rows.Scan(&receipt.OperationId, &receipt.OrderId, &receipt.PaymentMethod, &receipt.CreatedAt, &receipt.OccurredAt, &gross, &net, &receipt.RawCurrency, &notification, &receipt.FundsOrder, &receipt.ReviewReason, &receipt.Codepro, &receipt.Unaccepted, &paymentAmount, &payerAmount, &merchantAmount, &payerCurrency) != nil {
+			r, err := scanHistoryReceipt(rows)
+			if err != nil {
 				return out, unavailable()
 			}
-			receipt.GrossMinor = strconv.FormatInt(gross, 10)
-			if net != nil {
-				value := strconv.FormatInt(*net, 10)
-				receipt.NetMinor = &value
-			}
-			switch receipt.RawCurrency {
-			case "643", "RUB":
-				value := "RUB"
-				receipt.Currency = &value
-			case "USD":
-				value := "USD"
-				receipt.Currency = &value
-			}
-			receipt.Source = "provider"
-			if notification == "manual_confirmation" {
-				receipt.Source = "operator"
-			}
-			receipt.ReviewRequired = receipt.ReviewReason != nil || receipt.Codepro || receipt.Unaccepted
-			if paymentAmount != nil && payerAmount != nil && merchantAmount != nil && payerCurrency != nil {
-				receipt.CryptoAmounts = &CryptoAmounts{*paymentAmount, *payerAmount, *merchantAmount, *payerCurrency}
-			}
-			out.Receipts = append(out.Receipts, receipt)
+			out.Receipts = append(out.Receipts, r)
 		}
 		if rows.Err() != nil {
 			return out, unavailable()
@@ -197,6 +165,28 @@ func (s *Service) paymentHistory(ctx context.Context, account uuid.UUID, in Paym
 		if len(out.Receipts) > 50 {
 			out.HasMore = true
 			out.Receipts = out.Receipts[:50]
+		}
+	case "refunds":
+		rows, err := s.pool.Query(ctx, "SELECT "+refundColumns+` FROM purchase_refunds f JOIN purchase_receipts r ON r.operation_id=f.receipt_operation_id JOIN purchase_orders p ON p.id=f.order_id
+ WHERE p.account_id=$1 AND ($2::timestamptz IS NULL OR (f.created_at,f.id)<($2,$3::uuid)) ORDER BY f.created_at DESC,f.id DESC LIMIT 51`, account, in.BeforeCreatedAt, in.BeforeId)
+		if err != nil {
+			return out, unavailable()
+		}
+		defer rows.Close()
+		out.Refunds = []PaymentRefund{}
+		for rows.Next() {
+			f, err := scanRefund(rows)
+			if err != nil {
+				return out, unavailable()
+			}
+			out.Refunds = append(out.Refunds, f)
+		}
+		if rows.Err() != nil {
+			return out, unavailable()
+		}
+		if len(out.Refunds) > 50 {
+			out.HasMore = true
+			out.Refunds = out.Refunds[:50]
 		}
 	case "legacy":
 		rows, err := s.pool.Query(ctx, `SELECT source_id,created_at,updated_at,status,subscription,source_tg_id FROM legacy_payment_transactions
@@ -281,4 +271,47 @@ func legacyPaymentQuote(packed string, tgID int64) (*string, *LegacyQuote) {
 		action = "change_plan"
 	}
 	return &method, &LegacyQuote{Action: action, AmountMinor: strconv.FormatInt(amount, 10), Currency: currency, Devices: devices, PeriodDays: days, TrafficGb: traffic}
+}
+
+const receiptColumns = `r.operation_id,r.order_id,
+ CASE WHEN r.provider_data->>'provider' IN ('yookassa','cryptomus','heleket') THEN r.provider_data->>'provider'
+ WHEN r.notification_type='manual_confirmation' THEN 'manual' ELSE 'yoomoney' END,
+ r.created_at,r.occurred_at,r.gross_minor,r.net_minor,r.currency,r.notification_type,COALESCE(p.funding_operation_id=r.operation_id,false),r.review_reason,r.codepro,r.unaccepted,
+ CASE WHEN r.provider_data->>'provider' IN ('cryptomus','heleket') THEN r.provider_data->>'payment_amount' END,
+ CASE WHEN r.provider_data->>'provider' IN ('cryptomus','heleket') THEN r.provider_data->>'payer_amount' END,
+ CASE WHEN r.provider_data->>'provider' IN ('cryptomus','heleket') THEN r.provider_data->>'merchant_amount' END,
+ CASE WHEN r.provider_data->>'provider' IN ('cryptomus','heleket') THEN r.provider_data->>'payer_currency' END`
+
+func scanHistoryReceipt(row pgx.Row) (HistoryReceipt, error) {
+	var receipt HistoryReceipt
+	var gross int64
+	var net *int64
+	var notification string
+	var paymentAmount, payerAmount, merchantAmount, payerCurrency *string
+	if err := row.Scan(&receipt.OperationId, &receipt.OrderId, &receipt.PaymentMethod, &receipt.CreatedAt, &receipt.OccurredAt, &gross, &net, &receipt.RawCurrency, &notification, &receipt.FundsOrder, &receipt.ReviewReason, &receipt.Codepro, &receipt.Unaccepted, &paymentAmount, &payerAmount, &merchantAmount, &payerCurrency); err != nil {
+		return receipt, err
+	}
+	receipt.GrossMinor = strconv.FormatInt(gross, 10)
+	if net != nil {
+		value := strconv.FormatInt(*net, 10)
+		receipt.NetMinor = &value
+	}
+	switch receipt.RawCurrency {
+	case "643", "RUB":
+		value := "RUB"
+		receipt.Currency = &value
+	case "USD":
+		value := "USD"
+		receipt.Currency = &value
+	}
+	receipt.Source = "provider"
+	if notification == "manual_confirmation" {
+		receipt.Source = "operator"
+	}
+	receipt.ReviewRequired = receipt.ReviewReason != nil || receipt.Codepro || receipt.Unaccepted
+	if paymentAmount != nil && payerAmount != nil && merchantAmount != nil && payerCurrency != nil {
+		receipt.CryptoAmounts = &CryptoAmounts{*paymentAmount, *payerAmount, *merchantAmount, *payerCurrency}
+	}
+
+	return receipt, nil
 }

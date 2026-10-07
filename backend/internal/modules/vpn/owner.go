@@ -47,3 +47,20 @@ func (o *AccessOwner) Release() {
 	}
 	o.conn.Release()
 }
+
+// RetirePurchaseAccessTx stops future attempts only. Completed steps and the
+// frozen target remain evidence of any partial write; live access is untouched.
+func (s *Service) RetirePurchaseAccessTx(ctx context.Context, tx pgx.Tx, owner *AccessOwner, account, order, operation uuid.UUID) error {
+	if tx == nil || owner == nil || !owner.locked || owner.account != account || tx.Conn() != owner.conn.Conn() || account == uuid.Nil || order == uuid.Nil || operation == uuid.Nil {
+		return ErrIdentity
+	}
+	var status string
+	if err := tx.QueryRow(ctx, `SELECT status FROM access_operations WHERE id=$1 AND account_id=$2 AND kind='purchase' AND purchase_order_id=$3 FOR UPDATE`, operation, account, order).Scan(&status); err != nil {
+		return err
+	}
+	if status == "applied" || status == "skipped" {
+		return nil
+	}
+	_, err := tx.Exec(ctx, `UPDATE access_operations SET status='skipped',lease_hash=NULL,lease_expires_at=NULL,review_reason='funding_refunded',updated_at=$2 WHERE id=$1`, operation, s.now())
+	return err
+}

@@ -27,7 +27,7 @@ type purchaseRow struct {
 	hash, quote                                   []byte
 	amount                                        int64
 	paymentType, paymentStatus, fulfillmentStatus string
-	active, review                                bool
+	active, review, fullyRefunded                 bool
 	accessID                                      *uuid.UUID
 	fundingID                                     *string
 	created, expires                              time.Time
@@ -38,10 +38,11 @@ type purchaseRow struct {
 	manualActor                                   *uuid.UUID
 }
 
-const purchaseColumns = "id,account_id,idempotency_key,body_hash,quote,amount_minor,payment_type,payment_status,fulfillment_status,active,review_required,access_operation_id,funding_operation_id,created_at,expires_at,payment_method,manual_details,manual_reported_at,manual_decision,manual_decided_at,manual_actor_id,manual_reason,action"
+const purchaseColumns = "id,account_id,idempotency_key,body_hash,quote,amount_minor,payment_type,payment_status,fulfillment_status,active,review_required,access_operation_id,funding_operation_id,created_at,expires_at,payment_method,manual_details,manual_reported_at,manual_decision,manual_decided_at,manual_actor_id,manual_reason,action,(" + purchaseRefundClosed + ")"
 const purchaseFundingCheck = `SELECT EXISTS(SELECT 1 FROM purchase_orders p JOIN purchase_receipts r ON r.operation_id=p.funding_operation_id AND r.order_id=p.id
  WHERE p.id=$1 AND p.payment_status='paid' AND r.review_reason IS NULL AND r.gross_minor=p.amount_minor
  AND NOT r.codepro AND NOT r.unaccepted
+ AND NOT EXISTS(SELECT 1 FROM purchase_refunds f WHERE f.receipt_operation_id=r.operation_id)
  AND ((r.net_minor>0 AND r.net_minor<=r.gross_minor AND r.currency='643'
        AND ((p.payment_method='yoomoney' AND r.notification_type IN ('p2p-incoming','card-incoming')
              AND r.occurred_at>=p.created_at-interval '5 minutes' AND r.occurred_at<=p.expires_at)
@@ -80,7 +81,7 @@ const purchaseFundingCheck = `SELECT EXISTS(SELECT 1 FROM purchase_orders p JOIN
 
 func scanPurchase(row pgx.Row) (purchaseRow, error) {
 	var p purchaseRow
-	err := row.Scan(&p.id, &p.account, &p.key, &p.hash, &p.quote, &p.amount, &p.paymentType, &p.paymentStatus, &p.fulfillmentStatus, &p.active, &p.review, &p.accessID, &p.fundingID, &p.created, &p.expires, &p.method, &p.manualDetails, &p.manualReported, &p.manualDecision, &p.manualDecided, &p.manualActor, &p.manualReason, &p.action)
+	err := row.Scan(&p.id, &p.account, &p.key, &p.hash, &p.quote, &p.amount, &p.paymentType, &p.paymentStatus, &p.fulfillmentStatus, &p.active, &p.review, &p.accessID, &p.fundingID, &p.created, &p.expires, &p.method, &p.manualDetails, &p.manualReported, &p.manualDecision, &p.manualDecided, &p.manualActor, &p.manualReason, &p.action, &p.fullyRefunded)
 	return p, err
 }
 
@@ -103,6 +104,7 @@ func (s *Service) publicPurchase(ctx context.Context, p purchaseRow) (PurchaseOr
 		canPay = reason == "" && !p.review
 	}
 	out := PurchaseOrder{OrderId: p.id, Action: p.action, PaymentMethod: p.method, PaymentType: p.paymentType, Quote: quote, PaymentStatus: p.paymentStatus, FulfillmentStatus: p.fulfillmentStatus, ReviewRequired: p.review, CreatedAt: p.created, ExpiresAt: p.expires, Expired: expired, CanPay: canPay, CanCancel: p.active && p.paymentStatus == "pending" && !expired && p.manualReported == nil, AccessOperationId: p.accessID}
+	out.FullyRefunded = p.fullyRefunded
 	if p.method == "manual" {
 		if p.manualDetails == nil {
 			return PurchaseOrder{}, unavailable()
@@ -430,7 +432,7 @@ func (s *Service) CurrentPurchaseOrder(ctx context.Context, account uuid.UUID) (
 	if _, err := s.PaymentMethods(ctx, account); err != nil {
 		return out, err
 	}
-	p, err := scanPurchase(s.pool.QueryRow(ctx, "SELECT "+purchaseColumns+" FROM purchase_orders WHERE account_id=$1 ORDER BY CASE WHEN review_required OR fulfillment_status='needs_review' THEN 0 WHEN payment_status='paid' AND fulfillment_status<>'applied' THEN 1 WHEN active AND payment_status='pending' THEN 2 ELSE 3 END,created_at DESC,id DESC LIMIT 1", account))
+	p, err := scanPurchase(s.pool.QueryRow(ctx, "SELECT "+purchaseColumns+" FROM purchase_orders WHERE account_id=$1 ORDER BY CASE WHEN NOT ("+purchaseRefundClosed+") AND (review_required OR fulfillment_status='needs_review') THEN 0 WHEN NOT ("+purchaseRefundClosed+") AND payment_status='paid' AND fulfillment_status<>'applied' THEN 1 WHEN active AND payment_status='pending' THEN 2 ELSE 3 END,created_at DESC,id DESC LIMIT 1", account))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return out, nil
 	}
@@ -442,7 +444,7 @@ func (s *Service) CurrentPurchaseOrder(ctx context.Context, account uuid.UUID) (
 		return out, err
 	}
 	out.Order = &order
-	if p.paymentStatus == "paid" && p.fulfillmentStatus == "applied" {
+	if p.paymentStatus == "paid" && p.fulfillmentStatus == "applied" || order.FullyRefunded {
 		reason, err := s.purchasePolicyTx(ctx, nil, purchaseRow{account: account, action: "purchase"})
 		if err != nil {
 			return out, err
@@ -504,7 +506,7 @@ func (s *Service) OperatorPurchaseOrder(ctx context.Context, actor, target uuid.
 	} else if err != nil {
 		return out, unavailable()
 	}
-	p, err := scanPurchase(s.pool.QueryRow(ctx, "SELECT "+purchaseColumns+" FROM purchase_orders WHERE account_id=$1 ORDER BY CASE WHEN review_required OR fulfillment_status='needs_review' THEN 0 WHEN payment_status='paid' AND fulfillment_status<>'applied' THEN 1 WHEN active AND payment_status='pending' THEN 2 ELSE 3 END,created_at DESC,id DESC LIMIT 1", target))
+	p, err := scanPurchase(s.pool.QueryRow(ctx, "SELECT "+purchaseColumns+" FROM purchase_orders WHERE account_id=$1 ORDER BY CASE WHEN NOT ("+purchaseRefundClosed+") AND (review_required OR fulfillment_status='needs_review') THEN 0 WHEN NOT ("+purchaseRefundClosed+") AND payment_status='paid' AND fulfillment_status<>'applied' THEN 1 WHEN active AND payment_status='pending' THEN 2 ELSE 3 END,created_at DESC,id DESC LIMIT 1", target))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return out, nil
 	}
@@ -567,8 +569,8 @@ func (s *Service) ReconcilePurchaseOrder(ctx context.Context, actor, target, id,
 		return empty, failure(409, "PURCHASE_ORDER_CONFLICT")
 	}
 	if err = tx.QueryRow(ctx, `UPDATE purchase_orders p SET fulfillment_status='queued',
-		review_required=EXISTS(SELECT 1 FROM purchase_receipts r WHERE r.order_id=p.id AND r.review_reason IS NOT NULL),
-		review_reason=(SELECT r.review_reason FROM purchase_receipts r WHERE r.order_id=p.id AND r.review_reason IS NOT NULL ORDER BY r.created_at,r.operation_id LIMIT 1)
+		review_required=EXISTS(SELECT 1 FROM purchase_receipts r WHERE r.order_id=p.id AND r.review_reason IS NOT NULL AND NOT EXISTS(SELECT 1 FROM purchase_refunds f WHERE f.receipt_operation_id=r.operation_id)),
+		review_reason=(SELECT r.review_reason FROM purchase_receipts r WHERE r.order_id=p.id AND r.review_reason IS NOT NULL AND NOT EXISTS(SELECT 1 FROM purchase_refunds f WHERE f.receipt_operation_id=r.operation_id) ORDER BY r.created_at,r.operation_id LIMIT 1)
 		WHERE p.id=$1 RETURNING p.review_required`, id).Scan(&p.review); err != nil {
 		return empty, unavailable()
 	}
@@ -622,8 +624,8 @@ func (s *Service) RecordPurchaseAccessTx(ctx context.Context, tx pgx.Tx, operati
 		return unavailable()
 	}
 	query := `UPDATE purchase_orders p SET fulfillment_status=$2,
-		review_required=EXISTS(SELECT 1 FROM purchase_receipts r WHERE r.order_id=p.id AND r.review_reason IS NOT NULL),
-		review_reason=(SELECT r.review_reason FROM purchase_receipts r WHERE r.order_id=p.id AND r.review_reason IS NOT NULL ORDER BY r.created_at,r.operation_id LIMIT 1)
+		review_required=EXISTS(SELECT 1 FROM purchase_receipts r WHERE r.order_id=p.id AND r.review_reason IS NOT NULL AND NOT EXISTS(SELECT 1 FROM purchase_refunds f WHERE f.receipt_operation_id=r.operation_id)),
+		review_reason=(SELECT r.review_reason FROM purchase_receipts r WHERE r.order_id=p.id AND r.review_reason IS NOT NULL AND NOT EXISTS(SELECT 1 FROM purchase_refunds f WHERE f.receipt_operation_id=r.operation_id) ORDER BY r.created_at,r.operation_id LIMIT 1)
 		WHERE p.access_operation_id=$1 AND p.payment_status='paid'`
 	args := []any{operation, status}
 	if status == "needs_review" {

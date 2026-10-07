@@ -8913,6 +8913,315 @@
           }
         }
       }
+    },
+    "/api/v1/operator/clients/{id}/orders/{order_id}/payment-case": {
+      "post": {
+        "operationId": "getOperatorPaymentCase",
+        "description": "Verified unrestricted operator reads a saved selected payment case; private no-store, Origin/CSRF, no provider or panel call. Strict JSON <=16 KiB.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                },
+                "description": "Seconds before retry"
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentCase"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentCaseInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/operator/clients/{id}/orders/{order_id}/refunds": {
+      "post": {
+        "operationId": "confirmPurchaseRefund",
+        "description": "Record an operator-confirmed full refund already performed externally. Does not send money or alter live access. Strict Origin/CSRF/idempotency; exact original receipt binding.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                },
+                "description": "Seconds before retry"
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentRefund"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseRefundInput"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -12094,6 +12403,10 @@
               }
             ],
             "nullable": true
+          },
+          "fully_refunded": {
+            "type": "boolean",
+            "description": "All saved receipts have an operator-confirmed full refund. Original paid/access facts remain unchanged."
           }
         },
         "required": [
@@ -12468,7 +12781,8 @@
             "enum": [
               "orders",
               "receipts",
-              "legacy"
+              "legacy",
+              "refunds"
             ]
           },
           "before_created_at": {
@@ -12850,7 +13164,8 @@
             "enum": [
               "orders",
               "receipts",
-              "legacy"
+              "legacy",
+              "refunds"
             ]
           },
           "has_more": {
@@ -12876,6 +13191,13 @@
             "items": {
               "$ref": "#/components/schemas/LegacyPaymentHistoryItem"
             }
+          },
+          "refunds": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/PaymentRefund"
+            }
           }
         },
         "required": [
@@ -12884,6 +13206,190 @@
           "orders",
           "receipts",
           "legacy_transactions"
+        ]
+      },
+      "PaymentCaseInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "receipt_operation_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "nullable": true
+          }
+        },
+        "required": []
+      },
+      "PurchaseRefundInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "receipt_operation_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "reference": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+            "maxLength": 128
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "confirm_full": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "keep_access": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "returned_amount": {
+            "type": "string",
+            "pattern": "^[0-9]{1,40}(\\.[0-9]{1,40})?$",
+            "maxLength": 81
+          }
+        },
+        "required": [
+          "receipt_operation_id",
+          "reference",
+          "reason",
+          "confirm_full",
+          "keep_access"
+        ]
+      },
+      "PaymentRefund": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "refund_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "order_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "receipt_operation_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "payment_method": {
+            "type": "string",
+            "enum": [
+              "yoomoney",
+              "manual",
+              "yookassa",
+              "cryptomus",
+              "heleket"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "receipt_gross_minor": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "receipt_currency": {
+            "type": "string",
+            "enum": [
+              "RUB",
+              "USD"
+            ]
+          },
+          "returned_amount": {
+            "type": "string",
+            "pattern": "^[0-9]{1,40}(\\.[0-9]{1,40})?$",
+            "maxLength": 81
+          },
+          "returned_currency": {
+            "type": "string",
+            "pattern": "^[A-Z0-9]{1,16}$"
+          },
+          "reference": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+            "maxLength": 128
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "operator_account_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "operator"
+            ]
+          }
+        },
+        "required": [
+          "refund_id",
+          "order_id",
+          "receipt_operation_id",
+          "payment_method",
+          "created_at",
+          "receipt_gross_minor",
+          "receipt_currency",
+          "returned_amount",
+          "returned_currency",
+          "reference",
+          "reason",
+          "operator_account_id",
+          "source"
+        ]
+      },
+      "PaymentCase": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "order": {
+            "$ref": "#/components/schemas/PurchaseOrder"
+          },
+          "receipt": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PaymentHistoryReceipt"
+              }
+            ],
+            "nullable": true
+          },
+          "refund": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PaymentRefund"
+              }
+            ],
+            "nullable": true
+          },
+          "financial_review_open": {
+            "type": "boolean"
+          },
+          "can_confirm_refund": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "order",
+          "receipt",
+          "refund",
+          "financial_review_open",
+          "can_confirm_refund"
         ]
       }
     }
