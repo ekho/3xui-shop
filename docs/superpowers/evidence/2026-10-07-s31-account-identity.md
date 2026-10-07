@@ -167,3 +167,20 @@ backend suite после изменения: 923 PASS/0 FAIL, 13 packages PASS, 
 11. Final ruling (Declined to judge): точная причина первого browser timeout
     остаётся гипотезой; доказана serial recovery.
     Цена: первоначальная transient причина не установлена.
+
+## CI environment recovery
+
+Incident `c31-ci-job-timeout25`, owner coordinator/#29, C10, TradeOS 2.0.0.
+На source e558b9b8540e08d3bcedbf4bbe59601d99e20acd push run 37651239621
+отменён по фактической annotation: job превысила 25 минут. Generated/static,
+behavior/connected consumers и container readiness завершились PASS;
+native 3X-UI/TLS прерван лимитом. PR Platform 37651540316 и images 37651540158
+успешны на том же source. Повтор неизменного лимита не выполняется.
+
+12. CI ruling: поднять owning `platform-checks.yml` job timeout 25→35 минут,
+    сохранив команды, все checks, triggers, права и версии.
+    Основание: observed complete phases заняли почти 25 минут до native,
+    а идентичный PR доказал работоспособность всего сценария.
+    Цена: зависшая job может занимать runner на 10 минут дольше.
+    Product code/API/schema/frontend не меняются; прежние локальные proofs
+    сохраняются, обновлённый source получает свежий CI перед merge.
