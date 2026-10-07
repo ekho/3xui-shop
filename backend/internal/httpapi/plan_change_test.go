@@ -580,7 +580,7 @@ func TestPlanChangeActionMigration(t *testing.T) {
 				if err = e.Pool.QueryRow(ctx, "SELECT to_jsonb(p)::text FROM purchase_orders p WHERE account_id=$1", account).Scan(&before); err != nil {
 					t.Fatal(err)
 				}
-				if _, err = provider.Down(ctx); err != nil {
+				if _, err = provider.DownTo(ctx, 20); err != nil {
 					t.Fatal(err)
 				}
 				if err = e.Pool.QueryRow(ctx, "SELECT to_jsonb(p)::text FROM purchase_orders p WHERE account_id=$1", account).Scan(&after); err != nil || after != before {
@@ -603,7 +603,7 @@ func TestPlanChangeActionMigration(t *testing.T) {
 			if _, err = s.cancelPurchaseOrder(ctx, account, order.OrderId, uuid.New()); err != nil {
 				t.Fatal(err)
 			}
-			if _, err = provider.Down(ctx); err == nil || !strings.Contains(err.Error(), "plan change history requires compatible application") {
+			if _, err = provider.DownTo(ctx, 20); err == nil || !strings.Contains(err.Error(), "plan change history requires compatible application") {
 				t.Fatal("down erased cancelled change history", err)
 			}
 			got, err := s.purchaseOrder(ctx, account, order.OrderId)

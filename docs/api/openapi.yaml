@@ -8700,6 +8700,219 @@
           }
         }
       }
+    },
+    "/api/v1/payment-history": {
+      "post": {
+        "operationId": "getPaymentHistory",
+        "description": "Read-only saved payment history; private no-store. Current verified unrestricted web session reads only its own account. Origin and CSRF required, no Idempotency-Key; strict JSON <=16 KiB and no query parameters. No provider/native calls or writes.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentHistoryPage"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentHistoryInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/operator/clients/{id}/payment-history": {
+      "post": {
+        "operationId": "getOperatorPaymentHistory",
+        "description": "Read-only saved payment history; private no-store. Current verified unrestricted operator; existing target may be restricted or Telegram-only. Origin and CSRF required, no Idempotency-Key; strict JSON <=16 KiB and no query parameters. No provider/native calls or writes.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentHistoryPage"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentHistoryInput"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -12244,6 +12457,433 @@
         "required": [
           "current_plan_id",
           "source_access_operation_id"
+        ]
+      },
+      "PaymentHistoryInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "orders",
+              "receipts",
+              "legacy"
+            ]
+          },
+          "before_created_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "before_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "nullable": true
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "description": "Both cursor values must be present or absent. Microsecond created_at and kind-specific ID: nonzero UUID (orders), saved operation_id (receipts), positive int64 decimal (legacy). Descending immutable created_at/ID; 50 rows per page. No query parameters."
+      },
+      "PaymentHistoryOrder": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "order_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "purchase",
+              "renew",
+              "change_plan"
+            ]
+          },
+          "quote": {
+            "$ref": "#/components/schemas/PurchaseQuote"
+          },
+          "payment_method": {
+            "type": "string",
+            "enum": [
+              "yoomoney",
+              "manual",
+              "yookassa",
+              "cryptomus",
+              "heleket"
+            ]
+          },
+          "payment_type": {
+            "type": "string",
+            "enum": [
+              "AC",
+              "PC",
+              "MANUAL",
+              "YOOKASSA",
+              "CRYPTOMUS",
+              "HELEKET"
+            ]
+          },
+          "payment_status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "paid",
+              "canceled"
+            ]
+          },
+          "fulfillment_status": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "queued",
+              "running",
+              "applied",
+              "needs_review"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "review_required": {
+            "type": "boolean"
+          },
+          "access_operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "review_reason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "order_id",
+          "action",
+          "quote",
+          "payment_method",
+          "payment_type",
+          "payment_status",
+          "fulfillment_status",
+          "created_at",
+          "expires_at",
+          "review_required",
+          "access_operation_id",
+          "review_reason"
+        ]
+      },
+      "PaymentHistoryCryptoAmounts": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "payment_amount": {
+            "type": "string",
+            "pattern": "^[0-9]{1,40}(\\.[0-9]{1,40})?$",
+            "maxLength": 81
+          },
+          "payer_amount": {
+            "type": "string",
+            "pattern": "^[0-9]{1,40}(\\.[0-9]{1,40})?$",
+            "maxLength": 81
+          },
+          "merchant_amount": {
+            "type": "string",
+            "pattern": "^[0-9]{1,40}(\\.[0-9]{1,40})?$",
+            "maxLength": 81
+          },
+          "payer_currency": {
+            "type": "string",
+            "pattern": "^[A-Z0-9]{1,16}$",
+            "maxLength": 16
+          }
+        },
+        "required": [
+          "payment_amount",
+          "payer_amount",
+          "merchant_amount",
+          "payer_currency"
+        ]
+      },
+      "PaymentHistoryReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "order_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "payment_method": {
+            "type": "string",
+            "enum": [
+              "yoomoney",
+              "manual",
+              "yookassa",
+              "cryptomus",
+              "heleket"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "gross_minor": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]{0,18})$",
+            "maxLength": 19,
+            "description": "Exact integer minor units within signed int64; no floating point."
+          },
+          "net_minor": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]{0,18})$",
+            "maxLength": 19,
+            "description": "Exact integer minor units within signed int64; no floating point.",
+            "nullable": true
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "RUB",
+              "USD"
+            ],
+            "nullable": true
+          },
+          "raw_currency": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "provider",
+              "operator"
+            ]
+          },
+          "funds_order": {
+            "type": "boolean"
+          },
+          "review_required": {
+            "type": "boolean"
+          },
+          "review_reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "codepro": {
+            "type": "boolean"
+          },
+          "unaccepted": {
+            "type": "boolean"
+          },
+          "crypto_amounts": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PaymentHistoryCryptoAmounts"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "operation_id",
+          "order_id",
+          "payment_method",
+          "created_at",
+          "occurred_at",
+          "gross_minor",
+          "net_minor",
+          "currency",
+          "raw_currency",
+          "source",
+          "funds_order",
+          "review_required",
+          "review_reason",
+          "codepro",
+          "unaccepted",
+          "crypto_amounts"
+        ],
+        "description": "Saved money confirmation, including review/protected/unaccepted facts. funds_order is the retained funding_operation_id link, not a new fulfillment verdict. Net is never inferred; manual source is operator. No checkout credentials or full provider JSON."
+      },
+      "LegacyPaymentQuote": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "purchase",
+              "renew",
+              "change_plan"
+            ]
+          },
+          "amount_minor": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]{0,18})$",
+            "maxLength": 19,
+            "description": "Exact integer minor units within signed int64; no floating point."
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "RUB",
+              "USD",
+              "XTR"
+            ]
+          },
+          "devices": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "maxLength": 19,
+            "description": "Exact original int64 quantity; string prevents JavaScript rounding."
+          },
+          "period_days": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "maxLength": 19,
+            "description": "Exact original int64 quantity; string prevents JavaScript rounding."
+          },
+          "traffic_gb": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]{0,18})$",
+            "maxLength": 19,
+            "description": "Exact original int64 quantity; string prevents JavaScript rounding."
+          }
+        },
+        "required": [
+          "action",
+          "amount_minor",
+          "currency",
+          "devices",
+          "period_days",
+          "traffic_gb"
+        ]
+      },
+      "LegacyPaymentHistoryItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "maxLength": 19
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "payment_status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "completed",
+              "canceled",
+              "refunded"
+            ]
+          },
+          "fulfillment_status": {
+            "type": "string",
+            "enum": [
+              "unknown"
+            ]
+          },
+          "payment_method": {
+            "type": "string",
+            "enum": [
+              "yoomoney",
+              "manual",
+              "yookassa",
+              "cryptomus",
+              "heleket",
+              "telegram_stars"
+            ],
+            "nullable": true
+          },
+          "quote": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LegacyPaymentQuote"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "source_id",
+          "created_at",
+          "updated_at",
+          "payment_status",
+          "fulfillment_status",
+          "payment_method",
+          "quote"
+        ],
+        "description": "Original archived status; completed does not prove cash receipt or VPN issuance. Nullable quote is a decoded source quote, never gross/net. Raw payment_id, Telegram identity and packed subscription stay private."
+      },
+      "PaymentHistoryPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "orders",
+              "receipts",
+              "legacy"
+            ]
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "orders": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/PaymentHistoryOrder"
+            }
+          },
+          "receipts": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/PaymentHistoryReceipt"
+            }
+          },
+          "legacy_transactions": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/LegacyPaymentHistoryItem"
+            }
+          }
+        },
+        "required": [
+          "kind",
+          "has_more",
+          "orders",
+          "receipts",
+          "legacy_transactions"
         ]
       }
     }

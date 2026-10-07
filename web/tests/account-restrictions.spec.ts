@@ -14,6 +14,7 @@ async function routes(page:Page,extra?:(route:Route,path:string)=>Promise<boolea
   if(path.endsWith('/operator/session'))return route.fulfill({json:{account:{account_id:operatorId,email:'operator@example.test',email_verified:true,locale:'en',telegram_linked:false},csrf_token:'s'.repeat(43)}});
   if(path.endsWith('/operator/clients/'+clientId))return route.fulfill({json:card()});
   if(path.endsWith('/operator/clients/'+otherId))return route.fulfill({json:card({...client,account_id:otherId,display_name:'Other Person'})});
+  if(path.endsWith('/payment-history'))return route.fulfill({json:{kind:route.request().postDataJSON().kind,orders:[],receipts:[],legacy_transactions:[],has_more:false}});
   if(path.endsWith('/support'))return route.fulfill({json:{conversation:null,messages:[],has_more:false,oldest_sequence:null}});
   return route.fulfill({json:{}});
  });
