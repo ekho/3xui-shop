@@ -67,6 +67,29 @@ test('disabled YooMoney preserves enabled manual and USD renewal methods',async(
  await routes(page,async(route,path)=>{if(path.endsWith('/payment-methods')){await route.fulfill({json:{methods:[{id:'manual',currency:'RUB'},{id:'cryptomus',currency:'USD'}]}});return true;}return false;});await page.goto('/cabinet/renew?lang=en');await expect(page.getByText('Price: 123.45 RUB')).toBeVisible();await expect(page.getByRole('radio',{name:'Bank card',exact:true})).toHaveCount(0);await expect(page.getByRole('radio',{name:'Manual transfer',exact:true})).toBeChecked();await page.getByRole('radio',{name:'Cryptomus',exact:true}).check();await expect(page.getByRole('combobox',{name:'Currency',exact:true})).toHaveValue('USD');await expect(page.getByText('Price: 2.00 USD',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Renew subscription',exact:true})).toBeEnabled();
 });
 
+for(const [method,label,paymentType] of [['cryptomus','Cryptomus','CRYPTOMUS'],['heleket','Heleket','HELEKET']] as const)
+ for(const methodsFirst of [true,false])test('sole '+method+' renewal keeps USD when '+(methodsFirst?'methods resolve first':'offer resolves first'),async({page})=>{
+ const calls:Model<'PurchaseOrderInput'>[]=[];let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});
+ const renewed:Model<'PurchaseOrder'>={...order,payment_method:method,payment_type:paymentType,quote:{...order.quote,currency:'USD',amount_minor:'200'},checkout:null};
+ await routes(page,async(route,path)=>{
+  if(path.endsWith('/subscription/renewal')){if(methodsFirst)await gate;await route.fulfill({json:plan});return true;}
+  if(path.endsWith('/payment-methods')){if(!methodsFirst)await gate;await route.fulfill({json:{methods:[{id:method,currency:'USD'}]}});return true;}
+  if(path.endsWith('/orders')&&route.request().method()==='POST'){calls.push(route.request().postDataJSON());await route.fulfill({status:201,json:renewed});return true;}
+  if(path.endsWith('/orders/'+orderId)){await route.fulfill({json:renewed});return true;}return false;
+ });
+ try{
+  await page.goto('/cabinet/renew?lang=en');
+  if(methodsFirst)await expect(page.getByRole('link',{name:'Current order',exact:true})).toBeVisible();
+  else await expect(page.getByText('Price: 123.45 RUB',{exact:true})).toBeVisible();
+  release();await expect(page.getByRole('radio',{name:label,exact:true})).toBeChecked();
+  await expect(page.getByRole('combobox',{name:'Currency',exact:true})).toHaveValue('USD');
+  await expect(page.getByText('Price: 2.00 USD',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Renew subscription',exact:true})).toBeEnabled();
+  await page.getByRole('button',{name:'Renew subscription',exact:true}).click();await page.getByRole('button',{name:'Confirm renewal'}).click();await expect(page).toHaveURL(/\/orders\/80000000/);
+  expect(calls).toEqual([{action:'renew',plan_id:planId,revision:3,period_days:30,payment_method:method,payment_type:paymentType}]);
+ }finally{release();}
+});
+
 for(const previous of [order,{...order,payment_status:'paid' as const,fulfillment_status:'needs_review' as const,review_required:true,can_pay:false,checkout:null}])
  test('current '+previous.payment_status+' renewal stays linked and blocks another order',async({page})=>{
  let writes=0;await routes(page,async(route,path)=>{if(path.endsWith('/orders/current')){await route.fulfill({json:{order:previous}});return true;}if(path.endsWith('/orders')&&route.request().method()==='POST'){writes++;await route.abort();return true;}return false;});await page.goto('/cabinet/renew?lang=en');await expect(page.getByRole('link',{name:'Current order'})).toHaveAttribute('href','/orders/'+orderId+'?lang=en');await expect(page.getByRole('button',{name:'Renew subscription',exact:true})).toHaveCount(0);expect(writes).toBe(0);
