@@ -152,20 +152,28 @@ func (s *Service) LatestAppliedAccessState(ctx context.Context, a uuid.UUID) (Ac
 // CurrentPlanIDTx keeps plan provenance with the access owner. Non-plan writes
 // preserve it; returning to a starter trial deliberately clears it.
 func (s *Service) CurrentPlanIDTx(ctx context.Context, tx pgx.Tx, account uuid.UUID) (*uuid.UUID, error) {
-	id, err := s.queries(tx).CurrentAccessPlanID(ctx, account)
+	source, err := s.CurrentPlanSourceTx(ctx, tx, account)
+	if source == nil {
+		return nil, err
+	}
+	return source.PlanID, err
+}
+
+func (s *Service) CurrentPlanSourceTx(ctx context.Context, tx pgx.Tx, account uuid.UUID) (*PlanAssignment, error) {
+	row, err := s.queries(tx).CurrentAccessPlanSource(ctx, account)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
-	return id, err
+	if err != nil {
+		return nil, err
+	}
+	return &PlanAssignment{OperationID: row.ID, PlanID: row.PlanID}, nil
 }
 
 // A NULL in applied plan provenance proves clearing; absent history does not.
 func (s *Service) PlanClearedTx(ctx context.Context, tx pgx.Tx, account uuid.UUID) (bool, error) {
-	id, err := s.queries(tx).CurrentAccessPlanID(ctx, account)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	}
-	return id == nil && err == nil, err
+	source, err := s.CurrentPlanSourceTx(ctx, tx, account)
+	return source != nil && source.PlanID == nil && err == nil, err
 }
 func (s *Service) AccessStateForAccountTx(ctx context.Context, tx pgx.Tx, id, a uuid.UUID) (AccessState, error) {
 	v, e := s.queries(tx).AccessOperationForAccount(ctx, store.AccessOperationForAccountParams{ID: id, AccountID: a})

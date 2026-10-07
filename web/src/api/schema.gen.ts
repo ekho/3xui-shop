@@ -1177,6 +1177,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/subscription/plan-change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Authenticated unrestricted independent web account with own applied finite plan. Current source may be hidden/archived. 409 PLAN_CHANGE_NOT_ELIGIBLE or EXTERNAL_BILLING_UNVERIFIED. No query parameters; private no-store. */
+        get: operations["getPlanChangeContext"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1878,10 +1895,10 @@ export interface components {
         };
         PurchaseOrderInput: {
             /**
-             * @description purchase retains first-purchase rules; renew uses only the account own current finite plan and YooMoney AC/PC. Unknown Telegram/legacy billing fails closed.
+             * @description purchase retains first-purchase rules; renew uses the own current finite plan and adds from max(expiry,now); change_plan replaces remaining days from preparation now. All enabled external methods apply. Unknown Telegram/legacy billing fails closed.
              * @enum {string}
              */
-            action: "purchase" | "renew";
+            action: "purchase" | "renew" | "change_plan";
             /** Format: uuid */
             plan_id: string;
             /** Format: int64 */
@@ -1892,6 +1909,11 @@ export interface components {
             payment_method: "yoomoney" | "manual" | "yookassa" | "cryptomus" | "heleket";
             /** @enum {string} */
             payment_type: "AC" | "PC" | "MANUAL" | "YOOKASSA" | "CRYPTOMUS" | "HELEKET";
+            /**
+             * Format: uuid
+             * @description Applied source operation, required only for change_plan and forbidden for other actions. Frozen in the immutable quote; a changed source stops automatic fulfillment.
+             */
+            source_access_operation_id?: string;
         };
         PurchaseQuote: {
             /** Format: uuid */
@@ -1910,6 +1932,11 @@ export interface components {
             amount_minor: string;
             /** @enum {string} */
             currency: "RUB" | "USD";
+            /**
+             * Format: uuid
+             * @description Applied source operation, required only for change_plan and forbidden for other actions. Frozen in the immutable quote; a changed source stops automatic fulfillment.
+             */
+            source_access_operation_id?: string;
         };
         YooMoneyCheckoutFields: {
             receiver: string;
@@ -1934,7 +1961,7 @@ export interface components {
             /** Format: uuid */
             order_id: string;
             /** @enum {string} */
-            action: "purchase" | "renew";
+            action: "purchase" | "renew" | "change_plan";
             quote: components["schemas"]["PurchaseQuote"];
             /** @enum {string} */
             payment_method: "yoomoney" | "manual" | "yookassa" | "cryptomus" | "heleket";
@@ -2049,6 +2076,12 @@ export interface components {
             sign: string;
         } & {
             [key: string]: unknown;
+        };
+        PlanChangeContext: {
+            /** Format: uuid */
+            current_plan_id: string;
+            /** Format: uuid */
+            source_access_operation_id: string;
         };
     };
     responses: never;
@@ -8202,6 +8235,91 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CataloguePlanSnapshot"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    /** @description Seconds before retry */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    getPlanChangeContext: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanChangeContext"];
                 };
             };
             /** @description Safe error */

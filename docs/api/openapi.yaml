@@ -8596,6 +8596,110 @@
           }
         }
       }
+    },
+    "/api/v1/subscription/plan-change": {
+      "get": {
+        "operationId": "getPlanChangeContext",
+        "description": "Authenticated unrestricted independent web account with own applied finite plan. Current source may be hidden/archived. 409 PLAN_CHANGE_NOT_ELIGIBLE or EXTERNAL_BILLING_UNVERIFIED. No query parameters; private no-store.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                },
+                "description": "Seconds before retry"
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanChangeContext"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -11462,9 +11566,10 @@
             "type": "string",
             "enum": [
               "purchase",
-              "renew"
+              "renew",
+              "change_plan"
             ],
-            "description": "purchase retains first-purchase rules; renew uses only the account own current finite plan and YooMoney AC/PC. Unknown Telegram/legacy billing fails closed."
+            "description": "purchase retains first-purchase rules; renew uses the own current finite plan and adds from max(expiry,now); change_plan replaces remaining days from preparation now. All enabled external methods apply. Unknown Telegram/legacy billing fails closed."
           },
           "plan_id": {
             "type": "string",
@@ -11501,6 +11606,11 @@
               "CRYPTOMUS",
               "HELEKET"
             ]
+          },
+          "source_access_operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Applied source operation, required only for change_plan and forbidden for other actions. Frozen in the immutable quote; a changed source stops automatic fulfillment."
           }
         },
         "required": [
@@ -11562,6 +11672,11 @@
               "RUB",
               "USD"
             ]
+          },
+          "source_access_operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Applied source operation, required only for change_plan and forbidden for other actions. Frozen in the immutable quote; a changed source stops automatic fulfillment."
           }
         },
         "required": [
@@ -11656,7 +11771,8 @@
             "type": "string",
             "enum": [
               "purchase",
-              "renew"
+              "renew",
+              "change_plan"
             ]
           },
           "quote": {
@@ -12110,6 +12226,24 @@
           "uuid",
           "order_id",
           "sign"
+        ]
+      },
+      "PlanChangeContext": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "current_plan_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "source_access_operation_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "current_plan_id",
+          "source_access_operation_id"
         ]
       }
     }

@@ -11,8 +11,18 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// RenewalPlanIDTx uses applied access provenance, never a device-count guess.
+// RenewalPlanIDTx preserves the public plan reader for existing consumers.
 func (s *Service) RenewalPlanIDTx(ctx context.Context, tx pgx.Tx, account uuid.UUID) (uuid.UUID, error) {
+	source, err := s.CurrentPlanSourceTx(ctx, tx, account)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return *source.PlanID, nil
+}
+
+// CurrentPlanSourceTx uses applied provenance, including same-plan reassignment.
+func (s *Service) CurrentPlanSourceTx(ctx context.Context, tx pgx.Tx, account uuid.UUID) (vpn.PlanAssignment, error) {
+	var empty vpn.PlanAssignment
 	var a accounts.Snapshot
 	var err error
 	if tx == nil {
@@ -22,28 +32,28 @@ func (s *Service) RenewalPlanIDTx(ctx context.Context, tx pgx.Tx, account uuid.U
 		err = accountError(err)
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
-		return uuid.Nil, failure(401, "INVALID_CREDENTIALS")
+		return empty, failure(401, "INVALID_CREDENTIALS")
 	}
 	if err != nil {
-		return uuid.Nil, unavailable()
+		return empty, unavailable()
 	}
 	if a.Kind != "web" || a.VerifiedAt == nil {
-		return uuid.Nil, failure(401, "INVALID_CREDENTIALS")
+		return empty, failure(401, "INVALID_CREDENTIALS")
 	}
 	if a.Restricted {
-		return uuid.Nil, failure(403, "ACCOUNT_RESTRICTED")
+		return empty, failure(403, "ACCOUNT_RESTRICTED")
 	}
 	if a.VpnBanned || !a.HadSubscription || a.AssignedPanelID == nil || *a.AssignedPanelID != s.config().PanelID || s.config().PanelID == "" || (stringValue(a.AccessProfile) != "regular" && stringValue(a.AccessProfile) != "euru") {
-		return uuid.Nil, failure(409, "RENEWAL_NOT_ELIGIBLE")
+		return empty, failure(409, "RENEWAL_NOT_ELIGIBLE")
 	}
-	id, err := s.vpn.CurrentPlanIDTx(ctx, tx, account)
+	source, err := s.vpn.CurrentPlanSourceTx(ctx, tx, account)
 	if err != nil {
-		return uuid.Nil, unavailable()
+		return empty, unavailable()
 	}
-	if id == nil || *id == uuid.Nil {
-		return uuid.Nil, failure(409, "RENEWAL_NOT_ELIGIBLE")
+	if source == nil || source.PlanID == nil || *source.PlanID == uuid.Nil || source.OperationID == uuid.Nil {
+		return empty, failure(409, "RENEWAL_NOT_ELIGIBLE")
 	}
-	return *id, nil
+	return *source, nil
 }
 
 // Unknown disablement stays closed; a paid renewal resets proven exhaustion.

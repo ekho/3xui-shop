@@ -12,12 +12,30 @@ import (
 	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/riverqueue/river"
 )
 
 // Until C35 owns authoritative recurrence states, only unlinked new web
 // accounts prove they cannot also be billed by the legacy Stars handler.
 func independentBilling(a accounts.Snapshot) bool {
 	return a.Kind == "web" && a.TelegramID == nil && a.LegacyUserID == nil
+}
+
+// All five funding paths retain valid money proof before checking live access.
+// An eligibility conflict needs review; it must not invalidate the receipt.
+func (s *Service) queueFundedPurchaseTx(ctx context.Context, tx pgx.Tx, p purchaseRow) (string, error) {
+	if p.action != "purchase" {
+		reason, err := s.purchasePolicyTx(ctx, tx, p)
+		if err != nil {
+			return "", err
+		}
+		if reason != "" {
+			_, err = tx.Exec(ctx, "UPDATE purchase_orders SET fulfillment_status='needs_review',review_required=true,review_reason=$2 WHERE id=$1", p.id, reason)
+			return reason, err
+		}
+	}
+	_, err := s.queue().InsertTx(ctx, tx, PurchaseArgs{OrderID: p.id}, &river.InsertOpts{Queue: "provision", MaxAttempts: 1000000})
+	return "", err
 }
 
 func renewalError(err error) error {
@@ -28,21 +46,33 @@ func renewalError(err error) error {
 	return err
 }
 
-func (s *Service) requireRenewalPlan(ctx context.Context, tx pgx.Tx, account, plan uuid.UUID) error {
-	id, err := s.subscriptions.RenewalPlanIDTx(ctx, tx, account)
-	if err != nil {
-		return renewalError(err)
+func (s *Service) requireOrderPlan(ctx context.Context, tx pgx.Tx, account uuid.UUID, action string, plan uuid.UUID, source *uuid.UUID) error {
+	if action == "purchase" {
+		return nil
 	}
-	if id != plan {
-		return failure(409, "RENEWAL_NOT_ELIGIBLE")
+	code := "RENEWAL_NOT_ELIGIBLE"
+	if action == "change_plan" {
+		code = "PLAN_CHANGE_NOT_ELIGIBLE"
+	}
+	current, err := s.subscriptions.CurrentPlanSourceTx(ctx, tx, account)
+	if err != nil {
+		mapped := renewalError(err)
+		var e *Error
+		if errors.As(mapped, &e) && e.Code == "RENEWAL_NOT_ELIGIBLE" {
+			return failure(e.Status, code)
+		}
+		return mapped
+	}
+	if action == "renew" && *current.PlanID != plan || action == "change_plan" && (source == nil || *source != current.OperationID) {
+		return failure(409, code)
 	}
 	return nil
 }
 
-// Completed payments are reusable only for renewal or proved starter clearing.
+// Completed payments are reusable for managing access or proved starter clearing.
 // Review and unresolved funding stay blocked regardless of the current plan.
 func (s *Service) purchaseHistoryBlockedTx(ctx context.Context, tx pgx.Tx, account, except uuid.UUID, action string) (bool, error) {
-	ignoreApplied := action == "renew"
+	ignoreApplied := action == "renew" || action == "change_plan"
 	if !ignoreApplied {
 		var err error
 		ignoreApplied, err = s.vpn.PlanClearedTx(ctx, tx, account)
@@ -93,15 +123,18 @@ func (s *Service) purchasePolicyTx(ctx context.Context, tx pgx.Tx, p purchaseRow
 			return "another_first_payment", nil
 		}
 	}
-	if p.action == "renew" {
+	if p.action == "renew" || p.action == "change_plan" {
 		var quote PurchaseQuote
-		if json.Unmarshal(p.quote, &quote) != nil {
+		if json.Unmarshal(p.quote, &quote) != nil || (p.action == "change_plan") != (quote.SourceAccessOperationId != nil) {
 			return "invalid_quote", nil
 		}
-		err = s.requireRenewalPlan(ctx, tx, p.account, quote.PlanId)
+		err = s.requireOrderPlan(ctx, tx, p.account, p.action, quote.PlanId, quote.SourceAccessOperationId)
 		if err != nil {
 			var e *Error
 			if errors.As(err, &e) && e.Status < 500 {
+				if p.action == "change_plan" {
+					return "plan_change_not_eligible", nil
+				}
 				return "renewal_not_eligible", nil
 			}
 			return "", err
@@ -141,7 +174,7 @@ func (s *Service) RenewalOffer(ctx context.Context, account uuid.UUID) (catalogu
 	}
 	offered := false
 	for _, price := range terms.Prices {
-		if price.Currency == "RUB" {
+		if price.Currency == "RUB" || price.Currency == "USD" {
 			amount, e := strconv.ParseInt(price.AmountMinor, 10, 64)
 			if e == nil && amount > 0 {
 				offered = true
@@ -152,4 +185,30 @@ func (s *Service) RenewalOffer(ctx context.Context, account uuid.UUID) (catalogu
 		return empty, failure(409, "RENEWAL_NOT_ELIGIBLE")
 	}
 	return catalogue.PlanSnapshot{PlanId: id, Revision: plan.Revision, Devices: terms.Devices, Hidden: terms.Hidden, Periods: terms.Periods, Prices: terms.Prices, Profile: terms.Profile, TrafficGb: terms.TrafficGb}, nil
+}
+
+func (s *Service) PlanChangeContext(ctx context.Context, account uuid.UUID) (PlanChangeContext, error) {
+	var empty PlanChangeContext
+	a, err := s.accountByID(ctx, account)
+	if err != nil {
+		return empty, unavailable()
+	}
+	if !independentBilling(a) {
+		return empty, failure(409, "EXTERNAL_BILLING_UNVERIFIED")
+	}
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return empty, unavailable()
+	}
+	defer tx.Rollback(ctx)
+	current, err := s.subscriptions.CurrentPlanSourceTx(ctx, tx, account)
+	if err != nil {
+		mapped := renewalError(err)
+		var e *Error
+		if errors.As(mapped, &e) && e.Code == "RENEWAL_NOT_ELIGIBLE" {
+			return empty, failure(e.Status, "PLAN_CHANGE_NOT_ELIGIBLE")
+		}
+		return empty, mapped
+	}
+	return PlanChangeContext{CurrentPlanId: *current.PlanID, SourceAccessOperationId: current.OperationID}, nil
 }

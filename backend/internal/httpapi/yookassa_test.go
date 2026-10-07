@@ -40,6 +40,13 @@ type kassaStub struct {
 
 func kassaFixture(t *testing.T, setup ...func(*regressionFixture, *testkit.Env, uuid.UUID, uuid.UUID)) (*regressionFixture, *testkit.Env, uuid.UUID, wire.PurchaseOrder, *kassaStub) {
 	t.Helper()
+	input := func(_ *regressionFixture, _ *testkit.Env, _ uuid.UUID, plan uuid.UUID) wire.PurchaseOrderInput {
+		return purchaseInput(plan)
+	}
+	return kassaOrderFixture(t, input, setup...)
+}
+func kassaOrderFixture(t *testing.T, input func(*regressionFixture, *testkit.Env, uuid.UUID, uuid.UUID) wire.PurchaseOrderInput, setup ...func(*regressionFixture, *testkit.Env, uuid.UUID, uuid.UUID)) (*regressionFixture, *testkit.Env, uuid.UUID, wire.PurchaseOrder, *kassaStub) {
+	t.Helper()
 	s, e, account, plan := purchaseFixture(t)
 	s.cfg.Payments.YooKassaEnabled = true
 	s.cfg.Payments.YooKassaShopID = "100001"
@@ -49,7 +56,7 @@ func kassaFixture(t *testing.T, setup ...func(*regressionFixture, *testkit.Env, 
 	for _, prepare := range setup {
 		prepare(s, e, account, plan)
 	}
-	in := purchaseInput(plan)
+	in := input(s, e, account, plan)
 	in.PaymentMethod, in.PaymentType = "yookassa", "YOOKASSA"
 	order, err := s.createPurchaseOrder(context.Background(), account, uuid.New(), in)
 	if err != nil {

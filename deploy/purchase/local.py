@@ -201,6 +201,44 @@ def create_order(opener, login, plan, manual=False):
     return value
 
 
+def exhaust_counters(account, total, memberships):
+    """Synthetic exhausted access in this owned panel's Docker VM, with its writer stopped."""
+    assert local.PROFILE == 'native' and type(total) is int and total > 0
+    assert type(memberships) is int and memberships > 0
+    row = account_row(account)
+    compose('stop', 'panel')
+    try:
+        # SQLite WAL must stay in the Docker VM; a Mac connection can see stale state.
+        script = '''import json,sqlite3,sys
+row,total,memberships=json.load(sys.stdin)
+assert total>0
+with sqlite3.connect('/panel/x-ui.db') as db:
+    assert db.execute('SELECT count(*) FROM clients WHERE email=? AND uuid=? AND sub_id=? AND enable=0',
+        (row['panel_key'],row['vpn_id'],row['sub_id'])).fetchone()[0]==1
+    changed=db.execute('UPDATE client_traffics SET up=?,down=0 WHERE email=?',
+        (total+1,row['panel_key'])).rowcount
+    assert changed==memberships and changed>0
+'''
+        image = (ROOT / 'deploy/acceptance/Dockerfile.bot').read_text().splitlines()[0].split()[1]
+        local.command(['docker', 'run', '--rm', '--pull', 'missing', '--network', 'none',
+            '--read-only', '--user', str(os.getuid()) + ':' + str(os.getgid()), '-i',
+            '--mount', 'type=bind,source=' + str(local.STATE / 'panel-db') + ',target=/panel',
+            '--entrypoint', 'python', image, '-c', script],
+            stdin=json.dumps([row, total, memberships]).encode())
+    finally:
+        compose('up', '--no-build', '--pull', 'never', '--no-deps', '-d', 'panel')
+    def panel_ready():
+        try:
+            return local.login_panel()
+        except HTTPError as error:
+            if error.code in (502, 503):
+                return None
+            raise
+        except OSError:
+            return None
+    local.wait_until(panel_ready)
+
+
 def manual_api(*args):
     try:
         return local.api(*args)

@@ -11,7 +11,6 @@ import (
 	"example.com/cabinet/backend/internal/modules/payments/internal/store"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/riverqueue/river"
 )
 
 func (s *Service) methodEnabled(method string) bool {
@@ -185,12 +184,16 @@ func (s *Service) DecideManualPayment(ctx context.Context, actor, target, id, ke
 	 payment_status='paid',paid_at=$3,active=false,fulfillment_status='queued',funding_operation_id=$5 WHERE id=$1`, id, actor, now, reason, funding); err != nil {
 			return empty, unavailable()
 		}
-		if _, err = s.queue().InsertTx(ctx, tx, PurchaseArgs{OrderID: id}, &river.InsertOpts{Queue: "provision", MaxAttempts: 1000000}); err != nil {
+		fundingReview, err := s.queueFundedPurchaseTx(ctx, tx, p)
+		if err != nil {
 			return empty, unavailable()
 		}
 		state, status = "approved", "paid"
 		p.fundingID = &funding
 		p.fulfillmentStatus = "queued"
+		if fundingReview != "" {
+			p.fulfillmentStatus, p.review = "needs_review", true
+		}
 	} else {
 		if _, err = tx.Exec(ctx, `UPDATE purchase_orders SET manual_decision='rejected',manual_actor_id=$2,manual_decided_at=$3,manual_reason=$4,
 	 payment_status='canceled',active=false WHERE id=$1`, id, actor, now, reason); err != nil {

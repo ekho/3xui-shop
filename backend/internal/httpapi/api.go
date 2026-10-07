@@ -156,6 +156,7 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig) *echo.Ech
 	e.POST("/internal/v1/trial-requests/:id/reconsider", a.ReconsiderTrialRequest)
 	e.GET("/api/v1/subscription", a.GetSubscription)
 	e.GET("/api/v1/subscription/renewal", a.GetRenewalOffer)
+	e.GET("/api/v1/subscription/plan-change", a.GetPlanChangeContext)
 	e.GET("/api/v1/subscription/key", a.GetSubscriptionKey)
 	e.POST("/internal/v1/trial-operations/:id/reconcile", a.ReconcileTrialOperation)
 	e.POST("/internal/v1/telegram/jobs/claim", a.ClaimTelegramJobs)

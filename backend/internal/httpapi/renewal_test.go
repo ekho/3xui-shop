@@ -286,7 +286,7 @@ func TestRenewalEligibilityAndSnapshot(t *testing.T) {
 			t.Fatal("archived plan offered new renewal", err)
 		}
 	})
-	for _, mode := range []string{"ban", "restricted", "unlimited", "telegram", "legacy", "other server", "native identity", "native missing", "native groups", "native perpetual", "unknown disabled", "zero RUB", "archive", "unsupported methods"} {
+	for _, mode := range []string{"ban", "restricted", "unlimited", "telegram", "legacy", "other server", "native identity", "native missing", "native groups", "native perpetual", "unknown disabled", "zero RUB", "archive", "disabled methods"} {
 		t.Run(mode, func(t *testing.T) {
 			s, e, p, account, plan := renewalFixture(t)
 			ctx := context.Background()
@@ -332,12 +332,12 @@ func TestRenewalEligibilityAndSnapshot(t *testing.T) {
 				t.Fatal(err)
 			}
 			updates, resets, jobs := p.updates, p.resets, count(t, e, "river_job")
-			if mode == "unsupported methods" {
+			if mode == "disabled methods" {
 				for _, method := range []string{"manual", "yookassa", "cryptomus", "heleket"} {
 					in.PaymentMethod = wire.PurchaseOrderInputPaymentMethod(method)
 					in.PaymentType = wire.PurchaseOrderInputPaymentType(map[string]string{"manual": "MANUAL", "yookassa": "YOOKASSA", "cryptomus": "CRYPTOMUS", "heleket": "HELEKET"}[method])
-					if _, err = s.createPurchaseOrder(ctx, account, uuid.New(), in); !catalogueCode(err, "INVALID_INPUT") {
-						t.Fatal("unimplemented provider accepted renewal", err)
+					if _, err = s.createPurchaseOrder(ctx, account, uuid.New(), in); !catalogueCode(err, "PAYMENT_METHOD_UNAVAILABLE") {
+						t.Fatal("disabled provider accepted renewal", err)
 					}
 				}
 			} else if _, err = s.createPurchaseOrder(ctx, account, uuid.New(), in); err == nil {
@@ -613,7 +613,7 @@ func TestRenewalActionMigration(t *testing.T) {
 				if err = e.Pool.QueryRow(ctx, "SELECT (to_jsonb(p)-'action')::text FROM purchase_orders p WHERE account_id=$1", account).Scan(&before); err != nil {
 					t.Fatal(err)
 				}
-				if _, err = provider.Down(ctx); err != nil {
+				if _, err = provider.DownTo(ctx, 19); err != nil {
 					t.Fatal(err)
 				}
 				if err = e.Pool.QueryRow(ctx, "SELECT to_jsonb(p)::text FROM purchase_orders p WHERE account_id=$1", account).Scan(&after); err != nil || after != before {
@@ -637,7 +637,7 @@ func TestRenewalActionMigration(t *testing.T) {
 			if _, err = e.Pool.Exec(ctx, "UPDATE purchase_orders SET action='purchase' WHERE id=$1", order.OrderId); err == nil {
 				t.Fatal("paid purpose can be rewritten")
 			}
-			if _, err = provider.Down(ctx); err == nil || !strings.Contains(err.Error(), "renewal history requires compatible application") {
+			if _, err = provider.DownTo(ctx, 19); err == nil || !strings.Contains(err.Error(), "renewal history requires compatible application") {
 				t.Fatal("down erased retained renewal", err)
 			}
 			current, err := s.purchaseOrder(ctx, account, order.OrderId)

@@ -465,7 +465,7 @@ func (s *Service) settleKassaTx(ctx context.Context, c kassaRow, payment kassaPa
 		if _, err = tx.Exec(ctx, "UPDATE purchase_orders SET active=false WHERE account_id=$1 AND id<>$2", account, c.order); err != nil {
 			return false, unavailable()
 		}
-		if _, err = s.queue().InsertTx(ctx, tx, PurchaseArgs{OrderID: c.order}, &river.InsertOpts{Queue: "provision", MaxAttempts: 1000000}); err != nil {
+		if _, err = s.queueFundedPurchaseTx(ctx, tx, p); err != nil {
 			return false, unavailable()
 		}
 	}

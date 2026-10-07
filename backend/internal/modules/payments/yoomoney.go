@@ -9,7 +9,6 @@ import (
 	"errors"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/riverqueue/river"
 	"net/url"
 	"sort"
 	"strconv"
@@ -218,7 +217,7 @@ func (s *Service) ReceiveYooMoney(ctx context.Context, fields url.Values) error 
 		if _, err = tx.Exec(ctx, "UPDATE purchase_orders SET active=false WHERE account_id=$1 AND id<>$2", accountID, orderID); err != nil {
 			return unavailable()
 		}
-		if _, err = s.queue().InsertTx(ctx, tx, PurchaseArgs{OrderID: orderID}, &river.InsertOpts{Queue: "provision", MaxAttempts: 1000000}); err != nil {
+		if _, err = s.queueFundedPurchaseTx(ctx, tx, p); err != nil {
 			return unavailable()
 		}
 	}

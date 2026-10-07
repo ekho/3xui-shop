@@ -13,6 +13,11 @@ type Config struct {
 	PanelRootCAs                                       *x509.CertPool
 }
 
+type PlanAssignment struct {
+	OperationID uuid.UUID
+	PlanID      *uuid.UUID
+}
+
 // Targets are persisted before the first panel write and never regenerated.
 type ProvisionTarget struct {
 	OperationID       uuid.UUID `json:"operation_id"`

@@ -5,6 +5,6 @@
  test:
 	go test ./... -count=1
  test-integration:
-	go test ./... -count=1 -race
+	go test ./... -count=1 -race -timeout=20m
  vet:
 	go vet ./...
