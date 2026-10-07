@@ -44,8 +44,12 @@ func clientRoute(route string) bool {
 	return err == nil && id != uuid.Nil && route == "orders:"+id.String()
 }
 func (s *Service) EnqueueClientTx(ctx context.Context, tx pgx.Tx, n ClientNotice, created time.Time) error {
-	if tx == nil || n.AccountID == uuid.Nil || n.TelegramID <= 0 || n.TelegramID > 1<<52-1 || n.CredentialVersion < 0 || (n.Locale != "ru" && n.Locale != "en") || len(n.EventKey) == 0 || len(n.EventKey) > 128 || !utf8.ValidString(n.EventKey) || strings.ContainsRune(n.EventKey, '\x00') || !clientRoute(n.Route) || created.IsZero() {
+	if tx == nil || n.AccountID == uuid.Nil || n.TelegramID <= 0 || n.CredentialVersion < 0 || (n.Locale != "ru" && n.Locale != "en") || len(n.EventKey) == 0 || len(n.EventKey) > 128 || !utf8.ValidString(n.EventKey) || strings.ContainsRune(n.EventKey, '\x00') || !clientRoute(n.Route) || created.IsZero() {
 		return failure(400, "INVALID_INPUT")
+	}
+	// Legacy/operator identities are int64 facts; an undeliverable ID must not abort their business transaction.
+	if n.TelegramID > 1<<52-1 {
+		return nil
 	}
 	// Keep the first recipient proof; credential changes cannot block a business replay.
 	_, err := tx.Exec(ctx, `INSERT INTO client_telegram_deliveries(id,account_id,telegram_id,credential_version,locale,event_key,route,created_at)

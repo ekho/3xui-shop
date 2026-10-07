@@ -4,6 +4,7 @@ package tests
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -13,6 +14,7 @@ import (
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/subscriptions"
+	"example.com/cabinet/backend/internal/modules/telegram"
 	"example.com/cabinet/backend/internal/modules/vpn"
 	"example.com/cabinet/backend/internal/testkit"
 	"example.com/cabinet/backend/internal/wire"
@@ -169,7 +171,7 @@ func open(t *testing.T) *fixture {
 	return openMode(t, false)
 }
 
-func openMode(t *testing.T, native bool) *fixture {
+func openMode(t *testing.T, native bool, miniKey ...ed25519.PublicKey) *fixture {
 	t.Helper()
 	e := testkit.Open(t)
 	f := &fixture{env: e, mail: testkit.MailServer(t), panel: &panel{clients: map[string]map[string]any{}, loseReply: true}, native: native}
@@ -212,6 +214,9 @@ func openMode(t *testing.T, native bool) *fixture {
 	t.Cleanup(f.public.Close)
 	f.cfg.HTTP.CabinetOrigin = f.public.URL
 	f.svc = app.NewModules(e.Pool, e.Redis, queue, &f.cfg)
+	if len(miniKey) > 0 {
+		f.svc.MiniApp = telegram.NewMiniApp(123456789, miniKey[0], f.svc.Accounts, time.Now)
+	}
 	handler = httpapi.New(f.svc, f.env.Pool, f.cfg.HTTP)
 	if !native {
 		f.internal = httptest.NewTLSServer(handler)
@@ -240,7 +245,7 @@ func openMode(t *testing.T, native bool) *fixture {
 	})
 	return f
 }
-func (f *fixture) send(t *testing.T, c *http.Client, method, path string, body any, csrf, key string, internal bool) (int, []byte, *http.Response) {
+func (f *fixture) send(t *testing.T, c *http.Client, method, path string, body any, csrf, key string, internal bool, miniToken ...string) (int, []byte, *http.Response) {
 	t.Helper()
 	var raw []byte
 	if body != nil {
@@ -264,6 +269,9 @@ func (f *fixture) send(t *testing.T, c *http.Client, method, path string, body a
 	}
 	if csrf != "" {
 		req.Header.Set("X-CSRF-Token", csrf)
+	}
+	if len(miniToken) > 0 {
+		req.Header.Set("Authorization", "Bearer "+miniToken[0])
 	}
 	if key != "" {
 		req.Header.Set("Idempotency-Key", key)

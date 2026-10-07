@@ -266,3 +266,30 @@ func TestClientTelegramOutboxCredentialReplay(t *testing.T) {
 		t.Fatal("replay moved old recipient proof", err, count, version)
 	}
 }
+
+func TestClientTelegramLegacyRecipient(t *testing.T) {
+	_, svc, e, _ := bridgeFixture(t)
+	ctx := context.Background()
+	tx, err := e.Pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	a, err := svc.Accounts.CreateTelegram(ctx, tx, accounts.TelegramInput{TelegramID: 1<<63 - 1, DisplayName: "Legacy fixture", Locale: "ru"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := notifications.ClientNotice{AccountID: a.ID, TelegramID: *a.TelegramID, CredentialVersion: a.CredentialVersion, Locale: a.Locale, EventKey: "fixture:legacy-recipient", Route: "cabinet"}
+	if err = svc.Notifications.EnqueueClientTx(ctx, tx, n, e.Clock()); err != nil {
+		t.Fatal("legacy recipient blocked business transaction", err)
+	}
+	var jobs int
+	if err = tx.QueryRow(ctx, "SELECT count(*) FROM client_telegram_deliveries WHERE account_id=$1", a.ID).Scan(&jobs); err != nil || jobs != 0 {
+		t.Fatal("undeliverable legacy identity created job", err, jobs)
+	}
+	n.Route = "outside"
+	var domain *notifications.Error
+	if err = svc.Notifications.EnqueueClientTx(ctx, tx, n, e.Clock()); !errors.As(err, &domain) || domain.Status != 400 {
+		t.Fatal("legacy recipient bypassed notice validation", err)
+	}
+}
