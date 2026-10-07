@@ -1,6 +1,6 @@
 -- name: AddCredentialProof :exec
-INSERT INTO credential_challenges(id,purpose,account_id,change_id,original_email,target_email,credential_version,token_hash,code_hash,created_at,token_expires_at,code_expires_at)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12);
+INSERT INTO credential_challenges(id,purpose,account_id,change_id,original_email,target_email,credential_version,token_hash,code_hash,created_at,token_expires_at,code_expires_at,requested_by)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13);
 -- name: LookupCredentialByID :one
 SELECT * FROM credential_challenges WHERE id=$1;
 -- name: LookupCredentialByToken :one

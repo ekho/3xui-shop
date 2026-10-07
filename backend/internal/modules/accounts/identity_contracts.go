@@ -35,3 +35,18 @@ type ConfirmTelegramLinkInput struct {
 }
 type TelegramLinkResult struct{ Linked bool }
 type TelegramUnlinkResult struct{ Changed bool }
+
+type OperatorRecoveryInput struct {
+	Email, CurrentPassword, Reason string
+	Confirmed                      bool
+}
+type IdentityRecoveryAccepted struct {
+	ChallengeId uuid.UUID
+	ExpiresAt   time.Time
+	ResendAfter int64
+}
+type IdentityRecoveryCompleteInput struct {
+	ChallengeId                                               *uuid.UUID
+	Code, Token                                               *string
+	NewPassword, AcceptedTermsVersion, AcceptedPrivacyVersion string
+}

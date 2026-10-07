@@ -171,6 +171,9 @@ func (s *Service) ChangeOperatorRole(ctx context.Context, target uuid.UUID, gran
 	if grant {
 		changed, err = q.GrantOperator(ctx, store.GrantOperatorParams{AccountID: target, GrantedAt: stamp(s.now())})
 	} else {
+		if err = s.revokeIssuedRecoveries(ctx, tx, target); err != nil {
+			return err
+		}
 		changed, err = q.RevokeOperator(ctx, target)
 	}
 	if err != nil {

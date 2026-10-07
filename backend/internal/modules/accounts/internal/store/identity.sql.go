@@ -95,7 +95,7 @@ UPDATE accounts SET original_kind=COALESCE(original_kind,kind),kind='web',
  email_key=$1::text,password_hash=$2::text,
  verified_at=$3::timestamptz,
  terms_version=$4::text,privacy_version=$5::text,
- policy_accepted_at=$3::timestamptz,credential_version=credential_version+1
+ policy_accepted_at=$3::timestamptz,credential_version=credential_version+1,telegram_login_disabled=false
 WHERE id=$6::uuid
 `
 
@@ -118,6 +118,35 @@ func (q *Queries) GrantIndependentCredentials(ctx context.Context, arg GrantInde
 		arg.ID,
 	)
 	return err
+}
+
+const issuedRecoveryProofs = `-- name: IssuedRecoveryProofs :many
+SELECT id,target_email FROM credential_challenges WHERE requested_by=$1 AND purpose='identity_recovery' AND NOT revoked AND used_at IS NULL
+`
+
+type IssuedRecoveryProofsRow struct {
+	ID          uuid.UUID
+	TargetEmail string
+}
+
+func (q *Queries) IssuedRecoveryProofs(ctx context.Context, requestedBy *uuid.UUID) ([]IssuedRecoveryProofsRow, error) {
+	rows, err := q.db.Query(ctx, issuedRecoveryProofs, requestedBy)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []IssuedRecoveryProofsRow
+	for rows.Next() {
+		var i IssuedRecoveryProofsRow
+		if err := rows.Scan(&i.ID, &i.TargetEmail); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const pendingIdentityEmail = `-- name: PendingIdentityEmail :one
@@ -153,6 +182,15 @@ func (q *Queries) PendingIdentityEmail(ctx context.Context, arg PendingIdentityE
 		&i.RequestedBy,
 	)
 	return i, err
+}
+
+const quarantineTelegramIdentity = `-- name: QuarantineTelegramIdentity :exec
+UPDATE accounts SET telegram_login_disabled=true,credential_version=credential_version+1 WHERE id=$1
+`
+
+func (q *Queries) QuarantineTelegramIdentity(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, quarantineTelegramIdentity, id)
+	return err
 }
 
 const reactivateTelegramIdentity = `-- name: ReactivateTelegramIdentity :exec
@@ -200,6 +238,15 @@ type RevokeIdentityPurposeParams struct {
 
 func (q *Queries) RevokeIdentityPurpose(ctx context.Context, arg RevokeIdentityPurposeParams) error {
 	_, err := q.db.Exec(ctx, revokeIdentityPurpose, arg.AccountID, arg.Purpose)
+	return err
+}
+
+const revokeIssuedRecoveryProofs = `-- name: RevokeIssuedRecoveryProofs :exec
+UPDATE credential_challenges SET revoked=true WHERE requested_by=$1 AND purpose='identity_recovery' AND NOT revoked AND used_at IS NULL
+`
+
+func (q *Queries) RevokeIssuedRecoveryProofs(ctx context.Context, requestedBy *uuid.UUID) error {
+	_, err := q.db.Exec(ctx, revokeIssuedRecoveryProofs, requestedBy)
 	return err
 }
 

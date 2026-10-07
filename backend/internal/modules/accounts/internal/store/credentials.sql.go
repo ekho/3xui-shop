@@ -60,8 +60,8 @@ func (q *Queries) ActiveEmailChange(ctx context.Context, arg ActiveEmailChangePa
 }
 
 const addCredentialProof = `-- name: AddCredentialProof :exec
-INSERT INTO credential_challenges(id,purpose,account_id,change_id,original_email,target_email,credential_version,token_hash,code_hash,created_at,token_expires_at,code_expires_at)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+INSERT INTO credential_challenges(id,purpose,account_id,change_id,original_email,target_email,credential_version,token_hash,code_hash,created_at,token_expires_at,code_expires_at,requested_by)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 `
 
 type AddCredentialProofParams struct {
@@ -77,6 +77,7 @@ type AddCredentialProofParams struct {
 	CreatedAt         pgtype.Timestamptz
 	TokenExpiresAt    pgtype.Timestamptz
 	CodeExpiresAt     pgtype.Timestamptz
+	RequestedBy       *uuid.UUID
 }
 
 func (q *Queries) AddCredentialProof(ctx context.Context, arg AddCredentialProofParams) error {
@@ -93,6 +94,7 @@ func (q *Queries) AddCredentialProof(ctx context.Context, arg AddCredentialProof
 		arg.CreatedAt,
 		arg.TokenExpiresAt,
 		arg.CodeExpiresAt,
+		arg.RequestedBy,
 	)
 	return err
 }

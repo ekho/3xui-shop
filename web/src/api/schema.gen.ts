@@ -1415,6 +1415,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/operator/clients/{id}/identity-recovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Current web operator password, reason, confirmation and idempotency; only first independent Telegram credentials, quarantine before mail, no account merge or restriction change. */
+        post: operations["requestOperatorRecovery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/identity-recovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Anonymous explicit code or fragment-token proof; current legal consent; operator role/quarantine/email/version rechecked, no automatic login. */
+        post: operations["completeIdentityRecovery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2543,6 +2577,31 @@ export interface components {
             accepted_terms_version: string;
             accepted_privacy_version: string;
         };
+        OperatorRecoveryInput: {
+            /** Format: email */
+            email: string;
+            current_password: string;
+            reason: string;
+            /** @enum {boolean} */
+            confirmed: true;
+        };
+        IdentityRecoveryAccepted: {
+            /** Format: uuid */
+            challenge_id: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: int64 */
+            resend_after: number;
+        };
+        IdentityRecoveryCompleteInput: {
+            token?: string;
+            /** Format: uuid */
+            challenge_id?: string;
+            code?: string;
+            new_password: string;
+            accepted_terms_version: string;
+            accepted_privacy_version: string;
+        } & (unknown | unknown);
     };
     responses: never;
     parameters: never;
@@ -9923,6 +9982,192 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TelegramLinkResult"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    /** @description Seconds before retry */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    requestOperatorRecovery: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token": string;
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OperatorRecoveryInput"];
+            };
+        };
+        responses: {
+            /** @description Recovery proof queued; no token returned */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityRecoveryAccepted"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    /** @description Seconds before retry */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    completeIdentityRecovery: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IdentityRecoveryCompleteInput"];
+            };
+        };
+        responses: {
+            /** @description Same account recovered */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerifyResult"];
                 };
             };
             /** @description Safe error */

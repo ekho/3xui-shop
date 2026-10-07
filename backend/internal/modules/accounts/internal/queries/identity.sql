@@ -10,7 +10,7 @@ UPDATE accounts SET original_kind=COALESCE(original_kind,kind),kind='web',
  email_key=sqlc.arg(email_key)::text,password_hash=sqlc.arg(password_hash)::text,
  verified_at=sqlc.arg(verified_at)::timestamptz,
  terms_version=sqlc.arg(terms_version)::text,privacy_version=sqlc.arg(privacy_version)::text,
- policy_accepted_at=sqlc.arg(verified_at)::timestamptz,credential_version=credential_version+1
+ policy_accepted_at=sqlc.arg(verified_at)::timestamptz,credential_version=credential_version+1,telegram_login_disabled=false
 WHERE id=sqlc.arg(id)::uuid;
 
 -- name: AddTelegramLinkProof :exec
@@ -41,3 +41,12 @@ UPDATE accounts SET telegram_id=NULL WHERE id=$1;
 
 -- name: BumpCredentialVersion :exec
 UPDATE accounts SET credential_version=credential_version+1 WHERE id=$1;
+
+-- name: QuarantineTelegramIdentity :exec
+UPDATE accounts SET telegram_login_disabled=true,credential_version=credential_version+1 WHERE id=$1;
+
+-- name: IssuedRecoveryProofs :many
+SELECT id,target_email FROM credential_challenges WHERE requested_by=$1 AND purpose='identity_recovery' AND NOT revoked AND used_at IS NULL;
+
+-- name: RevokeIssuedRecoveryProofs :exec
+UPDATE credential_challenges SET revoked=true WHERE requested_by=$1 AND purpose='identity_recovery' AND NOT revoked AND used_at IS NULL;

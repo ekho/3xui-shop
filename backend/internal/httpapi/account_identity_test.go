@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/x509"
 	"encoding/json"
 	"example.com/cabinet/backend/internal/app"
 	"example.com/cabinet/backend/internal/modules/accounts"
@@ -100,6 +101,47 @@ func TestIdentityEmailSameAccount(t *testing.T) {
 	}
 }
 
+func TestIdentityRecoveryMissingRoute(t *testing.T) {
+	h, e, cfg, key := miniAppHTTPFixture(t)
+	ctx := context.Background()
+	mini := identityMiniLogin(t, h, e, cfg, key, `{"id":9701,"first_name":"Lost Telegram","language_code":"en"}`)
+	operator := supportLogin(t, h, e, cfg, "identity-operator@example.test")
+	if _, err := e.Pool.Exec(ctx, `INSERT INTO operator_accounts(account_id,granted_at) VALUES($1,$2)`, operator.id, e.Clock()); err != nil {
+		t.Fatal(err)
+	}
+	path := "/api/v1/operator/clients/" + mini.Account.AccountId.String() + "/identity-recovery"
+	body := []byte(`{"email":"restored@example.test","current_password":"long safe password","reason":"Verified through support","confirmed":true}`)
+	rr := supportRequest(h, &operator, "POST", path, "application/json", body, cfg.HTTP.CabinetOrigin, uuid.New())
+	var proof struct {
+		ChallengeID uuid.UUID `json:"challenge_id"`
+	}
+	if rr.Code != 202 || json.Unmarshal(rr.Body.Bytes(), &proof) != nil || proof.ChallengeID == uuid.Nil {
+		t.Fatalf("operator recovery: want202 with proof, got%d", rr.Code)
+	}
+	if rr = miniAppRequest(h, "GET", "/api/v1/telegram/mini-app/account", "", "", mini.SessionToken, "", ""); rr.Code != 401 {
+		t.Fatal("old Telegram session not quarantined")
+	}
+	_, _, code := testkit.CredentialMailSecrets(t, e.Pool, cfg.Mail.MailKey, proof.ChallengeID)
+	complete, _ := json.Marshal(map[string]any{"challenge_id": proof.ChallengeID, "code": code, "new_password": "independent recovered password ✨", "accepted_terms_version": "1", "accepted_privacy_version": "1"})
+	rr = request(h, "POST", "/api/v1/auth/identity-recovery", string(complete), cfg.HTTP.CabinetOrigin)
+	if rr.Code != 200 || len(rr.Result().Cookies()) != 0 {
+		t.Fatalf("anonymous recovery: want200 without cookie, got%d", rr.Code)
+	}
+	var same bool
+	if err := e.Pool.QueryRow(ctx, `SELECT kind='web' AND original_kind='telegram' AND NOT telegram_login_disabled AND telegram_id IS NULL AND email_key='restored@example.test' AND verified_at IS NOT NULL FROM accounts WHERE id=$1`, mini.Account.AccountId).Scan(&same); err != nil || !same {
+		t.Fatal("same-account credentials or reservation transition failed")
+	}
+	loginBody, _ := json.Marshal(map[string]string{"email": "restored@example.test", "password": "independent recovered password ✨"})
+	rr = request(h, "POST", "/api/v1/auth/login", string(loginBody), cfg.HTTP.CabinetOrigin)
+	var login wire.LoginResult
+	if rr.Code != 200 || json.Unmarshal(rr.Body.Bytes(), &login) != nil || login.Account.AccountId != mini.Account.AccountId {
+		t.Fatal("recovery did not keep account ID")
+	}
+	if rr = request(h, "POST", "/api/v1/auth/identity-recovery", string(complete), cfg.HTTP.CabinetOrigin); rr.Code != 400 {
+		t.Fatal("recovery proof replay accepted")
+	}
+}
+
 // Catches the notification worker using password-reset copy or emailing an occupied target.
 func TestIdentityCredentialMail(t *testing.T) {
 	s, e, cfg, smtp := mailFixture(t, 0)
@@ -142,6 +184,64 @@ func TestIdentityCredentialMail(t *testing.T) {
 	busyMail, _, _ := testkit.CredentialMailSecrets(t, e.Pool, cfg.Mail.MailKey, busy.ChallengeId)
 	if err = s.MailDelivery.SendMail(ctx, busyMail); err != nil || len(smtp.Letters()) != 1 {
 		t.Fatal("worker sent enrollment mail to another mailbox owner")
+	}
+}
+
+func TestIdentityRecoveryCredentialMail(t *testing.T) {
+	for _, scenario := range []string{"owned_tls_delivery", "smtp_failure", "role_revoked"} {
+		t.Run(scenario, func(t *testing.T) {
+			s, e, cfg, smtp := mailFixture(t, 0)
+			cfg.Accounts.Now = e.Clock
+			cfg.Mail.Now = e.Clock
+			if scenario == "smtp_failure" {
+				cfg.Mail.SMTPRootCAs = x509.NewCertPool()
+			}
+			queue, err := river.NewClient(riverpgxv5.New(e.Pool), &river.Config{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			s = composeForTest(e.Pool, e.Redis, queue, cfg)
+			ctx := context.Background()
+			_, _, token, _ := pendingMail(t, s, e, cfg, "mail-recovery-operator@example.test")
+			password := "long safe operator password ✨"
+			if _, err = s.verifyEmail(ctx, wire.VerifyInput{Token: &token, NewPassword: password}); err != nil {
+				t.Fatal(err)
+			}
+			actor, raw, err := s.Accounts.Login(ctx, accounts.LoginInput{Email: "mail-recovery-operator@example.test", Password: password}, "127.0.0.1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = s.Accounts.ChangeOperatorRole(ctx, actor.Account.ID, true); err != nil {
+				t.Fatal(err)
+			}
+			target, _, err := s.Accounts.StartTelegramSession(ctx, accounts.TelegramSessionInput{TelegramInput: accounts.TelegramInput{TelegramID: 9702, DisplayName: "Mail recovery", Locale: "en"}, AcceptedTermsVersion: "1", AcceptedPrivacyVersion: "1"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			proof, err := s.Accounts.RequestOperatorRecovery(ctx, raw, actor.Account.ID, target.Account.ID, uuid.NewString(), accounts.OperatorRecoveryInput{Email: "mail-restored@example.test", CurrentPassword: password, Reason: "Support validated", Confirmed: true}, "127.0.0.1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			mailID, secret, code := testkit.CredentialMailSecrets(t, e.Pool, cfg.Mail.MailKey, proof.ChallengeId)
+			if scenario == "role_revoked" {
+				if err = s.Accounts.ChangeOperatorRole(ctx, actor.Account.ID, false); err != nil {
+					t.Fatal(err)
+				}
+			}
+			err = s.MailDelivery.SendMail(ctx, mailID)
+			letters := smtp.Letters()
+			if scenario == "owned_tls_delivery" {
+				if err != nil || len(letters) != 1 || !strings.Contains(letters[0], "/recover-account?lang=en#token="+secret) || !strings.Contains(letters[0], code) || strings.Contains(letters[0], "/reset-password") {
+					t.Fatal("owned recovery mail boundary failed", err)
+				}
+			} else if len(letters) != 0 || scenario == "smtp_failure" && err == nil || scenario == "role_revoked" && err != nil {
+				t.Fatal("failure/role guard did not suppress delivery", err)
+			}
+			var disabled bool
+			if err = e.Pool.QueryRow(ctx, `SELECT telegram_login_disabled FROM accounts WHERE id=$1`, target.Account.ID).Scan(&disabled); err != nil || !disabled {
+				t.Fatal("delivery released quarantine", err)
+			}
+		})
 	}
 }
 

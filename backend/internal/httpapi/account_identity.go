@@ -128,3 +128,42 @@ func (a *API) UnlinkTelegram(c *echo.Context) error {
 	}
 	return c.JSON(200, wire.TelegramUnlinkResult{Changed: out.Changed})
 }
+
+func (a *API) RequestOperatorRecovery(c *echo.Context) error {
+	actor, err := a.operatorAuth(c, true)
+	if err != nil {
+		return err
+	}
+	target, err := resourceID(c)
+	if err != nil {
+		return err
+	}
+	key, err := idempotencyKey(c)
+	if err != nil {
+		return err
+	}
+	raw, err := sessionRaw(c)
+	if err != nil {
+		return err
+	}
+	in, err := decode[wire.OperatorRecoveryInput](a, c, "OperatorRecoveryInput")
+	if err != nil {
+		return err
+	}
+	out, err := a.accounts.RequestOperatorRecovery(c.Request().Context(), raw, actor.Account.AccountId, target, key.String(), accounts.OperatorRecoveryInput{Email: string(in.Email), CurrentPassword: in.CurrentPassword, Reason: in.Reason, Confirmed: bool(in.Confirmed)}, c.RealIP())
+	if err != nil {
+		return accountError(err)
+	}
+	return c.JSON(202, wire.IdentityRecoveryAccepted{ChallengeId: out.ChallengeId, ExpiresAt: out.ExpiresAt, ResendAfter: out.ResendAfter})
+}
+func (a *API) CompleteIdentityRecovery(c *echo.Context) error {
+	in, err := decode[wire.IdentityRecoveryCompleteInput](a, c, "IdentityRecoveryCompleteInput")
+	if err != nil {
+		return err
+	}
+	out, err := a.accounts.CompleteIdentityRecovery(c.Request().Context(), accounts.IdentityRecoveryCompleteInput{ChallengeId: in.ChallengeId, Code: in.Code, Token: in.Token, NewPassword: in.NewPassword, AcceptedTermsVersion: in.AcceptedTermsVersion, AcceptedPrivacyVersion: in.AcceptedPrivacyVersion}, c.RealIP())
+	if err != nil {
+		return accountError(err)
+	}
+	return c.JSON(200, wire.VerifyResult{Verified: wire.VerifyResultVerified(out.Verified)})
+}

@@ -34,7 +34,7 @@ export const registerAccount=(input:RegisterInput)=>request<RegistrationAccepted
 export const verifyEmail=(input:VerifyInput)=>request<VerifyResult>('auth/verify-email','POST',input);
 export const resendVerification=(input:ResendInput)=>request<ResendAccepted>('auth/resend-verification','POST',input);
 export async function loginAccount(input:LoginInput){const out=await request<LoginResult>('auth/login','POST',input);csrf=out.csrf_token;return out;}
-export async function logoutAccount(){try{await request<void>(isMiniApp()?'telegram/mini-app/logout':'auth/logout','POST',undefined,undefined,true);}finally{clearSession();if(isMiniApp())endMiniSession('logout');}}
+export async function logoutAccount(){const mini=isMiniApp();try{await request<void>(mini?'telegram/mini-app/logout':'auth/logout','POST',undefined,undefined,true);}catch(reason){if(!mini&&reason instanceof ApiError&&reason.status===401){clearSession();return;}throw reason;}finally{if(mini){clearSession();endMiniSession('logout');}}if(!mini)clearSession();}
 export async function getAccount(signal?:AbortSignal){const out=await request<AccountResult>(isMiniApp()?'telegram/mini-app/account':'me','GET',undefined,signal);csrf=out.csrf_token;return out;}
 export async function loginMiniApp(input:components['schemas']['MiniAppSessionInput'],signal:AbortSignal){
  const out=await request<components['schemas']['MiniAppSessionResult']>('telegram/mini-app/session','POST',input,signal);
@@ -169,3 +169,8 @@ const accessPath=(clientId:string)=>operatorClientPath(clientId)+'/access-operat
 export const createAccessOperation=(clientId:string,input:AccessOperationInput,key:string,signal?:AbortSignal)=>request<AccessOperation>(accessPath(clientId),'POST',input,signal,true,key);
 export const getAccessOperation=(clientId:string,operationId:string,signal?:AbortSignal)=>request<AccessOperation>(accessPath(clientId)+'/'+encodeURIComponent(operationId),'GET',undefined,signal);
 export const reconcileAccessOperation=(clientId:string,operationId:string,input:AccessReconcileInput,key:string,signal?:AbortSignal)=>request<AccessOperation>(accessPath(clientId)+'/'+encodeURIComponent(operationId)+'/reconcile','POST',input,signal,true,key);
+
+export type OperatorRecoveryInput=components['schemas']['OperatorRecoveryInput'];
+export type IdentityRecoveryAccepted=components['schemas']['IdentityRecoveryAccepted'];
+export async function requestOperatorRecovery(clientId:string,input:OperatorRecoveryInput,key:string,signal?:AbortSignal){return request<IdentityRecoveryAccepted>('operator/clients/'+clientId+'/identity-recovery','POST',input,signal,true,key);}
+export async function completeIdentityRecovery(input:components['schemas']['IdentityRecoveryCompleteInput'],signal?:AbortSignal){return request<VerifyResult>('auth/identity-recovery','POST',input,signal);}

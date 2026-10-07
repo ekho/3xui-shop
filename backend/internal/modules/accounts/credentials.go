@@ -81,13 +81,16 @@ func (s *Service) credentialAudit(ctx context.Context, tx pgx.Tx, id uuid.UUID, 
 	return nil
 }
 func (s *Service) addCredentialProof(ctx context.Context, tx pgx.Tx, id uuid.UUID, purpose string, accountID, changeID *uuid.UUID, original, target string, version int64, locale string, now time.Time) error {
+	return s.addCredentialProofBy(ctx, tx, id, purpose, accountID, changeID, original, target, version, locale, now, nil)
+}
+func (s *Service) addCredentialProofBy(ctx context.Context, tx pgx.Tx, id uuid.UUID, purpose string, accountID, changeID *uuid.UUID, original, target string, version int64, locale string, now time.Time, requestedBy *uuid.UUID) error {
 	token := opaque()
 	n, err := rand.Int(rand.Reader, big.NewInt(100000000))
 	if err != nil {
 		return unavailable()
 	}
 	code := fmt.Sprintf("%08d", n)
-	err = store.New(tx).AddCredentialProof(ctx, store.AddCredentialProofParams{ID: id, Purpose: purpose, AccountID: accountID, ChangeID: changeID, OriginalEmail: original, TargetEmail: target, CredentialVersion: version, TokenHash: digest(token), CodeHash: s.codeDigest(id, code), CreatedAt: stamp(now), TokenExpiresAt: stamp(now.Add(30 * time.Minute)), CodeExpiresAt: stamp(now.Add(10 * time.Minute))})
+	err = store.New(tx).AddCredentialProof(ctx, store.AddCredentialProofParams{ID: id, Purpose: purpose, AccountID: accountID, ChangeID: changeID, OriginalEmail: original, TargetEmail: target, CredentialVersion: version, TokenHash: digest(token), CodeHash: s.codeDigest(id, code), CreatedAt: stamp(now), TokenExpiresAt: stamp(now.Add(30 * time.Minute)), CodeExpiresAt: stamp(now.Add(10 * time.Minute)), RequestedBy: requestedBy})
 	if err != nil {
 		return unavailable()
 	}
