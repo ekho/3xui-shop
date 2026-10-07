@@ -57,9 +57,9 @@
 
 **Files:** Create docs/superpowers/evidence/2026-10-07-s19-fulfillment-recovery.md; own plan checkbox updates/private task records. Не менять чужие SDD directories или primary dirty checkout.
 
-- [ ] **1. Prerequisites:** Read shared #26/actual dependencies/canonical refs; C04 earliest Task1 current public API slice, C05 roles/rights/consent/races, C10 own PG/Redis/Docker3.7/TLS fixture readiness. Expected: met for local-only criterion; C13 external remains open, no ownerless fake prerequisite.
-- [ ] **2. Current full verification:** `make generate`, `npm run api:generate` and no drift; `make vet`; `RUN_BROWSER_TESTS=1 make test-integration` with FILE-backed own local DB/Redis; `npm run build`, complete `npm run test:e2e`; complete existing Python suite. Static/runtime/naming checks and `git diff --check`. Expected: all PASS; preserve counts/source/input hashes. Repeats only for changed inputs/new supported hypotheses, not because CI is pending.
-- [ ] **3. Evidence/commit:** Full scenario matrix, RED→GREEN/mutation/real restart proof, commands/counts/source hashes, current rights/safe consent/late responses and all limitations. Record all Native rulings and cost. `docs: record fulfillment recovery acceptance`, Refs #26/Co-Authored. Task-done verifier checks current inputs and completed checks; delivery pending.
+- [x] **1. Prerequisites:** Read shared #26/actual dependencies/canonical refs; C04 earliest Task1 current public API slice, C05 roles/rights/consent/races, C10 own PG/Redis/Docker3.7/TLS fixture readiness. Expected: met for local-only criterion; C13 external remains open, no ownerless fake prerequisite.
+- [x] **2. Current full verification:** `make generate`, `npm run api:generate` and no drift; `make vet`; `RUN_BROWSER_TESTS=1 make test-integration` with FILE-backed own local DB/Redis; `npm run build`, complete `npm run test:e2e`; complete existing Python suite. Static/runtime/naming checks and `git diff --check`. Expected: all PASS; preserve counts/source/input hashes. Repeats only for changed inputs/new supported hypotheses, not because CI is pending.
+- [x] **3. Evidence/commit:** Full scenario matrix, RED→GREEN/mutation/real restart proof, commands/counts/source hashes, current rights/safe consent/late responses and all limitations. Record all Native rulings and cost. `docs: record fulfillment recovery acceptance`, Refs #26/Co-Authored. Task-done verifier checks current inputs and completed checks; delivery pending.
 
 ## После трёх задач
 
