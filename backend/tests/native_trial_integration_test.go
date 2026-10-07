@@ -131,6 +131,7 @@ func assertNativePanel(t *testing.T, f *fixture, operations ...uuid.UUID) {
 type nativeMessage struct {
 	ID, Chat int64
 	Text     string
+	Markup   json.RawMessage
 }
 type nativeBot struct {
 	mu                  sync.Mutex
@@ -139,6 +140,8 @@ type nativeBot struct {
 	sequence, messageID int64
 	offline             bool
 	rateLimitReplies    int
+	clientBlockedChat   int64
+	menus               []string
 }
 
 func nativeReply(v any) *http.Response {
@@ -168,6 +171,22 @@ func (b *nativeBot) RoundTrip(r *http.Request) (*http.Response, error) {
 	case "getWebhookInfo":
 		b.mu.Unlock()
 		return nativeReply(map[string]any{"url": ""}), nil
+	case "getMe":
+		b.mu.Unlock()
+		return nativeReply(map[string]any{"id": 123456789, "is_bot": true, "username": "fixture_bot", "has_main_web_app": true}), nil
+	case "setChatMenuButton":
+		var menu struct {
+			WebApp struct {
+				URL string `json:"url"`
+			} `json:"web_app"`
+		}
+		if err := json.Unmarshal(body["menu_button"], &menu); err != nil {
+			b.mu.Unlock()
+			return nil, err
+		}
+		b.menus = append(b.menus, menu.WebApp.URL)
+		b.mu.Unlock()
+		return nativeReply(true), nil
 	case "getUpdates":
 		var remaining []map[string]any
 		for _, u := range b.updates {
@@ -199,6 +218,10 @@ func (b *nativeBot) RoundTrip(r *http.Request) (*http.Response, error) {
 		b.mu.Unlock()
 		return nativeReply(true), nil
 	case "sendMessage", "editMessageText", "editMessageReplyMarkup":
+		if method == "sendMessage" && in.Chat == b.clientBlockedChat {
+			b.mu.Unlock()
+			return nil, errors.New("owned client transport unavailable")
+		}
 		id := in.Message
 		if id == 0 {
 			b.messageID++
@@ -210,11 +233,12 @@ func (b *nativeBot) RoundTrip(r *http.Request) (*http.Response, error) {
 				if method != "editMessageReplyMarkup" {
 					b.messages[i].Text = in.Text
 				}
+				b.messages[i].Markup = body["reply_markup"]
 				found = true
 			}
 		}
 		if !found {
-			b.messages = append(b.messages, nativeMessage{ID: id, Chat: in.Chat, Text: in.Text})
+			b.messages = append(b.messages, nativeMessage{ID: id, Chat: in.Chat, Text: in.Text, Markup: body["reply_markup"]})
 		}
 		b.mu.Unlock()
 		return nativeReply(map[string]any{"message_id": id, "date": 1, "chat": map[string]any{"id": in.Chat, "type": "private"}}), nil
@@ -249,7 +273,7 @@ func (b *nativeBot) reason(actor int64, text string) {
 	b.sequence++
 	b.updates = append(b.updates, map[string]any{"update_id": b.sequence, "message": map[string]any{"message_id": 1000 + b.sequence, "date": 1, "from": map[string]any{"id": actor, "is_bot": false}, "chat": map[string]any{"id": actor, "type": "private"}, "text": text}})
 }
-func launchNative(t *testing.T, f *fixture, bot *nativeBot, enabled, provision bool) (*telegram.Runtime, func()) {
+func launchNative(t *testing.T, f *fixture, bot *nativeBot, enabled, provision bool, clients ...bool) (*telegram.Runtime, func()) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	workers := river.NewWorkers()
@@ -269,7 +293,11 @@ func launchNative(t *testing.T, f *fixture, bot *nativeBot, enabled, provision b
 	if err = worker.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	tg, err := app.NewTelegram(telegram.Config{Enabled: enabled, Token: "123456789:abcdefghijklmnopqrstuvwxyz012345678", Operators: f.cfg.Accounts.Operators}, f.svc.Subscriptions, f.svc.Notifications, &http.Client{Transport: bot})
+	origin := ""
+	if len(clients) > 0 && clients[0] {
+		origin = f.cfg.HTTP.CabinetOrigin
+	}
+	tg, err := app.NewTelegram(telegram.Config{Enabled: enabled, Token: "123456789:abcdefghijklmnopqrstuvwxyz012345678", Operators: f.cfg.Accounts.Operators}, f.svc, origin, &http.Client{Transport: bot})
 	if err != nil {
 		t.Fatal(err)
 	}

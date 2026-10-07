@@ -47,14 +47,15 @@ type TelegramFailed struct {
 	Kind string `json:"kind"`
 }
 type Service struct {
-	pool      *pgxpool.Pool
-	operators func() []int64
-	allowed   func(int64) bool
-	card      func(context.Context, pgx.Tx, uuid.UUID, int64) (json.RawMessage, error)
+	pool        *pgxpool.Pool
+	clientGuard ClientGuard
+	operators   func() []int64
+	allowed     func(int64) bool
+	card        func(context.Context, pgx.Tx, uuid.UUID, int64) (json.RawMessage, error)
 }
 
-func New(pool *pgxpool.Pool, operators func() []int64, allowed func(int64) bool, card func(context.Context, pgx.Tx, uuid.UUID, int64) (json.RawMessage, error)) *Service {
-	return &Service{pool: pool, operators: operators, allowed: allowed, card: card}
+func New(pool *pgxpool.Pool, operators func() []int64, allowed func(int64) bool, card func(context.Context, pgx.Tx, uuid.UUID, int64) (json.RawMessage, error), guard ClientGuard) *Service {
+	return &Service{pool: pool, operators: operators, allowed: allowed, card: card, clientGuard: guard}
 }
 func (s *Service) EnqueueTelegramTx(ctx context.Context, tx pgx.Tx, request uuid.UUID, operation *uuid.UUID, chat int64, kind string, payload json.RawMessage, createdAt time.Time) error {
 	if store.New(tx).AddTelegramDelivery(ctx, store.AddTelegramDeliveryParams{ID: uuid.New(), RequestID: request, OperationID: operation, ChatID: chat, Kind: kind, Payload: payload, CreatedAt: pgtype.Timestamptz{Time: createdAt, Valid: true}}) != nil {

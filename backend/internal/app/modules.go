@@ -63,7 +63,7 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 			return nil, err
 		}
 		return json.Marshal(payload)
-	})
+	}, owner.WithTelegramDelivery)
 	vpnOwner := vpn.New(pool, owner, func() *river.Client[pgx.Tx] { return queue }, func() vpn.Settings {
 		c := cfg.VPN
 		c.PanelID = cfg.Subscriptions.PanelID
@@ -84,7 +84,7 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 		c := cfg.Payments
 		c.CabinetOrigin, c.PanelID = cfg.HTTP.CabinetOrigin, cfg.Subscriptions.PanelID
 		return c
-	}, now)
-	supportOwner := support.New(pool, limiter, owner, cfg.Accounts.RateNamespace, now)
+	}, now, notificationsOwner)
+	supportOwner := support.New(pool, limiter, owner, cfg.Accounts.RateNamespace, now, notificationsOwner)
 	return &Modules{Accounts: owner, Catalogue: catalogueOwner, Subscriptions: subscriptionOwner, VPN: vpnOwner, Payments: paymentsOwner, Support: supportOwner, Notifications: notificationsOwner, MailDelivery: mailOwner, AuditReports: auditreports.New(pool)}
 }

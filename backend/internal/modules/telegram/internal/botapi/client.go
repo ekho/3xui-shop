@@ -8,14 +8,18 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 	"unicode/utf8"
 )
 
 type User struct {
-	ID    int64 `json:"id"`
-	IsBot bool  `json:"is_bot"`
+	ID            int64  `json:"id"`
+	IsBot         bool   `json:"is_bot"`
+	Username      string `json:"username"`
+	LanguageCode  string `json:"language_code"`
+	HasMainWebApp bool   `json:"has_main_web_app"`
 }
 type Chat struct {
 	ID   int64  `json:"id"`
@@ -27,6 +31,7 @@ type Message struct {
 	Chat              Chat            `json:"chat"`
 	Text              string          `json:"text"`
 	Date              int64           `json:"date"`
+	ReplyMarkup       *InlineKeyboard `json:"reply_markup"`
 	SuccessfulPayment json.RawMessage `json:"successful_payment"`
 	RefundedPayment   json.RawMessage `json:"refunded_payment"`
 }
@@ -43,8 +48,13 @@ type Update struct {
 	PreCheckout json.RawMessage `json:"pre_checkout_query"`
 }
 type Button struct {
-	Text string `json:"text"`
-	Data string `json:"callback_data"`
+	Text   string      `json:"text"`
+	Data   string      `json:"callback_data,omitempty"`
+	URL    string      `json:"url,omitempty"`
+	WebApp *WebAppInfo `json:"web_app,omitempty"`
+}
+type WebAppInfo struct {
+	URL string `json:"url"`
 }
 type InlineKeyboard struct {
 	Rows [][]Button `json:"inline_keyboard"`
@@ -178,7 +188,26 @@ func (c *Client) message(ctx context.Context, method string, chatID, messageID i
 	if keyboard != nil {
 		for _, row := range keyboard.Rows {
 			for _, b := range row {
-				if len(b.Data) == 0 || len(b.Data) > 64 || !utf8.ValidString(b.Data) {
+				choices := 0
+				if b.Data != "" {
+					choices++
+					if len(b.Data) > 64 || !utf8.ValidString(b.Data) || strings.ContainsRune(b.Data, '\x00') {
+						return out, &APIError{Code: "INVALID_INPUT"}
+					}
+				}
+				if b.URL != "" {
+					choices++
+					if !validURL(b.URL) {
+						return out, &APIError{Code: "INVALID_INPUT"}
+					}
+				}
+				if b.WebApp != nil {
+					choices++
+					if !validURL(b.WebApp.URL) {
+						return out, &APIError{Code: "INVALID_INPUT"}
+					}
+				}
+				if choices != 1 || !utf8.ValidString(b.Text) || strings.TrimSpace(b.Text) == "" || strings.ContainsRune(b.Text, '\x00') {
 					return out, &APIError{Code: "INVALID_INPUT"}
 				}
 			}
@@ -224,4 +253,28 @@ func (c *Client) ClearKeyboard(ctx context.Context, chatID, messageID int64) err
 	}
 	_, err := c.message(ctx, "editMessageReplyMarkup", chatID, messageID, "", &InlineKeyboard{Rows: [][]Button{}})
 	return err
+}
+
+func validURL(raw string) bool {
+	u, e := url.Parse(raw)
+	return e == nil && u.Scheme == "https" && u.Hostname() != "" && u.User == nil && utf8.ValidString(raw) && !strings.ContainsRune(raw, '\x00')
+}
+func (c *Client) GetMe(ctx context.Context) (User, error) {
+	var out User
+	e := c.call(ctx, "getMe", struct{}{}, &out, 10*time.Second)
+	if e == nil && (out.ID <= 0 || !out.IsBot) {
+		return User{}, invalid()
+	}
+	return out, e
+}
+func (c *Client) SetChatMenuButton(ctx context.Context, raw string) error {
+	if !validURL(raw) {
+		return &APIError{Code: "INVALID_INPUT"}
+	}
+	var ok bool
+	e := c.call(ctx, "setChatMenuButton", map[string]any{"menu_button": map[string]any{"type": "web_app", "text": "Кабинет / Cabinet", "web_app": WebAppInfo{URL: raw}}}, &ok, 10*time.Second)
+	if e == nil && !ok {
+		return invalid()
+	}
+	return e
 }

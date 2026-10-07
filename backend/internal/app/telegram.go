@@ -4,8 +4,6 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"example.com/cabinet/backend/internal/modules/accounts"
-	"example.com/cabinet/backend/internal/modules/notifications"
-	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/telegram"
 	"net/http"
 	"strconv"
@@ -13,9 +11,17 @@ import (
 	"time"
 )
 
-func NewTelegram(cfg telegram.Config, trials *subscriptions.Service, delivery *notifications.Service, client *http.Client) (*telegram.Runtime, error) {
-	bridge := NewTrialBridge(trials, delivery)
-	return telegram.New(cfg, client, bridge, bridge)
+func NewTelegram(cfg telegram.Config, modules *Modules, origin string, client *http.Client) (*telegram.Runtime, error) {
+	bridge := NewTrialBridge(modules.Subscriptions, modules.Notifications)
+	var channel *telegram.Client
+	if cfg.Enabled && origin != "" {
+		var err error
+		channel, err = telegram.NewClient(origin, modules.Accounts, modules.Payments, modules.Notifications)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return telegram.New(cfg, client, bridge, bridge, channel)
 }
 
 func NewTelegramMiniApp(cfg telegram.Config, owner *accounts.Service, now func() time.Time) *telegram.MiniApp {

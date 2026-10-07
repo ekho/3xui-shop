@@ -124,7 +124,7 @@ func TestTelegramDeliveryPersistedCompatibility(t *testing.T) {
 			if err = svc.Notifications.CompleteTelegramJob(ctx, uuid.Nil, "short", json.RawMessage("{")); err == nil || err.Error() != "REQUEST_STATE_CONFLICT" {
 				t.Fatal("invalid id/token must precede JSON validation", err)
 			}
-			denied := notifications.New(e.Pool, func() []int64 { return nil }, func(int64) bool { return false }, nil)
+			denied := notifications.New(e.Pool, func() []int64 { return nil }, func(int64) bool { return false }, nil, nil)
 			if err = denied.CompleteTelegramJob(ctx, j.JobID, j.LeaseToken, raw); err == nil || err.Error() != "REQUEST_STATE_CONFLICT" {
 				t.Fatal("revoked operator completed a delivery", err)
 			}
@@ -204,7 +204,7 @@ func TestTelegramDeliveryComposition(t *testing.T) {
 		_, _, e, _ := bridgeFixture(t)
 		owner := notifications.New(e.Pool, func() []int64 { return []int64{101} }, func(id int64) bool { return id == 101 }, func(context.Context, pgx.Tx, uuid.UUID, int64) (json.RawMessage, error) {
 			return nil, errors.New("controlled card failure")
-		})
+		}, nil)
 		if _, err := owner.ClaimTelegramJobs(ctx, 1); err == nil {
 			t.Fatal("card failure accepted")
 		}

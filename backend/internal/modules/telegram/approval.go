@@ -127,7 +127,14 @@ func (d *dispatcher) handle(ctx context.Context, u botapi.Update) error {
 		return nil
 	}
 	p := d.pending[m.From.ID]
-	if p == nil || p.Reason != "" {
+	if p == nil {
+		return nil
+	}
+	if strings.HasPrefix(strings.TrimSpace(m.Text), "/") {
+		delete(d.pending, m.From.ID)
+		return nil
+	}
+	if p.Reason != "" {
 		return nil
 	}
 	if !validReason(m.Text, 1) {

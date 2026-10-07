@@ -17,24 +17,29 @@ type State struct {
 	Code              string
 }
 type Runtime struct {
-	enabled                bool
-	api                    *botapi.Client
-	dispatcher             *dispatcher
-	outbox                 Outbox
-	mu                     sync.RWMutex
-	pollCode, deliveryCode string
+	enabled                            bool
+	token                              string
+	api                                *botapi.Client
+	dispatcher                         *dispatcher
+	outbox                             Outbox
+	clients                            *Client
+	mu                                 sync.RWMutex
+	pollCode, deliveryCode, clientCode string
 }
 
-func New(cfg Config, client *http.Client, actions TrialActions, outbox Outbox) (*Runtime, error) {
+func New(cfg Config, client *http.Client, actions TrialActions, outbox Outbox, clients *Client) (*Runtime, error) {
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
-	r := &Runtime{enabled: cfg.Enabled, outbox: outbox}
+	r := &Runtime{enabled: cfg.Enabled, outbox: outbox, clients: clients, token: cfg.Token}
 	if cfg.Enabled {
 		if actions == nil || outbox == nil {
 			return nil, errors.New("missing Telegram domain contracts")
 		}
 		r.api = botapi.New(cfg.Token, client)
+		if clients != nil {
+			clients.api = r.api
+		}
 		r.dispatcher = newDispatcher(r.api, actions, cfg.Operators)
 	}
 	return r, nil
@@ -49,6 +54,9 @@ func (r *Runtime) State() State {
 	if code == "" {
 		code = r.deliveryCode
 	}
+	if code == "" {
+		code = r.clientCode
+	}
 	return State{Enabled: true, Degraded: code != "", Code: code}
 }
 func safeCode(err error) string {
@@ -62,18 +70,21 @@ func safeCode(err error) string {
 	var action *ActionError
 	if errors.As(err, &action) {
 		switch action.Code {
-		case "REQUEST_STATE_CONFLICT", "UNSUPPORTED_PAYMENT", "WEBHOOK_CONFIGURED", "INVALID_INPUT":
+		case "REQUEST_STATE_CONFLICT", "UNSUPPORTED_PAYMENT", "WEBHOOK_CONFIGURED", "MINI_APP_NOT_CONFIGURED", "INVALID_INPUT":
 			return action.Code
 		}
 	}
 	return "SERVICE_UNAVAILABLE"
 }
 func (r *Runtime) setCode(poll bool, code string) {
-	r.mu.Lock()
 	field := &r.deliveryCode
 	if poll {
 		field = &r.pollCode
 	}
+	r.setLoopCode(field, code)
+}
+func (r *Runtime) setLoopCode(field *string, code string) {
+	r.mu.Lock()
 	changed := *field != code
 	*field = code
 	r.mu.Unlock()
@@ -83,7 +94,7 @@ func (r *Runtime) setCode(poll bool, code string) {
 }
 func fatal(err error) bool {
 	switch safeCode(err) {
-	case "UNAUTHORIZED", "CONFLICT", "WEBHOOK_CONFIGURED", "UNSUPPORTED_PAYMENT":
+	case "UNAUTHORIZED", "CONFLICT", "WEBHOOK_CONFIGURED", "UNSUPPORTED_PAYMENT", "MINI_APP_NOT_CONFIGURED":
 		return true
 	}
 	return false
@@ -128,6 +139,9 @@ func (r *Runtime) Run(parent context.Context) error {
 		if err == nil && info.URL != "" {
 			err = &ActionError{Code: "WEBHOOK_CONFIGURED"}
 		}
+		if err == nil && r.clients != nil {
+			err = r.clients.start(ctx, r.api, r.token)
+		}
 		if err == nil {
 			r.setCode(true, "")
 			break
@@ -141,12 +155,21 @@ func (r *Runtime) Run(parent context.Context) error {
 		}
 		delay = nextDelay(delay)
 	}
-	results := make(chan error, 2)
+	workers := 2
+	if r.clients != nil {
+		workers++
+	}
+	results := make(chan error, workers)
 	go func() { results <- r.poll(ctx) }()
 	go func() { results <- r.deliveries(ctx) }()
+	if r.clients != nil {
+		go func() { results <- r.clientDeliveries(ctx) }()
+	}
 	err := <-results
 	cancel()
-	<-results
+	for i := 1; i < workers; i++ {
+		<-results
+	}
 	if parent.Err() != nil {
 		return nil
 	}
@@ -162,11 +185,7 @@ func (r *Runtime) poll(ctx context.Context) error {
 		}
 		if err == nil {
 			for _, u := range updates {
-				if present(u.PreCheckout) || (u.Message != nil && (present(u.Message.SuccessfulPayment) || present(u.Message.RefundedPayment))) {
-					err = &ActionError{Code: "UNSUPPORTED_PAYMENT"}
-				} else {
-					err = r.dispatcher.handle(ctx, u)
-				}
+				err = r.handle(ctx, u)
 				if err != nil {
 					break
 				}
@@ -192,6 +211,40 @@ func (r *Runtime) poll(ctx context.Context) error {
 
 func present(raw json.RawMessage) bool {
 	return len(raw) > 0 && !bytes.Equal(bytes.TrimSpace(raw), []byte("null"))
+}
+func (r *Runtime) clientDeliveries(ctx context.Context) error {
+	delay := time.Second
+	for ctx.Err() == nil {
+		claimCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		job, err := r.clients.notices.ClaimClient(claimCtx)
+		cancel()
+		if err == nil && job == nil {
+			if !pause(ctx, 5*time.Second) {
+				return nil
+			}
+			continue
+		}
+		if err == nil {
+			err = r.clients.deliver(ctx, *job)
+		}
+		if err == nil {
+			r.setLoopCode(&r.clientCode, "")
+			delay = time.Second
+			continue
+		}
+		if ctx.Err() != nil {
+			return nil
+		}
+		r.setLoopCode(&r.clientCode, safeCode(err))
+		if fatal(err) {
+			return err
+		}
+		if !pause(ctx, retryDelay(err, delay)) {
+			return nil
+		}
+		delay = nextDelay(delay)
+	}
+	return nil
 }
 func (r *Runtime) deliveries(ctx context.Context) error {
 	delay := time.Second
@@ -264,4 +317,20 @@ func (r *Runtime) deliver(ctx context.Context, d Delivery) error {
 	completeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	return r.outbox.Complete(completeCtx, d, out)
+}
+
+func (r *Runtime) handle(ctx context.Context, u botapi.Update) error {
+	if present(u.PreCheckout) || (u.Message != nil && (present(u.Message.SuccessfulPayment) || present(u.Message.RefundedPayment))) {
+		return &ActionError{Code: "UNSUPPORTED_PAYMENT"}
+	}
+	if r.clients != nil {
+		handled, err := r.clients.handle(ctx, u)
+		if handled {
+			if u.Message != nil && u.Message.From != nil {
+				delete(r.dispatcher.pending, u.Message.From.ID)
+			}
+			return err
+		}
+	}
+	return r.dispatcher.handle(ctx, u)
 }

@@ -14226,6 +14226,12 @@
             "minLength": 1,
             "maxLength": 128,
             "nullable": true
+          },
+          "legacy_source_id": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "maxLength": 19,
+            "description": "Optional exact legacy source ID (positive canonical int64). Only kind=legacy without a cursor; account ownership still applies. Unknown or foreign ID returns an empty page."
           }
         },
         "required": [

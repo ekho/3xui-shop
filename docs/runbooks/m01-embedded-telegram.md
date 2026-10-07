@@ -1,9 +1,10 @@
-# Встроенный Telegram: М01
+# Встроенный Telegram
 
 Native-профиль запускает один backend для HTTP, River jobs, scheduler и
-Telegram. Python bot и отдельный `reconcile` здесь не запускаются. М01 переносит
-только Telegram-апрув web-триалов; остальные команды старого бота ещё не перенесены.
-Не переключайте действующий production bot token на этот частичный модуль.
+Telegram. Python bot и отдельный `reconcile` здесь не запускаются. Перенесены
+апрув web-триалов, клиентские команды, переходы в Mini App и клиентские
+уведомления. Денежные Telegram-события остаются за С34–С36; production cutover
+допустим после готовности этих владельцев, импорта и отдельной приёмки.
 
 Из корня checkout с Docker, Go и OpenSSL:
 
@@ -34,6 +35,26 @@ compiled backend останавливается и запускается с т�
 `--env-file`; не включайте профиль Python `telegram`. Native overlay задаёт
 `LEGACY_BOT_API_ENABLED=false`; одновременное включение двух транспортов
 backend отклоняет. При `TELEGRAM_ENABLED=false` токен не читается.
+
+Для клиентского режима настройте **Main Mini App** этого бота в BotFather
+на HTTPS `${CABINET_ORIGIN}/mini-app/cabinet`. Backend проверяет `getMe`, ID
+токена, username и `has_main_web_app`, затем устанавливает menu button на
+текущий адрес кабинета. Ненастроенный Main Mini App даёт безопасный код
+`MINI_APP_NOT_CONFIGURED`; HTTP и jobs продолжают работу.
+[Main Mini App и startapp](https://core.telegram.org/bots/webapps#launching-the-main-mini-app),
+[поле getMe](https://core.telegram.org/bots/api#user).
+
+`/start`, `/help`, `/support` работают в личном чате. `/start <source>`
+передаёт исходную метку в Main Mini App; UUID и первый источник сохраняются
+после подписанного входа и согласия. Старые кнопки ведут в защищённые экраны,
+старый инвойс открывает точный собственный архивный факт либо полную историю.
+Ключ подключения показывается только по действию внутри кабинета.
+
+Клиентский outbox отделён от операторских карточек. Его generic ru/en
+уведомления содержат только ссылку на кабинет; после рестарта pending
+сохраняются. Потерянный ответ Telegram может повторить уведомление, но не
+покупку или выдачу. Отозванная привязка, смена credentials, запрет или
+карантин препятствуют отправке. Миграция 00026 запрещает downgrade при фактах.
 
 401/409, настроенный webhook или неподдержанный payment update останавливают
 Telegram-модуль с безопасным кодом в логах. HTTP и workers продолжают работу.

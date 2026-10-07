@@ -2347,6 +2347,8 @@ export interface components {
             /** Format: date-time */
             before_created_at?: string | null;
             before_id?: string | null;
+            /** @description Optional exact legacy source ID (positive canonical int64). Only kind=legacy without a cursor; account ownership still applies. Unknown or foreign ID returns an empty page. */
+            legacy_source_id?: string;
         };
         PaymentHistoryOrder: {
             /** Format: uuid */

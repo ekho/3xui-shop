@@ -37,7 +37,7 @@ test.describe('Web trial',()=>{
  });
  test('request retries preserve idempotency and CSRF',async({page})=>{
   const keys:string[]=[];await mock(page);await page.route('**/api/v1/trial-requests',async r=>{keys.push(r.request().headers()['idempotency-key']);expect(r.request().headers()['x-csrf-token']).toBe(account.csrf_token);if(keys.length===1)await r.fulfill({status:503,json:{error:{code:'SERVICE_UNAVAILABLE',message:'safe',request_id:trial.request_id}}});else await r.fulfill({status:201,json:trial})});
-  await page.goto('/cabinet');await page.getByRole('button',{name:'Запросить триал'}).click();await expect(page.getByRole('alert')).toBeVisible();await page.getByRole('button',{name:'Запросить триал'}).click();expect(keys.length).toBe(2);expect(keys[0]).toBe(keys[1]);
+  await page.goto('/cabinet');await page.getByRole('button',{name:'Запросить триал'}).click();await expect(page.getByRole('alert').filter({hasText:'Сервис временно недоступен.'})).toBeVisible();await page.getByRole('button',{name:'Запросить триал'}).click();await expect.poll(()=>keys.length).toBe(2);expect(keys[0]).toBe(keys[1]);
  });
  test('rejection and support contact; mobile English',async({page})=>{
   await page.setViewportSize({width:375,height:812});await mock(page,{request:{...trial,status:'rejected',decided_at:'2026-10-01T00:00:01Z'}},none);await page.goto('/cabinet');await expect(page.getByText('В триале отказано. Повторное рассмотрение — через поддержку.')).toBeVisible();await expect(page.getByRole('link',{name:'Связаться с поддержкой'})).toHaveAttribute('href','mailto:support@example.test');await expect(page.getByRole('button',{name:'Запросить триал'})).toHaveCount(0);

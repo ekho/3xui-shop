@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"example.com/cabinet/backend/internal/modules/audit_reports"
+	"example.com/cabinet/backend/internal/modules/notifications"
 
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/subscriptions/internal/store"
@@ -91,6 +92,12 @@ func (s *Service) payload(ctx context.Context, tx pgx.Tx, a accounts.Snapshot, r
 	return out, nil
 }
 func (s *Service) notify(ctx context.Context, tx pgx.Tx, a accounts.Snapshot, r store.TrialRequest, kind, status string) error {
+	if kind != "approval_card" && a.TelegramID != nil && !a.TelegramLoginDisabled {
+		notice := notifications.ClientNotice{AccountID: a.ID, TelegramID: *a.TelegramID, CredentialVersion: a.CredentialVersion, Locale: a.Locale, EventKey: "trial:" + r.ID.String() + ":" + kind + ":" + status, Route: "cabinet"}
+		if s.notifications.EnqueueClientTx(ctx, tx, notice, s.now()) != nil {
+			return unavailable()
+		}
+	}
 	seen := map[int64]bool{}
 	if len(s.config().Operators) == 0 {
 		return nil
