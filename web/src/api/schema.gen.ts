@@ -1194,6 +1194,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/payment-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Read-only saved payment history; private no-store. Current verified unrestricted web session reads only its own account. Origin and CSRF required, no Idempotency-Key; strict JSON <=16 KiB and no query parameters. No provider/native calls or writes. */
+        post: operations["getPaymentHistory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operator/clients/{id}/payment-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Read-only saved payment history; private no-store. Current verified unrestricted operator; existing target may be restricted or Telegram-only. Origin and CSRF required, no Idempotency-Key; strict JSON <=16 KiB and no query parameters. No provider/native calls or writes. */
+        post: operations["getOperatorPaymentHistory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2082,6 +2116,107 @@ export interface components {
             current_plan_id: string;
             /** Format: uuid */
             source_access_operation_id: string;
+        };
+        /** @description Both cursor values must be present or absent. Microsecond created_at and kind-specific ID: nonzero UUID (orders), saved operation_id (receipts), positive int64 decimal (legacy). Descending immutable created_at/ID; 50 rows per page. No query parameters. */
+        PaymentHistoryInput: {
+            /** @enum {string} */
+            kind: "orders" | "receipts" | "legacy";
+            /** Format: date-time */
+            before_created_at?: string | null;
+            before_id?: string | null;
+        };
+        PaymentHistoryOrder: {
+            /** Format: uuid */
+            order_id: string;
+            /** @enum {string} */
+            action: "purchase" | "renew" | "change_plan";
+            quote: components["schemas"]["PurchaseQuote"];
+            /** @enum {string} */
+            payment_method: "yoomoney" | "manual" | "yookassa" | "cryptomus" | "heleket";
+            /** @enum {string} */
+            payment_type: "AC" | "PC" | "MANUAL" | "YOOKASSA" | "CRYPTOMUS" | "HELEKET";
+            /** @enum {string} */
+            payment_status: "pending" | "paid" | "canceled";
+            /** @enum {string} */
+            fulfillment_status: "not_started" | "queued" | "running" | "applied" | "needs_review";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            review_required: boolean;
+            /** Format: uuid */
+            access_operation_id: string | null;
+            review_reason: string | null;
+        };
+        PaymentHistoryCryptoAmounts: {
+            payment_amount: string;
+            payer_amount: string;
+            merchant_amount: string;
+            payer_currency: string;
+        };
+        /** @description Saved money confirmation, including review/protected/unaccepted facts. funds_order is the retained funding_operation_id link, not a new fulfillment verdict. Net is never inferred; manual source is operator. No checkout credentials or full provider JSON. */
+        PaymentHistoryReceipt: {
+            operation_id: string;
+            /** Format: uuid */
+            order_id: string;
+            /** @enum {string} */
+            payment_method: "yoomoney" | "manual" | "yookassa" | "cryptomus" | "heleket";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            occurred_at: string;
+            /** @description Exact integer minor units within signed int64; no floating point. */
+            gross_minor: string;
+            /** @description Exact integer minor units within signed int64; no floating point. */
+            net_minor: string | null;
+            /** @enum {string|null} */
+            currency: "RUB" | "USD" | null;
+            raw_currency: string;
+            /** @enum {string} */
+            source: "provider" | "operator";
+            funds_order: boolean;
+            review_required: boolean;
+            review_reason: string | null;
+            codepro: boolean;
+            unaccepted: boolean;
+            crypto_amounts: components["schemas"]["PaymentHistoryCryptoAmounts"] | null;
+        };
+        LegacyPaymentQuote: {
+            /** @enum {string} */
+            action: "purchase" | "renew" | "change_plan";
+            /** @description Exact integer minor units within signed int64; no floating point. */
+            amount_minor: string;
+            /** @enum {string} */
+            currency: "RUB" | "USD" | "XTR";
+            /** @description Exact original int64 quantity; string prevents JavaScript rounding. */
+            devices: string;
+            /** @description Exact original int64 quantity; string prevents JavaScript rounding. */
+            period_days: string;
+            /** @description Exact original int64 quantity; string prevents JavaScript rounding. */
+            traffic_gb: string;
+        };
+        /** @description Original archived status; completed does not prove cash receipt or VPN issuance. Nullable quote is a decoded source quote, never gross/net. Raw payment_id, Telegram identity and packed subscription stay private. */
+        LegacyPaymentHistoryItem: {
+            source_id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** @enum {string} */
+            payment_status: "pending" | "completed" | "canceled" | "refunded";
+            /** @enum {string} */
+            fulfillment_status: "unknown";
+            /** @enum {string|null} */
+            payment_method: "yoomoney" | "manual" | "yookassa" | "cryptomus" | "heleket" | "telegram_stars" | null;
+            quote: components["schemas"]["LegacyPaymentQuote"] | null;
+        };
+        PaymentHistoryPage: {
+            /** @enum {string} */
+            kind: "orders" | "receipts" | "legacy";
+            has_more: boolean;
+            orders: components["schemas"]["PaymentHistoryOrder"][];
+            receipts: components["schemas"]["PaymentHistoryReceipt"][];
+            legacy_transactions: components["schemas"]["LegacyPaymentHistoryItem"][];
         };
     };
     responses: never;
@@ -8372,6 +8507,152 @@ export interface operations {
                 headers: {
                     /** @description Seconds before retry */
                     "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    getPaymentHistory: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaymentHistoryInput"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentHistoryPage"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    getOperatorPaymentHistory: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaymentHistoryInput"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentHistoryPage"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content: {

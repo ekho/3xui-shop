@@ -68,7 +68,8 @@ bounded operation ID до 128 символов для receipts, положите
 
 PaymentHistoryPage всегда содержит kind, orders[], receipts[],
 legacy_transactions[] и has_more; только выбранный массив заполнен. Денежные
-minor units и source IDs — строки, исключающие потери JavaScript precision.
+minor units, source IDs и целые количества в legacy quote — строки,
+исключающие потери JavaScript precision; domain quote сохраняет int64.
 UUID и RFC3339 даты валидируются; SQL параметризован. Новые записи между
 страницами не дублируют старые; refresh начинает с первой страницы.
 
@@ -86,7 +87,9 @@ target. Неверный cursor — 400, отсутствие target — 404, ч
 Миграция22 создаёт payments-owned legacy_payment_transactions: source_id
 bigint PK, account_id FK, source_legacy_user_id/source_tg_id, уникальный
 source_payment_id, сырой subscription, status, created_at/updated_at и
-imported_at. Index account/created_at/source_id. CHECK ограничивает статус
+imported_at. Уникальность длинного payment ID обеспечивает SHA-256 index;
+CHECK сверяет hash с полным raw ID, replay сравнивает полные исходные поля.
+Index account/created_at/source_id. CHECK ограничивает статус
 четырьмя исходными значениями; UPDATE/DELETE запрещены. Down отказывается
 при непустом архиве. Raw значения сохраняются без обрезки/нормализации.
 
