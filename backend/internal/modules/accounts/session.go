@@ -178,7 +178,7 @@ func (s *Service) Logout(ctx context.Context, raw string) error {
 	} else if err != nil {
 		return unavailable()
 	}
-	if q.DeleteSession(ctx, digest(raw)) != nil || s.credentialAudit(ctx, tx, session.AccountID, "logout") != nil {
+	if q.DeleteSession(ctx, digest(raw)) != nil || q.RevokeIdentityPurpose(ctx, store.RevokeIdentityPurposeParams{AccountID: &session.AccountID, Purpose: "telegram_link"}) != nil || s.credentialAudit(ctx, tx, session.AccountID, "logout") != nil {
 		return unavailable()
 	}
 	if tx.Commit(ctx) != nil {

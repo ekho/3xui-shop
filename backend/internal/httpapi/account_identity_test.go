@@ -86,6 +86,10 @@ func TestIdentityEmailSameAccount(t *testing.T) {
 	if err := e.Pool.QueryRow(ctx, `SELECT vpn_id=$2 AND sub_id=$3 AND panel_key=$4 AND telegram_id=502 AND credential_version=$5 AND kind='web' AND original_kind='telegram' AND email_key='independent@example.test' AND verified_at IS NOT NULL AND password_hash IS NOT NULL AND telegram_start_param='first_signed_payload' FROM accounts WHERE id=$1`, auth.Account.AccountId, vpnID, subID, panelKey, version+1).Scan(&same); err != nil || !same {
 		t.Fatal("account origin, identifiers or credentials were not preserved")
 	}
+	var acceptedVersions string
+	if err := e.Pool.QueryRow(ctx, `SELECT COALESCE(reason,'') FROM audit_events WHERE account_id=$1 AND action='initial_email_confirmed'`, auth.Account.AccountId).Scan(&acceptedVersions); err != nil || acceptedVersions != "terms=1 privacy=1" {
+		t.Fatalf("identity grant must keep accepted document versions: got %q, error %v", acceptedVersions, err)
+	}
 	if rr := miniAppRequest(h, "GET", "/api/v1/telegram/mini-app/account", "", "", auth.SessionToken, "", ""); rr.Code != 401 {
 		t.Fatal("old Mini session remained usable")
 	}
@@ -138,5 +142,96 @@ func TestIdentityCredentialMail(t *testing.T) {
 	busyMail, _, _ := testkit.CredentialMailSecrets(t, e.Pool, cfg.Mail.MailKey, busy.ChallengeId)
 	if err = s.MailDelivery.SendMail(ctx, busyMail); err != nil || len(smtp.Letters()) != 1 {
 		t.Fatal("worker sent enrollment mail to another mailbox owner")
+	}
+}
+
+// Catches losing the web owner or creating a second Telegram account while linking channels.
+func TestIdentityLinkMissingRoute(t *testing.T) {
+	h, e, cfg, key := miniAppHTTPFixture(t)
+	verifiedHTTP(t, h, e, cfg)
+	loginBody := `{"email":"login@example.test","password":"my long safe password ✨"}`
+	rr := request(h, "POST", "/api/v1/auth/login", loginBody, cfg.HTTP.CabinetOrigin)
+	var login wire.LoginResult
+	if rr.Code != 200 || json.Unmarshal(rr.Body.Bytes(), &login) != nil {
+		t.Fatal("existing web login failed")
+	}
+	cookie := rr.Result().Cookies()[0].Value
+	signed := testkit.SignedMiniAppData(key, 123, e.Clock(), `{"id":8601,"first_name":"Linked owner","language_code":"en"}`, "original_payload")
+	firstBody, _ := json.Marshal(map[string]string{"init_data": signed})
+	rr = request(h, "POST", "/api/v1/telegram/mini-app/session", string(firstBody), cfg.HTTP.CabinetOrigin)
+	if rr.Code != 409 {
+		t.Fatal("first Mini login must collect consent without account creation")
+	}
+	rr = miniAppRequest(h, "POST", "/api/v1/me/telegram/link", `{"current_password":"my long safe password ✨"}`, cfg.HTTP.CabinetOrigin, "", login.CsrfToken, cookie)
+	var proof struct {
+		LinkToken string `json:"link_token"`
+	}
+	if rr.Code != 200 || json.Unmarshal(rr.Body.Bytes(), &proof) != nil || len(proof.LinkToken) != 43 {
+		t.Fatalf("web link proof: want200/opaque43, got%d", rr.Code)
+	}
+	linkBody, _ := json.Marshal(map[string]string{"init_data": signed, "link_token": proof.LinkToken, "accepted_terms_version": "1", "accepted_privacy_version": "1"})
+	rr = request(h, "POST", "/api/v1/telegram/link", string(linkBody), cfg.HTTP.CabinetOrigin)
+	if rr.Code != 200 || len(rr.Result().Cookies()) != 0 {
+		t.Fatalf("signed ownership link: want200/no cookie, got%d", rr.Code)
+	}
+	var ids, count int
+	if err := e.Pool.QueryRow(context.Background(), `SELECT count(*),count(*) FILTER(WHERE id=$1 AND telegram_id=8601) FROM accounts`, login.Account.AccountId).Scan(&count, &ids); err != nil || count != 1 || ids != 1 {
+		t.Fatal("link created or transferred another account")
+	}
+	if rr := miniAppRequest(h, "GET", "/api/v1/me", "", "", "", "", cookie); rr.Code != 401 {
+		t.Fatal("pre-link browser session remained usable")
+	}
+	rr = request(h, "POST", "/api/v1/telegram/mini-app/session", string(firstBody), cfg.HTTP.CabinetOrigin)
+	var mini wire.MiniAppSessionResult
+	if rr.Code != 200 || json.Unmarshal(rr.Body.Bytes(), &mini) != nil || mini.Account.AccountId != login.Account.AccountId {
+		t.Fatal("linked Mini login lost the owner")
+	}
+	// Replay cannot mutate again, and must not accept the newly issued Mini bearer.
+	if rr := request(h, "POST", "/api/v1/telegram/link", string(linkBody), cfg.HTTP.CabinetOrigin); rr.Code != 200 {
+		t.Fatal("same-owner proof replay rejected")
+	}
+	if rr := miniAppRequest(h, "POST", "/api/v1/telegram/link", string(linkBody), cfg.HTTP.CabinetOrigin, mini.SessionToken, mini.CsrfToken, ""); rr.Code != 403 {
+		t.Fatal("link boundary accepted a bearer as ownership proof")
+	}
+	rr = request(h, "POST", "/api/v1/auth/login", loginBody, cfg.HTTP.CabinetOrigin)
+	if rr.Code != 200 || json.Unmarshal(rr.Body.Bytes(), &login) != nil {
+		t.Fatal("new browser login failed")
+	}
+	cookie = rr.Result().Cookies()[0].Value
+	rr = miniAppRequest(h, "POST", "/api/v1/me/telegram/unlink", `{"current_password":"my long safe password ✨"}`, cfg.HTTP.CabinetOrigin, "", login.CsrfToken, cookie)
+	if rr.Code != 200 {
+		t.Fatalf("independent unlink: want200, got%d", rr.Code)
+	}
+	if rr := miniAppRequest(h, "GET", "/api/v1/telegram/mini-app/account", "", "", mini.SessionToken, "", ""); rr.Code != 401 {
+		t.Fatal("retired identity retained its Mini session")
+	}
+	rr = request(h, "POST", "/api/v1/telegram/mini-app/session", string(firstBody), cfg.HTTP.CabinetOrigin)
+	if rr.Code != 409 || !strings.Contains(rr.Body.String(), "TELEGRAM_UNLINKED") {
+		t.Fatal("retired ID created another account or hid the recovery action")
+	}
+}
+
+// Catches the new public link route trusting an unverified, wrong-bot or stale launch.
+func TestIdentityLinkSignatureBoundary(t *testing.T) {
+	h, e, cfg, key := miniAppHTTPFixture(t)
+	for _, tc := range []struct {
+		name, raw, token string
+		want             int
+	}{
+		{"unsigned", "auth_date=1", strings.Repeat("a", 43), 401},
+		{"wrong_bot", testkit.SignedMiniAppData(key, 999, e.Clock(), `{"id":8602,"first_name":"Wrong bot"}`, ""), strings.Repeat("a", 43), 401},
+		{"old", testkit.SignedMiniAppData(key, 123, e.Clock().Add(-301*time.Second), `{"id":8602,"first_name":"Old launch"}`, ""), strings.Repeat("a", 43), 401},
+		{"unknown_proof", testkit.SignedMiniAppData(key, 123, e.Clock(), `{"id":8602,"first_name":"Signed launch"}`, ""), strings.Repeat("a", 43), 400},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body, _ := json.Marshal(map[string]string{"init_data": tc.raw, "link_token": tc.token, "accepted_terms_version": "1", "accepted_privacy_version": "1"})
+			if rr := request(h, "POST", "/api/v1/telegram/link", string(body), cfg.HTTP.CabinetOrigin); rr.Code != tc.want {
+				t.Fatalf("signed link boundary: want%d got%d", tc.want, rr.Code)
+			}
+			var count int
+			if err := e.Pool.QueryRow(context.Background(), `SELECT count(*) FROM accounts`).Scan(&count); err != nil || count != 0 {
+				t.Fatal("failed ownership proof created an account")
+			}
+		})
 	}
 }

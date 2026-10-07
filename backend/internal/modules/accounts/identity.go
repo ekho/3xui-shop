@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"example.com/cabinet/backend/internal/modules/accounts/internal/store"
+	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -87,6 +88,15 @@ func (s *Service) identityConsent(terms, privacy string) error {
 	}
 	if terms != s.cfg.TermsVersion || privacy != s.cfg.PrivacyVersion {
 		return failure(400, "INVALID_INPUT")
+	}
+	return nil
+}
+
+// Keep historical legal acceptance even after the account's current versions change.
+func (s *Service) identityGrantAudit(ctx context.Context, tx pgx.Tx, id uuid.UUID, action, terms, privacy string) error {
+	reason := "terms=" + terms + " privacy=" + privacy
+	if auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), CreatedAt: s.now(), AccountID: id, Action: action, Reason: &reason}) != nil {
+		return unavailable()
 	}
 	return nil
 }

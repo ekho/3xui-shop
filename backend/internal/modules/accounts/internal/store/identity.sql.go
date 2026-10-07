@@ -12,6 +12,84 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addTelegramLinkProof = `-- name: AddTelegramLinkProof :exec
+INSERT INTO credential_challenges(id,purpose,account_id,original_email,target_email,credential_version,token_hash,code_hash,created_at,token_expires_at,code_expires_at)
+VALUES($1::uuid,'telegram_link',$2::uuid,$3::text,$3::text,
+ $4::bigint,$5::bytea,$6::bytea,$7::timestamptz,$8::timestamptz,$8::timestamptz)
+`
+
+type AddTelegramLinkProofParams struct {
+	ID                uuid.UUID
+	AccountID         uuid.UUID
+	Email             string
+	CredentialVersion int64
+	TokenHash         []byte
+	CodeHash          []byte
+	CreatedAt         pgtype.Timestamptz
+	ExpiresAt         pgtype.Timestamptz
+}
+
+func (q *Queries) AddTelegramLinkProof(ctx context.Context, arg AddTelegramLinkProofParams) error {
+	_, err := q.db.Exec(ctx, addTelegramLinkProof,
+		arg.ID,
+		arg.AccountID,
+		arg.Email,
+		arg.CredentialVersion,
+		arg.TokenHash,
+		arg.CodeHash,
+		arg.CreatedAt,
+		arg.ExpiresAt,
+	)
+	return err
+}
+
+const bindTelegramIdentity = `-- name: BindTelegramIdentity :exec
+UPDATE accounts SET telegram_id=$1::bigint,
+ display_name=COALESCE(display_name,$2::text),
+ terms_version=$3::text,privacy_version=$4::text,
+ policy_accepted_at=$5::timestamptz,credential_version=credential_version+1
+WHERE id=$6::uuid
+`
+
+type BindTelegramIdentityParams struct {
+	TelegramID     int64
+	DisplayName    string
+	TermsVersion   string
+	PrivacyVersion string
+	Now            pgtype.Timestamptz
+	ID             uuid.UUID
+}
+
+func (q *Queries) BindTelegramIdentity(ctx context.Context, arg BindTelegramIdentityParams) error {
+	_, err := q.db.Exec(ctx, bindTelegramIdentity,
+		arg.TelegramID,
+		arg.DisplayName,
+		arg.TermsVersion,
+		arg.PrivacyVersion,
+		arg.Now,
+		arg.ID,
+	)
+	return err
+}
+
+const bumpCredentialVersion = `-- name: BumpCredentialVersion :exec
+UPDATE accounts SET credential_version=credential_version+1 WHERE id=$1
+`
+
+func (q *Queries) BumpCredentialVersion(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, bumpCredentialVersion, id)
+	return err
+}
+
+const clearTelegramIdentity = `-- name: ClearTelegramIdentity :exec
+UPDATE accounts SET telegram_id=NULL WHERE id=$1
+`
+
+func (q *Queries) ClearTelegramIdentity(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, clearTelegramIdentity, id)
+	return err
+}
+
 const grantIndependentCredentials = `-- name: GrantIndependentCredentials :exec
 UPDATE accounts SET original_kind=COALESCE(original_kind,kind),kind='web',
  email_key=$1::text,password_hash=$2::text,
@@ -77,6 +155,40 @@ func (q *Queries) PendingIdentityEmail(ctx context.Context, arg PendingIdentityE
 	return i, err
 }
 
+const reactivateTelegramIdentity = `-- name: ReactivateTelegramIdentity :exec
+DELETE FROM telegram_identity_reservations WHERE telegram_id=$1 AND account_id=$2
+`
+
+type ReactivateTelegramIdentityParams struct {
+	TelegramID int64
+	AccountID  uuid.UUID
+}
+
+func (q *Queries) ReactivateTelegramIdentity(ctx context.Context, arg ReactivateTelegramIdentityParams) error {
+	_, err := q.db.Exec(ctx, reactivateTelegramIdentity, arg.TelegramID, arg.AccountID)
+	return err
+}
+
+const retireTelegramIdentity = `-- name: RetireTelegramIdentity :execrows
+INSERT INTO telegram_identity_reservations(telegram_id,account_id,retired_at) VALUES($1,$2,$3)
+ON CONFLICT(telegram_id) DO UPDATE SET retired_at=EXCLUDED.retired_at
+WHERE telegram_identity_reservations.account_id=EXCLUDED.account_id
+`
+
+type RetireTelegramIdentityParams struct {
+	TelegramID int64
+	AccountID  uuid.UUID
+	RetiredAt  pgtype.Timestamptz
+}
+
+func (q *Queries) RetireTelegramIdentity(ctx context.Context, arg RetireTelegramIdentityParams) (int64, error) {
+	result, err := q.db.Exec(ctx, retireTelegramIdentity, arg.TelegramID, arg.AccountID, arg.RetiredAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const revokeIdentityPurpose = `-- name: RevokeIdentityPurpose :exec
 UPDATE credential_challenges SET revoked=true WHERE account_id=$1 AND purpose=$2 AND NOT revoked AND used_at IS NULL
 `
@@ -89,4 +201,15 @@ type RevokeIdentityPurposeParams struct {
 func (q *Queries) RevokeIdentityPurpose(ctx context.Context, arg RevokeIdentityPurposeParams) error {
 	_, err := q.db.Exec(ctx, revokeIdentityPurpose, arg.AccountID, arg.Purpose)
 	return err
+}
+
+const telegramReservationOwner = `-- name: TelegramReservationOwner :one
+SELECT account_id FROM telegram_identity_reservations WHERE telegram_id=$1
+`
+
+func (q *Queries) TelegramReservationOwner(ctx context.Context, telegramID int64) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, telegramReservationOwner, telegramID)
+	var account_id uuid.UUID
+	err := row.Scan(&account_id)
+	return account_id, err
 }

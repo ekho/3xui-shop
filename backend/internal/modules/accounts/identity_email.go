@@ -127,7 +127,7 @@ func (s *Service) CompleteInitialEmail(ctx context.Context, rawMini string, in I
 	if err = s.revokeCredentialProofs(ctx, tx, a.ID); err != nil {
 		return empty, err
 	}
-	if err = s.credentialAudit(ctx, tx, a.ID, "initial_email_confirmed"); err != nil {
+	if err = s.identityGrantAudit(ctx, tx, a.ID, "initial_email_confirmed", in.AcceptedTermsVersion, in.AcceptedPrivacyVersion); err != nil {
 		return empty, err
 	}
 	if tx.Commit(ctx) != nil {

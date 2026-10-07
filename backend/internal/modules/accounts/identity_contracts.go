@@ -22,3 +22,16 @@ type InitialEmailCompleteInput struct {
 	ChallengeId                                                     uuid.UUID
 	Code, NewPassword, AcceptedTermsVersion, AcceptedPrivacyVersion string
 }
+
+type TelegramLinkChallenge struct {
+	LinkToken string
+	ExpiresAt time.Time
+}
+
+// ConfirmTelegramLinkInput contains identity verified by the Telegram adapter.
+type ConfirmTelegramLinkInput struct {
+	TelegramSessionInput
+	LinkToken string
+}
+type TelegramLinkResult struct{ Linked bool }
+type TelegramUnlinkResult struct{ Changed bool }

@@ -403,6 +403,9 @@ func (s *Service) rotateCredentialSession(ctx context.Context, raw string, snaps
 		}
 	}
 	rotation := SessionRotation{Raw: opaque(), AbsoluteExpiresAt: session.AbsoluteExpiresAt.Time}
+	if q.RevokeIdentityPurpose(ctx, store.RevokeIdentityPurposeParams{AccountID: &account.ID, Purpose: "telegram_link"}) != nil {
+		return SessionRotation{}, unavailable()
+	}
 	now := s.now()
 	if q.DeleteAccountSessions(ctx, account.ID) != nil || q.AddSession(ctx, store.AddSessionParams{IDHash: digest(rotation.Raw), AccountID: account.ID, CsrfToken: opaque(), CreatedAt: stamp(now), LastSeen: stamp(now), AbsoluteExpiresAt: session.AbsoluteExpiresAt}) != nil || s.credentialAudit(ctx, tx, account.ID, action) != nil {
 		return SessionRotation{}, unavailable()

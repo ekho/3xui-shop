@@ -125,3 +125,16 @@ func (s *MiniApp) Login(ctx context.Context, raw, terms, privacy, ip string) (ac
 	}
 	return s.accounts.StartTelegramSession(ctx, accounts.TelegramSessionInput{TelegramInput: user.TelegramInput, StartParam: user.StartParam, AcceptedTermsVersion: terms, AcceptedPrivacyVersion: privacy})
 }
+
+type MiniAppLinkInput struct{ InitData, LinkToken, AcceptedTermsVersion, AcceptedPrivacyVersion string }
+
+func (s *MiniApp) ConfirmLink(ctx context.Context, in MiniAppLinkInput, ip string) (accounts.TelegramLinkResult, error) {
+	if err := s.accounts.LimitMiniAppLogin(ctx, ip); err != nil {
+		return accounts.TelegramLinkResult{}, err
+	}
+	user, err := VerifyMiniAppData(in.InitData, s.botID, s.key, s.now())
+	if err != nil {
+		return accounts.TelegramLinkResult{}, err
+	}
+	return s.accounts.ConfirmTelegramLink(ctx, accounts.ConfirmTelegramLinkInput{TelegramSessionInput: accounts.TelegramSessionInput{TelegramInput: user.TelegramInput, StartParam: user.StartParam, AcceptedTermsVersion: in.AcceptedTermsVersion, AcceptedPrivacyVersion: in.AcceptedPrivacyVersion}, LinkToken: in.LinkToken})
+}

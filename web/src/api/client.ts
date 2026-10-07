@@ -70,6 +70,16 @@ export const requestEmailChange=(input:EmailChangeInput)=>request<EmailChangeAcc
 export const confirmEmailChange=(input:EmailChangeConfirmInput)=>request<EmailChangeResult>('auth/email-change/confirm','POST',input);
 export const cancelEmailChange=()=>request<void>('me/email-change/cancel','POST',undefined,undefined,true);
 
+export type IdentityContext=components['schemas']['IdentityContext'];
+export type IdentityEmailPending=components['schemas']['IdentityEmailPending'];
+export type TelegramLinkChallenge=components['schemas']['TelegramLinkChallenge'];
+export const getIdentity=(signal?:AbortSignal)=>request<IdentityContext>('me/identity','GET',undefined,signal);
+export const requestInitialEmail=(input:components['schemas']['InitialEmailInput'],signal:AbortSignal)=>request<RegistrationAccepted>('telegram/initial-email','POST',input,signal,true);
+export const completeInitialEmail=(input:components['schemas']['InitialEmailCompleteInput'],signal:AbortSignal)=>request<VerifyResult>('telegram/initial-email/confirm','POST',input,signal,true);
+export const startTelegramLink=(input:CurrentPasswordInput,signal:AbortSignal)=>request<TelegramLinkChallenge>('me/telegram/link','POST',input,signal,true);
+export const confirmTelegramLink=(input:components['schemas']['MiniAppLinkInput'],signal:AbortSignal)=>request<components['schemas']['TelegramLinkResult']>('telegram/link','POST',input,signal);
+export const unlinkTelegram=(input:CurrentPasswordInput,signal:AbortSignal)=>request<components['schemas']['TelegramUnlinkResult']>('me/telegram/unlink','POST',input,signal,true);
+
 export type SupportAttachment=components['schemas']['SupportAttachment'];
 export type SupportMessage=components['schemas']['SupportMessage'];
 export type SupportConversation=components['schemas']['SupportConversation'];
