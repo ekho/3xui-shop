@@ -136,6 +136,66 @@ func TestLegacyPaymentImport(t *testing.T) {
 	}
 }
 
+// Moving the same identity pair must not move archived ownership or commit a
+// fresh preceding row. A missing/changed input identity does not reach this guard.
+func TestLegacyPaymentMovedIdentity(t *testing.T) {
+	h, e, cfg := httpFixture(t)
+	old := supportLogin(t, h, e, cfg, "archived-owner@example.test")
+	next := supportLogin(t, h, e, cfg, "moved-owner@example.test")
+	ctx := context.Background()
+	if _, err := e.Pool.Exec(ctx, `UPDATE accounts SET telegram_id=701,legacy_user_id=5 WHERE id=$1`, old.id); err != nil {
+		t.Fatal(err)
+	}
+	modules := app.NewModules(e.Pool, e.Redis, nil, &cfg)
+	when := time.Date(2026, 10, 1, 1, 2, 3, 123456000, time.UTC)
+	row := payments.LegacyPaymentTransaction{SourceID: 1, SourceTgID: 701, PaymentID: "retained-identity-raw", Subscription: "unknown-source:keep-raw", Status: "completed", CreatedAt: when, UpdatedAt: when}
+	p := payments.LegacyPaymentPackage{Version: 1, Users: []payments.LegacyPaymentUser{{SourceLegacyUserID: 5, SourceTgID: 701}}, Transactions: []payments.LegacyPaymentTransaction{row}}
+	if result, err := modules.Payments.ImportLegacyPayments(ctx, p, false); err != nil || result.Inserted != 1 {
+		t.Fatal("initial archived owner", err)
+	}
+	tx, err := e.Pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err = tx.Exec(ctx, `UPDATE accounts SET telegram_id=NULL,legacy_user_id=NULL WHERE id=$1`, old.id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(ctx, `UPDATE accounts SET telegram_id=701,legacy_user_id=5 WHERE id=$1`, next.id); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	current, err := modules.Accounts.LookupTelegram(ctx, 701)
+	if err != nil || current.ID != next.id || current.LegacyUserID == nil || *current.LegacyUserID != 5 {
+		t.Fatal("identity pair did not actually move", err)
+	}
+	snapshot := func() string {
+		t.Helper()
+		var value string
+		if err := e.Pool.QueryRow(ctx, `SELECT jsonb_build_array((SELECT jsonb_agg(a ORDER BY source_id) FROM legacy_payment_transactions a),(SELECT jsonb_agg(a ORDER BY id) FROM audit_events a),(SELECT jsonb_agg(p ORDER BY id) FROM purchase_orders p),(SELECT jsonb_agg(r ORDER BY operation_id) FROM purchase_receipts r),(SELECT jsonb_agg(j ORDER BY id) FROM river_job j),(SELECT jsonb_agg(a ORDER BY id) FROM access_operations a))::text`).Scan(&value); err != nil {
+			t.Fatal(err)
+		}
+		return value
+	}
+	before := snapshot()
+	fresh := row
+	fresh.SourceID, fresh.PaymentID = 2, "fresh-before-moved-owner-conflict"
+	p.Transactions = []payments.LegacyPaymentTransaction{fresh, row}
+	for _, dryRun := range []bool{false, true} {
+		var domain *payments.Error
+		if _, err = modules.Payments.ImportLegacyPayments(ctx, p, dryRun); !errors.As(err, &domain) || domain.Code != "IMPORT_SOURCE_CONFLICT" || snapshot() != before {
+			t.Fatal("moved archive owner accepted or partial row/audit committed", err)
+		}
+	}
+	var owner uuid.UUID
+	var paymentID, packed string
+	if err = e.Pool.QueryRow(ctx, `SELECT account_id,source_payment_id,subscription FROM legacy_payment_transactions WHERE source_id=1`).Scan(&owner, &paymentID, &packed); err != nil || owner != old.id || paymentID != row.PaymentID || packed != row.Subscription {
+		t.Fatal("archived original owner/raw changed", err)
+	}
+}
+
 // Legacy int64 quantities cannot become rounded JavaScript numbers in the DTO.
 func TestLegacyPaymentQuantityPrecision(t *testing.T) {
 	page := payments.PaymentHistoryPage{Kind: "legacy", LegacyTransactions: []payments.LegacyPayment{{SourceId: "1", PaymentStatus: "completed", FulfillmentStatus: "unknown", Quote: &payments.LegacyQuote{Action: "purchase", AmountMinor: "100", Currency: "RUB", Devices: 9223372036854775807, PeriodDays: 9007199254740993, TrafficGb: 9007199254740995}}}}

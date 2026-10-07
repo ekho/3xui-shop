@@ -146,7 +146,10 @@ func (s *Service) paymentHistory(ctx context.Context, account uuid.UUID, in Paym
 			out.Orders = out.Orders[:50]
 		}
 	case "receipts":
-		rows, err := s.pool.Query(ctx, `SELECT r.operation_id,r.order_id,p.payment_method,r.created_at,r.occurred_at,r.gross_minor,r.net_minor,r.currency,r.notification_type,COALESCE(p.funding_operation_id=r.operation_id,false),r.review_reason,r.codepro,r.unaccepted,
+		rows, err := s.pool.Query(ctx, `SELECT r.operation_id,r.order_id,
+ CASE WHEN r.provider_data->>'provider' IN ('yookassa','cryptomus','heleket') THEN r.provider_data->>'provider'
+ WHEN r.notification_type='manual_confirmation' THEN 'manual' ELSE 'yoomoney' END,
+ r.created_at,r.occurred_at,r.gross_minor,r.net_minor,r.currency,r.notification_type,COALESCE(p.funding_operation_id=r.operation_id,false),r.review_reason,r.codepro,r.unaccepted,
  CASE WHEN r.provider_data->>'provider' IN ('cryptomus','heleket') THEN r.provider_data->>'payment_amount' END,
  CASE WHEN r.provider_data->>'provider' IN ('cryptomus','heleket') THEN r.provider_data->>'payer_amount' END,
  CASE WHEN r.provider_data->>'provider' IN ('cryptomus','heleket') THEN r.provider_data->>'merchant_amount' END,

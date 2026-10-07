@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -119,7 +120,7 @@ func TestPaymentHistoryHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	receipts := read(&client, path, map[string]any{"kind": "receipts"}, 200).Receipts
-	if len(receipts) != 3 || receipts[0].OperationId != "ym-review" || receipts[0].Currency != nil || receipts[0].RawCurrency != "840" || !receipts[0].ReviewRequired || !receipts[0].Codepro || !receipts[0].Unaccepted || receipts[1].NetMinor == nil || *receipts[1].NetMinor != "9007199254740900" || !receipts[1].FundsOrder || receipts[1].Currency == nil || *receipts[1].Currency != "RUB" || receipts[2].NetMinor != nil {
+	if len(receipts) != 3 || receipts[0].OperationId != "ym-review" || receipts[0].Currency != nil || receipts[0].RawCurrency != "840" || !receipts[0].ReviewRequired || !receipts[0].Codepro || !receipts[0].Unaccepted || receipts[1].NetMinor == nil || *receipts[1].NetMinor != "9007199254740900" || !receipts[1].FundsOrder || receipts[1].Currency == nil || *receipts[1].Currency != "RUB" || receipts[2].NetMinor != nil || receipts[2].PaymentMethod != "yookassa" {
 		t.Fatal("receipt facts were inferred, lost or conflated with issuance")
 	}
 	operatorPath := "/api/v1/operator/clients/" + client.id.String() + "/payment-history"
@@ -143,6 +144,53 @@ func TestPaymentHistoryHTTP(t *testing.T) {
 		t.Fatal("logout")
 	}
 	read(&other, path, input, 401)
+}
+
+// The authenticated receipt's origin must survive a mismatched order method,
+// including an unfamiliar notification type retained for operator review.
+func TestPaymentHistoryCrossMethodReceipt(t *testing.T) {
+	h, e, cfg := httpFixture(t)
+	client := supportLogin(t, h, e, cfg, "cross-method-history@example.test")
+	operator := supportLogin(t, h, e, cfg, "cross-method-operator@example.test")
+	ctx := context.Background()
+	created := time.Now().UTC().Truncate(time.Microsecond)
+	if _, err := e.Pool.Exec(ctx, `INSERT INTO operator_accounts(account_id,granted_at) VALUES($1,$2)`, operator.id, created); err != nil {
+		t.Fatal(err)
+	}
+	id := uuid.New()
+	quote := `{"amount_minor":"19900","currency":"RUB","devices":2,"period_days":30,"plan_id":"00000000-0000-4000-8000-000000000123","profile":"regular","revision":1,"traffic_gb":15}`
+	if _, err := e.Pool.Exec(ctx, `INSERT INTO purchase_orders(id,account_id,idempotency_key,body_hash,quote,amount_minor,payment_method,payment_type,manual_details,active,created_at,expires_at) VALUES($1,$2,$3,$4,$5,19900,'manual','MANUAL','Local fixture',false,$6,$7)`, id, client.id, uuid.New(), []byte{1}, quote, created, created.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Payments.YooMoneyEnabled = true
+	cfg.Payments.YooMoneyNotificationSecret = []byte("local-history-fixture")
+	owner := app.NewModules(e.Pool, e.Redis, nil, &cfg).Payments
+	for _, notification := range []string{"p2p-incoming", "card-incoming", "unknown-incoming"} {
+		fields := url.Values{"notification_type": {notification}, "operation_id": {"cross-history-" + notification}, "amount": {"198.00"}, "withdraw_amount": {"199.00"}, "currency": {"643"}, "datetime": {created.Format(time.RFC3339Nano)}, "label": {id.String()}, "codepro": {"false"}, "unaccepted": {"false"}}
+		fields.Set("sign", yooMoneySignature(fields, cfg.Payments.YooMoneyNotificationSecret))
+		if err := owner.ReceiveYooMoney(ctx, fields); err != nil {
+			t.Fatal("signed cross-method receipt rejected", err)
+		}
+	}
+	for _, target := range []struct {
+		session *supportSession
+		path    string
+	}{{&client, "/api/v1/payment-history"}, {&operator, "/api/v1/operator/clients/" + client.id.String() + "/payment-history"}} {
+		var page wire.PaymentHistoryPage
+		r := supportRequest(h, target.session, "POST", target.path, "application/json", []byte(`{"kind":"receipts"}`), cfg.HTTP.CabinetOrigin, uuid.Nil)
+		if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), &page) != nil || len(page.Receipts) != 3 {
+			t.Fatal("cross-method receipt history unavailable", r.Code)
+		}
+		for _, receipt := range page.Receipts {
+			if receipt.PaymentMethod != "yoomoney" || receipt.Source != "provider" || !receipt.ReviewRequired || receipt.ReviewReason == nil || *receipt.ReviewReason != "payment_method_mismatch" || receipt.FundsOrder || receipt.Currency == nil || *receipt.Currency != "RUB" {
+				t.Fatal("receipt origin inherited the order method", receipt.PaymentMethod)
+			}
+		}
+		r = supportRequest(h, target.session, "POST", target.path, "application/json", []byte(`{"kind":"orders"}`), cfg.HTTP.CabinetOrigin, uuid.Nil)
+		if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), &page) != nil || len(page.Orders) != 1 || page.Orders[0].PaymentMethod != "manual" || page.Orders[0].PaymentStatus != "pending" {
+			t.Fatal("history changed the original order method/state", r.Code)
+		}
+	}
 }
 
 // Disabling all checkout configuration must not erase saved provider facts.

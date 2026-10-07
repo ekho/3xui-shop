@@ -9,7 +9,9 @@ Task1 реализована на 5532a14d3ef367cd6dcf1222a7391aa70560c7d1,
 Task2 — на 6a23fadf7b45772936b1bed9fcb714781c8fbd44. Task3 добавляет этот
 отчёт и исправляет две существующие тестовые зависимости новой истории и
 миграции22. Рабочие миграции15–21, прежние операции/DTO/quote hash сохранены.
-Повторный полный Go-прогон прошёл. Свежая проверка ветки, source CI и доставка пока pending.
+Повторный полный Go-прогон прошёл на Task3. Одна свежая проверка ветки
+3204e0e нашла два Important; один авторский fix pass завершён с actual
+RED→GREEN и итоговым full Go/browser PASS. Source CI и доставка пока pending.
 
 ## Что проверено
 
@@ -60,7 +62,10 @@ RUN_BROWSER_TESTS=1 включает connected browser проверки в Go su
 | python3 deploy/acceptance/check_names.py | PASS | 0.285s |
 | node scripts/runtime-config.test.mjs | PASS | 0.122s |
 | Go TestPlanChangeActionMigration -count=1 -race -v -timeout=5m | обе ветви PASS | 8.455s |
-| go test ./... -count=1 -race -v -timeout=20m | 803 PASS,343 root tests,13 packages,0 failures/skips | 666.727s |
+| Task3 go test ./... -count=1 -race -v -timeout=20m | 803 PASS,343 root tests,13 packages,0 failures/skips | 666.727s |
+| History/import/manual cross-method после обоих review fixes, -race | PASS | 15.022s |
+| make vet после review fixes | PASS | 1.028s |
+| Итоговый go test ./... -count=1 -race -v -timeout=20m | 805 PASS,345 root tests,13 packages,0 failures/skips | 670.172s |
 
 Actual RED: новый HTTP route сначала вернул404 вместо200; новая web route
 не показала заголовок истории в ru/en (2 failed,27.106s). RED импортера,
@@ -78,12 +83,53 @@ account-restrictions; explicit typed empty page исправляет завис�
 обоснован именно изменённым тестовым входом; web/Python без изменений не
 повторяются. Исходные failed logs сохранены.
 
-Итоговый source-bound verifier сверяет575 tracked inputs, hash фактических
+Task3 source-bound verifier сверяет575 tracked inputs, hash фактических
 полных logs, completed/exit0, counts и restore proofs, вместо повторения
 неизменных дорогих suites при task-done. Изменился только исторический Go test
-после web/Python: их реальные inputs не менялись. Final input manifest SHA-256:
+после web/Python: их реальные inputs не менялись. Task3 input manifest SHA-256:
 e88bf105fc2fb7527cad17898aeacf6370c48a958a4090bfe937a09591e02cd4.
 Go log SHA-256: e2fecc8c1a219327247000161bce33f09b8a104cec1aff147f57dce8363a07e7.
+
+## Одна свежая проверка и один проход исправлений
+
+Fresh gpt-6-astra/high проверил всю ветку c827f19..3204e0e read-only.
+Critical и Minor не найдены; два Important подтверждены координатором
+по реальному эффекту. Повторного reviewer нет.
+
+1. История receipt брала payment_method из заказа. Подписанный YooMoney
+   callback к manual order сохраняется с payment_method_mismatch, поэтому
+   прежний reader показывал неверный источник. Новый connected HTTP test
+   TestPaymentHistoryCrossMethodReceipt получил actual RED7.278s: YooMoney
+   receipt назван manual. Общая SELECT-проекция теперь берёт известный provider
+   из сохранённого provider_data; manual_confirmation обозначает manual,
+   остальные записи нынешнего writer без provider_data принадлежат YooMoney.
+   Клиент/оператор видят правильный источник, исходный order остаётся manual;
+   p2p/card/неизвестный notification type сохранены для review. Existing HTTP
+   fixture также фиксирует YooKassa receipt на YooMoney order. Writers/API shape
+   и миграции не меняются.
+2. Прежний import test менял входные ID и останавливался до сравнения владельца
+   архива. TestLegacyPaymentMovedIdentity действительно переносит ту же пару
+   Telegram/legacy identity на второй существующий аккаунт, вставляет новую
+   строку перед старой и требует IMPORT_SOURCE_CONFLICT/full snapshot rollback
+   для apply/dry-run. Существующая защита прошла baseline8.243s; временное
+   удаление только account!=id дало actual mutation RED7.270s. Исходные байты
+   восстановлены сразу; продуктовый importer не менялся. Новый test сохраняет
+   прежнего владельца/raw, проверяет отсутствие новой строки/audit/money/jobs.
+
+Все целевые history/import/manual-cross-method проверки после обоих
+исправлений PASS15.022s; актуальный make vet PASS1.028s. Первый receipt запуск
+остановился на test-only secret type (string вместо []byte) и не считается
+поведенческим RED. Полный Go/browser suite на трёх изменённых Go files прошёл:
+805 PASS,345 root tests,13 packages,0 failures/skips,670.172s.
+Web/Python и CLI/migration/restore inputs не менялись: их предыдущие реальные
+успешные результаты сохраняются с source/log hash proof. Финальный verifier
+фактически прошёл: current575 inputs, complete/exit0 и full log hashes,
+оба RED→GREEN, восстановленные исходные bytes импортера, own stopped restore.
+Он не заменяет actual full Go command.
+Final input manifest SHA-256: 2d619ef939e67d0921779fc161cf8bdd03c87096a436ab086a11f7a006061017.
+Final Go log SHA-256: 6412604907d38bf752356ae231875135d81110a71d2172daffb3bdfb6e8a4a40.
+
+Deferred minors: none.
 
 ## Контролируемое восстановление
 
@@ -134,6 +180,20 @@ constraint; исправлена только fixture. Её отдельные �
 7. Старый plan-change migration test привязан к DownTo20, предшественнику21,
    вместо «последней» миграции. Цена — явная зависимость исторического теста
    от номера проверяемой миграции; исходные data-loss assertions сохранены.
+8. Реальные платежи/public callbacks/production/внешние SMTP/TG/Happ/VPN/Mac
+   trust, которые reviewer отложил, исключены принятой локальной границей.
+   С13/С45–С47 остаются открытой внешней приёмкой. Цена — поведение реальных
+   provider/deployment неизвестно до соответствующих проверок.
+9. Полный реальный snapshot и эксплуатационная длительность остаются С46.
+   Точные собственные fixtures доказывают сохранность, а не объём production.
+   Цена — большой импорт может быть отвергнут лимитом/timeout до репетиции;
+   источник сохраняется.
+10. Source CI/merge/prerelease/tag/OCI labels — следующие gates координатора,
+    их не выводят из локальной проверки. Цена ошибки — неверный/непроверенный
+    артефакт; требуется actual SHA/parents/tree/tag/digest proof.
+11. Уже показанные разрешённые данные очищаются при полученном401/403 без
+    добавления polling/socket. Сервер проверяет каждый новый protected request.
+    Цена — старый экран остаётся до следующего запроса; новый доступ не даётся.
 
 ## Границы и доставка
 
@@ -148,6 +208,6 @@ Workflow C01–C07/C10 проверяет записанные факты, не 
 подменяет реальные тесты. Managed workflow-state/finalization helper поддерживает
 GitLab и неприменим к этому GitHub repository; используются обычные публичные
 checkpoint в #25 и действительные GitHub gates, без выдуманного GitLab owner.
-После Task3 — одна fresh Astra/high whole-branch review, один Critical/Important
-fix pass, Minor deferred, без re-review. Source CI, manual exact-SHA merge в v2,
+После Task3 проведена одна fresh Astra/high whole-branch review; единственный
+Important fix pass завершён, Minor отсутствуют, без re-review. Source CI, manual exact-SHA merge в v2,
 actual prerelease/tag/три OCI indexes и шесть platform labels пока pending.
