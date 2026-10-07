@@ -1,0 +1,186 @@
+# С31 — локальная приёмка способов входа
+
+Owner #29, contract `2026-10-07-s31-account-identity-v1`.
+Base `f9ddf123b3b6be92d2e83b0b15b3b8909a29c5cd`;
+final product checkpoint `63079a96fe349bc972e7e9037441ee853b01973f`.
+Первый полный прогон: product `6fd9ec1b7d06e0fc931bbd2539383c1d61e671db`, 922 PASS.
+Native inline: четыре авторские задачи, затем один свежий whole-branch
+Astra/high reviewer, один авторский Critical/Important RED→GREEN pass;
+Minor откладываются, повторного ревью нет. Один свежий review завершён,
+один Important исправлен автором с RED→GREEN и полной backend регрессией.
+Состояние GitHub/PR/выпуска фиксируется отдельно после публикации.
+
+## Что проверено
+
+Telegram-only клиент добавляет подтверждённый email/пароль на тот же UUID.
+Независимый web-клиент подтверждает текущий пароль и связывает Telegram
+одноразовым кодом через signed Mini App. Отвязка резервирует прежний Telegram ID
+за владельцем. Оператор с действующей ролью/паролем, причиной и подтверждением
+начинает восстановление: старый Telegram немедленно блокируется, подтверждение
+письма выдаёт первый независимый вход на том же аккаунте.
+
+Сохраняются source, legacy ID, ограничения, история, подписка, VPN ID, sub ID,
+panel key и финансовые guards. Занятые каналы не объединяются. Отзыв роли
+оператора навсегда отзывает выданные им recovery proofs; повторная выдача требует
+нового действующего решения. Истечение proof или ошибка SMTP не снимают
+quarantine. Recovery не выполняет автоматический login.
+
+| Проверка | Результат |
+| --- | --- |
+| Полный Go `go test ./... -count=1 -race -timeout=20m -json` с TestKit, real-browser и native Docker | 923 PASS, 0 FAIL; все 13 пакетов с тестами PASS |
+| `go vet ./...` | PASS |
+| Полная обычная browser suite, отдельно от build/embedded browser, собственный output | 353 PASS, 2.7 min |
+| C31 browser identity/recovery cases | 19 PASS в полном прогоне; RU/EN, keyboard, expiry/conflict, late responses, logout и idempotency |
+| `poetry run python -m unittest discover -s tests -v` | 110 PASS, 15.749 s |
+| `npm run typecheck`, production `npm run build` | PASS |
+| Штатная SQL/API генерация | повторная генерация не меняет generated sources |
+| OpenAPI сравнение с base | прежние 77 paths / 126 schemas deep-equal; добавлены 8 paths / 11 schemas |
+| Миграция 24→25 / пустой Down / отказ потери identity facts | PASS; старые account/session/source/hash/consents сохранены, отказ атомарен |
+| Native trial → recovery с реальной 3X-UI 3.7.0 и TLS SMTP → реконструкция lifecycle | PASS, 6.479 s |
+| Собственный compiled backend: stop/start между quarantine и подтверждением | PASS; тот же UUID, activation operation, panel client и subscription grant |
+| HTTPS/Caddy: 6 фактических маршрутов, no-store/no-referrer/CSP и runtime config | PASS |
+
+Полный Go использует файл конфигурации TestKit и абсолютный путь состояния
+native Docker. Обычный browser suite выполняется последовательно относительно
+сборок и Go embedded real browser. В fixture-native Telegram отключён, письмо
+доставляет собственный TLS Mailpit. Собственный оператор после compiled-process
+проверки лишён временной роли. Внешние провайдеры используют только заглушки.
+
+Фактические HTTPS переходы: `/recover-account`, `/cabinet/identity`,
+`/mini-app/cabinet/identity`, `/config.json` — 200;
+`/internal/nope` — 404; anonymous `/api/v1/me/identity` — 401.
+Прежний hash bootstrap/CSP сохранён; web и Mini имеют свои frame-ancestors.
+Публичный runtime config содержит только пять прежних публичных параметров.
+
+## Наблюдённые RED→GREEN
+
+- Task 1: отсутствующие initial-email HTTP операции дали 404 вместо 200/202
+  (4.192 s); после реализации connected/race и реальные TLS письма PASS.
+- Task 2: отсутствующий web link-proof дал 404 (2.682 s), браузер не имел
+  выбора существующего кабинета; после реализации link/replay/retirement
+  guards, signed initData negatives и browser cases PASS.
+- Task 2 audit: принятые legal versions отсутствовали в reason (3.204 s);
+  минимальный audit helper записывает публичные версии, GREEN 3.212 s.
+- Task 3: отсутствующая recovery операция дала 404 (3.094 s);
+  UI recovery/selected-client отсутствовал. Неудавшийся web logout терял CSRF,
+  поэтому повтор получал 403. Новые формы и корректный lifetime CSRF дают GREEN.
+- Recovery 503 диагностирован до завершения: ошибочный credential challenge ID
+  использовался в audit FK на trial request. Убрана только чужая FK-ссылка,
+  сохранён account/operator/reason/legal audit; focused backend GREEN.
+
+Ошибки compile/schema/fixture не выдаются за поведенческий RED:
+generated enum cast/import, реальный публичный GetIdentity, формат старого sub ID,
+policy acceptance triple, правильный результат pendingMail, поиск точного
+получателя/назначения письма, абсолютный путь native state и корректный cookie
+processor. Их исправления меняли только выявленные входы проверки.
+
+## Review Focus
+
+1. Concurrent email claim/registration versus same-account enrollment:
+   один owner, без частичных credentials — Task 1 race test.
+2. Detached TG login racing link/unlink/recovery:
+   reservation/quarantine запрещают новый аккаунт — Task 2/3 connected tests.
+3. Used/expired link proof после logout/credential change/другого TG:
+   никаких повторных grants — Task 2 replay/revocation tests.
+4. Revoked/restricted recovery operator после отправки письма:
+   подтверждение не выдаёт credentials и quarantine остаётся — Task 3 role test.
+5. Late HTTP response при смене клиента/unmount и failed logout:
+   другой клиент/CSRF/секрет не меняются — Task 3 browser tests.
+
+## Native rulings и цена решения
+
+1. Добавить account-identity.spec.ts в существующий явный Playwright testMatch:
+   иначе новые тесты вообще не выбирались (No tests found, не product RED).
+   Цена ошибки: один дополнительный файл/время обычного suite; real-mode
+   selection остаётся прежним.
+2. Записывать только принятые публичные legal versions в identity audit:
+   исторический consent должен переживать последующие обновления.
+   Цена: короткий reason без нового audit metadata framework.
+3. Recovery restricted target выдаёт credentials, сохраняя restriction:
+   принятая спецификация запрещает обход ограничения, а не подтверждение почты.
+   Цена: клиент всё равно получает 403 при входе до отдельного разрешённого
+   снятия ограничения; byte-equivalent unrelated facts и 403 проверены.
+4. Отзыв роли оператора отзывает его recovery proofs под существующим email
+   guard, даже после regrant. Цена: поддержка выдаёт новое подтверждение,
+   quarantine остаётся; отдельная role-epoch таблица не нужна.
+5. Удалить неверную trial-request FK из credential recovery audit, сохранив
+   account/operator/reason/legal, вместо расширения shared audit schema.
+   Цена: нет прямого join по credential challenge в этом trial-only FK.
+6. Сохранить исходное JSON представление OpenAPI файла с расширением .yaml:
+   временная YAML сериализация создавала только форматный churn.
+   Цена: расширение остаётся исторически неточным; семантика старых maps проверена.
+7. Сериализовать сборки и проверки, использующие web/dist и test-results:
+   preview читает dist во время тестов. Цена: один ограниченный повтор полного
+   browser suite в отдельном output; причинность первого timeout не доказана.
+
+## Отклонение проверки и пределы доказательств
+
+Coordinator запустил первый полный browser suite одновременно с production build
+и Go embedded browser, хотя они используют общие dist/output. Первый прогон:
+352 PASS, один прежний purchase Select-plan timeout; все 19 C31 случаев PASS.
+Incident `c31-local-web-dist-overlap`, owner coordinator, C10; загруженные правила
+TradeOS 2.0.0 agent-workflow. Гипотеза: сборка меняла assets, обслуживаемые preview;
+удалённый shared test-results не позволил подтвердить точную причинность.
+Исправлено собственное исполнение: exclusive dist, отдельный output,
+C07 разрешил один повтор с этими изменёнными входами. Он дал 353 PASS/0 FAIL.
+Product patch из этого timeout не выводится. Предыдущие независимые Python,
+native SMTP/panel и compiled restart доказательства сохранены.
+
+Полная внешняя SMTP/performance приёмка и реальные платёжные callback остаются
+за владельцами С45–С47. Реальные деньги, внешние Telegram/SMTP, production,
+живой Happ/VPN и доверие Mac не использовались. Down намеренно отказывает при
+новых identity facts: восстановление старой версии требует отдельного runbook
+с сохранением этих данных.
+
+
+## Final whole-branch review
+
+Один свежий /root/c31_final_review, Astra/high, read-only на
+9eb171a51499fe4276576221d12ad54e1dbfde76: один Important F1, без Critical/Minor.
+Author regrade сохраняет Important. ConfirmTelegramLink сначала блокировал
+текущий email, а при отзыве proofs — полный sorted набор recipients; прежняя
+смена email брала этот набор сразу. Новый connected тест
+TestIdentityLinkEmailChangeLockOrder удерживает link-proof row, наблюдает
+pg_blocking_pids и устанавливает точную последовательность двух операций.
+
+Actual RED 3.951 s: link успешен, конкурентная email change получает
+SERVICE_UNAVAILABLE. Минимальное исправление берёт credentialEmails и блокирует
+весь sorted набор перед link proof; GREEN 4.223 s. Тот же UUID/access,
+единственный audit и отзыв прежних email-change proofs проверены. Полный
+backend suite после изменения: 923 PASS/0 FAIL, 13 packages PASS, vet PASS.
+Неизменившиеся browser353/Python110/compiled recovery/Caddy/API evidence
+сохраняются на их checkpoint; текущий source CI/build проверяется при доставке.
+Исправлен только lock acquisition, без API/schema/frontend изменения.
+Повторного review нет. Deferred minors: нет.
+
+8. Finalization ruling: enabled TradeOS 2.0.0 GitLab registry не поддерживает
+   ekho/3xui-shop. Используются live GitHub exact-source CI/shared contract/
+   dependency/target/parents/tree и ручной SHA guard.
+   Цена: нет cooperative ownership ref для посторонних GitHub writers;
+   неожиданное target/parent движение требует отдельной диагностики.
+9. Final ruling (Declined to judge): внешняя/production приёмка остаётся
+   С45–С47; здесь только собственные локальные ресурсы.
+   Цена: локальный успех не подтверждает реальный SMTP/payment/Telegram.
+10. Final ruling (Declined to judge): CI/merge/release/images проверяет
+    coordinator на фактических revisions перед закрытием.
+    Цена: до этих доказательств delivery/overall acceptance pending.
+11. Final ruling (Declined to judge): точная причина первого browser timeout
+    остаётся гипотезой; доказана serial recovery.
+    Цена: первоначальная transient причина не установлена.
+
+## CI environment recovery
+
+Incident `c31-ci-job-timeout25`, owner coordinator/#29, C10, TradeOS 2.0.0.
+На source e558b9b8540e08d3bcedbf4bbe59601d99e20acd push run 37651239621
+отменён по фактической annotation: job превысила 25 минут. Generated/static,
+behavior/connected consumers и container readiness завершились PASS;
+native 3X-UI/TLS прерван лимитом. PR Platform 37651540316 и images 37651540158
+успешны на том же source. Повтор неизменного лимита не выполняется.
+
+12. CI ruling: поднять owning `platform-checks.yml` job timeout 25→35 минут,
+    сохранив команды, все checks, triggers, права и версии.
+    Основание: observed complete phases заняли почти 25 минут до native,
+    а идентичный PR доказал работоспособность всего сценария.
+    Цена: зависшая job может занимать runner на 10 минут дольше.
+    Product code/API/schema/frontend не меняются; прежние локальные proofs
+    сохраняются, обновлённый source получает свежий CI перед merge.

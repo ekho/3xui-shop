@@ -8,10 +8,13 @@ import (
 	"errors"
 	"example.com/cabinet/backend/internal/app"
 	"example.com/cabinet/backend/internal/httpapi"
+	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/telegram"
 	"example.com/cabinet/backend/internal/modules/vpn"
+	"example.com/cabinet/backend/internal/wire"
+	"fmt"
 	"github.com/google/uuid"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
@@ -22,6 +25,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -300,6 +304,113 @@ func trialStatus(f *fixture, id uuid.UUID) string {
 	var s string
 	f.env.Pool.QueryRow(context.Background(), `SELECT status FROM trial_requests WHERE id=$1`, id).Scan(&s)
 	return s
+}
+
+func TestNativeTrialIdentityRecovery(t *testing.T) {
+	f := openMode(t, true)
+	ctx := context.Background()
+	bot := &nativeBot{}
+	_, stop := launchNative(t, f, bot, false, true)
+	operator, csrf, operatorTrial := f.signup(t, nativeEmail("identity-operator"))
+	var actor uuid.UUID
+	if err := f.env.Pool.QueryRow(ctx, `SELECT account_id FROM trial_requests WHERE id=$1`, operatorTrial.RequestId).Scan(&actor); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.Accounts.ChangeOperatorRole(ctx, actor, true); err != nil {
+		t.Fatal(err)
+	}
+	// Unique signed-safe fixture ID, unrelated to any live Telegram person.
+	tgID := int64(uuid.New().ID()) + 1000000000
+	status, body, _ := f.send(t, operator, "POST", "/api/v1/operator/clients/trial", map[string]string{"telegram_id": fmt.Sprint(tgID), "display_name": "Owned identity recovery", "locale": "en"}, csrf, uuid.NewString(), false)
+	var created struct {
+		Client struct {
+			AccountID uuid.UUID `json:"account_id"`
+		} `json:"client"`
+		OperationID uuid.UUID `json:"operation_id"`
+	}
+	if status != 201 || json.Unmarshal(body, &created) != nil || created.Client.AccountID == uuid.Nil {
+		t.Fatal("owned Telegram activation", status)
+	}
+	wait(t, func() bool { return applied(f, created.OperationID) })
+	assertNativePanel(t, f, created.OperationID)
+	const facts = `SELECT (to_jsonb(a)-ARRAY['kind','email_key','password_hash','verified_at','terms_version','privacy_version','policy_accepted_at','credential_version','telegram_id','telegram_login_disabled','original_kind'])::text FROM accounts a WHERE id=$1`
+	var before, after string
+	if err := f.env.Pool.QueryRow(ctx, facts, created.Client.AccountID).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	old, raw, err := f.svc.Accounts.StartTelegramSession(ctx, accounts.TelegramSessionInput{TelegramInput: accounts.TelegramInput{TelegramID: tgID, DisplayName: "Owned identity recovery", Locale: "en"}, AcceptedTermsVersion: "1", AcceptedPrivacyVersion: "1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Consent and first payload were set by the explicit Mini session, before capturing invariants.
+	if err = f.env.Pool.QueryRow(ctx, facts, created.Client.AccountID).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	email := nativeEmail("identity-recovered")
+	status, body, _ = f.send(t, operator, "POST", "/api/v1/operator/clients/"+created.Client.AccountID.String()+"/identity-recovery", map[string]any{"email": email, "current_password": "fixture password with Unicode ✨", "reason": "Owned support proof", "confirmed": true}, csrf, uuid.NewString(), false)
+	var proof wire.IdentityRecoveryAccepted
+	if status != 202 || json.Unmarshal(body, &proof) != nil {
+		t.Fatal("native recovery request", status)
+	}
+	wait(t, func() bool {
+		for _, letter := range f.letters(t, email) {
+			if strings.Contains(letter, "To: "+email) && strings.Contains(letter, "/recover-account") {
+				return true
+			}
+		}
+		return false
+	})
+	var token string
+	for _, letter := range f.letters(t, email) {
+		if strings.Contains(letter, "To: "+email) && strings.Contains(letter, "/recover-account") {
+			match := regexp.MustCompile(`#token=([A-Za-z0-9_-]{43})`).FindStringSubmatch(letter)
+			if len(match) == 2 {
+				token = match[1]
+			}
+		}
+	}
+	if token == "" {
+		t.Fatal("recovery purpose missing from TLS mail")
+	}
+	if _, err = f.svc.Accounts.AuthenticateTelegram(ctx, raw, false); err == nil {
+		t.Fatal("old Mini not quarantined")
+	}
+	stop()
+	queue, err := river.NewClient(riverpgxv5.New(f.env.Pool), &river.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var handler http.Handler
+	f.public = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { handler.ServeHTTP(w, r) }))
+	t.Cleanup(f.public.Close)
+	f.cfg.HTTP.CabinetOrigin = f.public.URL
+	f.svc = app.NewModules(f.env.Pool, f.env.Redis, queue, &f.cfg)
+	handler = httpapi.New(f.svc, f.env.Pool, f.cfg.HTTP)
+	launchNative(t, f, bot, false, true)
+	if _, err = f.svc.Accounts.AuthenticateTelegram(ctx, raw, false); err == nil {
+		t.Fatal("restart removed quarantine")
+	}
+	anonymous := f.public.Client()
+	status, _, reply := f.send(t, anonymous, "POST", "/api/v1/auth/identity-recovery", map[string]string{"token": token, "new_password": "fixture recovered password ✨", "accepted_terms_version": "1", "accepted_privacy_version": "1"}, "", "", false)
+	if status != 200 || len(reply.Cookies()) != 0 {
+		t.Fatal("recovery must be explicit without automatic login", status)
+	}
+	if err = f.env.Pool.QueryRow(ctx, facts, created.Client.AccountID).Scan(&after); err != nil || before != after {
+		t.Fatal("restart/recovery changed unrelated activation facts", err)
+	}
+	recovered, err := f.svc.Accounts.GetIdentity(ctx, created.Client.AccountID)
+	if err != nil || old.Account.ID != created.Client.AccountID || recovered.SourceKind != "telegram" || !recovered.IndependentLogin || recovered.TelegramLinked {
+		t.Fatal("recovery lost original account/source", err)
+	}
+	if _, _, err = f.svc.Accounts.StartTelegramSession(ctx, accounts.TelegramSessionInput{TelegramInput: accounts.TelegramInput{TelegramID: tgID, DisplayName: "Old Telegram", Locale: "en"}, AcceptedTermsVersion: "1", AcceptedPrivacyVersion: "1"}); err == nil {
+		t.Fatal("retired identity recreated account")
+	}
+	assertNativePanel(t, f, created.OperationID)
+	status, body, _ = f.send(t, anonymous, "POST", "/api/v1/auth/login", map[string]string{"email": email, "password": "fixture recovered password ✨"}, "", "", false)
+	var login wire.LoginResult
+	if status != 200 || json.Unmarshal(body, &login) != nil || login.Account.AccountId != created.Client.AccountID {
+		t.Fatal("new credential login changed owner", status)
+	}
 }
 func operationFor(t *testing.T, f *fixture, r uuid.UUID) uuid.UUID {
 	t.Helper()

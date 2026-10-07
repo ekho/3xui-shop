@@ -12,7 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"math"
-	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -39,15 +38,16 @@ func (s *Service) CheckTelegramAvailable(ctx context.Context, tx pgx.Tx, id int6
 	if id <= 0 {
 		return failure(400, "INVALID_INPUT")
 	}
-	var locked bool
-	if err := tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock(hashtextextended('telegram-account:'||$1::text,0))`, strconv.FormatInt(id, 10)).Scan(&locked); err != nil {
-		return unavailable()
-	}
-	if !locked {
-		return failure(409, "REQUEST_STATE_CONFLICT")
+	if err := lockTelegramIdentity(ctx, tx, id); err != nil {
+		return err
 	}
 	if _, err := store.New(tx).AccountByTelegramID(ctx, pgtype.Int8{Int64: id, Valid: true}); err == nil {
 		return ErrTelegramExists
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return unavailable()
+	}
+	if _, err := store.New(tx).TelegramReservationOwner(ctx, id); err == nil {
+		return ErrTelegramRetired
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return unavailable()
 	}
@@ -57,6 +57,9 @@ func (s *Service) CheckTelegramAvailable(ctx context.Context, tx pgx.Tx, id int6
 func (s *Service) CreateTelegram(ctx context.Context, tx pgx.Tx, in TelegramInput) (Snapshot, error) {
 	if in.TelegramID <= 0 || !validOperatorName(in.DisplayName) || (in.Locale != "ru" && in.Locale != "en") {
 		return Snapshot{}, failure(400, "INVALID_INPUT")
+	}
+	if err := s.CheckTelegramAvailable(ctx, tx, in.TelegramID); err != nil {
+		return Snapshot{}, err
 	}
 	sub, err := newOperatorSubID()
 	if err != nil {
@@ -168,6 +171,9 @@ func (s *Service) ChangeOperatorRole(ctx context.Context, target uuid.UUID, gran
 	if grant {
 		changed, err = q.GrantOperator(ctx, store.GrantOperatorParams{AccountID: target, GrantedAt: stamp(s.now())})
 	} else {
+		if err = s.revokeIssuedRecoveries(ctx, tx, target); err != nil {
+			return err
+		}
 		changed, err = q.RevokeOperator(ctx, target)
 	}
 	if err != nil {

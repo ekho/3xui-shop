@@ -35,6 +35,8 @@ type Account struct {
 	AccessProfile                pgtype.Text
 	PolicyAcceptedAt             pgtype.Timestamptz
 	TelegramStartParam           pgtype.Text
+	OriginalKind                 pgtype.Text
+	TelegramLoginDisabled        bool
 }
 
 type CredentialChallenge struct {
@@ -54,6 +56,7 @@ type CredentialChallenge struct {
 	ConfirmedAt       pgtype.Timestamptz
 	UsedAt            pgtype.Timestamptz
 	Revoked           bool
+	RequestedBy       *uuid.UUID
 }
 
 type IdempotencyRecord struct {

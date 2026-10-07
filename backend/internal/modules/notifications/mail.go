@@ -200,6 +200,22 @@ func (s *MailService) SendMail(ctx context.Context, id uuid.UUID) error {
 				}
 				body = fmt.Sprintf("%s: %s%s?lang=ru#token=%s\nКод: %s\nНомер проверки: %s\nКод действует 10 минут; ссылка — 30 минут.", instruction, cfg.CabinetOrigin, path, payload.Token, payload.Code, delivery.CredentialChallengeID.String())
 			}
+			if payload.Type == "initial_email" {
+				subject = "Add email login to your account"
+				body = fmt.Sprintf("Enter this code in the Telegram Mini App to add independent email login to your existing account.\nCode: %s\nChallenge: %s\nThe code expires in 10 minutes.", payload.Code, delivery.CredentialChallengeID.String())
+				if payload.Locale == "ru" {
+					subject = "Добавление входа по email"
+					body = fmt.Sprintf("Введите код в Telegram Mini App для добавления независимого входа по email к существующему аккаунту.\nКод: %s\nНомер проверки: %s\nКод действует 10 минут.", payload.Code, delivery.CredentialChallengeID.String())
+				}
+			}
+			if payload.Type == "identity_recovery" {
+				subject = "Recover your account"
+				body = fmt.Sprintf("Support has started recovery of your existing account. Confirm explicitly and set a password: %s/recover-account?lang=%s#token=%s\nCode: %s\nChallenge: %s\nThe code expires in 10 minutes; the link expires in 30 minutes.", cfg.CabinetOrigin, payload.Locale, payload.Token, payload.Code, delivery.CredentialChallengeID.String())
+				if payload.Locale == "ru" {
+					subject = "Восстановление доступа к аккаунту"
+					body = fmt.Sprintf("Поддержка начала восстановление существующего аккаунта. Подтвердите действие и задайте пароль: %s/recover-account?lang=ru#token=%s\nКод: %s\nНомер проверки: %s\nКод действует 10 минут; ссылка — 30 минут.", cfg.CabinetOrigin, payload.Token, payload.Code, delivery.CredentialChallengeID.String())
+				}
+			}
 		}
 		if delivery.Kind == "security_notice" {
 			subject = "Account security changed"

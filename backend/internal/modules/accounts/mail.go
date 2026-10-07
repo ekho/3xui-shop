@@ -77,6 +77,29 @@ func (s *Service) MailProofValidTx(ctx context.Context, tx pgx.Tx, registrationI
 		if proof.CredentialVersion != account.CredentialVersion || proof.OriginalEmail != account.EmailKey.String {
 			return false, nil
 		}
+		if proof.Purpose == "initial_email" {
+			if account.Kind != "telegram" || account.Restricted || account.TelegramLoginDisabled || !s.now().Before(proof.CodeExpiresAt.Time) {
+				return false, nil
+			}
+			return identityEmailAvailable(ctx, q, proof.TargetEmail)
+		}
+		if proof.Purpose == "identity_recovery" {
+			if account.Kind != "telegram" || account.EmailKey.Valid || !account.TelegramID.Valid || !account.TelegramLoginDisabled || proof.RequestedBy == nil {
+				return false, nil
+			}
+			allowed, err := recoveryActorAllowed(ctx, q, *proof.RequestedBy)
+			if err != nil || !allowed {
+				return false, err
+			}
+			protected, err := q.OperatorRoleExists(ctx, account.ID)
+			if err != nil {
+				return false, unavailable()
+			}
+			if protected {
+				return false, nil
+			}
+			return identityEmailAvailable(ctx, q, proof.TargetEmail)
+		}
 	}
 	if registrationID != nil {
 		challenge, err := q.ChallengeByID(ctx, *registrationID)

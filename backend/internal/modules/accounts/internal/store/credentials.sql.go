@@ -13,7 +13,7 @@ import (
 )
 
 const activeEmailChange = `-- name: ActiveEmailChange :many
-SELECT id, purpose, account_id, change_id, original_email, target_email, credential_version, token_hash, code_hash, created_at, token_expires_at, code_expires_at, failed_guesses, confirmed_at, used_at, revoked FROM credential_challenges WHERE account_id=$1 AND purpose IN ('email_change_old','email_change_new') AND NOT revoked AND used_at IS NULL AND token_expires_at>$2::timestamptz ORDER BY purpose
+SELECT id, purpose, account_id, change_id, original_email, target_email, credential_version, token_hash, code_hash, created_at, token_expires_at, code_expires_at, failed_guesses, confirmed_at, used_at, revoked, requested_by FROM credential_challenges WHERE account_id=$1 AND purpose IN ('email_change_old','email_change_new') AND NOT revoked AND used_at IS NULL AND token_expires_at>$2::timestamptz ORDER BY purpose
 `
 
 type ActiveEmailChangeParams struct {
@@ -47,6 +47,7 @@ func (q *Queries) ActiveEmailChange(ctx context.Context, arg ActiveEmailChangePa
 			&i.ConfirmedAt,
 			&i.UsedAt,
 			&i.Revoked,
+			&i.RequestedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -59,8 +60,8 @@ func (q *Queries) ActiveEmailChange(ctx context.Context, arg ActiveEmailChangePa
 }
 
 const addCredentialProof = `-- name: AddCredentialProof :exec
-INSERT INTO credential_challenges(id,purpose,account_id,change_id,original_email,target_email,credential_version,token_hash,code_hash,created_at,token_expires_at,code_expires_at)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+INSERT INTO credential_challenges(id,purpose,account_id,change_id,original_email,target_email,credential_version,token_hash,code_hash,created_at,token_expires_at,code_expires_at,requested_by)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 `
 
 type AddCredentialProofParams struct {
@@ -76,6 +77,7 @@ type AddCredentialProofParams struct {
 	CreatedAt         pgtype.Timestamptz
 	TokenExpiresAt    pgtype.Timestamptz
 	CodeExpiresAt     pgtype.Timestamptz
+	RequestedBy       *uuid.UUID
 }
 
 func (q *Queries) AddCredentialProof(ctx context.Context, arg AddCredentialProofParams) error {
@@ -92,6 +94,7 @@ func (q *Queries) AddCredentialProof(ctx context.Context, arg AddCredentialProof
 		arg.CreatedAt,
 		arg.TokenExpiresAt,
 		arg.CodeExpiresAt,
+		arg.RequestedBy,
 	)
 	return err
 }
@@ -167,7 +170,7 @@ func (q *Queries) FailCredentialCode(ctx context.Context, id uuid.UUID) error {
 }
 
 const lockCredentialProof = `-- name: LockCredentialProof :one
-SELECT id, purpose, account_id, change_id, original_email, target_email, credential_version, token_hash, code_hash, created_at, token_expires_at, code_expires_at, failed_guesses, confirmed_at, used_at, revoked FROM credential_challenges WHERE id=$1 FOR UPDATE
+SELECT id, purpose, account_id, change_id, original_email, target_email, credential_version, token_hash, code_hash, created_at, token_expires_at, code_expires_at, failed_guesses, confirmed_at, used_at, revoked, requested_by FROM credential_challenges WHERE id=$1 FOR UPDATE
 `
 
 func (q *Queries) LockCredentialProof(ctx context.Context, id uuid.UUID) (CredentialChallenge, error) {
@@ -190,12 +193,13 @@ func (q *Queries) LockCredentialProof(ctx context.Context, id uuid.UUID) (Creden
 		&i.ConfirmedAt,
 		&i.UsedAt,
 		&i.Revoked,
+		&i.RequestedBy,
 	)
 	return i, err
 }
 
 const lockEmailChangePair = `-- name: LockEmailChangePair :many
-SELECT id, purpose, account_id, change_id, original_email, target_email, credential_version, token_hash, code_hash, created_at, token_expires_at, code_expires_at, failed_guesses, confirmed_at, used_at, revoked FROM credential_challenges WHERE change_id=$1 AND purpose IN ('email_change_old','email_change_new') ORDER BY purpose FOR UPDATE
+SELECT id, purpose, account_id, change_id, original_email, target_email, credential_version, token_hash, code_hash, created_at, token_expires_at, code_expires_at, failed_guesses, confirmed_at, used_at, revoked, requested_by FROM credential_challenges WHERE change_id=$1 AND purpose IN ('email_change_old','email_change_new') ORDER BY purpose FOR UPDATE
 `
 
 func (q *Queries) LockEmailChangePair(ctx context.Context, changeID *uuid.UUID) ([]CredentialChallenge, error) {
@@ -224,6 +228,7 @@ func (q *Queries) LockEmailChangePair(ctx context.Context, changeID *uuid.UUID) 
 			&i.ConfirmedAt,
 			&i.UsedAt,
 			&i.Revoked,
+			&i.RequestedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -236,7 +241,7 @@ func (q *Queries) LockEmailChangePair(ctx context.Context, changeID *uuid.UUID) 
 }
 
 const lookupCredentialByID = `-- name: LookupCredentialByID :one
-SELECT id, purpose, account_id, change_id, original_email, target_email, credential_version, token_hash, code_hash, created_at, token_expires_at, code_expires_at, failed_guesses, confirmed_at, used_at, revoked FROM credential_challenges WHERE id=$1
+SELECT id, purpose, account_id, change_id, original_email, target_email, credential_version, token_hash, code_hash, created_at, token_expires_at, code_expires_at, failed_guesses, confirmed_at, used_at, revoked, requested_by FROM credential_challenges WHERE id=$1
 `
 
 func (q *Queries) LookupCredentialByID(ctx context.Context, id uuid.UUID) (CredentialChallenge, error) {
@@ -259,12 +264,13 @@ func (q *Queries) LookupCredentialByID(ctx context.Context, id uuid.UUID) (Crede
 		&i.ConfirmedAt,
 		&i.UsedAt,
 		&i.Revoked,
+		&i.RequestedBy,
 	)
 	return i, err
 }
 
 const lookupCredentialByToken = `-- name: LookupCredentialByToken :one
-SELECT id, purpose, account_id, change_id, original_email, target_email, credential_version, token_hash, code_hash, created_at, token_expires_at, code_expires_at, failed_guesses, confirmed_at, used_at, revoked FROM credential_challenges WHERE token_hash=$1
+SELECT id, purpose, account_id, change_id, original_email, target_email, credential_version, token_hash, code_hash, created_at, token_expires_at, code_expires_at, failed_guesses, confirmed_at, used_at, revoked, requested_by FROM credential_challenges WHERE token_hash=$1
 `
 
 func (q *Queries) LookupCredentialByToken(ctx context.Context, tokenHash []byte) (CredentialChallenge, error) {
@@ -287,6 +293,7 @@ func (q *Queries) LookupCredentialByToken(ctx context.Context, tokenHash []byte)
 		&i.ConfirmedAt,
 		&i.UsedAt,
 		&i.Revoked,
+		&i.RequestedBy,
 	)
 	return i, err
 }

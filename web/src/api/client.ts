@@ -34,7 +34,7 @@ export const registerAccount=(input:RegisterInput)=>request<RegistrationAccepted
 export const verifyEmail=(input:VerifyInput)=>request<VerifyResult>('auth/verify-email','POST',input);
 export const resendVerification=(input:ResendInput)=>request<ResendAccepted>('auth/resend-verification','POST',input);
 export async function loginAccount(input:LoginInput){const out=await request<LoginResult>('auth/login','POST',input);csrf=out.csrf_token;return out;}
-export async function logoutAccount(){try{await request<void>(isMiniApp()?'telegram/mini-app/logout':'auth/logout','POST',undefined,undefined,true);}finally{clearSession();if(isMiniApp())endMiniSession('logout');}}
+export async function logoutAccount(){const mini=isMiniApp();try{await request<void>(mini?'telegram/mini-app/logout':'auth/logout','POST',undefined,undefined,true);}catch(reason){if(!mini&&reason instanceof ApiError&&reason.status===401){clearSession();return;}throw reason;}finally{if(mini){clearSession();endMiniSession('logout');}}if(!mini)clearSession();}
 export async function getAccount(signal?:AbortSignal){const out=await request<AccountResult>(isMiniApp()?'telegram/mini-app/account':'me','GET',undefined,signal);csrf=out.csrf_token;return out;}
 export async function loginMiniApp(input:components['schemas']['MiniAppSessionInput'],signal:AbortSignal){
  const out=await request<components['schemas']['MiniAppSessionResult']>('telegram/mini-app/session','POST',input,signal);
@@ -69,6 +69,16 @@ export type EmailChangeResult=components['schemas']['EmailChangeResult'];
 export const requestEmailChange=(input:EmailChangeInput)=>request<EmailChangeAccepted>('me/email-change','POST',input,undefined,true);
 export const confirmEmailChange=(input:EmailChangeConfirmInput)=>request<EmailChangeResult>('auth/email-change/confirm','POST',input);
 export const cancelEmailChange=()=>request<void>('me/email-change/cancel','POST',undefined,undefined,true);
+
+export type IdentityContext=components['schemas']['IdentityContext'];
+export type IdentityEmailPending=components['schemas']['IdentityEmailPending'];
+export type TelegramLinkChallenge=components['schemas']['TelegramLinkChallenge'];
+export const getIdentity=(signal?:AbortSignal)=>request<IdentityContext>('me/identity','GET',undefined,signal);
+export const requestInitialEmail=(input:components['schemas']['InitialEmailInput'],signal:AbortSignal)=>request<RegistrationAccepted>('telegram/initial-email','POST',input,signal,true);
+export const completeInitialEmail=(input:components['schemas']['InitialEmailCompleteInput'],signal:AbortSignal)=>request<VerifyResult>('telegram/initial-email/confirm','POST',input,signal,true);
+export const startTelegramLink=(input:CurrentPasswordInput,signal:AbortSignal)=>request<TelegramLinkChallenge>('me/telegram/link','POST',input,signal,true);
+export const confirmTelegramLink=(input:components['schemas']['MiniAppLinkInput'],signal:AbortSignal)=>request<components['schemas']['TelegramLinkResult']>('telegram/link','POST',input,signal);
+export const unlinkTelegram=(input:CurrentPasswordInput,signal:AbortSignal)=>request<components['schemas']['TelegramUnlinkResult']>('me/telegram/unlink','POST',input,signal,true);
 
 export type SupportAttachment=components['schemas']['SupportAttachment'];
 export type SupportMessage=components['schemas']['SupportMessage'];
@@ -159,3 +169,8 @@ const accessPath=(clientId:string)=>operatorClientPath(clientId)+'/access-operat
 export const createAccessOperation=(clientId:string,input:AccessOperationInput,key:string,signal?:AbortSignal)=>request<AccessOperation>(accessPath(clientId),'POST',input,signal,true,key);
 export const getAccessOperation=(clientId:string,operationId:string,signal?:AbortSignal)=>request<AccessOperation>(accessPath(clientId)+'/'+encodeURIComponent(operationId),'GET',undefined,signal);
 export const reconcileAccessOperation=(clientId:string,operationId:string,input:AccessReconcileInput,key:string,signal?:AbortSignal)=>request<AccessOperation>(accessPath(clientId)+'/'+encodeURIComponent(operationId)+'/reconcile','POST',input,signal,true,key);
+
+export type OperatorRecoveryInput=components['schemas']['OperatorRecoveryInput'];
+export type IdentityRecoveryAccepted=components['schemas']['IdentityRecoveryAccepted'];
+export async function requestOperatorRecovery(clientId:string,input:OperatorRecoveryInput,key:string,signal?:AbortSignal){return request<IdentityRecoveryAccepted>('operator/clients/'+clientId+'/identity-recovery','POST',input,signal,true,key);}
+export async function completeIdentityRecovery(input:components['schemas']['IdentityRecoveryCompleteInput'],signal?:AbortSignal){return request<VerifyResult>('auth/identity-recovery','POST',input,signal);}
