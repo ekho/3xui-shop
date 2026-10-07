@@ -1449,6 +1449,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/trials/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Activate an ordinary trial for an eligible Telegram-origin account without operator approval. Existing web-origin and unknown legacy accounts require manual approval. Atomic grant and provision reservation; replay returns the same TrialRequest. JSON must be an empty object; unknown query/body fields rejected, maximum 16 KiB. */
+        post: operations["activateTelegramTrial"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1504,6 +1521,11 @@ export interface components {
         };
         Capabilities: {
             trial_available: boolean;
+            /**
+             * @description Optional source-based trial policy. Absent means request. A Telegram binding does not change original web policy.
+             * @enum {string}
+             */
+            trial_mode?: "request" | "activate";
         };
         LoginResult: {
             account: components["schemas"]["Account"];
@@ -2604,6 +2626,7 @@ export interface components {
             accepted_terms_version: string;
             accepted_privacy_version: string;
         } & (unknown | unknown);
+        TrialActivationInput: Record<string, never>;
     };
     responses: never;
     parameters: never;
@@ -10170,6 +10193,108 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VerifyResult"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    /** @description Seconds before retry */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    activateTelegramTrial: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token": string;
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrialActivationInput"];
+            };
+        };
+        responses: {
+            /** @description Existing idempotent request */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrialRequest"];
+                };
+            };
+            /** @description Success */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrialRequest"];
                 };
             };
             /** @description Safe error */

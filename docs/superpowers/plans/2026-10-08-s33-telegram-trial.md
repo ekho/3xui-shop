@@ -51,15 +51,15 @@ accounts_mapping.go, mini_app.go, subscriptions_mapping.go; тесты HTTP.
 **Interfaces:** consumes T1; produces POST /trials/activate JSON {}, cookie/bearer,
 Origin/CSRF/Idempotency-Key; optional trial_mode=activate, прежний TrialRequest.
 
-- [ ] RED: подписанный Mini App/обычная session, реальные body/status/error,
+- [x] RED: подписанный Mini App/обычная session, реальные body/status/error,
   CSRF/bearer/Origin/idempotency/body guard; старый web JSON и manual request.
-- [ ] Run `go test ./internal/httpapi -run 'TestTelegramTrialHTTP' -count=1 -timeout=5m`.
+- [x] Run `go test ./internal/httpapi -run 'TestTelegramTrialHTTP' -count=1 -timeout=5m`.
   Expected: endpoint/capability отсутствует, конкретный assertion RED.
-- [ ] Edit owning OpenAPI, generate via make -C backend generate и
+- [x] Edit owning OpenAPI, generate via make -C backend generate и
   npm --prefix web run api:generate; адаптировать три account response в одном helper.
-- [ ] Verify focused HTTP + прежние Trial/MiniApp/identity тесты с -race.
+- [x] Verify focused HTTP + прежние Trial/MiniApp/identity тесты с -race.
   Expected: PASS, неизвестные JSON/query поля отклонены, web shape сохранён.
-- [ ] Commit `feat(api): expose source-aware telegram trial activation`.
+- [x] Commit `feat(api): expose source-aware telegram trial activation`.
 
 ### Task 3: Общий кабинет
 

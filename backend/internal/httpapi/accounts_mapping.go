@@ -49,6 +49,19 @@ func publicAccount(a accounts.Snapshot) wire.Account {
 	return wire.Account{AccountId: a.ID, Email: openapi_types.Email(email), EmailVerified: a.VerifiedAt != nil, Locale: wire.AccountLocale(a.Locale), TelegramLinked: false}
 }
 
+func (a *API) trialCapabilities(ctx context.Context, account accounts.Snapshot) (wire.Capabilities, error) {
+	available, err := a.subscriptions.CanRequestTrial(ctx, account)
+	if err != nil {
+		return wire.Capabilities{}, subscriptionError(err)
+	}
+	out := wire.Capabilities{TrialAvailable: available}
+	if a.subscriptions.TrialMode(account) == "activate" {
+		mode := wire.CapabilitiesTrialMode("activate")
+		out.TrialMode = &mode
+	}
+	return out, nil
+}
+
 func (a *API) login(ctx context.Context, in wire.LoginInput, ip string) (wire.LoginResult, string, error) {
 	out, raw, err := a.accounts.Login(ctx, accounts.LoginInput{Email: string(in.Email), Password: in.Password}, ip)
 	return wire.LoginResult{Account: publicAccount(out.Account), CsrfToken: out.CsrfToken}, raw, accountError(err)
@@ -59,11 +72,11 @@ func (a *API) authenticate(ctx context.Context, raw string) (wire.AccountResult,
 	if err != nil {
 		return wire.AccountResult{}, accountError(err)
 	}
-	available, err := a.subscriptions.CanRequestTrial(ctx, out.Account)
+	capabilities, err := a.trialCapabilities(ctx, out.Account)
 	if err != nil {
-		return wire.AccountResult{}, subscriptionError(err)
+		return wire.AccountResult{}, err
 	}
-	return wire.AccountResult{Account: publicAccount(out.Account), CsrfToken: out.CsrfToken, Capabilities: wire.Capabilities{TrialAvailable: available}}, nil
+	return wire.AccountResult{Account: publicAccount(out.Account), CsrfToken: out.CsrfToken, Capabilities: capabilities}, nil
 }
 
 func (a *API) logout(ctx context.Context, raw string) error {
