@@ -27,9 +27,10 @@ type ClientJob struct {
 	LeaseExpiresAt time.Time
 }
 type ClientOutcome struct {
-	State     string
-	MessageID int64
-	Code      string
+	State      string
+	MessageID  int64
+	Code       string
+	RetryAfter time.Duration `json:"-"`
 }
 
 func clientRoute(route string) bool {
@@ -104,6 +105,23 @@ func lockClient(ctx context.Context, tx pgx.Tx, j ClientJob) (string, error) {
 	return state, nil
 }
 func finishClient(ctx context.Context, tx pgx.Tx, j ClientJob, out ClientOutcome) error {
+	if out.RetryAfter != 0 && out.State != "retry" {
+		return failure(400, "INVALID_INPUT")
+	}
+	if out.State == "retry" {
+		if out.MessageID != 0 || out.Code != "" || out.RetryAfter < time.Second || out.RetryAfter > 24*time.Hour {
+			return failure(400, "INVALID_INPUT")
+		}
+		r, err := tx.Exec(ctx, `UPDATE client_telegram_deliveries SET available_at=clock_timestamp()+$2*interval '1 second',lease_hash=NULL,lease_expires_at=NULL
+ WHERE id=$1 AND state='pending' AND lease_hash=$3 AND lease_expires_at>clock_timestamp()`, j.ID, out.RetryAfter.Seconds(), digest(j.LeaseToken))
+		if err != nil {
+			return unavailable()
+		}
+		if r.RowsAffected() != 1 {
+			return failure(409, "REQUEST_STATE_CONFLICT")
+		}
+		return nil
+	}
 	var message *int64
 	var code *string
 	switch out.State {

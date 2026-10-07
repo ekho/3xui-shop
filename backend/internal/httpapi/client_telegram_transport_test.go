@@ -72,7 +72,7 @@ func TestClientTelegramTransport(t *testing.T) {
 					case "bad-request":
 						return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":false,"error_code":400}`))}, nil
 					case "rate-limit":
-						return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":false,"error_code":429,"parameters":{"retry_after":30}}`))}, nil
+						return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":false,"error_code":429,"parameters":{"retry_after":3600}}`))}, nil
 					}
 					result = `{"message_id":42,"chat":{"id":701,"type":"private"}}`
 				default:
@@ -147,6 +147,32 @@ func TestClientTelegramTransport(t *testing.T) {
 			}
 			if (wantState == "sent" && (message == nil || *message != 42)) || (wantState != "sent" && message != nil) {
 				t.Fatal("unproven delivery recorded as sent")
+			}
+			if mode == "rate-limit" {
+				var deferred bool
+				if err = e.Pool.QueryRow(ctx, `SELECT available_at>clock_timestamp()+interval '3590 seconds' AND lease_hash IS NULL AND lease_expires_at IS NULL AND completed_at IS NULL AND result_hash IS NULL FROM client_telegram_deliveries WHERE account_id=$1`, a.Account.ID).Scan(&deferred); err != nil || !deferred {
+					t.Fatal("retry_after not durably retained after rejected send", err)
+				}
+				// An expired old lease cannot bypass the provider deadline in a freshly assembled owner.
+				if _, err = e.Pool.Exec(ctx, `UPDATE client_telegram_deliveries SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE account_id=$1`, a.Account.ID); err != nil {
+					t.Fatal(err)
+				}
+				restarted := notifications.New(e.Pool, func() []int64 { return []int64{101} }, modules.Accounts.OperatorAllowed, nil, modules.Accounts.WithTelegramDelivery)
+				if job, err := restarted.ClaimClient(ctx); err != nil || job != nil {
+					t.Fatal("restart ignored retry_after", err)
+				}
+				if _, err = e.Pool.Exec(ctx, `UPDATE client_telegram_deliveries SET available_at=clock_timestamp()-interval '1 second' WHERE account_id=$1`, a.Account.ID); err != nil {
+					t.Fatal(err)
+				}
+				job, err := restarted.ClaimClient(ctx)
+				if err != nil || job == nil || job.AccountID != a.Account.ID {
+					t.Fatal("deferred notification lost at deadline", err)
+				}
+				if err = restarted.DeliverClient(ctx, *job, func() (notifications.ClientOutcome, error) {
+					return notifications.ClientOutcome{State: "sent", MessageID: 43}, nil
+				}); err != nil {
+					t.Fatal(err)
+				}
 			}
 		})
 	}

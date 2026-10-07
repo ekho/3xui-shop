@@ -197,3 +197,33 @@ func TestClientTelegramOperatorCommand(t *testing.T) {
 		t.Fatal("client channel took operator approval")
 	}
 }
+
+func TestClientTelegramOperatorUnknownCommand(t *testing.T) {
+	for _, command := range []string{"/cancel", "/start@old_username", " /unknown"} {
+		for _, reason := range []string{"", "Owned reason already confirmed"} {
+			for _, mode := range []string{"client", "operator-only"} {
+				t.Run(command+"/"+reason+"/"+mode, func(t *testing.T) {
+					d, actions, _ := approvalFixture(t)
+					r := &Runtime{dispatcher: d}
+					if mode == "client" {
+						r.clients = &Client{api: d.api, botID: 123456789, username: "fixture_bot"}
+					}
+					target := uuid.New()
+					d.pending[101] = &confirmation{SupportAction: SupportAction{TargetID: target, ActorID: 101, Key: uuid.New(), Reason: reason}, action: "s", messageID: 7}
+					if err := r.handle(context.Background(), clientMessage(101, command)); err != nil {
+						t.Fatal(err)
+					}
+					if d.pending[101] != nil {
+						t.Fatal("slash command retained operator reason or confirmation")
+					}
+					if err := r.handle(context.Background(), callback(target, 101, 7, "y")); err != nil {
+						t.Fatal(err)
+					}
+					if len(actions.support) != 0 {
+						t.Fatal("stale command confirmation executed support action")
+					}
+				})
+			}
+		}
+	}
+}

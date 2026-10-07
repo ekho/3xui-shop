@@ -10,7 +10,8 @@ type View={key:string;page?:api.PaymentHistoryPage;busy:boolean;error?:string;de
 type Quote=api.PaymentHistoryPage['orders'][number]['quote']|NonNullable<api.PaymentHistoryPage['legacy_transactions'][number]['quote']>;
 
 export function PaymentHistory({lang,clientId,onDenied,onChanged}:{lang:Lang;clientId?:string;onDenied?:()=>void;onChanged?:()=>void}){
- const t=text(lang),id=useId(),route=useLocation(),navigate=useNavigate(),params=new URLSearchParams(route.search);const[kind,setKind]=useState<Kind>(!clientId&&params.get('kind')==='legacy'?'legacy':'orders');
+ const t=text(lang),id=useId(),route=useLocation(),navigate=useNavigate(),params=new URLSearchParams(route.search),routeKind=params.get('kind');
+ const urlKind:Kind=routeKind==='receipts'||routeKind==='refunds'||routeKind==='legacy'?routeKind:'orders';const[kind,setKind]=useState<Kind>(clientId?'orders':urlKind);
  const candidate=params.get('legacy_source_id');const source=!clientId&&kind==='legacy'&&params.get('kind')==='legacy'&&params.getAll('legacy_source_id').length===1&&candidate&&/^[1-9][0-9]{0,18}$/.test(candidate)&&BigInt(candidate)<=9223372036854775807n?candidate:undefined;
  const key=(clientId??'self')+'/'+kind+'/'+lang+'/'+(source??'all');
  function clearFilter(next:Kind=kind){params.delete('legacy_source_id');params.set('kind',next);navigate({pathname:route.pathname,search:'?'+params.toString(),hash:route.hash},{replace:true});}
@@ -40,7 +41,7 @@ export function PaymentHistory({lang,clientId,onDenied,onChanged}:{lang:Lang;cli
    if(denied){if(clientId)onDenied?.();else if(error instanceof api.ApiError&&error.status===401)loginRedirect(lang);}
   }
  }
- useEffect(()=>{if(!clientId)setKind(params.get('kind')==='legacy'?'legacy':'orders');},[route.search,clientId]);
+ useEffect(()=>{if(!clientId)setKind(urlKind);},[urlKind,clientId]);
  useEffect(()=>{setSelection(undefined);void load();return()=>request.current?.abort();},[clientId,kind,lang,source]);
  const field=(name:string,value:ReactNode)=><div key={name}><dt>{name}</dt><dd>{value}</dd></div>;
  const date=(value:string)=><time dateTime={value}>{new Date(value).toLocaleString(lang==='ru'?'ru-RU':'en-US')}</time>;
@@ -55,7 +56,7 @@ export function PaymentHistory({lang,clientId,onDenied,onChanged}:{lang:Lang;cli
  const count=page?(kind==='orders'?page.orders.length:kind==='receipts'?page.receipts.length:kind==='refunds'?(page.refunds?.length??0):page.legacy_transactions.length):0;
  return <section className={clientId?'payment-history':'card payment-history'} aria-labelledby={id+'-title'} aria-busy={current.busy}>
   {clientId?<h2 id={id+'-title'} ref={heading} tabIndex={-1}>{t.paymentHistory}</h2>:<><h1 id={id+'-title'} ref={heading} tabIndex={-1}>{t.paymentHistory}</h1><p><a href={link('/cabinet',lang)}>{t.cabinet}</a></p></>}
-  <div className="catalogue-selectors"><label htmlFor={id+'-kind'}>{t.historyKind}<select id={id+'-kind'} value={kind} disabled={current.denied} onChange={event=>{const next=event.target.value as Kind;setKind(next);if(params.has('legacy_source_id'))clearFilter(next);}}><option value="orders">{t.historyOrders}</option><option value="receipts">{t.historyReceipts}</option><option value="refunds">{t.historyRefunds}</option><option value="legacy">{t.historyLegacy}</option></select></label><button disabled={current.busy||current.denied} onClick={()=>void load()}>{t.historyRefresh}</button></div>
+  <div className="catalogue-selectors"><label htmlFor={id+'-kind'}>{t.historyKind}<select id={id+'-kind'} value={kind} disabled={current.denied} onChange={event=>{const next=event.target.value as Kind;setKind(next);if(!clientId)clearFilter(next);}}><option value="orders">{t.historyOrders}</option><option value="receipts">{t.historyReceipts}</option><option value="refunds">{t.historyRefunds}</option><option value="legacy">{t.historyLegacy}</option></select></label><button disabled={current.busy||current.denied} onClick={()=>void load()}>{t.historyRefresh}</button></div>
   {source?<p>{t.historyOpenedRecord}: <code>{source}</code> <button disabled={current.denied} onClick={()=>clearFilter()}>{t.historyFullArchive}</button></p>:null}
   <p className="help">{t.historyHelp}</p>
   {current.busy?<p role="status">{t.loading}</p>:null}

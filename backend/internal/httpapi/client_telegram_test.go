@@ -13,7 +13,7 @@ import (
 )
 
 func TestClientTelegramOutbox(t *testing.T) {
-	for _, mode := range []string{"sent", "lost", "forbidden", "skipped", "lease", "expired", "short-lease", "metadata", "invalid-result"} {
+	for _, mode := range []string{"sent", "lost", "forbidden", "skipped", "lease", "expired", "short-lease", "metadata", "invalid-result", "invalid-retry", "invalid-retry-message", "invalid-retry-limit"} {
 		t.Run(mode, func(t *testing.T) {
 			_, svc, e, _ := bridgeFixture(t)
 			ctx := context.Background()
@@ -84,6 +84,12 @@ func TestClientTelegramOutbox(t *testing.T) {
 					return notifications.ClientOutcome{State: "failed", Code: "forbidden"}, nil
 				case "invalid-result":
 					return notifications.ClientOutcome{State: "sent", MessageID: 0}, nil
+				case "invalid-retry":
+					return notifications.ClientOutcome{State: "retry"}, nil
+				case "invalid-retry-message":
+					return notifications.ClientOutcome{State: "retry", RetryAfter: time.Hour, MessageID: 42}, nil
+				case "invalid-retry-limit":
+					return notifications.ClientOutcome{State: "retry", RetryAfter: 25 * time.Hour}, nil
 				default:
 					return notifications.ClientOutcome{State: "sent", MessageID: 42}, nil
 				}
@@ -105,7 +111,7 @@ func TestClientTelegramOutbox(t *testing.T) {
 				if err == nil {
 					t.Fatal("invalid lease/metadata accepted")
 				}
-			case "invalid-result":
+			case "invalid-result", "invalid-retry", "invalid-retry-message", "invalid-retry-limit":
 				wantState = "pending"
 				if err == nil {
 					t.Fatal("invalid transport result accepted")

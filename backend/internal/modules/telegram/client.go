@@ -116,7 +116,8 @@ func (c *Client) deliver(parent context.Context, j notifications.ClientJob) erro
 		}
 		path = "/orders/" + strings.TrimPrefix(j.Route, "orders:")
 	}
-	return c.notices.DeliverClient(ctx, j, func() (notifications.ClientOutcome, error) {
+	var limited error
+	err := c.notices.DeliverClient(ctx, j, func() (notifications.ClientOutcome, error) {
 		k := &botapi.InlineKeyboard{Rows: [][]botapi.Button{{{
 			Text: clientText(j.Locale, "Открыть кабинет", "Open cabinet"), WebApp: &botapi.WebAppInfo{URL: c.route(path, j.Locale)},
 		}}, {{Text: clientText(j.Locale, "Закрыть", "Close"), Data: "cn1:" + j.ID.String()}}}}
@@ -129,9 +130,19 @@ func (c *Client) deliver(parent context.Context, j notifications.ClientJob) erro
 			return notifications.ClientOutcome{State: "failed", Code: "forbidden"}, nil
 		case "BAD_REQUEST":
 			return notifications.ClientOutcome{State: "failed", Code: "bad_request"}, nil
+		case "RATE_LIMITED":
+			var fault *botapi.APIError
+			if errors.As(err, &fault) {
+				limited = err
+				return notifications.ClientOutcome{State: "retry", RetryAfter: fault.RetryAfter}, nil
+			}
 		}
 		return notifications.ClientOutcome{}, err
 	})
+	if err != nil {
+		return err
+	}
+	return limited
 }
 func (c *Client) handle(ctx context.Context, u botapi.Update) (bool, error) {
 	if u.Callback != nil {

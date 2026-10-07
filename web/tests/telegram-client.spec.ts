@@ -2,7 +2,7 @@ import {test,expect,type Page,type Route} from '@playwright/test';
 const source='9007199254740993';
 const created='2026-10-07T10:00:00Z';
 const row=(id:string)=>({source_id:id,created_at:created,updated_at:created,payment_status:'completed',fulfillment_status:'unknown',payment_method:null,quote:null});
-const history=(rows:string[])=>({kind:'legacy',orders:[],receipts:[],legacy_transactions:rows.map(row),has_more:false});
+const history=(rows:string[])=>({kind:'legacy',orders:[],receipts:[],refunds:[],legacy_transactions:rows.map(row),has_more:false});
 async function setup(page:Page,extra?:(route:Route)=>Promise<boolean>){
  const calls:Record<string,unknown>[]=[];
  await page.route('**/api/v1/**',async route=>{
@@ -33,6 +33,13 @@ test('retry retains exact archive reference and switching kind removes it',async
  await expect(page.getByRole('alert')).toBeVisible();await page.getByRole('button',{name:'Retry',exact:true}).click();await expect(page.locator('.payment-history article')).toHaveCount(1);expect(calls.slice(0,2)).toEqual([{kind:'legacy',legacy_source_id:source},{kind:'legacy',legacy_source_id:source}]);
  await page.getByLabel('History type').selectOption('orders');await expect.poll(()=>calls.at(-1)?.kind).toBe('orders');expect(calls.at(-1)).toEqual({kind:'orders'});
  await page.getByLabel('History type').selectOption('legacy');await expect(page.locator('.payment-history article')).toHaveCount(2);expect(calls.at(-1)).toEqual({kind:'legacy'});
+});
+for(const kind of ['receipts','refunds'])test(`archive navigation retains ${kind} on selection and reload`,async({page})=>{
+ const calls=await setup(page);await page.goto('/cabinet/history?kind=legacy&legacy_source_id='+source+'&lang=en');
+ await expect(page.locator('.payment-history article')).toHaveCount(1);await page.getByLabel('History type').selectOption(kind);
+ await expect(page.getByLabel('History type')).toHaveValue(kind);await expect(page.getByRole('status')).toContainText('No records of this type.');
+ expect(calls.at(-1)).toEqual({kind});expect(new URL(page.url()).searchParams.get('kind')).toBe(kind);expect(new URL(page.url()).searchParams.has('legacy_source_id')).toBe(false);
+ await page.reload();await expect(page.getByLabel('History type')).toHaveValue(kind);await expect(page.getByRole('status')).toContainText('No records of this type.');expect(calls.at(-1)).toEqual({kind});
 });
 for(const status of [401,403])test(`archive access denial clears shown record ${status}`,async({page})=>{
  let denied=false;await setup(page,async route=>{if(!denied)return false;await route.fulfill({status,json:{error:{code:status===403?'ACCOUNT_RESTRICTED':'UNAUTHORIZED'}}});return true;});await page.goto('/cabinet/history?kind=legacy&legacy_source_id='+source+'&lang=en');await expect(page.locator('.payment-history article')).toHaveCount(1);
