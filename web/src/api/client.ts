@@ -42,6 +42,7 @@ export async function loginMiniApp(input:components['schemas']['MiniAppSessionIn
  miniToken=out.session_token;csrf=out.csrf_token;return out;
 }
 export const createTrialRequest=(input:TrialRequestInput,key:string,signal?:AbortSignal)=>request<TrialRequest>('trial-requests','POST',input,signal,true,key);
+export const activateTelegramTrial=(key:string,signal?:AbortSignal)=>request<TrialRequest>('trials/activate','POST',{},signal,true,key);
 export const getCurrentTrialRequest=(signal?:AbortSignal)=>request<CurrentTrialRequest>('trial-requests/current','GET',undefined,signal);
 export const getSubscription=(signal?:AbortSignal)=>request<Subscription>('subscription','GET',undefined,signal);
 export const getSubscriptionKey=(signal?:AbortSignal)=>request<SubscriptionKey>('subscription/key','GET',undefined,signal);

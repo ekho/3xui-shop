@@ -66,13 +66,13 @@ Origin/CSRF/Idempotency-Key; optional trial_mode=activate, прежний TrialR
 **Files:** web/src/Cabinet.tsx, api/client.ts, i18n.ts; web/tests/telegram-trial.spec.ts (новый).
 **Interfaces:** consumes optional T2 mode; produces общую CTA и устойчивую retry-попытку.
 
-- [ ] RED: ru/en auto CTA/no-comment, клавиатура/busy, lost response same-key retry,
+- [x] RED: ru/en auto CTA/no-comment, клавиатура/busy, lost response same-key retry,
   нужды поддержки/no second activation, legacy missing-mode manual форма.
-- [ ] Run `npm --prefix web run test:e2e -- telegram-trial.spec.ts`.
+- [x] Run `npm --prefix web run test:e2e -- telegram-trial.spec.ts`.
   Expected: отсутствующая CTA/новый endpoint RED.
-- [ ] Implement через существующие form/attempt/polling/error механизмы.
-- [ ] Verify focused web + web-trial/mini-app, typecheck. Expected: PASS.
-- [ ] Commit `feat(web): activate telegram trial in shared cabinet`.
+- [x] Implement через существующие form/attempt/polling/error механизмы.
+- [x] Verify focused web + web-trial/mini-app, typecheck. Expected: PASS.
+- [x] Commit `feat(web): activate telegram trial in shared cabinet`.
 
 ### Task 4: Native-путь и итоговая приёмка
 
