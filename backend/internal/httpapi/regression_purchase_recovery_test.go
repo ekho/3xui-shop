@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"example.com/cabinet/backend/internal/modules/vpn"
 	"example.com/cabinet/backend/internal/testkit"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
@@ -33,6 +34,58 @@ func paidPurchase(t *testing.T) (*regressionFixture, *testkit.Env, uuid.UUID, wi
 		t.Fatal(err)
 	}
 	return s, e, account, order
+}
+
+func TestRegressionPurchaseLostCreateReply(t *testing.T) {
+	s, e, account, order := paidPurchase(t)
+	ctx := context.Background()
+	p := panelFixture(t, s)
+	p.loseAdd = true
+	if err := s.fulfillPurchase(ctx, order.OrderId); err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := s.purchaseOrder(ctx, account, order.OrderId)
+	if err != nil || prepared.AccessOperationId == nil {
+		t.Fatalf("paid target absent: %v", err)
+	}
+	const snapshot = `SELECT p.funding_operation_id, o.target::text,
+	  a.vpn_id::text||':'||a.sub_id||':'||a.panel_key
+	  FROM purchase_orders p JOIN access_operations o ON o.id=p.access_operation_id
+	  JOIN accounts a ON a.id=p.account_id WHERE p.id=$1`
+	var funding, target, identity string
+	if err = e.Pool.QueryRow(ctx, snapshot, order.OrderId).Scan(&funding, &target, &identity); err != nil {
+		t.Fatal(err)
+	}
+	var frozen vpn.AccessTarget
+	if err = json.Unmarshal([]byte(target), &frozen); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err = s.applyAccess(ctx, *prepared.AccessOperationId); err != nil {
+			t.Fatal(err)
+		}
+	}
+	final, err := s.purchaseOrder(ctx, account, order.OrderId)
+	if err != nil || final.FulfillmentStatus != "applied" || final.AccessOperationId == nil || *final.AccessOperationId != *prepared.AccessOperationId {
+		t.Fatalf("lost native create reply did not reconcile the same paid operation: %v", err)
+	}
+	var afterFunding, afterTarget, afterIdentity string
+	if err = e.Pool.QueryRow(ctx, snapshot, order.OrderId).Scan(&afterFunding, &afterTarget, &afterIdentity); err != nil {
+		t.Fatal(err)
+	}
+	if funding != afterFunding || target != afterTarget || identity != afterIdentity {
+		t.Fatal("recovery changed frozen money, target or identity")
+	}
+	var receipts, operations int
+	if err = e.Pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM purchase_receipts WHERE order_id=$1),
+	  (SELECT count(*) FROM access_operations WHERE purchase_order_id=$1)`, order.OrderId).Scan(&receipts, &operations); err != nil || receipts != 1 || operations != 1 {
+		t.Fatalf("recovery duplicated money/access: receipts=%d operations=%d err=%v", receipts, operations, err)
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.adds != 1 || p.resets != 1 || p.client["id"] != frozen.VPNID.String() || p.client["subId"] != frozen.SubID || integer(t, p.client["expiryTime"]) != frozen.ExpiryTimeMS || integer(t, p.client["limitIp"]) != 3 || integer(t, p.client["totalGB"]) != 100*1024*1024*1024 {
+		t.Fatalf("native effect not exactly once or wrong target: adds=%d resets=%d", p.adds, p.resets)
+	}
 }
 
 func TestRegressionPurchasePretargetRecoveryClearsFulfillmentReview(t *testing.T) {

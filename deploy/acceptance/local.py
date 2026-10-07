@@ -1,6 +1,9 @@
 """Own Docker acceptance stack. Secrets stay in private files; Telegram is opt-in."""
 import base64
 import argparse
+from datetime import datetime, timezone
+import hashlib
+import hmac
 import http.cookiejar
 from ipaddress import IPv4Address
 import json
@@ -14,7 +17,7 @@ import sys
 import time
 import urllib.request
 from urllib.error import HTTPError
-from urllib.parse import urlsplit, parse_qs, urlencode
+from urllib.parse import urlsplit, parse_qs, urlencode, quote
 from uuid import UUID, uuid4
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -80,6 +83,8 @@ def prepare():
     (STATE / 'origin').mkdir(exist_ok=True)
     (STATE / 'origin/index.html').write_bytes(VPN_ORIGIN_MARKER)
     if not (STATE/'native-operator-account').exists():write('native-operator-account','')
+    if PROFILE == 'native' and not (STATE/'yoomoney-notification-secret').exists():
+        write('yoomoney-notification-secret', secrets.token_urlsafe(32))
     if ENV.exists():
         return
     (STATE / 'panel-db').mkdir(mode=0o700)
@@ -551,15 +556,112 @@ def native_check():
     print('PASS: native Go HTTP/jobs/Telegram integration with real TLS SMTP and 3X-UI3.7.0; Bot API simulated',flush=True)
     native_restart()
 
+def yoomoney_signature(fields, secret):
+    canonical = '&'.join(quote(key, safe='-._~') + '=' + quote(fields[key], safe='-._~')
+                         for key in sorted(fields) if key != 'sign')
+    return hmac.new(secret.encode(), canonical.encode(), hashlib.sha256).hexdigest()
+
+def native_paid_restart():
+    assert PROFILE == 'native', 'paid recovery requires the owned native profile'
+    config = json.loads(compose('config', '--format', 'json'))
+    settings = config['services']['backend']['environment']
+    assert settings['TELEGRAM_ENABLED'] == 'false' and settings['SHOP_PAYMENT_YOOMONEY_ENABLED'] == 'true', 'enable only the local payment fixture'
+    assert settings['YOOMONEY_WALLET_ID'] == '410000000000000', 'real wallet is outside local acceptance'
+    assert config['services']['panel']['image'].startswith('ghcr.io/mhsanaei/3x-ui:3.7.0@sha256:'), '3X-UI3.7.0 required'
+    assert not set(compose('ps', '--services', '--status', 'running').decode().splitlines()).intersection({'bot', 'reconcile'}), 'one application process required'
+    opener, trial, credentials = signup()
+    account = sql("SELECT account_id FROM trial_requests WHERE id=:'op'::uuid;", operation=trial['request_id'])
+    write('native-operator-account', str(UUID(account)))
+    compose('exec', '-T', 'backend', '/server', 'operator', 'grant', '--account-file', '/run/secrets/native_operator_account')
+    _, _, login = api(opener, '/api/v1/auth/login', credentials)
+    terms = {'devices': 2, 'traffic_gb': 1, 'profile': 'regular', 'hidden': False, 'periods': [30],
+             'prices': [{'period_days': 30, 'currency': c, 'amount_minor': '10000' if c == 'RUB' else '0'} for c in ('RUB', 'USD', 'XTR')]}
+    status, _, catalogue = api(opener, '/api/v1/catalogue')
+    assert status == 200, 'fixture catalogue read failed'
+    plan = next((p for p in catalogue['plans'] if all(p[k] == v for k, v in terms.items())), None)
+    if plan is None:
+        status, _, plan = api(opener, '/api/v1/operator/catalogue/plans', {'terms': terms,
+            'reason': 'Owned paid recovery fixture'}, login['csrf_token'], str(uuid4()))
+        assert status == 201, 'fixture catalogue creation failed'
+    status, _, order = api(opener, '/api/v1/orders', {'action': 'purchase', 'plan_id': plan['plan_id'], 'revision': plan['revision'],
+                         'period_days': 30, 'payment_method': 'yoomoney', 'payment_type': 'AC'}, login['csrf_token'], str(uuid4()))
+    assert status == 201 and order['payment_status'] == 'pending', 'fixture order creation failed'
+    order_id = str(UUID(order['order_id']))
+    fields = {'notification_type': 'p2p-incoming', 'operation_id': 'local-' + uuid4().hex, 'label': order_id,
+              'amount': '98.00', 'withdraw_amount': '100.00', 'currency': '643', 'codepro': 'false', 'unaccepted': 'false',
+              'datetime': datetime.now(timezone.utc).isoformat(timespec='microseconds').replace('+00:00', 'Z')}
+    fields['sign'] = yoomoney_signature(fields, (STATE/'yoomoney-notification-secret').read_text().strip())
+    def notify():
+        req = urllib.request.Request(ORIGIN + '/webhooks/yoomoney', data=urlencode(fields).encode(),
+                                     headers={'Content-Type': 'application/x-www-form-urlencoded'})
+        with opener.open(req, timeout=15) as response:
+            assert response.status == 200, 'owned notification failed'
+    def saved():
+        return json.loads(sql("""SELECT json_build_object('payment',p.payment_status,'fulfillment',p.fulfillment_status,
+          'funding',p.funding_operation_id,'access',p.access_operation_id,'target',o.target,
+          'identity',json_build_array(a.vpn_id,a.sub_id,a.panel_key),
+          'receipts',(SELECT count(*) FROM purchase_receipts WHERE order_id=p.id),
+          'operations',(SELECT count(*) FROM access_operations WHERE purchase_order_id=p.id),
+          'purchase_jobs',(SELECT count(*) FROM river_job WHERE kind='purchase_fulfillment' AND args->>'order_id'=p.id::text),
+          'access_jobs',(SELECT count(*) FROM river_job WHERE kind='access_operation' AND args->>'operation_id'=p.access_operation_id::text),
+          'purchase_job',(SELECT state FROM river_job WHERE kind='purchase_fulfillment' AND args->>'order_id'=p.id::text ORDER BY id DESC LIMIT 1),
+          'access_job',(SELECT state FROM river_job WHERE kind='access_operation' AND args->>'operation_id'=p.access_operation_id::text ORDER BY id DESC LIMIT 1))
+          FROM purchase_orders p JOIN accounts a ON a.id=p.account_id LEFT JOIN access_operations o ON o.id=p.access_operation_id WHERE p.id=:'op'::uuid;""", operation=order_id))
+    def process():
+        container = compose('ps', '-q', 'backend').decode().strip()
+        value = json.loads(command(['docker', 'inspect', container]))[0]
+        return {'image': value['Image'], 'started': value['State']['StartedAt']}
+    original_process = process()
+    # TG_ARGV is a psql-quoted, validated UUID; only this fixture's jobs are held.
+    sql("""CREATE FUNCTION paid_hold_job() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF (NEW.kind='purchase_fulfillment' AND NEW.args->>'order_id'=TG_ARGV[0])
+        OR (NEW.kind='access_operation' AND EXISTS(SELECT 1 FROM access_operations
+          WHERE id=(NEW.args->>'operation_id')::uuid AND purchase_order_id=TG_ARGV[0]::uuid))
+        THEN NEW.state='scheduled'; NEW.scheduled_at=clock_timestamp()+interval '1 hour'; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER paid_hold_job BEFORE INSERT ON river_job FOR EACH ROW EXECUTE FUNCTION paid_hold_job(:'op');""", operation=order_id)
+    try:
+        notify(); notify()
+        before = saved()
+        assert before['payment'] == 'paid' and before['fulfillment'] == 'queued' and before['funding'] and before['receipts'] == 1 and before['operations'] == 0 and before['purchase_job'] == 'scheduled' and before['purchase_jobs'] == 1
+        compose('stop', 'backend')
+        sql("UPDATE river_job SET state='available',scheduled_at=clock_timestamp() WHERE kind='purchase_fulfillment' AND args->>'order_id'=:'op' AND state='scheduled';", operation=order_id)
+        compose('up', '--no-build', '--pull', 'never', '-d', 'backend'); wait_until(ready)
+        second_process = process()
+        assert second_process['image'] == original_process['image'] and second_process['started'] != original_process['started'], 'compiled process did not restart'
+        prepared = wait_until(lambda: (value if value['target'] is not None and value['access_job'] == 'scheduled' else None) if (value := saved()) else None)
+        assert prepared['receipts'] == 1 and prepared['operations'] == 1 and prepared['access_jobs'] == 1 and prepared['funding'] == before['funding'] and prepared['identity'] == before['identity']
+        compose('stop', 'backend')
+        sql('DROP TRIGGER paid_hold_job ON river_job; DROP FUNCTION paid_hold_job();')
+        sql("UPDATE river_job SET state='available',scheduled_at=clock_timestamp() WHERE kind='access_operation' AND args->>'operation_id'=:'op' AND state='scheduled';", operation=prepared['access'])
+        compose('up', '--no-build', '--pull', 'never', '-d', 'backend'); wait_until(ready)
+        third_process = process()
+        assert third_process['image'] == original_process['image'] and third_process['started'] != second_process['started'], 'compiled process did not restart a second time'
+        after = wait_until(lambda: value if (value := saved())['fulfillment'] == 'applied' and value['access_job'] == 'completed' else None)
+        panel_readback(prepared['target']); assert active(opener) is not None
+        notify(); notify()
+        replay = saved()
+        for name in ('funding', 'access', 'target', 'identity', 'receipts', 'operations', 'purchase_jobs', 'access_jobs'):
+            assert after[name] == prepared[name] == replay[name], 'restart/replay changed ' + name
+        assert replay['payment'] == 'paid' and replay['fulfillment'] == 'applied'
+        panel_readback(prepared['target'])
+        write('paid-recovery-proof.json', json.dumps({'before': before, 'prepared': prepared, 'after': after, 'replay': replay,
+              'processes': [original_process, second_process, third_process], 'panel': '3.7.0', 'telegram': False}))
+        print('PASS: paid receipt/job and frozen target/job survived two compiled Go process restarts; same funding/access/identity/target, one receipt, real 3X-UI3.7.0 readback and duplicate notification; Telegram disabled', flush=True)
+    finally:
+        sql('DROP TRIGGER IF EXISTS paid_hold_job ON river_job; DROP FUNCTION IF EXISTS paid_hold_job();')
+        write('native-operator-account', '')
+        compose('up', '--no-build', '--pull', 'never', '-d', 'backend')
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action',choices=('up','check','restore','down'))
+    parser.add_argument('action',choices=('up','check','restore','paid-recovery','down'))
     parser.add_argument('--reuse-images',action='store_true')
     args=parser.parse_args()
     if args.reuse_images and args.action!='up':parser.error('--reuse-images is only for up')
     if args.action=='up':up(args.reuse_images)
     elif args.action=='check':check()
     elif args.action=='restore':restore()
+    elif args.action=='paid-recovery':native_paid_restart()
     else:compose('--profile','vpn','--profile','telegram','down')
 
 if __name__=='__main__':

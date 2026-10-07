@@ -59,6 +59,37 @@ test('ambiguous reset reconciliation requires explicit cost acknowledgement',asy
  await page.goto('/admin/clients/'+clientId+'/show?lang=en');const section=page.getByRole('region',{name:'Access operations'});await expect(section.getByText('Needs review',{exact:true})).toBeVisible();await expect(section.getByText('reset_ambiguous')).toBeVisible();await section.getByLabel('Reconcile reason').fill('Readback checked');await section.getByRole('button',{name:'Reconcile operation'}).click();await expect(section.getByText(/new traffic may be lost/i)).toBeVisible();expect(bodies).toHaveLength(0);await section.getByLabel('I accept resetting new traffic').check();await section.getByRole('button',{name:'Confirm reconcile'}).click();expect(bodies).toEqual([{reason:'Readback checked',acknowledge_reset_cost:true}]);
 });
 
+for(const lang of ['en','ru'] as const)test(`ambiguous reset safe verification keeps its key after a lost reply ${lang}`,async({page})=>{
+ const current:Model<'AccessOperation'>={...operation,kind:'purchase',status:'needs_review',desired:{...desired,reset_traffic:true},completed_steps:['prepared','reset_started'],review_reason:'reset_ambiguous'};
+ const calls:{body:Model<'AccessReconcileInput'>;key:string}[]=[];
+ await routes(page,async(route,path)=>{
+  if(path.endsWith('/operator/clients/'+clientId)){await route.fulfill({json:card(clientId,{...subscription,access_operation_id:operationId,access_operation_status:'needs_review'})});return true;}
+  if(path.endsWith('/access-operations/'+operationId)){await route.fulfill({json:current});return true;}
+  if(path.endsWith('/reconcile')){calls.push({body:route.request().postDataJSON(),key:route.request().headers()['idempotency-key']});if(calls.length<3)await route.abort();else await route.fulfill({status:202,json:{...current,status:'pending'}});return true;}return false;
+ });
+ await page.setViewportSize({width:375,height:812});await page.goto('/admin/clients/'+clientId+'/show?lang='+lang);
+ const section=page.getByRole('region',{name:lang==='en'?'Access operations':'Операции доступа'});
+ const reason=section.getByLabel(lang==='en'?'Reconcile reason':'Причина сверки');
+ const start=section.getByRole('button',{name:lang==='en'?'Reconcile operation':'Сверить операцию'});
+ const confirm=section.getByRole('button',{name:lang==='en'?'Confirm reconcile':'Подтвердить сверку'});
+ await reason.fill('Readback checked');await start.click();const consent=section.getByRole('checkbox');await expect(consent).not.toBeChecked();await expect(confirm).toBeEnabled();
+ await confirm.focus();await page.keyboard.press('Enter');await expect(section.locator('.access-reconcile [role="alert"]')).toBeVisible();
+ await confirm.click();await expect.poll(()=>calls.length).toBe(2);await expect(confirm).toBeEnabled();expect(calls[0].body).toEqual({reason:'Readback checked',acknowledge_reset_cost:false});expect(calls[1]).toEqual(calls[0]);
+ await consent.check();await confirm.click();await expect.poll(()=>calls.length).toBe(3);expect(calls[2].body).toEqual({reason:'Readback checked',acknowledge_reset_cost:true});expect(calls[2].key).not.toBe(calls[0].key);
+ await expect(section.locator('.access-reconcile')).toHaveCount(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
+test('fresh reset consent is required after cancel and updated operation state',async({page})=>{
+ let current:Model<'AccessOperation'>={...operation,kind:'purchase',status:'needs_review',desired:{...desired,reset_traffic:true},completed_steps:['prepared','reset_started'],review_reason:'reset_ambiguous'};
+ await routes(page,async(route,path)=>{
+  if(path.endsWith('/operator/clients/'+clientId)){await route.fulfill({json:card(clientId,{...subscription,access_operation_id:operationId,access_operation_status:'needs_review'})});return true;}
+  if(path.endsWith('/access-operations/'+operationId)){await route.fulfill({json:current});return true;}return false;
+ });
+ await page.goto('/admin/clients/'+clientId+'/show?lang=en');const section=page.getByRole('region',{name:'Access operations'});
+ await section.getByLabel('Reconcile reason').fill('Readback checked');const start=section.getByRole('button',{name:'Reconcile operation'});await start.click();await section.getByRole('checkbox').check();await section.getByRole('button',{name:'Cancel',exact:true}).click();await start.click();await expect(section.getByRole('checkbox')).not.toBeChecked();
+ await section.getByRole('checkbox').check();current={...current,updated_at:'2026-10-02T00:10:00Z',completed_steps:[...current.completed_steps,'membership_updated']};await section.getByRole('button',{name:'Refresh operation'}).click();await expect(section.getByText(/membership_updated/)).toBeVisible();await expect(section.getByRole('button',{name:'Confirm reconcile'})).toHaveCount(0);await start.click();await expect(section.getByRole('checkbox')).not.toBeChecked();
+});
+
 test('starter trial explains the new period and requires confirmation',async({page})=>{
  const bodies:Model<'AccessOperationInput'>[]=[];await routes(page,async(route,path)=>{if(path.endsWith('/access-operations')){bodies.push(route.request().postDataJSON());await route.fulfill({status:202,json:operation});return true;}return false;});
  await page.goto('/admin/clients/'+clientId+'/show?lang=en');const section=page.getByRole('region',{name:'Access operations'});await section.getByLabel('Operation').selectOption('starter_trial');await section.getByLabel('Reason').fill('Recovery');await section.getByRole('button',{name:'Start trial'}).click();await expect(section.getByText(/new period.*reset/i)).toBeVisible();expect(bodies).toHaveLength(0);await section.getByRole('button',{name:'Confirm trial'}).click();await expect(section.getByText('Pending',{exact:true})).toBeVisible();expect(bodies).toEqual([{kind:'starter_trial',reason:'Recovery'}]);

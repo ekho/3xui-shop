@@ -1,15 +1,24 @@
 # M01: HTTP, jobs and optional Telegram share the backend process.
+# Payment fixture is opt-in and never supplies a real wallet or secret.
+x-local-payment: &local-payment
+  SHOP_PAYMENT_YOOMONEY_ENABLED: '${LOCAL_YOOMONEY_FIXTURE_ENABLED:-false}'
+  YOOMONEY_WALLET_ID: '410000000000000'
+  YOOMONEY_NOTIFICATION_SECRET_FILE: /run/secrets/local_yoomoney_notification
 services:
   backend:
     environment:
+      <<: *local-payment
       LEGACY_BOT_API_ENABLED: 'false'
       TELEGRAM_ENABLED: '${TELEGRAM_ENABLED:-false}'
       BOT_TOKEN_FILE: /run/secrets/bot_token
-    secrets: [bot_token, native_operator_account]
+    secrets: [bot_token, native_operator_account, local_yoomoney_notification]
   migrate:
     environment:
+      <<: *local-payment
       LEGACY_BOT_API_ENABLED: 'false'
+    secrets: [local_yoomoney_notification]
   mailpit:
     ports: ['127.0.0.1:59447:1025']
 secrets:
   native_operator_account: {file: '${LOCAL_STATE_DIR:?required}/native-operator-account'}
+  local_yoomoney_notification: {file: '${LOCAL_STATE_DIR:?required}/yoomoney-notification-secret'}

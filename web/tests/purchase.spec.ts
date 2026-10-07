@@ -83,3 +83,50 @@ test('expired order and foreign order cannot expose a checkout',async({page})=>{
 test('operator retries only preparation with reason and one key, then uses access operation',async({page})=>{
  const clientId='20000000-0000-4000-8000-000000000001';const client:Model<'OperatorClient'>={account_id:clientId,kind:'web',display_name:'',email:'client@example.test',telegram_id:null,locale:'en',created_at:null,restricted:false,vpn_banned:false,had_subscription:true};const subscription:Model<'Subscription'>={status:'needs_review',expires_at:null,devices:1,traffic_limit_bytes:1024,traffic_used_bytes:0,observed_at:null,data_stale:false,connection_available:false,access_profile:'regular',vpn_banned:false,access_operation_id:null,access_operation_status:null};const card:Model<'OperatorClientCard'>={client,subscription,server:null,support:null,trial_requests:[],trial_has_more:false,audit_events:[],audit_has_more:false,legacy_approval:null,legacy_events:[],legacy_has_more:false};let current:Model<'PurchaseOrder'>={...order,payment_status:'paid',fulfillment_status:'needs_review',can_pay:false,can_cancel:false,checkout:null,review_required:true};const keys:string[]=[];await routes(page,async(route,path)=>{if(path.endsWith('/operator/session')){await route.fulfill({json:{account:{account_id:'10000000-0000-4000-8000-000000000001',email:'operator@example.test',email_verified:true,locale:'en',telegram_linked:false},csrf_token:'s'.repeat(43)}});return true;}if(path.endsWith('/operator/clients/'+clientId)){await route.fulfill({json:card});return true;}if(path.endsWith('/operator/clients/'+clientId+'/orders/current')){await route.fulfill({json:{order:current}});return true;}if(path.endsWith('/operator/clients/'+clientId+'/orders/'+orderId+'/reconcile')){keys.push(route.request().headers()['idempotency-key']);expect(route.request().postDataJSON()).toEqual({reason:'Recover preparation'});if(keys.length===1)await route.abort();else{current={...current,fulfillment_status:'queued',review_required:false};await route.fulfill({status:202,json:current});}return true;}return false;});await page.goto('/admin/clients/'+clientId+'/show?lang=en');const section=page.getByRole('region',{name:'First purchase'});await expect(section.getByText('Payment received. Preparing access.')).toBeVisible();await section.getByRole('button',{name:'Retry preparation'}).click();await expect(section.getByRole('alert')).toBeVisible();await section.getByLabel('Reason for preparation retry').fill('Recover preparation');await section.getByRole('button',{name:'Retry preparation'}).click();await expect(section.getByRole('alert')).toBeVisible();await section.getByRole('button',{name:'Retry preparation'}).click();await expect.poll(()=>keys.length).toBe(2);expect(keys[0]).toBe(keys[1]);await expect(section.getByRole('button',{name:'Retry preparation'})).toHaveCount(0);
 });
+
+test('late preparation reply is aborted when the operator changes client',async({page})=>{
+ const clientId='20000000-0000-4000-8000-000000000001',otherId='20000000-0000-4000-8000-000000000002',oldAccessId='30000000-0000-4000-8000-000000000001';
+ const client:Model<'OperatorClient'>={account_id:clientId,kind:'web',display_name:'First Client',email:'client@example.test',telegram_id:null,locale:'en',created_at:null,restricted:false,vpn_banned:false,had_subscription:true};
+ const subscription:Model<'Subscription'>={status:'needs_review',expires_at:null,devices:1,traffic_limit_bytes:1024,traffic_used_bytes:0,observed_at:null,data_stale:false,connection_available:false,access_profile:'regular',vpn_banned:false,access_operation_id:null,access_operation_status:null};
+ const card:Model<'OperatorClientCard'>={client,subscription,server:null,support:null,trial_requests:[],trial_has_more:false,audit_events:[],audit_has_more:false,legacy_approval:null,legacy_events:[],legacy_has_more:false};
+ const current:Model<'PurchaseOrder'>={...order,payment_status:'paid',fulfillment_status:'needs_review',can_pay:false,can_cancel:false,checkout:null,review_required:true};
+ let release!:()=>void,requested=0,cancelled=false;const held=new Promise<void>(resolve=>release=resolve);const foreignReads:string[]=[];
+ page.on('requestfailed',request=>{if(request.url().endsWith('/orders/'+orderId+'/reconcile'))cancelled=true;});
+ await routes(page,async(route,path)=>{
+  if(path.endsWith('/operator/session')){await route.fulfill({json:{account:{account_id:'10000000-0000-4000-8000-000000000001',email:'operator@example.test',email_verified:true,locale:'en',telegram_linked:false},csrf_token:'s'.repeat(43)}});return true;}
+  if(path.endsWith('/operator/clients/'+clientId)){await route.fulfill({json:card});return true;}
+  if(path.endsWith('/operator/clients/'+otherId)){await route.fulfill({json:{...card,client:{...client,account_id:otherId,display_name:'Other Client'}}});return true;}
+  if(path.endsWith('/operator/clients/'+clientId+'/orders/current')){await route.fulfill({json:{order:current}});return true;}
+  if(path.endsWith('/operator/clients/'+otherId+'/orders/current')){await route.fulfill({json:{order:null}});return true;}
+  if(path.endsWith('/orders/'+orderId+'/reconcile')){requested++;await held;await route.fulfill({status:202,json:{...current,access_operation_id:oldAccessId,fulfillment_status:'running'}}).catch(()=>{});return true;}
+  if(path.includes('/operator/clients/'+otherId+'/access-operations/')){foreignReads.push(path);await route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});return true;}return false;
+ });
+ await page.goto('/admin/clients/'+clientId+'/show?lang=en');const section=page.getByRole('region',{name:'First purchase'});await section.getByLabel('Reason for preparation retry').fill('Recover preparation');await section.getByRole('button',{name:'Retry preparation'}).click();await expect.poll(()=>requested).toBe(1);
+ try{await page.evaluate(id=>{history.pushState({},'',`/admin/clients/${id}/show?lang=en`);dispatchEvent(new PopStateEvent('popstate'));},otherId);await expect(page.getByRole('heading',{name:'Other Client'})).toBeVisible();await expect.poll(()=>cancelled).toBe(true);}finally{release();}
+ await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));await expect(page.getByText(oldAccessId,{exact:false})).toHaveCount(0);expect(foreignReads).toHaveLength(0);
+});
+
+test('accepted purchase operation stays with its client while the next order read fails',async({page})=>{
+ const clientId='20000000-0000-4000-8000-000000000001',otherId='20000000-0000-4000-8000-000000000002',oldAccessId='30000000-0000-4000-8000-000000000001';
+ const client:Model<'OperatorClient'>={account_id:clientId,kind:'web',display_name:'First Client',email:'client@example.test',telegram_id:null,locale:'en',created_at:null,restricted:false,vpn_banned:false,had_subscription:true};
+ const subscription:Model<'Subscription'>={status:'needs_review',expires_at:null,devices:1,traffic_limit_bytes:1024,traffic_used_bytes:0,observed_at:null,data_stale:false,connection_available:false,access_profile:'regular',vpn_banned:false,access_operation_id:null,access_operation_status:null};
+ const card:Model<'OperatorClientCard'>={client,subscription,server:null,support:null,trial_requests:[],trial_has_more:false,audit_events:[],audit_has_more:false,legacy_approval:null,legacy_events:[],legacy_has_more:false};
+ const current:Model<'PurchaseOrder'>={...order,payment_status:'paid',fulfillment_status:'running',can_pay:false,can_cancel:false,checkout:null,access_operation_id:oldAccessId};
+ let release!:()=>void,otherReads=0;const held=new Promise<void>(resolve=>release=resolve);const foreignReads:string[]=[];
+ await routes(page,async(route,path)=>{
+  if(path.endsWith('/operator/session')){await route.fulfill({json:{account:{account_id:'10000000-0000-4000-8000-000000000001',email:'operator@example.test',email_verified:true,locale:'en',telegram_linked:false},csrf_token:'s'.repeat(43)}});return true;}
+  if(path.endsWith('/operator/clients/'+clientId)){await route.fulfill({json:card});return true;}
+  if(path.endsWith('/operator/clients/'+otherId)){await route.fulfill({json:{...card,client:{...client,account_id:otherId,display_name:'Other Client'}}});return true;}
+  if(path.endsWith('/operator/clients/'+clientId+'/orders/current')){await route.fulfill({json:{order:current}});return true;}
+  if(path.endsWith('/operator/clients/'+otherId+'/orders/current')){otherReads++;await held;await route.fulfill({status:503,json:{error:{code:'UNAVAILABLE'}}}).catch(()=>{});return true;}
+  if(path.includes('/access-operations/')){if(path.includes('/clients/'+otherId+'/'))foreignReads.push(path);await route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});return true;}return false;
+ });
+ await page.goto('/admin/clients/'+clientId+'/show?lang=en');await expect(page.getByRole('region',{name:'Access operations'}).getByText(oldAccessId,{exact:false})).toBeVisible();
+ try{
+  await page.evaluate(id=>{history.pushState({},'',`/admin/clients/${id}/show?lang=en`);dispatchEvent(new PopStateEvent('popstate'));},otherId);
+  await expect(page.getByRole('heading',{name:'Other Client'})).toBeVisible();await expect.poll(()=>otherReads).toBe(1);
+  await expect(page.getByText(oldAccessId,{exact:false})).toHaveCount(0);expect(foreignReads).toHaveLength(0);
+ }finally{release();}
+ await expect(page.getByRole('region',{name:'First purchase'}).getByRole('alert')).toBeVisible();
+ await expect(page.getByText(oldAccessId,{exact:false})).toHaveCount(0);expect(foreignReads).toHaveLength(0);
+});
