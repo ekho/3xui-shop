@@ -78,5 +78,10 @@
 - [ ] Step 1: Add failing own native scenario: refund a funded unresolved order, restart twice, assert no later panel write/financial loss; applied access remains unchanged.
   Run: owning native Docker acceptance. Expected RED if guards absent, GREEN against final implementation; retain actual result and mark external YooMoney untested.
 - [ ] Step 2: Run generated drift, Go race + browser suite, web typecheck/build, Python regression, architecture/contract/static and required container/native checks against exact inputs. Expected GREEN without secret leaks or skips for required scenarios.
-- [ ] Step 3: Commit redacted evidence, complete Native ledger, request one fresh Astra/high final review. Important fixes receive one author RED→GREEN pass and a green whole suite; Minor deferred in evidence. Expected no unaddressed Critical/Important.
-- [ ] Step 4: Explicitly push own branch, create/attach PR to v2, verify actual checks/source/target immediately before authorized merge. Verify merged tree, v2 CI, dev release and both OCI architectures; close #27/Project Done only after all local DoD. Continue next ready roadmap item.
+- [ ] Step 3: Commit redacted evidence and complete Task 3 Native ledger with passing local checks. Expected: local implementation/acceptance complete; issue stays open until final review and delivery below.
+
+## Final review and delivery
+
+Request one fresh Astra/high final review after Task 3. Important fixes receive one author RED→GREEN pass and a green whole suite; Minor deferred in evidence. No unaddressed Critical/Important.
+
+Explicitly push own branch, create/attach PR to v2, verify actual checks/source/target immediately before authorized merge. Verify merged tree, v2 CI, dev release and both OCI architectures; close #27/Project Done only after all local DoD. Continue next ready roadmap item.
