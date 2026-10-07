@@ -17,14 +17,14 @@ type State struct {
 	Code              string
 }
 type Runtime struct {
-	enabled                bool
-	token                  string
-	api                    *botapi.Client
-	dispatcher             *dispatcher
-	outbox                 Outbox
-	clients                *Client
-	mu                     sync.RWMutex
-	pollCode, deliveryCode string
+	enabled                            bool
+	token                              string
+	api                                *botapi.Client
+	dispatcher                         *dispatcher
+	outbox                             Outbox
+	clients                            *Client
+	mu                                 sync.RWMutex
+	pollCode, deliveryCode, clientCode string
 }
 
 func New(cfg Config, client *http.Client, actions TrialActions, outbox Outbox, clients *Client) (*Runtime, error) {
@@ -54,6 +54,9 @@ func (r *Runtime) State() State {
 	if code == "" {
 		code = r.deliveryCode
 	}
+	if code == "" {
+		code = r.clientCode
+	}
 	return State{Enabled: true, Degraded: code != "", Code: code}
 }
 func safeCode(err error) string {
@@ -74,11 +77,14 @@ func safeCode(err error) string {
 	return "SERVICE_UNAVAILABLE"
 }
 func (r *Runtime) setCode(poll bool, code string) {
-	r.mu.Lock()
 	field := &r.deliveryCode
 	if poll {
 		field = &r.pollCode
 	}
+	r.setLoopCode(field, code)
+}
+func (r *Runtime) setLoopCode(field *string, code string) {
+	r.mu.Lock()
 	changed := *field != code
 	*field = code
 	r.mu.Unlock()
@@ -149,12 +155,21 @@ func (r *Runtime) Run(parent context.Context) error {
 		}
 		delay = nextDelay(delay)
 	}
-	results := make(chan error, 2)
+	workers := 2
+	if r.clients != nil {
+		workers++
+	}
+	results := make(chan error, workers)
 	go func() { results <- r.poll(ctx) }()
 	go func() { results <- r.deliveries(ctx) }()
+	if r.clients != nil {
+		go func() { results <- r.clientDeliveries(ctx) }()
+	}
 	err := <-results
 	cancel()
-	<-results
+	for i := 1; i < workers; i++ {
+		<-results
+	}
 	if parent.Err() != nil {
 		return nil
 	}
@@ -196,6 +211,40 @@ func (r *Runtime) poll(ctx context.Context) error {
 
 func present(raw json.RawMessage) bool {
 	return len(raw) > 0 && !bytes.Equal(bytes.TrimSpace(raw), []byte("null"))
+}
+func (r *Runtime) clientDeliveries(ctx context.Context) error {
+	delay := time.Second
+	for ctx.Err() == nil {
+		claimCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		job, err := r.clients.notices.ClaimClient(claimCtx)
+		cancel()
+		if err == nil && job == nil {
+			if !pause(ctx, 5*time.Second) {
+				return nil
+			}
+			continue
+		}
+		if err == nil {
+			err = r.clients.deliver(ctx, *job)
+		}
+		if err == nil {
+			r.setLoopCode(&r.clientCode, "")
+			delay = time.Second
+			continue
+		}
+		if ctx.Err() != nil {
+			return nil
+		}
+		r.setLoopCode(&r.clientCode, safeCode(err))
+		if fatal(err) {
+			return err
+		}
+		if !pause(ctx, retryDelay(err, delay)) {
+			return nil
+		}
+		delay = nextDelay(delay)
+	}
+	return nil
 }
 func (r *Runtime) deliveries(ctx context.Context) error {
 	delay := time.Second

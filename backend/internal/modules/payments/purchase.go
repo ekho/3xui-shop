@@ -7,6 +7,7 @@ import (
 	"errors"
 	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"example.com/cabinet/backend/internal/modules/catalogue"
+	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/payments/internal/store"
 	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/vpn"
@@ -632,9 +633,21 @@ func (s *Service) RecordPurchaseAccessTx(ctx context.Context, tx pgx.Tx, operati
 		query = "UPDATE purchase_orders SET fulfillment_status=$2,review_required=true,review_reason=$3 WHERE access_operation_id=$1 AND payment_status='paid'"
 		args = append(args, reason)
 	}
-	n, err := tx.Exec(ctx, query, args...)
-	if err != nil || n.RowsAffected() != 1 {
+	var order, account uuid.UUID
+	if err := tx.QueryRow(ctx, query+" RETURNING id,account_id", args...).Scan(&order, &account); err != nil {
 		return unavailable()
+	}
+	if status != "queued" {
+		a, err := s.authority.LookupTx(ctx, tx, account)
+		if err != nil {
+			return unavailable()
+		}
+		if a.TelegramID != nil && !a.TelegramLoginDisabled {
+			notice := notifications.ClientNotice{AccountID: account, TelegramID: *a.TelegramID, CredentialVersion: a.CredentialVersion, Locale: a.Locale, EventKey: "purchase:" + operation.String() + ":" + status, Route: "orders:" + order.String()}
+			if s.notifications.EnqueueClientTx(ctx, tx, notice, s.now()) != nil {
+				return unavailable()
+			}
+		}
 	}
 	return nil
 }

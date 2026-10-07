@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"example.com/cabinet/backend/internal/modules/audit_reports"
+	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/support/internal/store"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -271,6 +272,18 @@ func (s *Service) CreateSupportMessage(ctx context.Context, actor, target uuid.U
 		return out, false, unavailable()
 	}
 	out = publicSupportMessage(m, c)
+	if operator {
+		a, err := s.authority.LookupTx(ctx, tx, target)
+		if err != nil {
+			return out, false, unavailable()
+		}
+		if a.TelegramID != nil && !a.TelegramLoginDisabled {
+			notice := notifications.ClientNotice{AccountID: target, TelegramID: *a.TelegramID, CredentialVersion: a.CredentialVersion, Locale: a.Locale, EventKey: "support:" + m.ID.String(), Route: "support"}
+			if s.notifications.EnqueueClientTx(ctx, tx, notice, s.now()) != nil {
+				return out, false, unavailable()
+			}
+		}
+	}
 	if err = s.supportAudit(ctx, tx, "support_message", target, actor, operator, &m.ID, ""); err != nil {
 		return out, false, err
 	}

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"example.com/cabinet/backend/internal/modules/accounts"
+	"example.com/cabinet/backend/internal/modules/notifications"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -24,17 +25,18 @@ func unavailable() error                    { return failure(503, "SERVICE_UNAVA
 
 type Service struct {
 	pool          *pgxpool.Pool
+	notifications *notifications.Service
 	limiter       *redis.Client
 	authority     *accounts.Service
 	rateNamespace string
 	now           func() time.Time
 }
 
-func New(pool *pgxpool.Pool, limiter *redis.Client, authority *accounts.Service, rateNamespace string, now func() time.Time) *Service {
+func New(pool *pgxpool.Pool, limiter *redis.Client, authority *accounts.Service, rateNamespace string, now func() time.Time, notices *notifications.Service) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{pool: pool, limiter: limiter, authority: authority, rateNamespace: rateNamespace, now: now}
+	return &Service{pool: pool, notifications: notices, limiter: limiter, authority: authority, rateNamespace: rateNamespace, now: now}
 }
 
 func accountResult(a accounts.Snapshot, err error) (accounts.Snapshot, error) {
