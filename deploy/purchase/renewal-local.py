@@ -115,38 +115,7 @@ def expire_or_exhaust(account, exhausted):
             {**update_payload(account, before['client']), 'expiryTime': int(time.time() * 1000) - 86400000}, csrf)
     local.panel_call(opener, 'panel/api/clients/bulkDisable', {'emails': [row['panel_key']]}, csrf)
     if exhausted:
-        # Synthetic counters only, while this project's panel writer is stopped.
-        compose('stop', 'panel')
-        try:
-            # SQLite WAL must stay in the Docker VM; a Mac-side connection can see stale state.
-            script = '''import json,sqlite3,sys
-row,total,memberships=json.load(sys.stdin)
-assert total>0
-with sqlite3.connect('/panel/x-ui.db') as db:
-    assert db.execute('SELECT count(*) FROM clients WHERE email=? AND uuid=? AND sub_id=? AND enable=0',
-        (row['panel_key'],row['vpn_id'],row['sub_id'])).fetchone()[0]==1
-    changed=db.execute('UPDATE client_traffics SET up=?,down=0 WHERE email=?',
-        (total+1,row['panel_key'])).rowcount
-    assert changed==memberships and changed>0
-'''
-            image = (ROOT / 'deploy/acceptance/Dockerfile.bot').read_text().splitlines()[0].split()[1]
-            local.command(['docker', 'run', '--rm', '--pull', 'missing', '--network', 'none',
-                '--read-only', '--user', str(os.getuid()) + ':' + str(os.getgid()), '-i',
-                '--mount', 'type=bind,source=' + str(STATE / 'panel-db') + ',target=/panel',
-                '--entrypoint', 'python', image, '-c', script],
-                stdin=json.dumps([row, before['client']['totalGB'], len(before['inboundIds'])]).encode())
-        finally:
-            compose('up', '--no-build', '--pull', 'never', '--no-deps', '-d', 'panel')
-        def panel_ready():
-            try:
-                return local.login_panel()
-            except HTTPError as error:
-                if error.code in (502, 503):
-                    return None
-                raise
-            except OSError:
-                return None
-        local.wait_until(panel_ready)
+        purchase.exhaust_counters(account, before['client']['totalGB'], len(before['inboundIds']))
     after = native(account)
     assert after['client']['enable'] is False
     assert after['client']['uuid'] == before['client']['uuid']
