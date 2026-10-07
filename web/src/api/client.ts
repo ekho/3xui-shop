@@ -1,4 +1,5 @@
 import type {components} from './schema.gen';
+import {isMiniApp,endMiniSession} from '../telegramSDK';
 export type RegisterInput=components["schemas"]["RegisterInput"];
 export type RegistrationAccepted=components["schemas"]["RegistrationAccepted"];
 export type VerifyInput=components["schemas"]["VerifyInput"];
@@ -7,7 +8,7 @@ export type ResendInput=components["schemas"]["ResendInput"];
 export type ResendAccepted=components["schemas"]["ResendAccepted"];
 export type LoginInput=components["schemas"]["LoginInput"];
 export type LoginResult=components["schemas"]["LoginResult"];
-export type AccountResult=components["schemas"]["AccountResult"];
+export type AccountResult=components["schemas"]["AccountResult"]|components["schemas"]["MiniAppAccountResult"];
 export type TrialRequestInput=components["schemas"]["TrialRequestInput"];
 export type TrialRequest=components["schemas"]["TrialRequest"];
 export type CurrentTrialRequest=components["schemas"]["CurrentTrialRequest"];
@@ -17,22 +18,29 @@ export type SubscriptionKey=components["schemas"]["SubscriptionKey"];
 export class ApiError extends Error {
  constructor(public status:number,public code:string,public request_id:string,public retryAfter=0){super(code);}
 }
-let csrf:string|undefined;
-async function request<T>(path:string,method='GET',body?:unknown,signal?:AbortSignal,sessionWrite=false,key?:string):Promise<T>{
- const form=body instanceof FormData;const headers:Record<string,string>={};if(body!==undefined&&!form)headers['Content-Type']='application/json';if(sessionWrite&&csrf)headers['X-CSRF-Token']=csrf;if(key)headers['Idempotency-Key']=key;
+let csrf:string|undefined,miniToken:string|undefined;let miniEpoch=0;
+async function request<T>(path:string,method='GET',body?:unknown,signal?:AbortSignal,sessionWrite=false,key?:string,blob=false):Promise<T>{
+ const mini=isMiniApp(),epoch=miniEpoch;
+ const form=body instanceof FormData;const headers:Record<string,string>={};if(body!==undefined&&!form)headers['Content-Type']='application/json';if(sessionWrite&&csrf)headers['X-CSRF-Token']=csrf;if(key)headers['Idempotency-Key']=key;if(mini&&miniToken)headers.Authorization='Bearer '+miniToken;
  let response:Response;
- try{response=await fetch('/api/v1/'+path,{method,body:body===undefined?undefined:form?body:JSON.stringify(body),headers,credentials:'same-origin',cache:'no-store',signal:signal?AbortSignal.any([signal,AbortSignal.timeout(15000)]):AbortSignal.timeout(15000)});}catch(error){if(signal?.aborted)throw error;throw new ApiError(503,'SERVICE_UNAVAILABLE','');}
- signal?.throwIfAborted();
- if(!response.ok){if(response.status===401)csrf=undefined;let failure:unknown;try{failure=await response.json();}catch{failure={};}const raw=failure as Partial<components['schemas']['APIError']>;const id=raw.error?.request_id??'';const delay=Number(response.headers.get('Retry-After'));throw new ApiError(response.status,raw.error?.code??'SERVICE_UNAVAILABLE',/^[0-9a-f-]{36}$/i.test(id)?id:'',Number.isFinite(delay)&&delay>0?Math.min(86400,Math.ceil(delay)):0);}
+ try{response=await fetch('/api/v1/'+path,{method,body:body===undefined?undefined:form?body:JSON.stringify(body),headers,credentials:mini?'omit':'same-origin',cache:'no-store',signal:signal?AbortSignal.any([signal,AbortSignal.timeout(15000)]):AbortSignal.timeout(15000)});}catch(error){if(signal?.aborted)throw error;throw new ApiError(503,'SERVICE_UNAVAILABLE','');}
+ signal?.throwIfAborted();if(mini&&epoch!==miniEpoch)throw new DOMException('Session ended','AbortError');
+ if(!response.ok){if(response.status===401){csrf=undefined;if(mini&&miniToken){clearSession();endMiniSession();}}let failure:unknown;try{failure=await response.json();}catch{failure={};}const raw=failure as Partial<components['schemas']['APIError']>;const id=raw.error?.request_id??'';const delay=Number(response.headers.get('Retry-After'));throw new ApiError(response.status,raw.error?.code??'SERVICE_UNAVAILABLE',/^[0-9a-f-]{36}$/i.test(id)?id:'',Number.isFinite(delay)&&delay>0?Math.min(86400,Math.ceil(delay)):0);}
  if(response.status===204)return undefined as T;
- try{const out=await response.json() as T;signal?.throwIfAborted();return out;}catch{if(signal?.aborted)throw signal.reason;throw new ApiError(503,'SERVICE_UNAVAILABLE','');}
+ if(blob){const out=await response.blob();signal?.throwIfAborted();if(mini&&epoch!==miniEpoch)throw new DOMException('Session ended','AbortError');return out as T;}
+ try{const out=await response.json() as T;signal?.throwIfAborted();if(mini&&epoch!==miniEpoch)throw new DOMException('Session ended','AbortError');return out;}catch{if(signal?.aborted)throw signal.reason;throw new ApiError(503,'SERVICE_UNAVAILABLE','');}
 }
 export const registerAccount=(input:RegisterInput)=>request<RegistrationAccepted>('auth/register','POST',input);
 export const verifyEmail=(input:VerifyInput)=>request<VerifyResult>('auth/verify-email','POST',input);
 export const resendVerification=(input:ResendInput)=>request<ResendAccepted>('auth/resend-verification','POST',input);
 export async function loginAccount(input:LoginInput){const out=await request<LoginResult>('auth/login','POST',input);csrf=out.csrf_token;return out;}
-export async function logoutAccount(){try{await request<void>('auth/logout','POST',undefined,undefined,true);}finally{csrf=undefined;}}
-export async function getAccount(signal?:AbortSignal){const out=await request<AccountResult>('me','GET',undefined,signal);csrf=out.csrf_token;return out;}
+export async function logoutAccount(){try{await request<void>(isMiniApp()?'telegram/mini-app/logout':'auth/logout','POST',undefined,undefined,true);}finally{clearSession();if(isMiniApp())endMiniSession('logout');}}
+export async function getAccount(signal?:AbortSignal){const out=await request<AccountResult>(isMiniApp()?'telegram/mini-app/account':'me','GET',undefined,signal);csrf=out.csrf_token;return out;}
+export async function loginMiniApp(input:components['schemas']['MiniAppSessionInput'],signal:AbortSignal){
+ const out=await request<components['schemas']['MiniAppSessionResult']>('telegram/mini-app/session','POST',input,signal);
+ signal.throwIfAborted();if(!/^mini_[A-Za-z0-9_-]{43}$/.test(out.session_token))throw new ApiError(503,'SERVICE_UNAVAILABLE','');
+ miniToken=out.session_token;csrf=out.csrf_token;return out;
+}
 export const createTrialRequest=(input:TrialRequestInput,key:string,signal?:AbortSignal)=>request<TrialRequest>('trial-requests','POST',input,signal,true,key);
 export const getCurrentTrialRequest=(signal?:AbortSignal)=>request<CurrentTrialRequest>('trial-requests/current','GET',undefined,signal);
 export const getSubscription=(signal?:AbortSignal)=>request<Subscription>('subscription','GET',undefined,signal);
@@ -48,7 +56,7 @@ export type PasswordChangeInput=components['schemas']['PasswordChangeInput'];
 export type CurrentPasswordInput=components['schemas']['CurrentPasswordInput'];
 export type SessionContext=components['schemas']['SessionContext'];
 export type AccountSecurity=components['schemas']['AccountSecurity'];
-export const clearSession=()=>{csrf=undefined;};
+export const clearSession=()=>{csrf=undefined;miniToken=undefined;miniEpoch++;};
 export async function getSessionContext(signal?:AbortSignal){const out=await request<SessionContext>('auth/session','GET',undefined,signal);csrf=out.csrf_token;return out;}
 export const getAccountSecurity=(signal?:AbortSignal)=>request<AccountSecurity>('me/security','GET',undefined,signal);
 export const changePassword=(input:PasswordChangeInput)=>request<void>('me/password-change','POST',input,undefined,true);
@@ -71,6 +79,7 @@ export const getSupportHistory=(before_sequence:number,signal?:AbortSignal)=>req
 export function createSupportMessage(text:string,file:File|undefined,key:string,signal?:AbortSignal){if(!file)return request<SupportMessage>('support/messages','POST',{text},signal,true,key);const body=new FormData();body.append('text',text);body.append('file',file);return request<SupportMessage>('support/messages','POST',body,signal,true,key);}
 export const acknowledgeSupport=(sequence:number,signal?:AbortSignal)=>request<void>('support/read','POST',{sequence},signal,true);
 export const setSupportState=(status:'open'|'closed',signal?:AbortSignal)=>request<void>('support/state','POST',{status},signal,true);
+export const downloadSupportAttachment=(id:string,signal?:AbortSignal)=>request<Blob>('support/messages/'+encodeURIComponent(id)+'/attachment','GET',undefined,signal,false,undefined,true);
 export const supportAttachmentURL=(id:string)=>'/api/v1/support/messages/'+encodeURIComponent(id)+'/attachment';
 
 export type OperatorSession=components['schemas']['OperatorSession'];
