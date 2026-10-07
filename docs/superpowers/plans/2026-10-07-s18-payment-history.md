@@ -55,15 +55,15 @@
 
 ## Task 2: Один экран в кабинете и React-admin
 
-**Files:** Create web/src/PaymentHistory.tsx и web/tests/payment-history.spec.ts. Modify web/src/{Admin.tsx,Cabinet.tsx,main.tsx,api/client.ts,i18n.ts,styles.css} only where needed; web/tests/operator-cabinet.spec.ts old payments placeholder assertion/mocks. Не создавать новый UI/store/framework.
+**Files:** Create web/src/PaymentHistory.tsx и web/tests/payment-history.spec.ts. Modify web/src/{Admin.tsx,Cabinet.tsx,main.tsx,api/client.ts,i18n.ts,style.css} only where needed; web/tests/operator-cabinet.spec.ts old payments placeholder assertion/mocks; register new suite in web/playwright.config.ts. Не создавать новый UI/store/framework.
 
-**Interfaces:** Task1 generated schemas PaymentHistoryInput/Page. PaymentHistory({clientId?:string,onDenied?:()=>void}) chooses self/operator wrapper; wrappers getPaymentHistory(input) / getOperatorPaymentHistory(clientId,input) use existing request(sessionWrite=true)/cached CSRF. Load current account/session before self read; operator parent already obtains session. Existing displayPrice/BigInt formats known currency, unknown raw shown explicitly.
+**Interfaces:** Task1 generated schemas PaymentHistoryInput/Page. PaymentHistory({lang:Lang,clientId?:string,onDenied?:()=>void}) chooses self/operator wrapper; wrappers getPaymentHistory(input) / getOperatorPaymentHistory(clientId,input) use existing request(sessionWrite=true)/cached CSRF. Load current account/session before self read; operator parent already obtains session. Existing displayPrice/BigInt formats known currency, unknown raw shown explicitly.
 
-- [ ] **1. RED:** rendered self/operator history test before route/component exists. Assertions RU/EN at375px: separate payment/fulfillment, exact amount9007199254740993, nullable net/unknown currency/legacy quote, manual operator source, no raw payload/charge/checkout. Empty/error/retry; load-more cursor matches last row, failed append retains old page; focus/label/select/buttons keyboard.
-- [ ] **2. Run RED:** npm run test:e2e -- tests/payment-history.spec.ts. Use existing test server/fakes; no real provider/browser payment.
-- [ ] **3. Implement consumer:** /cabinet/history navigation/title, common native-select/list/dl/time component in cabinet/card. A query generation flag/AbortController clears and discards late target/kind/locale responses; 401/403 clears history and parent denial/login; bounded pagination append. Only self modern orders link existing order detail; archive no payment controls. Existing operator current purchase and promocodes placeholder remain.
-- [ ] **4. GREEN:** npm run typecheck; npm run test:e2e -- tests/payment-history.spec.ts tests/operator-cabinet.spec.ts. Pin race where held old client response resolves after target switch/denied response; pin load-more failure/retry and clear-on-403. Only change legitimate old placeholder expectations.
-- [ ] **5. Commit:** feat(web): show client and operator payment history, Refs #25 and Co-Authored; record actual rendered checks/current source in #25.
+- [x] **1. RED:** rendered self/operator history test before route/component exists. Assertions RU/EN at375px: separate payment/fulfillment, exact amount9007199254740993, nullable net/unknown currency/legacy quote, manual operator source, no raw payload/charge/checkout. Empty/error/retry; load-more cursor matches last row, failed append retains old page; focus/label/select/buttons keyboard.
+- [x] **2. Run RED:** npm run test:e2e -- tests/payment-history.spec.ts. Use existing test server/fakes; no real provider/browser payment.
+- [x] **3. Implement consumer:** /cabinet/history navigation/title, common native-select/list/dl/time component in cabinet/card. A query generation flag/AbortController clears and discards late target/kind/locale responses; 401/403 clears history and parent denial/login; bounded pagination append. Only self modern orders link existing order detail; archive no payment controls. Existing operator current purchase and promocodes placeholder remain.
+- [x] **4. GREEN:** npm run typecheck; npm run test:e2e -- tests/payment-history.spec.ts tests/operator-cabinet.spec.ts. Pin race where held old client response resolves after target switch/denied response; pin load-more failure/retry and clear-on-403. Only change legitimate old placeholder expectations.
+- [x] **5. Commit:** feat(web): show client and operator payment history, Refs #25 and Co-Authored; record actual rendered checks/current source in #25.
 
 ## Task 3: Локальная приёмка и evidence
 
