@@ -13,7 +13,7 @@ import (
 )
 
 const accountByEmail = `-- name: AccountByEmail :one
-SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id, access_profile, policy_accepted_at, telegram_start_param FROM accounts WHERE email_key = $1::text
+SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id, access_profile, policy_accepted_at, telegram_start_param, original_kind, telegram_login_disabled FROM accounts WHERE email_key = $1::text
 `
 
 func (q *Queries) AccountByEmail(ctx context.Context, emailKey string) (Account, error) {
@@ -45,12 +45,14 @@ func (q *Queries) AccountByEmail(ctx context.Context, emailKey string) (Account,
 		&i.AccessProfile,
 		&i.PolicyAcceptedAt,
 		&i.TelegramStartParam,
+		&i.OriginalKind,
+		&i.TelegramLoginDisabled,
 	)
 	return i, err
 }
 
 const accountByID = `-- name: AccountByID :one
-SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id, access_profile, policy_accepted_at, telegram_start_param FROM accounts WHERE id = $1
+SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id, access_profile, policy_accepted_at, telegram_start_param, original_kind, telegram_login_disabled FROM accounts WHERE id = $1
 `
 
 func (q *Queries) AccountByID(ctx context.Context, id uuid.UUID) (Account, error) {
@@ -82,6 +84,8 @@ func (q *Queries) AccountByID(ctx context.Context, id uuid.UUID) (Account, error
 		&i.AccessProfile,
 		&i.PolicyAcceptedAt,
 		&i.TelegramStartParam,
+		&i.OriginalKind,
+		&i.TelegramLoginDisabled,
 	)
 	return i, err
 }

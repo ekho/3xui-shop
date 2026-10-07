@@ -21,6 +21,8 @@ type Snapshot struct {
 	CredentialVersion               int64
 	VpnBanned                       bool
 	Kind                            string
+	SourceKind                      string
+	TelegramLoginDisabled           bool
 	DisplayName                     *string
 	CreatedAt, RestrictionChangedAt *time.Time
 	PolicyAcceptedAt                *time.Time

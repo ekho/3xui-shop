@@ -77,6 +77,12 @@ func (s *Service) MailProofValidTx(ctx context.Context, tx pgx.Tx, registrationI
 		if proof.CredentialVersion != account.CredentialVersion || proof.OriginalEmail != account.EmailKey.String {
 			return false, nil
 		}
+		if proof.Purpose == "initial_email" {
+			if account.Kind != "telegram" || account.Restricted || account.TelegramLoginDisabled || !s.now().Before(proof.CodeExpiresAt.Time) {
+				return false, nil
+			}
+			return identityEmailAvailable(ctx, q, proof.TargetEmail)
+		}
 	}
 	if registrationID != nil {
 		challenge, err := q.ChallengeByID(ctx, *registrationID)

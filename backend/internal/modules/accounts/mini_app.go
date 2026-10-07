@@ -68,7 +68,7 @@ func (s *Service) StartTelegramSession(ctx context.Context, in TelegramSessionIn
 			return empty, "", unavailable()
 		}
 	}
-	if !SourceEligible(snapshot(account)) {
+	if account.TelegramLoginDisabled || !SourceEligible(snapshot(account)) {
 		return empty, "", failure(401, "INVALID_CREDENTIALS")
 	}
 	if !account.TermsVersion.Valid || !account.PrivacyVersion.Valid {
@@ -134,7 +134,7 @@ func (s *Service) AuthenticateTelegram(ctx context.Context, raw string, allowRes
 	if err != nil {
 		return empty, unavailable()
 	}
-	if session.AuthSource != "telegram" || !session.TelegramID.Valid || !account.TelegramID.Valid || session.TelegramID.Int64 != account.TelegramID.Int64 || !SourceEligible(snapshot(account)) || !account.TermsVersion.Valid || !account.PrivacyVersion.Valid {
+	if session.AuthSource != "telegram" || !session.TelegramID.Valid || !account.TelegramID.Valid || session.TelegramID.Int64 != account.TelegramID.Int64 || account.TelegramLoginDisabled || !SourceEligible(snapshot(account)) || !account.TermsVersion.Valid || !account.PrivacyVersion.Valid {
 		return empty, failure(401, "INVALID_CREDENTIALS")
 	}
 	if account.Restricted && !allowRestricted {

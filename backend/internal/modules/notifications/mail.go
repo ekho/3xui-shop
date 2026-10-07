@@ -200,6 +200,14 @@ func (s *MailService) SendMail(ctx context.Context, id uuid.UUID) error {
 				}
 				body = fmt.Sprintf("%s: %s%s?lang=ru#token=%s\nКод: %s\nНомер проверки: %s\nКод действует 10 минут; ссылка — 30 минут.", instruction, cfg.CabinetOrigin, path, payload.Token, payload.Code, delivery.CredentialChallengeID.String())
 			}
+			if payload.Type == "initial_email" {
+				subject = "Add email login to your account"
+				body = fmt.Sprintf("Enter this code in the Telegram Mini App to add independent email login to your existing account.\nCode: %s\nChallenge: %s\nThe code expires in 10 minutes.", payload.Code, delivery.CredentialChallengeID.String())
+				if payload.Locale == "ru" {
+					subject = "Добавление входа по email"
+					body = fmt.Sprintf("Введите код в Telegram Mini App для добавления независимого входа по email к существующему аккаунту.\nКод: %s\nНомер проверки: %s\nКод действует 10 минут.", payload.Code, delivery.CredentialChallengeID.String())
+				}
+			}
 		}
 		if delivery.Kind == "security_notice" {
 			subject = "Account security changed"
