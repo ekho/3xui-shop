@@ -41,14 +41,14 @@
 - Produces: `vpn.RetirePurchaseAccessTx(ctx,tx pgx.Tx,owner *AccessOwner,account,order,operation uuid.UUID) error`; требует фактический owner lock и ту же connection/Tx.
 - Consumes: existing `LockOperatorPair`, `replay/saveIdempotency`, `purchaseFundingCheck`, `HistoryReceipt`, audit `RecordTx`.
 
-- [ ] Step 1: Record canonical #27 choice + dependent references and C02/C03 compatibility. Edit owning OpenAPI first; generate through repository commands.
+- [x] Step 1: Record canonical #27 choice + dependent references and C02/C03 compatibility. Edit owning OpenAPI first; generate through repository commands.
   Run: `make generate` (backend), `npm run api:generate` (web). Expected: valid additive generated types; no unrelated churn.
-- [ ] Step 2: Add `TestPaymentResolutionHTTP` using actual sessions/role/order/receipt: case=200, refund=201, money unchanged, funding future guard denied, one replay/audit, conflict/403/404/invalid crypto.
+- [x] Step 2: Add `TestPaymentResolutionHTTP` using actual sessions/role/order/receipt: case=200, refund=201, money unchanged, funding future guard denied, one replay/audit, conflict/403/404/invalid crypto.
   Run: `go test ./internal/httpapi -run TestPaymentResolution -count=1`. Expected RED: new HTTP path missing (404 rather than 200), no fixture failure.
-- [ ] Step 3: Implement immutable ledger, read case and write confirmation; public VPN retirement and common funding guard. Extend history and current-purchase policy for financially closed records. No new payout worker or provider network call.
-- [ ] Step 4: Extend same focused suite for all five methods, extra/late receipt, active owner, two keys, append-only DB/Down guards, current purchase eligibility; existing manual/recovery/history regressions.
+- [x] Step 3: Implement immutable ledger, read case and write confirmation; public VPN retirement and common funding guard. Extend history and current-purchase policy for financially closed records. No new payout worker or provider network call.
+- [x] Step 4: Extend same focused suite for all five methods, extra/late receipt, active owner, two keys, append-only DB/Down guards, current purchase eligibility; existing manual/recovery/history regressions.
   Run: `go test ./internal/httpapi ./internal/modules/payments ./internal/app -run 'TestPaymentResolution|TestPaymentHistory|TestPurchase|Test.*SQLBoundary' -count=1`. Expected GREEN, 0 skip.
-- [ ] Step 5: Commit `feat(payments): record confirmed refunds and resolve payment cases` with Co-Authored-By; task-done runs the focused command above.
+- [x] Step 5: Commit `feat(payments): record confirmed refunds and resolve payment cases` with Co-Authored-By; task-done runs the focused command above.
 
 ### Task 2: Карточка оператора и история возвратов
 
@@ -60,11 +60,11 @@
 - Consumes: generated `PaymentCase`, `PaymentRefund`, `PurchaseRefundInput` and Task 1 endpoints.
 - Produces: `PaymentCase({clientId,orderId,receiptId?,lang,onDenied,onChanged})`; optional explicit `orderId` input for existing `OperatorPurchase` rather than a second money-decision implementation.
 
-- [ ] Step 1: Add browser scenario opening an old receipt, confirming refund, reading client history; assertions cover RU/EN, explicit consent, client switch/late response, denied role and timeout idempotency.
+- [x] Step 1: Add browser scenario opening an old receipt, confirming refund, reading client history; assertions cover RU/EN, explicit consent, client switch/late response, denied role and timeout idempotency.
   Run: `npm run test:e2e -- --grep 'payment resolution'`. Expected RED: selected receipt action missing.
-- [ ] Step 2: Add typed API wrappers, selected case and native labelled form; reuse manual decisions/recovery, abort ownership-stale calls and refresh history after success. Add `refunds` tab and fully_refunded copy to client purchase.
-- [ ] Step 3: Run browser-focused tests and `npm run typecheck`/`npm run build`. Expected GREEN and no mobile/keyboard ownership failures.
-- [ ] Step 4: Commit `feat(web): expose payment cases and confirmed refunds`; task-done runs focused browser command.
+- [x] Step 2: Add typed API wrappers, selected case and native labelled form; reuse manual decisions/recovery, abort ownership-stale calls and refresh history after success. Add `refunds` tab and fully_refunded copy to client purchase.
+- [x] Step 3: Run browser-focused tests and `npm run typecheck`/`npm run build`. Expected GREEN and no mobile/keyboard ownership failures.
+- [x] Step 4: Commit `feat(web): expose payment cases and confirmed refunds`; task-done runs focused browser command.
 
 ### Task 3: Локальная приёмка и доставка
 
@@ -75,10 +75,10 @@
 - Consumes: Task 1 financial guards + Task 2 operator flow, existing own Docker native acceptance with 3X-UI 3.7.0.
 - Produces: redacted proof of preserved panel identity/expiry/limits/traffic, stopped subsequent writes across two actual restarts and exact source checks.
 
-- [ ] Step 1: Add failing own native scenario: refund a funded unresolved order, restart twice, assert no later panel write/financial loss; applied access remains unchanged.
+- [x] Step 1: Add failing own native scenario: refund a funded unresolved order, restart twice, assert no later panel write/financial loss; applied access remains unchanged.
   Run: owning native Docker acceptance. Expected RED if guards absent, GREEN against final implementation; retain actual result and mark external YooMoney untested.
-- [ ] Step 2: Run generated drift, Go race + browser suite, web typecheck/build, Python regression, architecture/contract/static and required container/native checks against exact inputs. Expected GREEN without secret leaks or skips for required scenarios.
-- [ ] Step 3: Commit redacted evidence and complete Task 3 Native ledger with passing local checks. Expected: local implementation/acceptance complete; issue stays open until final review and delivery below.
+- [x] Step 2: Run generated drift, Go race + browser suite, web typecheck/build, Python regression, architecture/contract/static and required container/native checks against exact inputs. Expected GREEN without secret leaks or skips for required scenarios.
+- [x] Step 3: Commit redacted evidence and complete Task 3 Native ledger with passing local checks. Expected: local implementation/acceptance complete; issue stays open until final review and delivery below.
 
 ## Final review and delivery
 

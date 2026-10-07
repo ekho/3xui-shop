@@ -18,6 +18,8 @@ for(const [previous,allowed] of [
  [{...order,payment_status:'paid' as const,fulfillment_status:'queued' as const,can_pay:false,checkout:null},true],
  [{...order,payment_status:'paid' as const,fulfillment_status:'needs_review' as const,review_required:true,can_pay:false,checkout:null},true],
  [order,true],
+ [{...order,fulfillment_status:'needs_review' as const,review_required:true,fully_refunded:true,can_pay:false,checkout:null},false],
+ [{...order,fulfillment_status:'needs_review' as const,review_required:true,fully_refunded:true,can_pay:false,checkout:null},undefined],
 ] as const)test(`paid/pending gate ${previous.payment_status}/${previous.fulfillment_status} with permission ${String(allowed)}`,async({page})=>{
  let writes=0;await routes(page,async(route,path)=>{if(path.endsWith('/orders/current')){await route.fulfill({json:{order:previous,can_purchase:allowed}});return true;}if(path.endsWith('/orders')&&route.request().method()==='POST'){writes++;await route.abort();return true;}return false;});await page.goto('/catalogue?lang=en');await page.getByRole('button',{name:'Select plan'}).click();await expect(page.getByRole('button',{name:'Buy plan'})).toHaveCount(0);expect(writes).toBe(0);
 });
@@ -25,9 +27,9 @@ for(const [previous,allowed] of [
 
 async function routes(page:Page,extra?:(route:Route,path:string)=>Promise<boolean>){await page.route('**/api/v1/**',async route=>{const path=new URL(route.request().url()).pathname;if(extra&&await extra(route,path))return;if(path.endsWith('/support'))return route.fulfill({json:{conversation:null,messages:[],has_more:false,oldest_sequence:null}});if(path.endsWith('/auth/session'))return route.fulfill({json:{csrf_token:'s'.repeat(43)}});if(path.endsWith('/payment-methods'))return route.fulfill({json:{methods:[{id:'yoomoney',currency:'RUB'}]}});if(path.endsWith('/orders/current'))return route.fulfill({json:{order:null}});if(path.endsWith('/catalogue'))return route.fulfill({json:{plans:[plan]}});return route.fulfill({json:{}});});}
 
-test('payment resolution fully refunded unissued order permits a server-authorized new purchase',async({page})=>{
+for(const paymentStatus of ['paid','pending'] as const)test(`payment resolution fully refunded ${paymentStatus} unissued order permits a server-authorized new purchase`,async({page})=>{
  const nextId='80000000-0000-4000-8000-000000000002';let writes=0;
- await routes(page,async(route,path)=>{if(path.endsWith('/orders/current')){await route.fulfill({json:{order:{...order,payment_status:'paid',fulfillment_status:'needs_review',review_required:true,fully_refunded:true,can_pay:false,can_cancel:false,checkout:null},can_purchase:true}});return true;}if(path.endsWith('/orders')&&route.request().method()==='POST'){writes++;await route.fulfill({status:201,json:{...order,order_id:nextId}});return true;}if(path.endsWith('/orders/'+nextId)){await route.fulfill({json:{...order,order_id:nextId}});return true;}return false;});
+ await routes(page,async(route,path)=>{if(path.endsWith('/orders/current')){await route.fulfill({json:{order:{...order,payment_status:paymentStatus,fulfillment_status:'needs_review',review_required:true,fully_refunded:true,can_pay:false,can_cancel:false,checkout:null},can_purchase:true}});return true;}if(path.endsWith('/orders')&&route.request().method()==='POST'){writes++;await route.fulfill({status:201,json:{...order,order_id:nextId}});return true;}if(path.endsWith('/orders/'+nextId)){await route.fulfill({json:{...order,order_id:nextId}});return true;}return false;});
  await page.goto('/catalogue?lang=en');await page.getByRole('button',{name:'Select plan'}).click();await expect(page.getByRole('button',{name:'Buy plan',exact:true})).toBeVisible();await page.getByRole('button',{name:'Buy plan',exact:true}).click();await page.getByRole('button',{name:'Confirm purchase'}).click();await expect(page).toHaveURL(new RegExp('/orders/'+nextId));expect(writes).toBe(1);
 });
 
