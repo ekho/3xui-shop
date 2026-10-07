@@ -54,7 +54,7 @@
 
 **Files:**
 - Create: `web/src/PaymentCase.tsx`.
-- Modify: `web/src/PaymentHistory.tsx`, `web/src/OperatorPurchase.tsx`, `web/src/Admin.tsx`, `web/src/Purchase.tsx`, `web/src/api/client.ts`, corresponding `web/e2e/*.spec.ts`.
+- Modify: `web/src/PaymentHistory.tsx`, `web/src/OperatorPurchase.tsx`, `web/src/Admin.tsx`, `web/src/PurchaseOrder.tsx`, `web/src/Catalogue.tsx`, `web/src/api/client.ts`, `web/tests/payment-history.spec.ts`, `web/tests/purchase.spec.ts`.
 
 **Interfaces:**
 - Consumes: generated `PaymentCase`, `PaymentRefund`, `PurchaseRefundInput` and Task 1 endpoints.
