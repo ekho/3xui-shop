@@ -69,4 +69,4 @@ Rollback: новый mail kind нельзя отдавать старому би
 - Ruling: current single configured panel and O(n) audience reuse С26; bound each pass below 15 minutes — cost if wrong: a larger audience needs batching with durable progress, addressed before that ceiling is reached.
 - Ruling: full legacy notification-state import and email retraction are separate С46/С28 work — cost if wrong: imported clients without exact period proof receive no new automatic notice yet, and SMTP cannot retract a sent letter.
 
-Status: selected design under the autonomous mandate; implementation/local acceptance/review/delivery pending.
+Status: implementation and local acceptance verified; one final whole-branch review, source CI/manual v2 merge and preview publication pending. Current evidence: docs/superpowers/evidence/2026-10-08-s27-reminders.md.

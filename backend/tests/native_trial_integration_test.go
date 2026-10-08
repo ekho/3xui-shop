@@ -2,6 +2,8 @@ package tests
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -17,6 +19,7 @@ import (
 	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/telegram"
 	"example.com/cabinet/backend/internal/modules/vpn"
+	"example.com/cabinet/backend/internal/testkit"
 	"example.com/cabinet/backend/internal/wire"
 	"fmt"
 	"github.com/google/uuid"
@@ -28,9 +31,11 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/http/httputil"
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"sync"
@@ -810,5 +815,174 @@ func TestNativeTrialReports(t *testing.T) {
 		if f.panel.adds != 1 || f.panel.forbidden != 3 || len(f.panel.clients) != 1 {
 			t.Fatal("unavailable report changed the owned fake client")
 		}
+	}
+}
+
+func TestNativeTrialReminders(t *testing.T) {
+	pub, key, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal("owned signing key unavailable")
+	}
+	f := openMode(t, true, pub)
+	ctx := context.Background()
+	bot := &nativeBot{}
+	_, stop := launchNative(t, f, bot, true, true, true)
+	email := nativeEmail("native-reminder")
+	owner, csrf, trial := f.signup(t, email)
+	status, raw, _ := f.send(t, owner, "POST", "/api/v1/me/telegram/link", wire.CurrentPasswordInput{CurrentPassword: "fixture password with Unicode ✨"}, csrf, "", false)
+	var challenge wire.TelegramLinkChallenge
+	if status != 200 || json.Unmarshal(raw, &challenge) != nil {
+		t.Fatal("owned reminder link challenge unavailable", status)
+	}
+	tg := int64(uuid.New().ID()) + 1000000000
+	status, _, _ = f.send(t, f.public.Client(), "POST", "/api/v1/telegram/link", map[string]string{"init_data": testkit.SignedMiniAppData(key, 123456789, time.Now(), fmt.Sprintf(`{"id":%d,"first_name":"Owned reminder","language_code":"en"}`, tg), ""), "link_token": challenge.LinkToken, "accepted_terms_version": "1", "accepted_privacy_version": "1"}, "", "", false)
+	if status != 200 {
+		t.Fatal("owned signed reminder link unavailable", status)
+	}
+	status, raw, _ = f.send(t, owner, "POST", "/api/v1/auth/login", map[string]string{"email": email, "password": "fixture password with Unicode ✨"}, "", "", false)
+	var login wire.LoginResult
+	if status != 200 || json.Unmarshal(raw, &login) != nil {
+		t.Fatal("owned reminder login unavailable", status)
+	}
+	csrf, account := login.CsrfToken, login.Account.AccountId
+	card := cardFor(t, bot, 101, trial.RequestId)
+	bot.callback(101, card.ID, "a", trial.RequestId, "")
+	wait(t, func() bool { return trialStatus(f, trial.RequestId) == "approved" })
+	op := operationFor(t, f, trial.RequestId)
+	wait(t, func() bool { return applied(f, op) })
+	assertNativePanel(t, f, op)
+	stop()
+	// Observe actual provider requests after the grant; login is authentication,
+	// while every subsequent data request must be read-only.
+	upstream, err := url.Parse(f.cfg.VPN.Panel.PanelURL)
+	if err != nil {
+		t.Fatal("owned panel URL invalid")
+	}
+	proxy := httputil.NewSingleHostReverseProxy(upstream)
+	director := proxy.Director
+	proxy.Director = func(r *http.Request) { director(r); r.Host = upstream.Host }
+	transport := &http.Transport{TLSClientConfig: &tls.Config{RootCAs: f.cfg.VPN.Panel.PanelRootCAs, MinVersion: tls.VersionTLS12}}
+	proxy.Transport = transport
+	t.Cleanup(transport.CloseIdleConnections)
+	var mu sync.Mutex
+	writes, reads := 0, 0
+	var responses []string
+	proxy.ModifyResponse = func(response *http.Response) error {
+		mu.Lock()
+		responses = append(responses, fmt.Sprintf("%s:%d", response.Request.URL.Path, response.StatusCode))
+		mu.Unlock()
+		return nil
+	}
+	panel := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		if r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/panel/api/") {
+			reads++
+		} else if r.Method != "GET" && (r.Method != "POST" || r.URL.Path != "/login") {
+			writes++
+		}
+		mu.Unlock()
+		proxy.ServeHTTP(w, r)
+	}))
+	t.Cleanup(panel.Close)
+	f.cfg.VPN.Panel.PanelURL = panel.URL
+	f.cfg.VPN.Panel.PanelRootCAs = x509.NewCertPool()
+	f.cfg.VPN.Panel.PanelRootCAs.AddCert(panel.Certificate())
+	rebuild := func() {
+		t.Helper()
+		queue, err := river.NewClient(riverpgxv5.New(f.env.Pool), &river.Config{})
+		if err != nil {
+			t.Fatal("owned restart queue unavailable")
+		}
+		var handler http.Handler
+		f.public = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { handler.ServeHTTP(w, r) }))
+		t.Cleanup(f.public.Close)
+		f.cfg.HTTP.CabinetOrigin = f.public.URL
+		f.svc = app.NewModules(f.env.Pool, f.env.Redis, queue, &f.cfg)
+		handler = httpapi.New(f.svc, f.env.Pool, f.cfg.HTTP)
+	}
+	rebuild()
+	snapshot := func() [32]byte {
+		t.Helper()
+		var state string
+		if f.env.Pool.QueryRow(ctx, `SELECT json_build_array(
+		 (SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM accounts a),
+		 (SELECT jsonb_agg(to_jsonb(a) ORDER BY account_id) FROM trial_grants a),
+		 (SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM trial_operations a),
+		 (SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM access_operations a),
+		 (SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM purchase_orders a),
+		 (SELECT jsonb_agg(to_jsonb(a) ORDER BY operation_id) FROM purchase_receipts a),
+		 (SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM purchase_refunds a))::text`).Scan(&state) != nil {
+			t.Fatal("owned business snapshot unavailable")
+		}
+		return sha256.Sum256([]byte(state))
+	}
+	before := snapshot()
+	if _, err = f.svc.Reminders.SetEmailPreference(ctx, account, true); err != nil {
+		t.Fatal("owned explicit email consent unavailable")
+	}
+	for i := 0; i < 2; i++ {
+		if err = f.svc.Reminders.Generate(ctx); err != nil {
+			if os.Getenv("NATIVE_DOCKER_STATE") == "" {
+				break // The normal fake intentionally has no bulk clients endpoint.
+			}
+			mu.Lock()
+			t.Log("owned provider response classes", responses)
+			mu.Unlock()
+			t.Fatal("owned reminder generation failed")
+		}
+	}
+	read := func() notifications.ReminderResult {
+		t.Helper()
+		status, raw, _ := f.send(t, owner, "GET", "/api/v1/reminders", nil, "", "", false)
+		var out notifications.ReminderResult
+		if status != 200 || json.Unmarshal(raw, &out) != nil || out.Version != "reminders-v1" || !out.EmailEnabled || !out.EmailAvailable {
+			t.Fatal("owned reminder response unavailable", status)
+		}
+		return out
+	}
+	out := read()
+	if os.Getenv("NATIVE_DOCKER_STATE") == "" {
+		if len(out.Reminders) != 0 || snapshot() != before {
+			t.Fatal("unavailable fake bulk API fabricated a reminder or changed business facts")
+		}
+		t.Log("owned fake bulk API is unavailable; actual 3X-UI proof requires the separate native Docker run")
+		return
+	}
+	if len(out.Reminders) != 1 || out.Reminders[0].Kind != "expiry" || out.Reminders[0].Threshold != 3 || out.Reminders[0].ExpiresAt == nil || out.Reminders[0].Route != "renew" {
+		t.Fatal("actual 3X-UI reminder lost current trial facts")
+	}
+	reminder := out.Reminders[0]
+	rebuild()
+	err = f.svc.Reminders.Generate(ctx)
+	after := read()
+	if err != nil || len(after.Reminders) != 1 || !reflect.DeepEqual(after.Reminders[0], reminder) {
+		t.Fatal("restart changed or duplicated the current reminder")
+	}
+	_, finish := launchNative(t, f, bot, true, false, true)
+	wait(t, func() bool {
+		var sent int
+		return f.env.Pool.QueryRow(ctx, `SELECT count(*) FROM client_telegram_deliveries WHERE reminder_id=$1 AND state='sent'`, reminder.ID).Scan(&sent) == nil && sent == 1
+	})
+	wait(t, func() bool {
+		for _, letter := range f.letters(t, email) {
+			if strings.Contains(letter, "Your subscription expires soon:") && strings.Contains(letter, reminder.ExpiresAt.UTC().Format(time.RFC3339)) && strings.Contains(letter, "Observed at "+reminder.ObservedAt.UTC().Format(time.RFC3339)) && strings.Contains(letter, f.cfg.HTTP.CabinetOrigin+"/cabinet/renew?lang=en") {
+				return true
+			}
+		}
+		return false
+	})
+	message := bot.message(tg, "Your subscription expires soon:")
+	if !strings.Contains(message.Text, "Observed at "+reminder.ObservedAt.UTC().Format(time.RFC3339)) || !strings.Contains(string(message.Markup), f.cfg.HTTP.CabinetOrigin+"/mini-app/cabinet/renew?lang=en") {
+		t.Fatal("native reminder lost dated text or literal renewal route")
+	}
+	finish()
+	var events, mail, telegram int
+	if f.env.Pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM reminders WHERE account_id=$1),(SELECT count(*) FROM mail_deliveries WHERE reminder_id=$2),(SELECT count(*) FROM client_telegram_deliveries WHERE reminder_id=$2)`, account, reminder.ID).Scan(&events, &mail, &telegram) != nil || events != 1 || mail != 1 || telegram != 1 || snapshot() != before {
+		t.Fatal("native reminder repeated delivery enqueue or changed money/access/grant facts")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if writes != 0 || reads != 6 {
+		t.Fatal("reminder pass made provider writes or unexpected reads", reads, writes)
 	}
 }

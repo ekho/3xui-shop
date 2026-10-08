@@ -22,6 +22,7 @@ async function fixture(page:Page,options:{sdk?:'missing'|'throw';url?:string;cur
   if(path.endsWith('/telegram/mini-app/session'))return r.fulfill({json:{...profile,session_token:token}});
   if(path.endsWith('/telegram/mini-app/account'))return r.fulfill({json:profile});
   if(path.endsWith('/auth/session'))return r.fulfill({json:{csrf_token:csrf}});
+  if(path==='/api/v1/reminders')return r.fulfill({json:{version:'reminders-v1',email_enabled:false,email_available:false,reminders:[]}});
   if(path.endsWith('/catalogue'))return r.fulfill({json:{plans:[options.plan??plan]}});
   if(path==='/api/v1/stars-subscription')return r.fulfill({json:subscription});
   if(path==='/api/v1/stars-subscription/control'){subscription=options.control??subscription;return r.fulfill({json:subscription});}
