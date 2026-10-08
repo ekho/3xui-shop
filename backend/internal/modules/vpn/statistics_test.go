@@ -77,6 +77,30 @@ func TestPanelStatisticsSnapshot(t *testing.T) {
 	if err != nil || calls.Load() != 2 || mutation.Load() || len(snapshot.inbounds) != 4 || len(snapshot.clients) != 1 || snapshot.clients["acct_fixture"].UsedTraffic == nil || *snapshot.clients["acct_fixture"].UsedTraffic != 42 {
 		t.Fatal("bounded bulk snapshot / flattened identity / exact traffic", err)
 	}
+	for _, name := range []string{"foreign-empty-uuid", "foreign-unattached"} {
+		t.Run(name, func(t *testing.T) {
+			foreign := statisticsPanelRecord(uuid.New())
+			foreign["id"], foreign["email"], foreign["traffic"] = 8, "foreign", nil
+			if name == "foreign-empty-uuid" {
+				foreign["uuid"], foreign["subId"] = "", ""
+			} else {
+				foreign["inboundIds"] = nil
+			}
+			clients = []map[string]any{statisticsPanelRecord(id), foreign}
+			snap, e := p.statisticsSnapshot(context.Background())
+			if e != nil || len(snap.clients) != 2 {
+				t.Fatal("valid foreign provider row lost the mixed snapshot", e)
+			}
+			panel, profile, op := "fixture", "regular", uuid.New()
+			a := accounts.Snapshot{VpnID: id, PanelKey: "acct_fixture", SubID: "fixture", AssignedPanelID: &panel, AccessProfile: &profile}
+			target := ProvisionTarget{OperationID: op, PanelID: panel, PanelKey: a.PanelKey, VPNID: id, SubID: a.SubID, InboundIDs: []int64{1}, Profile: profile}
+			raw, _ := json.Marshal(target)
+			active, known := statisticsAccountActivity(a, statisticsBaseline{AccessBaseline: AccessBaseline{TrialID: &op, TrialStatus: "applied", TrialTarget: raw}}, snap, panel, time.Now())
+			if !active || !known {
+				t.Fatal("foreign provider row hid the confirmed managed account")
+			}
+		})
+	}
 	t.Run("joined-traffic-empty-identities", func(t *testing.T) {
 		v := statisticsPanelRecord(id)
 		traffic := v["traffic"].(map[string]any)
@@ -103,6 +127,9 @@ func TestPanelStatisticsSnapshot(t *testing.T) {
 		{"negative-quota", func(v map[string]any) { v["totalGB"] = -1 }, false},
 		{"missing-control", func(v map[string]any) { delete(v, "enable") }, false},
 		{"invalid-membership", func(v map[string]any) { v["inboundIds"] = []int{0} }, false},
+		{"missing-membership", func(v map[string]any) { delete(v, "inboundIds") }, false},
+		{"invalid-membership-type", func(v map[string]any) { v["inboundIds"] = "invalid" }, false},
+		{"invalid-uuid", func(v map[string]any) { v["uuid"] = "invalid" }, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			v := statisticsPanelRecord(id)
@@ -175,6 +202,9 @@ func TestPanelStatisticsActivity(t *testing.T) {
 		}, false, false},
 		{"unknown-membership", func(_ *accounts.Snapshot, _ *statisticsBaseline, v *PanelClientView, _ map[int64]statisticsInbound) {
 			v.InboundIDs = []int64{1, 99}
+		}, false, false},
+		{"unattached-managed-client", func(_ *accounts.Snapshot, _ *statisticsBaseline, v *PanelClientView, _ map[int64]statisticsInbound) {
+			v.InboundIDs = nil
 		}, false, false},
 		{"retagged", func(_ *accounts.Snapshot, _ *statisticsBaseline, _ *PanelClientView, m map[int64]statisticsInbound) {
 			m[1] = statisticsInbound{tags: []string{"euru"}, enabled: true}

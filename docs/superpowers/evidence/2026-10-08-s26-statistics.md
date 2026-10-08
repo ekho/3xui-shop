@@ -1,28 +1,34 @@
 # С26 — локальная приёмка статистики
 
-Goal/decision: 2026-10-08-s26-statistics-v1, owner audit_reports/#36; runtime version statistics-v1. Base940b8138aa300ecac8062735748abeee182ad303. Native implementation завершена; локальные проверки ниже прошли. Независимое review, exact-source CI, merge и prerelease ещё pending.
+Goal/decision: 2026-10-08-s26-statistics-v1, owner audit_reports/#36; runtime version statistics-v1. Base940b8138aa300ecac8062735748abeee182ad303. Native implementation/local acceptance завершены. Один whole-branch Astra/high review source9b440b6b41d7cb8aa10e95b26e9c0d178407faf2: Critical0/Important2/Minor0; оба Important закрыты одним авторским проходом. Exact-source CI/merge/prerelease ещё pending.
 
-## Проверки текущего исходника
+## Проверки исправленного исходника
 
-658 runtime/test/build/contract/workflow inputs: SHA-256 3268d7460cb2ff28bc3e590c28a032c4b7967022f52b9ab364eb9dd83538a10c. Приватный source proof проверяет каждый файл, полное покрытие tracked runtime paths и SHA полных логов; документы не влияют на runtime.
+658 runtime/test/build/contract/workflow inputs: SHA-256 38f923f8414ca60426486fe4421e3a102395cdfcd4dd01bdb5132d3b85c829f6. Source proof проверяет каждый файл, полное покрытие tracked runtime paths, SHA полных логов и terminal counts; документы не влияют на runtime. Proof не выдаётся за повторный запуск тестов.
 
 | Проверка | Итог | SHA-256 полного лога |
 | --- | --- | --- |
-| Go -race -count=1 -timeout=20m ./... (RUN_BROWSER_TESTS=1) | 1278/1278, 14 пакетов с тестами, 816633ms; no failures/test skips | 81747a868f3969c4914aa6ffe82c46919dbaa71c99517351f2e3e20cd50816db |
-| Whole Playwright | 438/438, 201374ms; no failures/test skips | 08b88b4b34ddd05d0798b25d1e352b4485d793bbf6aba04a89d0c383a1acb297 |
-| Whole unittest | 112/112, 15652ms; no failures/test skips | 4657dac416a5f8985e4da650f703e51278d562c8126d9824b842a3d28877cd2b |
-| Bulk parser -race | 37/37; no failures/test skips | 3680744f7e4c69847c943ba251cfa6fe0067e79ffa418816a50952925bdb55ec |
-| Actual local 3X-UI3.7.0 report -race | 1/1; no failures/test skips | 5a3b846769f84ebb29b41e4bc0ca2a0f12e2c7e526da5830e819c3be767c937b |
-| Normal fake outage report -race | 1/1; no failures/test skips | dc8b16a5518dc14bb11e14b6e562acee54ddf43bdb301d8a137ec1ae2b8a711d |
-| Current compiled native Go + restart | 2 PASS, 82758ms; no failures/test skips | e4d2e518cca89ce805c27dff1bb1728418d05af4e39773b87c6d97544fb3f05b |
+| Go -json -race -count=1 -timeout=20m ./... (RUN_BROWSER_TESTS=1) | 1284/1284, 14 пакетов с тестами, 844784ms; no failures/test skips | 216b13597a824239266251443410c6ffcd82480d1ddbe0e9b84c8cc3546fcfef |
+| Whole Playwright | 438/438, 217276ms; no failures/test skips | 0599d943f7e0180d21159aee419147cc97d05a1468e943ec7e671b2d16d626f6 |
+| Whole unittest | 112/112, 34320ms; no failures/test skips | 6639a694169fea4ca57d0c3b85d00ec927a0df3a88e00cff38b92bf7da2f7b99 |
+| Final parser/activity + operator report -race | 43/43; no failures/test skips | 1b3670b8fa3839a5218623cc12e658f6448e10e3d4d5913547701abc05e8bbca |
+| Current compiled native Go + restart | 2 PASS, 86147ms; no failures/test skips | e4d2e518cca89ce805c27dff1bb1728418d05af4e39773b87c6d97544fb3f05b |
 
-Static8/8: generated Go/sqlc/TS, vet, typecheck, build, semantic names, runtime config, diff-check. 39 generated files reproducible. OpenAPI95 previous paths/158 schemas/security schemes unchanged; one new report path and6 schemas. Backend image sha256:b1dc25e215da3f6650e9c17d31c5f6199de2b732dfc20911ab4c2b84d1537237 built from this manifest.
+Static8/8: generated Go/sqlc/TS, vet, typecheck, build, semantic names, runtime config, diff-check. 39 generated files reproducible. OpenAPI95 previous paths/158 schemas/security schemes unchanged; one new report path and6 schemas. Backend image sha256:bba0ea3f77ecdd588db0c3218ae923ca4809491c9444e9437f4346a817fdc8e6 built from this manifest.
 
 ## Проверенное поведение
 
 Global/cohort/empty counts, existing exact funded money and legacy archive separation, role/Origin/CSRF and role revoked during panel read, nullable unknown activity and exact ratios, current applied target/expiry/quota/membership, bulk2GET with no writes, provider outage/drift/overflow/oversize, RU/EN/375px/keyboard and stale/abort/error handling. Owned native fixture proves same UUID/grant and unchanged account/trial/access/audit/job state; server infrastructure scope stays global.
 
+Первичная actual3.7.0 приёмка отдельно дала1/1 GREEN5a3b8467, normal fake outage1/1 GREENdc8b16a5, parser37/37 GREEN3680744f на исходнике до финального review. Текущий compiled native TestNativeTrial набор повторно включает реальный report против pinned3.7.0; его весь native-go.log завершился ok. Старые focused результаты — история, не замена текущего полного набора.
+
 Actual3.7.0 ClientService.List joins traffic by email with blank nested UUID/subId. First actual report failed acef8b7eefb5b0a6ed32c1b226dbefffc2c7aa579a5b8f8536b219d6c8401e47; regression joined-traffic-empty-identities failed5e53d63ce066c9178a860ab89c04f367018133a918f52b477c36451ee0e9da82 before the owner parser fix. Only absent/blank nested identities inherit the enclosing unique client; conflicts/email/null/counter validation remains strict. Primary provider version v3.7.0/f727d04f6522bb94a8fb52e8352fdcafb51c11e1. Fixture SQL ordering/fake unsupported-route corrections are test author errors, not fabricated product REDs.
+
+## Финальное review и исправления
+
+Оба Important подтверждены первичным ClientRecord/ClientWithAttachments кодом3.7.0: foreign outer UUID="" и unattached inboundIds:null — корректные provider rows, которые скрывали весь mixed report. TestPanelStatisticsSnapshot/foreign-empty-uuid и /foreign-unattached оба реально FAILED до fix: SHA7c161a85cabd5771c2cb6bf2f09e45422651d3f893eab3a196577a322714f712. Shared parser теперь допускает только blank optional identity и explicit null membership; managed identity/target/membership guards остаются строгими. Focused43GREEN1b3670b8 и полный current-source набор выше подтверждают исправления; не было второго review.
+
+Дополнительные missing/wrong-type membership, malformed UUID и unattached managed activity проверки — честные post-fix characterization, не выдуманный RED. Minor0, unresolved Critical/Important0. Reviewer declined items приняты автором как пять Final Rulings ниже.
 
 ## Границы
 
@@ -45,7 +51,12 @@ Actual3.7.0 ClientService.List joins traffic by email with blank nested UUID/sub
 - Task3 actual3.7.0 report GREEN1/1 with-race/no skips, log5a3b8467; global2/cohort1/empty0, granted1/active1/knowninactive1, provider actual clients kept global, entire domain/job state hash unchanged. C03 compatibility allowed. Parser current38cases GREEN3680744f (count verified below). Static8checks now PASS and generated files stable: previous reproducibility assertion failed because the newly changed wire enum legitimately regenerated source on its first run, not a product failure; final stable run succeeds. Ruling: full Go uses the Makefile-equivalent exact go -race -count=1 -timeout=20m ./... flags plus -json for actual case counts, RUN_BROWSER_TESTS=1; cost if wrong: divergence from Makefile could omit a flag, actual flags are compared. Source manifest frozen before whole-suite.
 - Task3 parser case count correction:37/37, not38; full JSON terminal records read. Normal fake branch770b2d96 reached its final readback guard: shared issuance helper treats unsupported bulk GET as forbidden, even though that outage is expected here. Ruling: actual Docker guard remains unchanged; fake branch requires exactly3 unsupported GET paths/one existing add/one client after3reports, domain/job state still hash-equal. Cost if wrong: fake counter does not itself distinguish methods; Task1 bulk TLS route guard separately proves only2GET/no writes. No product or other fixture behavior changed.
 - Task3 Ruling: task-done executes the explicitly planned source proof after the scoped docs/evidence commit, checking all658 runtime/test/build inputs plus full Go/Web/Python/native raw log hashes and actual counts — whole suites just ran and are bit-identical, repeating them for docs would add no coverage — cost if wrong: an omitted input could invalidate reuse; coverage is checked against current tracked runtime paths including workflows/deploy/contracts. This verifies evidence and source identity, does not claim tests were rerun by the proof.
+- Final: Ruling: production/real wallet/SMTP/Telegram/live Happ/VPN/Mac trust excluded — owned fixtures satisfy accepted local scope, external gates remain open — cost if wrong: local evidence cannot prove external operation.
+- Final: Ruling: full poolC39 and history/retentionC29 remain separate — current single configured panel report is explicit — cost if wrong: multiple servers/history require their later scenarios.
+- Final: Ruling: full historical importC46/removalPythonC47 remain separate — current legacy totals are known archive facts, not full parity — cost if wrong: missing historical flags affect overall coverage before import.
+- Final: Ruling: periods/export/graphs/cache/background collectors omitted — accepted current aggregate/read-only report does not require them — cost if wrong: extra reporting needs a later scoped change.
+- Final: Ruling: PR/CI/merge/prerelease/images pending — reviewer only judges source/local evidence; root verifies delivery separately — cost if wrong: prematurely closed issue could hide an unpublished revision.
 
 ## Deferred minors
 
-Финальное review ещё не выполнено.
+Нет: финальное review Minor0.

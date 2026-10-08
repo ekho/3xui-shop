@@ -60,6 +60,10 @@ func (p *PanelClient) statisticsSnapshot(ctx context.Context) (panelStatisticsSn
 		var id int64
 		var v PanelClientView
 		for name, dest := range map[string]any{"id": &id, "email": &v.PanelKey, "enable": &v.Enabled, "expiryTime": &v.ExpiryTimeMS, "limitIp": &v.LimitIP, "totalGB": &v.TrafficLimitBytes, "inboundIds": &v.InboundIDs} {
+			// 3.7.0 serializes unattached clients' nil membership slice as null.
+			if name == "inboundIds" && string(row[name]) == "null" {
+				continue
+			}
 			if len(row[name]) == 0 || string(row[name]) == "null" || json.Unmarshal(row[name], dest) != nil {
 				return panelStatisticsSnapshot{}, ErrPanel
 			}
@@ -79,7 +83,7 @@ func (p *PanelClient) statisticsSnapshot(ctx context.Context) (panelStatisticsSn
 		// Foreign protocol rows may lack a VPN UUID/subscription. They still count
 		// as provider clients but cannot confirm one of our account identities.
 		for name, dest := range map[string]any{"uuid": &v.VPNID, "subId": &v.SubID} {
-			if len(row[name]) > 0 && string(row[name]) != "null" && json.Unmarshal(row[name], dest) != nil {
+			if len(row[name]) > 0 && string(row[name]) != "null" && string(row[name]) != `""` && json.Unmarshal(row[name], dest) != nil {
 				return panelStatisticsSnapshot{}, ErrPanel
 			}
 		}

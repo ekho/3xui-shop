@@ -90,7 +90,7 @@ func TestOperatorStatisticsPanel(t *testing.T) {
 		case "/panel/api/inbounds/list":
 			obj = []map[string]any{{"id": 1, "enable": true, "tag": "region-regular-tcp"}, {"id": 2, "enable": false, "tag": "regular"}, {"id": 3, "enable": true, "tag": "nonregular"}}
 		case "/panel/api/clients/list":
-			obj = []map[string]any{client, {"id": 8, "email": "foreign-panel-client", "enable": true, "expiryTime": 0, "limitIp": 0, "totalGB": 0, "inboundIds": []int{}}}
+			obj = []map[string]any{client, {"id": 8, "email": "foreign-panel-client", "uuid": "", "subId": "", "enable": true, "expiryTime": 0, "limitIp": 0, "totalGB": 0, "inboundIds": nil}}
 		default:
 			writes.Add(1)
 			w.WriteHeader(404)
