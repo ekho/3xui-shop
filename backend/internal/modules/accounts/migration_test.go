@@ -53,7 +53,8 @@ func TestAccountSecurityMigration(t *testing.T) {
 	if err = q.AddSession(ctx, store.AddSessionParams{IDHash: digest(raw), AccountID: id, CsrfToken: opaque(), CreatedAt: stamp(now), LastSeen: stamp(now), AbsoluteExpiresAt: stamp(now.Add(30 * 24 * time.Hour))}); err != nil {
 		t.Fatal(err)
 	}
-	if err = q.AddChallenge(ctx, store.AddChallengeParams{ID: proof, EmailKey: "pending@example.test", Locale: "en", TermsVersion: "1", PrivacyVersion: "1", TokenHash: digest(token), CodeHash: s.codeDigest(proof, "12345678"), CreatedAt: stamp(now), TokenExpiresAt: stamp(now.Add(24 * time.Hour)), CodeExpiresAt: stamp(now.Add(10 * time.Minute))}); err != nil {
+	if _, err = e.Pool.Exec(ctx, `INSERT INTO registration_challenges(id,email_key,locale,terms_version,privacy_version,token_hash,code_hash,created_at,token_expires_at,code_expires_at)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, proof, "pending@example.test", "en", "1", "1", digest(token), s.codeDigest(proof, "12345678"), now, now.Add(24*time.Hour), now.Add(10*time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	tx, err := e.Pool.Begin(ctx)
@@ -83,6 +84,10 @@ func TestAccountSecurityMigration(t *testing.T) {
 	e.Pool.QueryRow(ctx, `SELECT id FROM river_job WHERE kind='mail_delivery'`).Scan(&afterJob)
 	if !bytes.Equal(before, after) || kind != "registration" || version != 0 || afterJob != jobID || sessionCount(t, e) != 1 {
 		t.Fatal("migration changed registration data/jobs")
+	}
+	var accountSource, challengeSource *string
+	if err = e.Pool.QueryRow(ctx, `SELECT registration_source_code,(SELECT source_code FROM registration_challenges WHERE id=$2) FROM accounts WHERE id=$1`, id, proof).Scan(&accountSource, &challengeSource); err != nil || accountSource != nil || challengeSource != nil {
+		t.Fatal("migration invented a historical campaign source")
 	}
 	sent := 0
 	mail := notifications.NewMail(e.Pool, nil, func() notifications.MailConfig {
