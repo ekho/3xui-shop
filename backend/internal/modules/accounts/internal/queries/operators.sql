@@ -33,6 +33,11 @@ VALUES($1,'telegram',$2,$3,$4,$5,$6,$7,'regular',$8);
 -- name: AccountByTelegramID :one
 SELECT * FROM accounts WHERE telegram_id=$1;
 
+-- name: LegacyIdentities :many
+SELECT * FROM accounts WHERE telegram_id=ANY(sqlc.arg(telegram_ids)::bigint[]) ORDER BY id;
+-- name: LockLegacyIdentities :many
+SELECT * FROM accounts WHERE telegram_id=ANY(sqlc.arg(telegram_ids)::bigint[]) ORDER BY id FOR UPDATE;
+
 -- name: OperatorExists :one
 SELECT EXISTS(SELECT 1 FROM operator_accounts WHERE account_id=$1);
 -- name: LockOperatorRole :one

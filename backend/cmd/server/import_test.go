@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,10 +60,7 @@ func TestDecodeLegacyPaymentPackage(t *testing.T) {
 // The actual command must use its FILE DB and avoid starting serve/workers.
 func TestLegacyPaymentCLI(t *testing.T) {
 	e := testkit.Open(t)
-	file := filepath.Join(t.TempDir(), "database-url")
-	if err := os.WriteFile(file, []byte(e.Pool.Config().ConnString()), 0600); err != nil {
-		t.Fatal("cannot prepare own database file")
-	}
+	file := ownedImportDatabaseFile(t, e)
 	t.Setenv("DATABASE_URL_FILE", file)
 	input, err := os.CreateTemp(t.TempDir(), "package")
 	if err != nil {
@@ -100,4 +98,27 @@ func TestLegacyPaymentCLI(t *testing.T) {
 	if err = e.Pool.QueryRow(context.Background(), `SELECT count(*) FROM river_job`).Scan(&jobs); err != nil || jobs != 0 {
 		t.Fatal("import started runtime work")
 	}
+}
+
+func ownedImportDatabaseFile(t *testing.T, e *testkit.Env) string {
+	t.Helper()
+	cfg := e.Pool.Config().ConnConfig
+	// ConnString is the original parsed URI, before testkit changed Database.
+	uri, err := url.Parse(cfg.ConnString())
+	if err != nil || (uri.Scheme != "postgres" && uri.Scheme != "postgresql") {
+		t.Fatal("prerequisite: owned test database must use a PostgreSQL URI")
+	}
+	var actual string
+	if err = e.Pool.QueryRow(context.Background(), `SELECT current_database()`).Scan(&actual); err != nil || actual != cfg.Database || actual == "platform_test" {
+		t.Fatal("prerequisite: actual isolated database")
+	}
+	uri.Path = "/" + actual
+	query := uri.Query()
+	query.Set("dbname", actual)
+	uri.RawQuery = query.Encode()
+	file := filepath.Join(t.TempDir(), "database-url")
+	if err = os.WriteFile(file, []byte(uri.String()), 0600); err != nil {
+		t.Fatal("cannot prepare own database file")
+	}
+	return file
 }

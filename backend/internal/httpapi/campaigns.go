@@ -24,6 +24,22 @@ func (a *API) RecordCampaignVisit(c *echo.Context) error {
 	}
 	return c.NoContent(204)
 }
+
+func (a *API) GetOperatorCampaign(c *echo.Context) error {
+	actor, err := a.operatorAuth(c, false)
+	if err != nil {
+		return err
+	}
+	id, err := resourceID(c)
+	if err != nil {
+		return err
+	}
+	out, err := a.campaignsOwner.Detail(c.Request().Context(), actor.Account.AccountId, id)
+	if err != nil {
+		return campaignError(err)
+	}
+	return c.JSON(200, out)
+}
 func (a *API) ListOperatorCampaigns(c *echo.Context) error {
 	actor, err := a.operatorAuth(c, true)
 	if err != nil {

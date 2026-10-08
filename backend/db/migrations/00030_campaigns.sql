@@ -50,6 +50,8 @@ CREATE TABLE campaign_acquisitions (
   OR (channel='legacy_name' AND legacy_source IS NOT NULL AND source_code IS NULL AND legacy_trial_used IS NOT NULL AND legacy_payload IS NOT NULL))
 );
 CREATE INDEX campaign_cohort ON campaign_acquisitions(campaign_id,account_id);
+CREATE UNIQUE INDEX campaign_legacy_user ON campaign_acquisitions(legacy_source,(legacy_payload->>'source_legacy_user_id')) WHERE channel='legacy_name';
+CREATE UNIQUE INDEX campaign_legacy_telegram ON campaign_acquisitions(legacy_source,(legacy_payload->>'source_tg_id')) WHERE channel='legacy_name';
 CREATE TABLE campaign_events (
  id uuid PRIMARY KEY,
  campaign_id uuid NOT NULL REFERENCES campaigns(id),

@@ -31,6 +31,35 @@ func (s *Service) LookupTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (Snapsh
 	return accountResult(a, err)
 }
 
+// LegacyIdentitiesTx resolves and optionally locks a bounded import's identity
+// set in UUID order, without foreign SQL or one query per imported user.
+func (s *Service) LegacyIdentitiesTx(ctx context.Context, tx pgx.Tx, telegramIDs []int64, lock bool) ([]Snapshot, error) {
+	if len(telegramIDs) > 100000 {
+		return nil, failure(400, "INVALID_INPUT")
+	}
+	for _, id := range telegramIDs {
+		if id <= 0 {
+			return nil, failure(400, "INVALID_INPUT")
+		}
+	}
+	q := store.New(tx)
+	var rows []store.Account
+	var err error
+	if lock {
+		rows, err = q.LockLegacyIdentities(ctx, telegramIDs)
+	} else {
+		rows, err = q.LegacyIdentities(ctx, telegramIDs)
+	}
+	if err != nil {
+		return nil, unavailable()
+	}
+	out := make([]Snapshot, 0, len(rows))
+	for _, a := range rows {
+		out = append(out, snapshot(a))
+	}
+	return out, nil
+}
+
 // Lock participates in the caller's transaction; the caller commits or rolls back.
 func (s *Service) Lock(ctx context.Context, tx pgx.Tx, id uuid.UUID) (Snapshot, error) {
 	a, err := store.New(tx).LockAccount(ctx, id)
