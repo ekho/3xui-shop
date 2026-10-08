@@ -36,18 +36,21 @@ if(process.env.TEST_MINI_INIT_FILE){
 
 if(process.env.TEST_STARS_INIT_FILE){
  test('Telegram Stars real signed SDK + HTTP + River + panel',async({page})=>{
+  let checkpoint='navigation';
+  try{
   const {init_data,control_url}=JSON.parse(readFileSync(process.env.TEST_STARS_INIT_FILE!,'utf8'));
   await page.route('https://telegram.org/js/telegram-web-app.js',r=>r.fulfill({contentType:'application/javascript',body:`window.__ownedStars={opened:[],done:null};window.Telegram={WebApp:{initData:${JSON.stringify(init_data)},version:'9.6',platform:'web',themeParams:{},ready(){},expand(){},onEvent(){},offEvent(){},BackButton:{show(){},hide(){},onClick(){},offClick(){}},openInvoice(url,done){window.__ownedStars.opened.push(url);window.__ownedStars.done=done;}}};`}));
   const keys:string[]=[];page.on('request',r=>{if(new URL(r.url()).pathname==='/api/v1/orders')keys.push(r.headers()['idempotency-key']);});
-  await page.goto('/mini-app/catalogue?lang=en');await page.getByRole('checkbox',{name:/terms of use/i}).check();await page.getByRole('checkbox',{name:/privacy/i}).check();await page.getByRole('button',{name:'Continue',exact:true}).click();
+  await page.goto('/mini-app/catalogue?lang=en');checkpoint='consent';await page.getByRole('checkbox',{name:/terms of use/i}).check();await page.getByRole('checkbox',{name:/privacy/i}).check();await page.getByRole('button',{name:'Continue',exact:true}).click();checkpoint='order';
   await page.getByRole('button',{name:'Select plan'}).click();await page.getByRole('button',{name:'Buy plan'}).click();await page.getByRole('button',{name:'Confirm purchase'}).click();
   await expect(page).toHaveURL(/\/mini-app\/orders\/[0-9a-f-]{36}/);const orderPath=new URL(page.url()).pathname;
-  const pay=page.getByRole('button',{name:'Pay with Stars'});await pay.focus();await page.keyboard.press('Enter');
+  checkpoint='invoice';const pay=page.getByRole('button',{name:'Pay with Stars'});await pay.focus();await page.keyboard.press('Enter');
   await expect.poll(()=>page.evaluate(()=>(window as any).__ownedStars.opened)).toEqual(['https://t.me/$Owned_native_invoice']);
   await page.evaluate(()=>(window as any).__ownedStars.done('paid'));await expect(page.getByText('Waiting for payment confirmation.',{exact:true})).toBeVisible();
-  expect((await page.request.post(control_url+'/complete')).status()).toBe(204);
+  checkpoint='money';expect((await page.request.post(control_url+'/complete')).status()).toBe(204);checkpoint='provision';
   await expect(page.getByText('Payment received. Access is ready.',{exact:true})).toBeVisible({timeout:20000});expect(keys).toHaveLength(1);expect(keys[0]).toMatch(/^[0-9a-f-]{36}$/);
-  await expect(pay).toHaveCount(0);await page.getByRole('button',{name:'Refresh status'}).click();await expect(page.getByText('Payment received. Access is ready.',{exact:true})).toBeVisible();expect(new URL(page.url()).pathname).toBe(orderPath);
+  checkpoint='replay';await expect(pay).toHaveCount(0);await page.getByRole('button',{name:'Refresh status'}).click();await expect(page.getByText('Payment received. Access is ready.',{exact:true})).toBeVisible();expect(new URL(page.url()).pathname).toBe(orderPath);
   expect(await page.evaluate(()=>JSON.stringify(localStorage)+JSON.stringify(sessionStorage))).not.toMatch(/mini_|init_data|tgWebAppData|csrf_token|subscription_url/);
+  }finally{process.stdout.write('TG_STARS_CHECKPOINT:'+checkpoint+'\n');}
  });
 }

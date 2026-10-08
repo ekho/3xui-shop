@@ -283,6 +283,10 @@ func TestNativeTrialStarsBrowser(t *testing.T) {
 	cmd.Dir = filepath.Join(f.root, "web")
 	cmd.Env = append(os.Environ(), "E2E_MODE=real", "TEST_ORIGIN="+f.public.URL, "TEST_STARS_INIT_FILE="+file)
 	if out, err := cmd.CombinedOutput(); err != nil {
+		var payment, fulfillment, orderReason, access, accessReason string
+		if e := f.env.Pool.QueryRow(context.Background(), `SELECT p.payment_status,p.fulfillment_status,COALESCE(p.review_reason,''),COALESCE(a.status,''),COALESCE(a.review_reason,'') FROM purchase_orders p JOIN accounts c ON c.id=p.account_id LEFT JOIN access_operations a ON a.id=p.access_operation_id WHERE c.telegram_id=$1`, tg).Scan(&payment, &fulfillment, &orderReason, &access, &accessReason); e == nil {
+			t.Logf("owned Stars checkpoint payment=%s fulfillment=%s order_reason=%s access=%s access_reason=%s", payment, fulfillment, orderReason, access, accessReason)
+		}
 		t.Fatalf("owned Stars browser failed: %s", out)
 	}
 	var order uuid.UUID
