@@ -3,8 +3,13 @@
 Владелец [#33](https://github.com/ekho/3xui-shop/issues/33); контракт
 `2026-10-08-s35-stars-recurring-v1`, комментарии6051821522/6052341410/6052964308/6053125079.
 База `27ae2dec9aadfe03bada575a416d1f1afdf3c383`.
-Задачи1–3 завершены; полный локальный набор задачи4 прошёл.
-Итоговое ревью, exact-source CI, ручное слияние в v2 и предварительный релиз ожидаются.
+Задачи1–4 завершены; один fresh Astra/high reviewer проверил всю ветку
+`27ae2de..2247474`. Две Important исправлены единственным author RED→GREEN
+проходом в `537e6c25809ee0a7c123daa5e5d594840513f182`.
+Полный локальный Go/race после исправлений: 1213 PASS / 1 FAIL в неизменённой
+проверке поддержки; отдельный диагностический запуск этого теста PASS.
+Author pass ожидает полный зелёный exact-source CI; ручное слияние в v2 и
+предварительный релиз тоже ожидаются. Итог доставки фиксируется в #33.
 
 ## Проверки
 
@@ -13,11 +18,15 @@
 | Playwright Stars | 31/31 PASS; первоначальный RED16 FAIL/15 PASS |
 | Полный Playwright | 403/403 PASS в2.9m |
 | Current native graph и recurring real browser | PASS13.865s; TLS3X-UI3.7.0, actual native period2592000 и cancel/resume |
-| Полный Go/race с native/browser | 1210 тестов / 13 пакетов PASS, 0 FAIL / 0 individual SKIP; 12 пакетов без тестов |
+| Полный Go/race до final fixes, source2247474 | 1210 тестов / 13 пакетов PASS, 0 FAIL / 0 individual SKIP; 12 пакетов без тестов |
+| Полный Go/race после final fixes, source537e6c2 | 1213 PASS / 1 FAIL: TestRegressionSupportQuotaAndRate; 12 пакетов PASS / 1 FAIL; 0 individual SKIP, 12 пакетов без тестов |
+| Current native/browser после final fixes | пакет ./tests PASS163.534s с RUN_BROWSER_TESTS=1, TLS3X-UI3.7.0 |
+| Отдельная диагностика SupportQuotaAndRate/race | PASS4.090s; причина локального полного сбоя не установлена |
 | Python, включая настоящий Go-потребитель adapter | 110/110 PASS14.641s |
 | go vet / TypeScript typecheck / build | PASS |
 | Генерация Go/SQL/TypeScript | 39 outputs: повторная генерация идентична |
-| git diff --check | PASS |
+| Owning author-fix regressions | RED2.690s → focused GREEN18.459s |
+| git diff --check рабочей копии | PASS; committed-range имеет Minor M1 ниже |
 
 ## Что проверяет реализация
 
@@ -77,6 +86,25 @@ resume_allowed. Контролы используют прежние auth/CSRF/i
 - C01 с evidence path, начинающимся с точки, был INVALID_EVENT; исправленный
   artifact ref ALLOWED. C07 повторного Go запуска основан на изменённом consumer.
   Ни один malformed check не считается разрешением.
+- Final I1 воспроизведён настоящим applied set_profile regular→euru: GET
+  предлагал resume, HTTP200/native false позволяли старый cycle и возврат regular.
+  Теперь текущий профиль сверяется с frozen quote в resume и cycle admission;
+  обычная клиентская отмена/возобновление проходят прежние проверки.
+- Final I2 воспроизведён conflicting replay первого и последующего applied charge:
+  исходный proof/access сохранялись, но cancel intent отсутствовал. Теперь
+  required cancellation записывается в той же review transaction для затронутого
+  и исходного receipt account; повтор конфликта не создаёт лишний control,
+  exact replay не отменяет billing. Reconciliation использует captured first charge.
+- C07 final retry сначала получил INVALID_EVENT из-за неподдерживаемого outcome
+  passed; исправленный event с фактическим I1/I2 RED и новым source diff ALLOWED.
+  Один полный Go/race выполнен для изменённого кода. Web/Python/generator источники
+  после успешных полных проверок задачи4 не изменялись.
+- Полный post-fix запуск exit1 из-за TestRegressionSupportQuotaAndRate
+  (quota setup SERVICE_UNAVAILABLE); остальные1213 тестов прошли. Support owner
+  и этот тест не изменены от базы. Одна bounded диагностика с race и теми же
+  ресурсами PASS4.090s; это не объявляется полным зелёным локальным набором.
+  Required whole green suite будет доказан exact-source CI до слияния;
+  speculative support fix и неизменённый повтор18-minute run не выполняются.
 
 ## Rulings I made
 
@@ -124,10 +152,45 @@ resume_allowed. Контролы используют прежние auth/CSRF/i
 
 22. Task4: Ruling: task-done records T4 implementation/local verification before the same step5 final-review/delivery gates; step5 remains pending until exact CI/manual merge/release — the Native task loop requires a completed task before its final review, and source/local success is not delivery — cost if wrong: a task completion line could be misread as issue Done, which remains separately guarded.
 
+23. Final: Ruling: I1 is Important; compare the actual finite profile to the immutable recurring quote at resume and subsequent-cycle admission — a real operator profile change must not be undone by renewed billing, while ordinary client cancel/resume keeps its original profile — cost if wrong: an operator profile change back to the exact original profile can make the old contract eligible again; unresolved policy/source/refund checks still apply.
+
+24. Final: Ruling: I2 is Important; record required cancellation in the existing conflicting-receipt transaction for the affected account and retained original receipt account — future billing cannot remain enabled after money review blocks automatic fulfillment; exact replay remains unchanged — cost if wrong: a conflicting cross-account payload conservatively cancels billing for both affected accounts, requiring support to resolve the retained financial conflict.
+
+25. Final: Ruling: declined C36/#34 external browser/login handoff remains the next separate scenario — this issue delivers billing proof guards, while clients get the currently available cabinet/manual login path until C36 adds the explicit handoff — cost if wrong: discovering alternative payment still takes extra navigation before C36.
+
+26. Final: Ruling: declined C27/#37 lapse notification delivery remains with its notification owner — current state and timer preserve actual paid/grace/lapse behavior but do not promise proactive notices — cost if wrong: a client can miss expiry until notification implementation; paid access is not extended by a missing notice.
+
+27. Final: Ruling: declined C45/#47 deploy/runtime configuration and real resources remain separate — current single-process composition and owned TLS fixtures prove local behavior only, with no production authority — cost if wrong: real deployment configuration can still prevent provider/SMTP delivery and needs its own acceptance.
+
+28. Final: Ruling: declined C46/#53 legacy import/decoder remains separate — actual legacy markers and unknown native identities stay fail-closed; C35 does not reinterpret the existing unsupported-payment runtime contract — cost if wrong: imported accounts need accurate complete history before any external billing or resume opens.
+
+29. Final: Ruling: declined C47/#54 cutover/restore and Python removal remain separate — the current Go feature runs locally without claiming the final migration or live Happ acceptance; switching live Happ is excluded by the user — cost if wrong: final production cutover still requires migration/rollback evidence and removal of the legacy entry points.
+
+30. Final: Ruling: declined real provider money/Telegram/production checks remain excluded from reviewer and local acceptance; release artifacts will be independently verified during authorized delivery — owned fake transport and TLS3X-UI do not prove actual provider behavior — cost if wrong: native external-service behavior can still differ and requires future explicitly authorized external acceptance.
+
+31. Final: Ruling: retain the actual post-fix full local failure TestRegressionSupportQuotaAndRate (SERVICE_UNAVAILABLE), unchanged support source and single isolated race PASS4.090s; require one exact-source full green CI before the author pass/issue delivery is complete — no speculative support edit or unchanged eighteen-minute local repeat; the failure cause is unknown and local PASS is not claimed — cost if wrong: the local environment failure can recur, and CI must remain a merge gate rather than hiding it.
+
 ## Итоговое ревью
 
-Ещё не выполнено. Предусмотрен один fresh Astra/high reviewer всей ветки,
-один author Critical/Important RED→GREEN pass при необходимости и no re-review.
+Единственное fresh-context whole-branch review: Astra/high, диапазон
+`27ae2dec9aadfe03bada575a416d1f1afdf3c383..2247474eb9715d780f5adf8dd45013136c5c824d`.
+Вердикт With fixes: 0 Critical, 2 Important, 1 Minor. Все пять literal Review
+Focus проверены по actual SQL/callers/assertions; отдельный reviewer focused run
+не имеет подтверждённого exit/output и не объявлен PASS. Повторного ревью нет.
+
+I1/I2 regraded Important по пользовательскому эффекту и исправлены автором
+через TestStarsRecurringProfileAuthority и TestStarsRecurringConflictCancellation
+(first/cycle), настоящий RED→GREEN. Оплаченный applied доступ, original receipt,
+профиль оператора и idempotency сохранены; обычные cancel/resume и cycle/policy
+regressions входят в focused GREEN18.459s. После fixes полный local Go/race
+содержит один описанный сбой поддержки; полный зелёный exact-source CI —
+обязательный оставшийся gate author pass. No re-review.
+
+## Deferred minors
+
+- M1: дополнительная пустая строка в конце migration00029; `git diff --check`
+  всего committed range возвращает exit2. Рабочая копия PASS не является этой
+  проверкой. Функционального эффекта нет; Minor не входит в author fix pass.
 
 ## Границы приёмки
 
