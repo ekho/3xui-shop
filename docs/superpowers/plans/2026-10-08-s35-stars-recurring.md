@@ -271,7 +271,7 @@ Expected: complete suitesPASS, actualcounts recorded, generatedsourcesidentical,
 Run (root): `git diff --check`.
 Expected: exit0.
 
-- [ ] **Step 5: Commit, task-done, final review and guarded delivery.**
+- [x] **Step 5: Commit, task-done, final review and guarded delivery.**
 
 Commit `feat(web): manage Stars recurring subscriptions`, Co-Authored.
 Whole-task command: web `npm run test:e2e -- tests/stars.spec.ts` and backend `C35_ENV go test ./tests -run '^TestNativeStarsRecurring($|Browser$)' -count=1 -timeout=10m` sequential, no parallelwebbuild/browserdistremoval.
@@ -286,3 +286,5 @@ Expected: #33closed onlywithlocalimplementation/exactv2deliveryproof; production
 Spec firstinvoice/provenance/hash → task1; actualnativecontrol/billing/identity/timer → task2; allcycle/refund/renew/source/five-method money → task3; UI/OpenAPI/wholegraph/review/CI/delivery → task4. ReviewFocus allfive eachhasanowningtest above.
 Task1 Produces names/types matchtask2 Consumes; task2 publictypedcallbacks matchrootintegration andtask3 guards; task3 existingactions/DTOs consumedunchangedtask4. No unsupportedreceipt-to-order reconstructionorchildcheckout.
 C27notices/C36externalbrowser/C45runtimeconfig/C46reallegacyimport/C47Pythonremoval remaincanonicaldependentissues, notclaimedimplementedinC35.
+
+Delivery step5 actual proof: PR87 source390eb97 → merge0d19b02669a90c335a7ac62d5062de4715687706. PR Platform37748760067/all6steps and Preview37748760072/all3images PASS; V2 push37752856394/all4jobs, prerelease2.0.0-dev.71/annotated tag/3OCI indexes/6source-version configs verified. #33closed/ProjectDone, canonical completion6056418435. No production claim. This record is appended in next C36 docs checkpoint; C35 historical checks remain literal.

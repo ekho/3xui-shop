@@ -30,7 +30,7 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 )
 
-func nativeStarsFixture(t *testing.T) (*fixture, *nativeBot, ed25519.PrivateKey, uuid.UUID) {
+func nativeStarsFixture(t *testing.T, rub ...string) (*fixture, *nativeBot, ed25519.PrivateKey, uuid.UUID) {
 	t.Helper()
 	pub, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -40,6 +40,9 @@ func nativeStarsFixture(t *testing.T) (*fixture, *nativeBot, ed25519.PrivateKey,
 	f.cfg.Payments.StarsEnabled = true
 	plan := uuid.New()
 	terms := wire.CataloguePlanSnapshot{PlanId: plan, Revision: 1, Devices: 2, TrafficGb: 15, Profile: "regular", Periods: []int64{30}, Prices: []wire.CataloguePrice{{PeriodDays: 30, Currency: "RUB", AmountMinor: "0"}, {PeriodDays: 30, Currency: "USD", AmountMinor: "0"}, {PeriodDays: 30, Currency: "XTR", AmountMinor: "100"}}}
+	if len(rub) > 0 {
+		terms.Prices[0].AmountMinor = rub[0]
+	}
 	raw, _ := json.Marshal(terms)
 	ctx := context.Background()
 	if _, err = f.env.Pool.Exec(ctx, `INSERT INTO catalogue_plans(id,current_revision,current_devices,current_profile,current_hidden) VALUES($1,1,2,'regular',false)`, plan); err != nil {
