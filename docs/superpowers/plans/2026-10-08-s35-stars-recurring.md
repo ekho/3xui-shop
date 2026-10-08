@@ -221,7 +221,7 @@ Expected: PASS for existing andnew tests, no unrelated money weakening.
 Run (root): `git diff --check`.
 Expected: exit0.
 
-- [ ] **Step 5: Commit and task-done.**
+- [x] **Step 5: Commit and task-done.**
 
 Commit `feat(payments): settle recurring Stars cycles and safe billing handoff`, Co-Authored.
 Whole-task command: preceding GREEN command.
@@ -231,7 +231,7 @@ Expected: PASS and completionledger.
 
 **Files:**
 - Modify: `web/src/api/client.ts`, `Catalogue.tsx`, `Cabinet.tsx`, `PurchaseOrder.tsx`, `i18n.ts`; Create onlyneededcommon `web/src/StarsSubscription.tsx`.
-- Test: `web/tests/stars.spec.ts`, `backend/tests/native_stars_test.go`, `web/tests/real.spec.ts` if whole-graph browserfixture needsnewassertions.
+- Test: `web/tests/stars.spec.ts`, `web/tests/mini-app.spec.ts`, `backend/tests/native_stars_test.go`, `backend/tests/native_trial_integration_test.go`, `backend/internal/modules/telegram/internal/botapi/client_test.go`, `web/tests/real.spec.ts`.
 - Modify: `docs/api/openapi.yaml`, generatedcontracts and `docs/superpowers/evidence/2026-10-08-s35-stars-recurring.md`; update roadmap #33 only with actualstates.
 
 **Interfaces:**
@@ -239,19 +239,20 @@ Expected: PASS and completionledger.
 - Produces: APIclient `starsSubscription(signal?:AbortSignal)` and `controlStarsSubscription(action:"cancel"|"resume",key:string)`; commonru/en UI, uncheckedeligible30d toggle, confirmcancel/resume, paidperiod/status/retry.
 - Native prooftest uses actual current App modules/nativepoll/fakeTGtransport/River and TLS3X-UI3.7.0; no oldDockerproduct is acceptedasnewproductproof.
 
-- [ ] **Step 1: Write UI and currentcomposition RED tests.**
+- [x] **Step 1: Write UI and currentcomposition RED tests.**
 
 Playwright tests: defaultone-shot bodyunchanged, eligiblefirst30d checkbox/monthlyprice/nativeperiod; unsupportedperiodnochoice; openInvoiceSDKcancelled/failed/pending distinguish aria-livehints but neverfakepaid; cancelconfirm/uncertain/resume_allowed/foreign/noauth/abort/retry/ru-en keyboard; Mini one-shotrenew/change serverenabled onlyafterrealcancel.
 `TestNativeStarsRecurring`: currentwholeGo graph obtains actualnative subscription_period; first/successive/replayedcharge givesexactaccess; nativeTrue cancel/restart survives DB; later extrafirst nativecancel individuallyprocessed; HTTP/browserstate andcontextshutdown exercised.
 Use existing owned TLS panel/mail/native helpers, safe checkpoints only.
 
-- [ ] **Step 2: Run RED.**
+- [x] **Step 2: Run RED.**
 
 Run (web): `npm run test:e2e -- tests/stars.spec.ts`.
-Run (backend): `C35_ENV go test ./tests -run '^TestNativeStarsRecurring$' -count=1 -timeout=10m`.
+Run (backend): `C35_ENV go test ./tests -run '^TestNativeStarsRecurring($|Browser$)' -count=1 -timeout=10m`.
+Для native-команд этой задачи `C35_ENV` также включает `RUN_BROWSER_TESTS=1` и абсолютный `NATIVE_DOCKER_STATE` собственного Docker-стенда. Whole graph уже реализован задачами1–3; для его нового теста RED подтверждён временной мутацией native period и восстановлением, UI RED наблюдался до UI реализации.
 Expected: actual behavior FAIL on missing recurringUI/currentcomposition behavior, not absentenvironment.
 
-- [ ] **Step 3: Implement shared UI and owning OpenAPI.**
+- [x] **Step 3: Implement shared UI and owning OpenAPI.**
 
 CommonCatalogue includes recurringbool onlychecked/eligible; serverstillvalidates. Mini managing renew/change uses existingXTRprice/forms afterownercontextpermits.
 CommonCabinet/Order status component loads ownsafeDTO withabort/sessionguard and actualcontrolresult. Avoidunneededglobalfetches in otherflows; keep loading/error/retry/none.
@@ -259,10 +260,10 @@ SDKcallback stores onlyhint; order refresh determinesfinancialtruth. Stars-invoi
 Generate bothclients andretainoldomitempty contracts; no nativecharge/bot/payer/tokenURL in UIlogs/fixtures.
 Realgraphtest retains currentprovenance/owner/panelreset/addreplyambiguity protections.
 
-- [ ] **Step 4: Run focused GREEN, then one final broad local check.**
+- [x] **Step 4: Run focused GREEN, then one final broad local check.**
 
 Run (web): `npm run test:e2e -- tests/stars.spec.ts`; `npm run typecheck`; `npm run build`.
-Run (backend): `C35_ENV go test ./tests -run '^TestNativeStarsRecurring$' -count=1 -timeout=10m`.
+Run (backend): `C35_ENV go test ./tests -run '^TestNativeStarsRecurring($|Browser$)' -count=1 -timeout=10m`.
 Expected: PASS with actual native/HTTP/panel/browser facts, no fake passedprovidercheck.
 Run (backend): `C35_ENV go test ./... -count=1 -race -timeout=20m`; `go vet ./...`.
 Run (web): `npm run test:e2e`; Python current regressioncommand fromPlatformworkflow; generators twice/hashcomparison.
@@ -273,7 +274,7 @@ Expected: exit0.
 - [ ] **Step 5: Commit, task-done, final review and guarded delivery.**
 
 Commit `feat(web): manage Stars recurring subscriptions`, Co-Authored.
-Whole-task command: web `npm run test:e2e -- tests/stars.spec.ts` and backend `C35_ENV go test ./tests -run '^TestNativeStarsRecurring$' -count=1 -timeout=10m` sequential, no parallelwebbuild/browserdistremoval.
+Whole-task command: web `npm run test:e2e -- tests/stars.spec.ts` and backend `C35_ENV go test ./tests -run '^TestNativeStarsRecurring($|Browser$)' -count=1 -timeout=10m` sequential, no parallelwebbuild/browserdistremoval.
 Expected: actualtaskcompletionledger after PASS.
 Buildreviewpackage from realbase27ae→currentHEAD; ONE fresh Astra/high reviewer reads spec/plan/rulings/literalReviewFocus. Regradebyusereffect; ONEauthorCritical/ImportantRED→GREENpass andwholegreensuite; Minoronlyrecorded/no re-review.
 Archive complete ledger/rulings/minors and sanitizedevidence, then deletesonlythisplanSDD; commitreview/evidencecompletion.

@@ -1476,7 +1476,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Prepare the saved one-time Stars invoice (signed Mini only)
+         * Prepare the saved Stars invoice (signed Mini only)
          * @description Reuses the immutable order/payer/bot and payload. No browser cookie grant, external URL or SDK money proof.
          */
         post: operations["createStarsInvoice"];

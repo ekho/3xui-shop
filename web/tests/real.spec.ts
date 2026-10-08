@@ -38,11 +38,11 @@ if(process.env.TEST_STARS_INIT_FILE){
  test('Telegram Stars real signed SDK + HTTP + River + panel',async({page})=>{
   let checkpoint='navigation';
   try{
-  const {init_data,control_url}=JSON.parse(readFileSync(process.env.TEST_STARS_INIT_FILE!,'utf8'));
+  const {init_data,control_url,recurring}=JSON.parse(readFileSync(process.env.TEST_STARS_INIT_FILE!,'utf8'));
   await page.route('https://telegram.org/js/telegram-web-app.js',r=>r.fulfill({contentType:'application/javascript',body:`window.__ownedStars={opened:[],done:null};window.Telegram={WebApp:{initData:${JSON.stringify(init_data)},version:'9.6',platform:'web',themeParams:{},ready(){},expand(){},onEvent(){},offEvent(){},BackButton:{show(){},hide(){},onClick(){},offClick(){}},openInvoice(url,done){window.__ownedStars.opened.push(url);window.__ownedStars.done=done;}}};`}));
   const keys:string[]=[];page.on('request',r=>{if(new URL(r.url()).pathname==='/api/v1/orders')keys.push(r.headers()['idempotency-key']);});
   await page.goto('/mini-app/catalogue?lang=en');checkpoint='consent';await page.getByRole('checkbox',{name:/terms of use/i}).check();await page.getByRole('checkbox',{name:/privacy/i}).check();await page.getByRole('button',{name:'Continue',exact:true}).click();checkpoint='order';
-  await page.getByRole('button',{name:'Select plan'}).click();await page.getByRole('button',{name:'Buy plan'}).click();await page.getByRole('button',{name:'Confirm purchase'}).click();
+  await page.getByRole('button',{name:'Select plan'}).click();const automatic=page.getByRole('checkbox',{name:'Automatically renew every 30 days'});await expect(automatic).not.toBeChecked();if(recurring){await automatic.focus();await page.keyboard.press('Space');await expect(automatic).toBeChecked();}await page.getByRole('button',{name:'Buy plan'}).click();await page.getByRole('button',{name:'Confirm purchase'}).click();
   await expect(page).toHaveURL(/\/mini-app\/orders\/[0-9a-f-]{36}/);const orderPath=new URL(page.url()).pathname;
   checkpoint='invoice';const pay=page.getByRole('button',{name:'Pay with Stars'});await pay.focus();await page.keyboard.press('Enter');
   await expect.poll(()=>page.evaluate(()=>(window as any).__ownedStars.opened)).toEqual(['https://t.me/$Owned_native_invoice']);
@@ -50,6 +50,7 @@ if(process.env.TEST_STARS_INIT_FILE){
   checkpoint='money';expect((await page.request.post(control_url+'/complete')).status()).toBe(204);checkpoint='provision';
   await expect(page.getByText('Payment received. Access is ready.',{exact:true})).toBeVisible({timeout:20000});expect(keys).toHaveLength(1);expect(keys[0]).toMatch(/^[0-9a-f-]{36}$/);
   checkpoint='replay';await expect(pay).toHaveCount(0);await page.getByRole('button',{name:'Refresh status'}).click();await expect(page.getByText('Payment received. Access is ready.',{exact:true})).toBeVisible();expect(new URL(page.url()).pathname).toBe(orderPath);
+  if(recurring){checkpoint='cancel';const region=page.getByRole('region',{name:'Stars auto-renewal'});await expect(region.getByText('Auto-renewal is active.',{exact:true})).toBeVisible();await region.getByRole('button',{name:'Cancel auto-renewal',exact:true}).click();await region.getByRole('button',{name:'Confirm cancellation'}).click();await expect(region.getByText('Telegram has confirmed cancellation. Paid access is retained.',{exact:true})).toBeVisible();checkpoint='resume';await region.getByRole('button',{name:'Allow renewal in Telegram',exact:true}).click();await region.getByRole('button',{name:'Confirm renewal'}).click();await expect(region.getByText('You can enable renewal in Telegram. No new payment is confirmed.',{exact:true})).toBeVisible();await expect(page.getByText('Payment received. Access is ready.',{exact:true})).toBeVisible();}
   expect(await page.evaluate(()=>JSON.stringify(localStorage)+JSON.stringify(sessionStorage))).not.toMatch(/mini_|init_data|tgWebAppData|csrf_token|subscription_url/);
   }finally{process.stdout.write('TG_STARS_CHECKPOINT:'+checkpoint+'\n');}
  });

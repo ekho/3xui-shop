@@ -10809,9 +10809,6 @@
         "description": "Reuses the immutable order/payer/bot and payload. No browser cookie grant, external URL or SDK money proof.",
         "security": [
           {
-            "sessionCookie": []
-          },
-          {
             "miniAppBearer": []
           }
         ],
@@ -10945,7 +10942,7 @@
             }
           }
         },
-        "summary": "Prepare the saved one-time Stars invoice (signed Mini only)"
+        "summary": "Prepare the saved Stars invoice (signed Mini only)"
       }
     },
     "/api/v1/operator/clients/{id}/orders/{order_id}/stars-refund": {

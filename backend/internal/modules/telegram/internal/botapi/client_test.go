@@ -86,7 +86,7 @@ func TestPollingTransportContract(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 			t.Fatal(err)
 		}
-		if in.Offset != 41 || in.Limit != 1 || in.Timeout != 30 || len(in.Allowed) != 3 || in.Allowed[2] != "pre_checkout_query" {
+		if in.Offset != 41 || in.Limit != 1 || in.Timeout != 30 || strings.Join(in.Allowed, ",") != "message,callback_query,pre_checkout_query,subscription" {
 			t.Fatal("polling contract")
 		}
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true,"result":[{"update_id":41,"callback_query":{"id":"cb","from":{"id":101},"data":"wt1:a:id"}}]}`))}, nil
