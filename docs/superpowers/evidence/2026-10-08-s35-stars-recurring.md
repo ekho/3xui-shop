@@ -248,3 +248,11 @@ regressions входят в focused GREEN18.459s. После fixes полный 
 С47/#54 — cutover/restore и полным удалением Python main/support runtimes.
 Локальный PASS не доказывает production; Issue/Project Done требует также
 точной v2 доставки и согласованного предварительного релиза.
+
+## Фактическая доставка С35
+
+[PR87](https://github.com/ekho/3xui-shop/pull/87), source390eb97f833f705d1d74d7670586b5ea6d4b90b1 → actual merge0d19b02669a90c335a7ac62d5062de4715687706. Два родителя и merged tree проверены; exact-source PR Platform37748760067 и PR Preview37748760072 COMPLETE SUCCESS. Go13 tested packages, web403/Python110, все generated/static/container/native-process TLS3X-UI3.7.0/TLS SMTP/restart/cleanup PASS. Individual Go CI count не выводился.
+
+[V2 prerelease2.0.0-dev.71](https://github.com/ekho/3xui-shop/releases/tag/2.0.0-dev.71), run37752856394/all4jobs PASS; annotated tag→exactmerge,3OCI indexes amd64/arm64 и6config revision/version/source labels/aliases проверены. [#33closed/ProjectDone](https://github.com/ekho/3xui-shop/issues/33#issuecomment-6056418435),5DoD checked. Full34Rulings/1Minor/review/logs/hashes архивированы до удаления только SDD этого плана. Ранее failed local/CI checks выше остаются историческими фактами; нынешняя полная проверка1215PASS, прежняя support причина неизвестна.
+
+Один свежий review/один author fix pass, no re-review/CI rerun. M1 committed-range whitespace exit2 остаётся deferred; clean working-tree check не подменяет его. Production/real money/live Happ исключены. Этот итоговый документальный checkpoint включён в следующую ветку С36; C35 product source не меняется.
