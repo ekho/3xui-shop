@@ -1617,6 +1617,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/operator/reports/statistics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Web operator cookie and same-Origin CSRF proof required. Actor comes only from the session. No query parameters or idempotency key; this read creates no audit/job/provider mutation. One overall 10 second provider deadline. */
+        post: operations["readOperatorStatistics"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2948,6 +2965,80 @@ export interface components {
             statistics: components["schemas"]["CampaignStatistics"];
             events: components["schemas"]["CampaignEvent"][];
             events_has_more: boolean;
+        };
+        /** @description Required explicit scope: null selects all accounts; UUID selects the immutable campaign cohort. An empty cohort never selects all accounts. */
+        StatisticsInput: {
+            /** Format: uuid */
+            campaign_id: string | null;
+        };
+        /** @description Granted trial/users, funded paid/users, repeat/paid. Exact half-up two-place percent; denominator zero is null. This is not trial-to-paid attribution. */
+        StatisticsConversions: {
+            trial_percent: string | null;
+            paid_percent: string | null;
+            repeat_percent: string | null;
+        };
+        /** @description Current confirmed usable VPN access. active_users is null if any selected identity is unconfirmed. No assignment/access without pending work is known inactive even when the panel is unavailable. Observation is separate from the database snapshot. */
+        StatisticsActivity: {
+            /** Format: int64 */
+            active_users: number | null;
+            /** Format: int64 */
+            known_active_users: number;
+            /** Format: int64 */
+            known_inactive_users: number;
+            /** Format: int64 */
+            unknown_users: number;
+            /** Format: date-time */
+            observed_at: string;
+        };
+        /** @description User references use the selected cohort and stored profile plus independent ban overlay. Current plan and exact hyphen-segment inbound references are global, including hidden/archived plans and disabled inbounds. Missing panel data is null, not zero. */
+        StatisticsGroup: {
+            /** @enum {string} */
+            name: "banned" | "regular" | "unlimited" | "euru";
+            /** Format: int64 */
+            user_references: number;
+            /** Format: int64 */
+            plan_references: number;
+            /** Format: int64 */
+            inbound_references: number | null;
+            /** Format: int64 */
+            enabled_inbound_references: number | null;
+        };
+        /** @description Global configured-panel overview, including provider clients outside the selected account cohort. One bounded pair of bulk GETs; no identities, secrets or raw provider payload. */
+        StatisticsServer: {
+            panel_id: string;
+            /** @enum {string} */
+            availability: "available" | "unavailable";
+            /** Format: int64 */
+            clients: number | null;
+            /** Format: int64 */
+            inbounds: number | null;
+            /** Format: int64 */
+            enabled_inbounds: number | null;
+            /** Format: date-time */
+            observed_at: string;
+            /** @enum {string|null} */
+            error_code: "PANEL_UNAVAILABLE" | null;
+        };
+        /** @description Read-only REPEATABLE READ account/cohort/owner facts plus a separately observed provider snapshot. Currency totals and original refund amounts remain separate; archived quotes are not cash receipts. Operator authority is rechecked after the snapshot/provider read before returning any payload. */
+        StatisticsReport: {
+            /** @enum {string} */
+            version: "2026-10-08-s26-statistics-v1";
+            /** Format: uuid */
+            campaign_id: string | null;
+            /** Format: date-time */
+            database_observed_at: string;
+            /** @enum {string} */
+            infrastructure_scope: "global";
+            /** Format: int64 */
+            users: number;
+            trials: components["schemas"]["TrialStatistics"];
+            payments: components["schemas"]["PaymentStatistics"];
+            conversions: components["schemas"]["StatisticsConversions"];
+            activity: components["schemas"]["StatisticsActivity"];
+            groups: components["schemas"]["StatisticsGroup"][];
+            /** Format: int64 */
+            unknown_user_profiles: number;
+            servers: components["schemas"]["StatisticsServer"][];
         };
     };
     responses: never;
@@ -11484,6 +11575,75 @@ export interface operations {
                 headers: {
                     /** @description Seconds before retry */
                     "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    readOperatorStatistics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StatisticsInput"];
+            };
+        };
+        responses: {
+            /** @description Statistics; provider outage remains 200 with nullable counters */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatisticsReport"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content: {

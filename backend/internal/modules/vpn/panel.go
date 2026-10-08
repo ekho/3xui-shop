@@ -207,6 +207,10 @@ func (p *PanelClient) Traffic(ctx context.Context, key string, id uuid.UUID, sub
 	if e != nil || !*out.Success {
 		return 0, 0, ErrPanel
 	}
+	return parsePanelTraffic(out.Obj, key, id, subID)
+}
+
+func parsePanelTraffic(raw json.RawMessage, key string, id uuid.UUID, subID string) (int64, int64, error) {
 	var row struct {
 		Email string    `json:"email"`
 		UUID  uuid.UUID `json:"uuid"`
@@ -215,7 +219,7 @@ func (p *PanelClient) Traffic(ctx context.Context, key string, id uuid.UUID, sub
 		Down  int64     `json:"down"`
 	}
 	var fields map[string]json.RawMessage
-	if json.Unmarshal(out.Obj, &fields) != nil || json.Unmarshal(out.Obj, &row) != nil {
+	if id == uuid.Nil || subID == "" || json.Unmarshal(raw, &fields) != nil || json.Unmarshal(raw, &row) != nil {
 		return 0, 0, ErrTraffic
 	}
 	for _, name := range []string{"email", "uuid", "subId", "up", "down"} {

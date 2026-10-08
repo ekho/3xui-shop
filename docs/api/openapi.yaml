@@ -11935,6 +11935,89 @@
           }
         ]
       }
+    },
+    "/api/v1/operator/reports/statistics": {
+      "post": {
+        "operationId": "readOperatorStatistics",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "description": "Web operator cookie and same-Origin CSRF proof required. Actor comes only from the session. No query parameters or idempotency key; this read creates no audit/job/provider mutation. One overall 10 second provider deadline.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatisticsInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Statistics; provider outage remains 200 with nullable counters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatisticsReport"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -17362,6 +17445,266 @@
           "events",
           "events_has_more"
         ]
+      },
+      "StatisticsInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "campaign_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          }
+        },
+        "required": [
+          "campaign_id"
+        ],
+        "description": "Required explicit scope: null selects all accounts; UUID selects the immutable campaign cohort. An empty cohort never selects all accounts."
+      },
+      "StatisticsConversions": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "trial_percent": {
+            "type": "string",
+            "pattern": "^(100|[0-9]{1,2})\\.[0-9]{2}$",
+            "nullable": true
+          },
+          "paid_percent": {
+            "type": "string",
+            "pattern": "^(100|[0-9]{1,2})\\.[0-9]{2}$",
+            "nullable": true
+          },
+          "repeat_percent": {
+            "type": "string",
+            "pattern": "^(100|[0-9]{1,2})\\.[0-9]{2}$",
+            "nullable": true
+          }
+        },
+        "required": [
+          "trial_percent",
+          "paid_percent",
+          "repeat_percent"
+        ],
+        "description": "Granted trial/users, funded paid/users, repeat/paid. Exact half-up two-place percent; denominator zero is null. This is not trial-to-paid attribution."
+      },
+      "StatisticsActivity": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "active_users": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true
+          },
+          "known_active_users": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "known_inactive_users": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "unknown_users": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "active_users",
+          "known_active_users",
+          "known_inactive_users",
+          "unknown_users",
+          "observed_at"
+        ],
+        "description": "Current confirmed usable VPN access. active_users is null if any selected identity is unconfirmed. No assignment/access without pending work is known inactive even when the panel is unavailable. Observation is separate from the database snapshot."
+      },
+      "StatisticsGroup": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": [
+              "banned",
+              "regular",
+              "unlimited",
+              "euru"
+            ]
+          },
+          "user_references": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "plan_references": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "inbound_references": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true
+          },
+          "enabled_inbound_references": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true
+          }
+        },
+        "required": [
+          "name",
+          "user_references",
+          "plan_references",
+          "inbound_references",
+          "enabled_inbound_references"
+        ],
+        "description": "User references use the selected cohort and stored profile plus independent ban overlay. Current plan and exact hyphen-segment inbound references are global, including hidden/archived plans and disabled inbounds. Missing panel data is null, not zero."
+      },
+      "StatisticsServer": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "panel_id": {
+            "type": "string"
+          },
+          "availability": {
+            "type": "string",
+            "enum": [
+              "available",
+              "unavailable"
+            ]
+          },
+          "clients": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true
+          },
+          "inbounds": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true
+          },
+          "enabled_inbounds": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error_code": {
+            "type": "string",
+            "enum": [
+              "PANEL_UNAVAILABLE"
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "panel_id",
+          "availability",
+          "clients",
+          "inbounds",
+          "enabled_inbounds",
+          "observed_at",
+          "error_code"
+        ],
+        "description": "Global configured-panel overview, including provider clients outside the selected account cohort. One bounded pair of bulk GETs; no identities, secrets or raw provider payload."
+      },
+      "StatisticsReport": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "string",
+            "enum": [
+              "2026-10-08-s26-statistics-v1"
+            ]
+          },
+          "campaign_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "database_observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "infrastructure_scope": {
+            "type": "string",
+            "enum": [
+              "global"
+            ]
+          },
+          "users": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "trials": {
+            "$ref": "#/components/schemas/TrialStatistics"
+          },
+          "payments": {
+            "$ref": "#/components/schemas/PaymentStatistics"
+          },
+          "conversions": {
+            "$ref": "#/components/schemas/StatisticsConversions"
+          },
+          "activity": {
+            "$ref": "#/components/schemas/StatisticsActivity"
+          },
+          "groups": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "$ref": "#/components/schemas/StatisticsGroup"
+            }
+          },
+          "unknown_user_profiles": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "servers": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/StatisticsServer"
+            }
+          }
+        },
+        "required": [
+          "version",
+          "campaign_id",
+          "database_observed_at",
+          "infrastructure_scope",
+          "users",
+          "trials",
+          "payments",
+          "conversions",
+          "activity",
+          "groups",
+          "unknown_user_profiles",
+          "servers"
+        ],
+        "description": "Read-only REPEATABLE READ account/cohort/owner facts plus a separately observed provider snapshot. Currency totals and original refund amounts remain separate; archived quotes are not cash receipts. Operator authority is rechecked after the snapshot/provider read before returning any payload."
       }
     }
   }

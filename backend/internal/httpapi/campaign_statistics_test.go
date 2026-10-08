@@ -166,6 +166,16 @@ func TestCampaignStatisticsProofs(t *testing.T) {
 	if old.CompletedTransactions != 3 || old.PaidUsers != 1 || old.RepeatUsers != 1 || old.UnknownQuoteCount != 2 || len(old.Money) != 1 || old.Money[0].QuotedMinor != "1025" || snapshot() != before {
 		t.Fatal("archive truth or reader wrote", old)
 	}
+	report := readStatisticsHTTP(t, h, actor, s.cfg.HTTP.CabinetOrigin, &c.ID)
+	if report.Users != 4 || report.Trials.TrialUsers != 1 || report.Payments.PaidOrders != 6 || report.Payments.PaidUsers != 3 || report.Payments.RepeatUsers != 2 {
+		t.Fatal("shared report funding/trial/cohort counts")
+	}
+	if report.Conversions.TrialPercent == nil || *report.Conversions.TrialPercent != "25.00" || report.Conversions.PaidPercent == nil || *report.Conversions.PaidPercent != "75.00" || report.Conversions.RepeatPercent == nil || *report.Conversions.RepeatPercent != "66.67" {
+		t.Fatal("exact half-up conversion ratios")
+	}
+	if got, want := mustJSON(t, report.Payments), mustJSON(t, stat.Payments); string(got) != string(want) || snapshot() != before {
+		t.Fatal("report money/quote/refund definitions differ or report wrote")
+	}
 	for _, tc := range []struct {
 		actor *supportSession
 		path  string
