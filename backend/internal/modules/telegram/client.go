@@ -107,7 +107,7 @@ func (c *Client) deliver(parent context.Context, j notifications.ClientJob) erro
 	defer cancel()
 	path := ""
 	switch j.Route {
-	case "history", "support":
+	case "history", "support", "renew":
 		path = "/" + j.Route
 	case "cabinet":
 	default:
@@ -118,10 +118,18 @@ func (c *Client) deliver(parent context.Context, j notifications.ClientJob) erro
 	}
 	var limited error
 	err := c.notices.DeliverClient(ctx, j, func() (notifications.ClientOutcome, error) {
+		label := clientText(j.Locale, "Открыть кабинет", "Open cabinet")
+		if j.Route == "renew" {
+			label = clientText(j.Locale, "Продлить подписку", "Renew subscription")
+		}
 		k := &botapi.InlineKeyboard{Rows: [][]botapi.Button{{{
-			Text: clientText(j.Locale, "Открыть кабинет", "Open cabinet"), WebApp: &botapi.WebAppInfo{URL: c.route(path, j.Locale)},
+			Text: label, WebApp: &botapi.WebAppInfo{URL: c.route(path, j.Locale)},
 		}}, {{Text: clientText(j.Locale, "Закрыть", "Close"), Data: "cn1:" + j.ID.String()}}}}
-		msg, err := c.api.SendMessage(ctx, j.TelegramID, clientText(j.Locale, "В кабинете есть обновление.", "There is an update in your cabinet."), k)
+		text := j.ReminderText
+		if text == "" {
+			text = clientText(j.Locale, "В кабинете есть обновление.", "There is an update in your cabinet.")
+		}
+		msg, err := c.api.SendMessage(ctx, j.TelegramID, text, k)
 		if err == nil {
 			return notifications.ClientOutcome{State: "sent", MessageID: msg.ID}, nil
 		}

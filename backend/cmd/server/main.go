@@ -127,9 +127,10 @@ func run() error {
 		<-ctx.Done()
 		return nil
 	}
-	schedulerResult := make(chan error, 2)
+	schedulerResult := make(chan error, 3)
 	go func() { schedulerResult <- svc.VPN.RunMonthlyResetScheduler(ctx) }()
 	go func() { schedulerResult <- svc.Payments.RunStarsSubscriptionScheduler(ctx) }()
+	go func() { schedulerResult <- svc.Reminders.RunScheduler(ctx) }()
 	address := os.Getenv("LISTEN_ADDRESS")
 	if address == "" {
 		address = "127.0.0.1:8080"

@@ -18,6 +18,7 @@ type MailDelivery struct {
 	DeliveredAt           pgtype.Timestamptz
 	Kind                  string
 	CredentialChallengeID *uuid.UUID
+	ReminderID            *uuid.UUID
 }
 
 type TelegramDelivery struct {
