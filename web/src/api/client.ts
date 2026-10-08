@@ -31,6 +31,7 @@ async function request<T>(path:string,method='GET',body?:unknown,signal?:AbortSi
  try{const out=await response.json() as T;signal?.throwIfAborted();if(mini&&epoch!==miniEpoch)throw new DOMException('Session ended','AbortError');return out;}catch{if(signal?.aborted)throw signal.reason;throw new ApiError(503,'SERVICE_UNAVAILABLE','');}
 }
 export const registerAccount=(input:RegisterInput)=>request<RegistrationAccepted>('auth/register','POST',input);
+export const recordCampaignVisit=(code:string,signal?:AbortSignal)=>request<void>('campaign-visits','POST',{code},signal);
 export const verifyEmail=(input:VerifyInput)=>request<VerifyResult>('auth/verify-email','POST',input);
 export const resendVerification=(input:ResendInput)=>request<ResendAccepted>('auth/resend-verification','POST',input);
 export async function loginAccount(input:LoginInput){const out=await request<LoginResult>('auth/login','POST',input);csrf=out.csrf_token;return out;}
@@ -162,6 +163,16 @@ export const getOperatorCatalogue=(page:number,signal?:AbortSignal)=>request<Ope
 export const createCataloguePlan=(input:components['schemas']['CataloguePlanCreateInput'],key:string,signal?:AbortSignal)=>request<OperatorCataloguePlan>('operator/catalogue/plans','POST',input,signal,true,key);
 export const reviseCataloguePlan=(id:string,input:components['schemas']['CataloguePlanRevisionInput'],key:string,signal?:AbortSignal)=>request<OperatorCataloguePlan>('operator/catalogue/plans/'+encodeURIComponent(id)+'/revision','POST',input,signal,true,key);
 export const archiveCataloguePlan=(id:string,input:components['schemas']['CataloguePlanArchiveInput'],key:string,signal?:AbortSignal)=>request<OperatorCataloguePlan>('operator/catalogue/plans/'+encodeURIComponent(id)+'/archive','POST',input,signal,true,key);
+
+export type Campaign=components['schemas']['Campaign'];
+export type CampaignListResult=components['schemas']['CampaignListResult'];
+export type CampaignDetail=components['schemas']['CampaignDetail'];
+export type CampaignCreateInput=components['schemas']['CampaignCreateInput'];
+export type CampaignStateInput=components['schemas']['CampaignStateInput'];
+export const getOperatorCampaigns=(page:number,signal?:AbortSignal)=>request<CampaignListResult>('operator/campaigns/search','POST',{page,per_page:50},signal,true);
+export const getOperatorCampaign=(id:string,signal?:AbortSignal)=>request<CampaignDetail>('operator/campaigns/'+encodeURIComponent(id),'GET',undefined,signal);
+export const createCampaign=(input:CampaignCreateInput,key:string,signal?:AbortSignal)=>request<Campaign>('operator/campaigns','POST',input,signal,true,key);
+export const setCampaignState=(id:string,input:CampaignStateInput,key:string,signal?:AbortSignal)=>request<Campaign>('operator/campaigns/'+encodeURIComponent(id)+'/state','POST',input,signal,true,key);
 
 export type AccessOperationInput=components['schemas']['AccessOperationInput'];
 export type AccessOperation=components['schemas']['AccessOperation'];
