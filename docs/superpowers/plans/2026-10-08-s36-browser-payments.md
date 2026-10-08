@@ -111,4 +111,4 @@ After whole-green archive every Ruling/cost/minor/review/check/hash, delete only
 
 Expected: source/local/CI/merge/release have separate proofs; production remains excluded.
 
-Actual delivery: PR88 merged826f0b8c9f8697514ab8c89e644acb6026ddc7f8; sourceed9ba7b40e43be733755615ef98d0aaa319; Platform37764566654/preview37764566674 and v2 push37767788963 PASS; prerelease2.0.0-dev.73/tag/3OCIindices+6image labels verified. #34 CLOSED/ProjectDone. Completion6058604450 contains all11 Rulings/costs and zero deferred minors.
+Actual delivery: PR88 merged826f0b8c9f8697514ab8c89e644acb6026ddc7f8; sourceed9ba7b40e43be733755ab535615ef98d0aaa319; Platform37764566654/preview37764566674 and v2 push37767788963 PASS; prerelease2.0.0-dev.73/tag/3OCIindices+6image labels verified. #34 CLOSED/ProjectDone. Completion6058604450 contains all11 Rulings/costs and zero deferred minors.

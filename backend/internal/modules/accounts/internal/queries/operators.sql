@@ -27,8 +27,8 @@ WHERE sqlc.arg(query)::text='' OR
 ORDER BY created_at DESC NULLS LAST,id DESC LIMIT sqlc.arg(page_limit)::int OFFSET sqlc.arg(page_offset)::bigint;
 
 -- name: AddTelegramAccount :exec
-INSERT INTO accounts(id,kind,display_name,telegram_id,locale,vpn_id,sub_id,panel_key,access_profile)
-VALUES($1,'telegram',$2,$3,$4,$5,$6,$7,'regular');
+INSERT INTO accounts(id,kind,display_name,telegram_id,locale,vpn_id,sub_id,panel_key,access_profile,registration_source_code)
+VALUES($1,'telegram',$2,$3,$4,$5,$6,$7,'regular',$8);
 
 -- name: AccountByTelegramID :one
 SELECT * FROM accounts WHERE telegram_id=$1;

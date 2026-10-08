@@ -27,7 +27,7 @@ func accountError(err error) error {
 }
 
 func (a *API) register(ctx context.Context, in wire.RegisterInput) (wire.RegistrationAccepted, error) {
-	out, err := a.accounts.Register(ctx, accounts.RegisterInput{Email: string(in.Email), Locale: string(in.Locale), AcceptedTermsVersion: in.AcceptedTermsVersion, AcceptedPrivacyVersion: in.AcceptedPrivacyVersion})
+	out, err := a.accounts.Register(ctx, accounts.RegisterInput{Email: string(in.Email), Locale: string(in.Locale), AcceptedTermsVersion: in.AcceptedTermsVersion, AcceptedPrivacyVersion: in.AcceptedPrivacyVersion, SourceCode: in.SourceCode})
 	return wire.RegistrationAccepted(out), accountError(err)
 }
 

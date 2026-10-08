@@ -9,18 +9,18 @@ SELECT * FROM registration_challenges WHERE id = $1 FOR UPDATE;
 -- name: ChallengeByToken :one
 SELECT * FROM registration_challenges WHERE token_hash = $1 FOR UPDATE;
 -- name: AddChallenge :exec
-INSERT INTO registration_challenges(id,email_key,locale,terms_version,privacy_version,token_hash,code_hash,created_at,token_expires_at,code_expires_at)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10);
+INSERT INTO registration_challenges(id,email_key,locale,terms_version,privacy_version,token_hash,code_hash,created_at,token_expires_at,code_expires_at,source_code)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11);
 -- name: FailChallenge :exec
 UPDATE registration_challenges SET failed_guesses = LEAST(failed_guesses+1,5) WHERE id=$1;
 -- name: ConsumeChallenge :exec
 UPDATE registration_challenges SET revoked=true WHERE id=$1;
 -- name: AddAccount :exec
-INSERT INTO accounts(id,email_key,locale,password_hash,verified_at,vpn_id,sub_id,panel_key,terms_version,privacy_version,access_profile)
+INSERT INTO accounts(id,email_key,locale,password_hash,verified_at,vpn_id,sub_id,panel_key,terms_version,privacy_version,access_profile,registration_source_code)
 VALUES(sqlc.arg(id)::uuid,sqlc.arg(email_key)::text,sqlc.arg(locale)::text,
  sqlc.arg(password_hash)::text,sqlc.arg(verified_at)::timestamptz,
  sqlc.arg(vpn_id)::uuid,sqlc.arg(sub_id)::text,sqlc.arg(panel_key)::text,
- sqlc.arg(terms_version)::text,sqlc.arg(privacy_version)::text,'regular');
+ sqlc.arg(terms_version)::text,sqlc.arg(privacy_version)::text,'regular',sqlc.narg(registration_source_code)::text);
 -- name: LockRegistrationEmail :exec
 SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0));
 -- name: ChallengeEmailByID :one

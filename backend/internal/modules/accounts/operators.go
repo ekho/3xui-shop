@@ -65,14 +65,22 @@ func (s *Service) CreateTelegram(ctx context.Context, tx pgx.Tx, in TelegramInpu
 	if err != nil {
 		return Snapshot{}, err
 	}
+	if in.RegistrationSourceCode != nil && (len(*in.RegistrationSourceCode) < 1 || !validStartParam(*in.RegistrationSourceCode)) {
+		return Snapshot{}, failure(400, "INVALID_INPUT")
+	}
 	id := uuid.New()
 	q := store.New(tx)
-	if err = q.AddTelegramAccount(ctx, store.AddTelegramAccountParams{ID: id, DisplayName: pgtype.Text{String: in.DisplayName, Valid: true}, TelegramID: pgtype.Int8{Int64: in.TelegramID, Valid: true}, Locale: in.Locale, VpnID: uuid.New(), SubID: sub, PanelKey: "acct_" + strings.ReplaceAll(id.String(), "-", "")}); err != nil {
+	if err = q.AddTelegramAccount(ctx, store.AddTelegramAccountParams{ID: id, DisplayName: pgtype.Text{String: in.DisplayName, Valid: true}, TelegramID: pgtype.Int8{Int64: in.TelegramID, Valid: true}, Locale: in.Locale, VpnID: uuid.New(), SubID: sub, PanelKey: "acct_" + strings.ReplaceAll(id.String(), "-", ""), RegistrationSourceCode: sourceText(in.RegistrationSourceCode)}); err != nil {
 		var constraint *pgconn.PgError
 		if errors.As(err, &constraint) && constraint.Code == "23505" {
 			return Snapshot{}, ErrTelegramExists
 		}
 		return Snapshot{}, unavailable()
+	}
+	if in.RegistrationSourceCode != nil && s.cfg.CaptureRegistration != nil {
+		if err = s.cfg.CaptureRegistration(ctx, tx, id, "telegram", *in.RegistrationSourceCode); err != nil {
+			return Snapshot{}, err
+		}
 	}
 	a, err := q.AccountByID(ctx, id)
 	return accountResult(a, err)

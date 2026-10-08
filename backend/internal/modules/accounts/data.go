@@ -20,7 +20,7 @@ func snapshot(a store.Account) Snapshot {
 		TermsVersion: textPointer(a.TermsVersion), PrivacyVersion: textPointer(a.PrivacyVersion), TelegramID: intPointer(a.TelegramID), LegacyUserID: intPointer(a.LegacyUserID),
 		AssignedPanelID: textPointer(a.AssignedPanelID), HadSubscription: a.HadSubscription, CredentialVersion: a.CredentialVersion, VpnBanned: a.VpnBanned,
 		Kind: a.Kind, SourceKind: source, TelegramLoginDisabled: a.TelegramLoginDisabled, DisplayName: textPointer(a.DisplayName), CreatedAt: timePointer(a.CreatedAt), RestrictionChangedAt: timePointer(a.RestrictionChangedAt),
-		RestrictionOperatorAccountID: a.RestrictionOperatorAccountID, AccessProfile: textPointer(a.AccessProfile), PolicyAcceptedAt: timePointer(a.PolicyAcceptedAt), TelegramStartParam: textPointer(a.TelegramStartParam)}
+		RestrictionOperatorAccountID: a.RestrictionOperatorAccountID, AccessProfile: textPointer(a.AccessProfile), PolicyAcceptedAt: timePointer(a.PolicyAcceptedAt), TelegramStartParam: textPointer(a.TelegramStartParam), RegistrationSourceCode: textPointer(a.RegistrationSourceCode)}
 }
 func (s *Service) Lookup(ctx context.Context, id uuid.UUID) (Snapshot, error) {
 	a, err := store.New(s.pool).AccountByID(ctx, id)

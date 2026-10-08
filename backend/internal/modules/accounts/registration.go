@@ -90,13 +90,19 @@ func (s *Service) limitMails(ctx context.Context, emails []string) error {
 	}
 	return nil
 }
+func sourceText(v *string) pgtype.Text {
+	if v == nil {
+		return pgtype.Text{}
+	}
+	return pgtype.Text{String: *v, Valid: true}
+}
 func (s *Service) Register(ctx context.Context, in RegisterInput) (RegistrationAccepted, error) {
 	out := RegistrationAccepted{ChallengeId: uuid.New(), ResendAfter: 60}
 	email, err := normalizeEmail(string(in.Email))
 	if err != nil {
 		return out, err
 	}
-	if (in.Locale != "ru" && in.Locale != "en") || in.AcceptedTermsVersion != s.cfg.TermsVersion || in.AcceptedPrivacyVersion != s.cfg.PrivacyVersion {
+	if (in.SourceCode != nil && (len(*in.SourceCode) < 1 || len(*in.SourceCode) > 64 || !validStartParam(*in.SourceCode))) || (in.Locale != "ru" && in.Locale != "en") || in.AcceptedTermsVersion != s.cfg.TermsVersion || in.AcceptedPrivacyVersion != s.cfg.PrivacyVersion {
 		return out, failure(400, "INVALID_INPUT")
 	}
 	if err = s.limitMail(ctx, email); err != nil {
@@ -136,7 +142,7 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (RegistrationA
 		payload.Token = token
 		payload.Code = code
 		now := s.now()
-		err = q.AddChallenge(ctx, store.AddChallengeParams{ID: id, EmailKey: email, Locale: string(in.Locale), TermsVersion: in.AcceptedTermsVersion, PrivacyVersion: in.AcceptedPrivacyVersion, TokenHash: digest(token), CodeHash: s.codeDigest(id, code), CreatedAt: stamp(now), TokenExpiresAt: stamp(now.Add(24 * time.Hour)), CodeExpiresAt: stamp(now.Add(10 * time.Minute))})
+		err = q.AddChallenge(ctx, store.AddChallengeParams{ID: id, EmailKey: email, Locale: string(in.Locale), TermsVersion: in.AcceptedTermsVersion, PrivacyVersion: in.AcceptedPrivacyVersion, TokenHash: digest(token), CodeHash: s.codeDigest(id, code), CreatedAt: stamp(now), TokenExpiresAt: stamp(now.Add(24 * time.Hour)), CodeExpiresAt: stamp(now.Add(10 * time.Minute)), SourceCode: sourceText(in.SourceCode)})
 		if err != nil {
 			return out, unavailable()
 		}
@@ -155,7 +161,8 @@ func (s *Service) ResendVerification(ctx context.Context, in ResendInput) (Resen
 		return ResendAccepted{}, err
 	}
 	var locale, terms, privacy string
-	err = s.pool.QueryRow(ctx, `SELECT locale,terms_version,privacy_version FROM registration_challenges WHERE email_key=$1 ORDER BY created_at DESC LIMIT 1`, email).Scan(&locale, &terms, &privacy)
+	var source *string
+	err = s.pool.QueryRow(ctx, `SELECT locale,terms_version,privacy_version,source_code FROM registration_challenges WHERE email_key=$1 ORDER BY created_at DESC,id DESC LIMIT 1`, email).Scan(&locale, &terms, &privacy, &source)
 	if errors.Is(err, pgx.ErrNoRows) {
 		locale = "ru"
 	} else if err != nil {
@@ -192,7 +199,7 @@ func (s *Service) ResendVerification(ctx context.Context, in ResendInput) (Resen
 		}
 		return ResendAccepted{ResendAfter: 60}, nil
 	}
-	_, err = s.Register(ctx, RegisterInput{Email: in.Email, Locale: string(locale), AcceptedTermsVersion: terms, AcceptedPrivacyVersion: privacy})
+	_, err = s.Register(ctx, RegisterInput{Email: in.Email, Locale: string(locale), AcceptedTermsVersion: terms, AcceptedPrivacyVersion: privacy, SourceCode: source})
 	return ResendAccepted{ResendAfter: 60}, err
 }
 func (s *Service) VerifyEmail(ctx context.Context, in VerifyInput) (VerifyResult, error) {
@@ -276,7 +283,7 @@ func (s *Service) VerifyEmail(ctx context.Context, in VerifyInput) (VerifyResult
 		n, _ := rand.Int(rand.Reader, big.NewInt(36))
 		sub[i] = alphabet[n.Int64()]
 	}
-	err = q.AddAccount(ctx, store.AddAccountParams{ID: id, EmailKey: c.EmailKey, Locale: c.Locale, PasswordHash: hash, VerifiedAt: stamp(s.now()), VpnID: uuid.New(), SubID: string(sub), PanelKey: "acct_" + strings.ReplaceAll(id.String(), "-", ""), TermsVersion: c.TermsVersion, PrivacyVersion: c.PrivacyVersion})
+	err = q.AddAccount(ctx, store.AddAccountParams{ID: id, EmailKey: c.EmailKey, Locale: c.Locale, PasswordHash: hash, VerifiedAt: stamp(s.now()), VpnID: uuid.New(), SubID: string(sub), PanelKey: "acct_" + strings.ReplaceAll(id.String(), "-", ""), TermsVersion: c.TermsVersion, PrivacyVersion: c.PrivacyVersion, RegistrationSourceCode: c.SourceCode})
 	if err != nil {
 		var existing bool
 		s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM accounts WHERE email_key=$1)`, email).Scan(&existing)
@@ -284,6 +291,11 @@ func (s *Service) VerifyEmail(ctx context.Context, in VerifyInput) (VerifyResult
 			return out, bad
 		}
 		return out, unavailable()
+	}
+	if c.SourceCode.Valid && s.cfg.CaptureRegistration != nil {
+		if err = s.cfg.CaptureRegistration(ctx, tx, id, "web", c.SourceCode.String); err != nil {
+			return out, err
+		}
 	}
 	if q.ConsumeChallenge(ctx, c.ID) != nil || s.mail.ClearRegistrationMailTx(ctx, tx, email) != nil || tx.Commit(ctx) != nil {
 		return out, unavailable()

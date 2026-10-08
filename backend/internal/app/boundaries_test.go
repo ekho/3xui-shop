@@ -380,6 +380,20 @@ func TestAuditReportsSQLBoundary(t *testing.T) {
 	checkSQLBoundary(t, "audit_reports", ownsSQL)
 }
 
+func TestCampaignsSQLBoundary(t *testing.T) {
+	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:campaigns|campaign_acquisitions|campaign_events)\b`)
+	owns := func(text string) bool { return pattern.MatchString(strings.ReplaceAll(text, `"`, "")) }
+	for _, sql := range []string{"SELECT * FROM campaigns", "UPDATE campaign_acquisitions SET source_code=$1", "DELETE FROM public.campaign_events"} {
+		if !owns(sql) {
+			t.Fatal("campaign ownership negative fixture escaped", sql)
+		}
+	}
+	if owns("SELECT campaign_id FROM audit_events") {
+		t.Fatal("foreign owner rejected")
+	}
+	checkSQLBoundary(t, "campaigns", owns)
+}
+
 func TestSharedFacadeRemoved(t *testing.T) {
 	for _, path := range []string{"../platform", "../store", "../../db/queries"} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {

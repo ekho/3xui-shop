@@ -18,6 +18,7 @@ type Config struct {
 	Now                                         func() time.Time
 	RequireStarsCancellation                    func(context.Context, pgx.Tx, uuid.UUID, string) error
 	CanUnlinkTelegram                           func(context.Context, pgx.Tx, uuid.UUID) (bool, error)
+	CaptureRegistration                         func(context.Context, pgx.Tx, uuid.UUID, string, string) error
 }
 
 // Error carries safe domain failure data; transports translate the status hint.

@@ -9,6 +9,7 @@ import (
 	"example.com/cabinet/backend/internal/app"
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/audit_reports"
+	"example.com/cabinet/backend/internal/modules/campaigns"
 	"example.com/cabinet/backend/internal/modules/catalogue"
 	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/payments"
@@ -34,6 +35,7 @@ type API struct {
 	miniApp        *telegram.MiniApp
 	accounts       *accounts.Service
 	catalogueOwner *catalogue.Service
+	campaignsOwner *campaigns.Service
 	subscriptions  *subscriptions.Service
 	payments       *payments.Service
 	supportOwner   *support.Service
@@ -56,7 +58,7 @@ func failure(status int, code string) error {
 }
 func unavailable() error { return failure(503, "SERVICE_UNAVAILABLE") }
 func newAPI(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, contract *openapi3.T) *API {
-	return &API{miniApp: modules.MiniApp, accounts: modules.Accounts, catalogueOwner: modules.Catalogue, subscriptions: modules.Subscriptions, payments: modules.Payments, supportOwner: modules.Support, notifications: modules.Notifications, auditReports: modules.AuditReports, pool: pool, cfg: cfg, contract: contract}
+	return &API{miniApp: modules.MiniApp, accounts: modules.Accounts, catalogueOwner: modules.Catalogue, campaignsOwner: modules.Campaigns, subscriptions: modules.Subscriptions, payments: modules.Payments, supportOwner: modules.Support, notifications: modules.Notifications, auditReports: modules.AuditReports, pool: pool, cfg: cfg, contract: contract}
 }
 
 func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig) *echo.Echo {
@@ -149,6 +151,10 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig) *echo.Ech
 	e.POST("/api/v1/telegram/initial-email", a.RequestInitialEmail)
 	e.POST("/api/v1/telegram/initial-email/confirm", a.CompleteInitialEmail)
 	e.POST("/api/v1/telegram/link", a.ConfirmTelegramLink)
+	e.POST("/api/v1/campaign-visits", a.RecordCampaignVisit)
+	e.POST("/api/v1/operator/campaigns/search", a.ListOperatorCampaigns)
+	e.POST("/api/v1/operator/campaigns", a.CreateCampaign)
+	e.POST("/api/v1/operator/campaigns/:id/state", a.SetCampaignState)
 	e.POST("/api/v1/auth/register", a.RegisterAccount)
 	e.POST("/api/v1/auth/verify-email", a.VerifyEmail)
 	e.POST("/api/v1/auth/resend-verification", a.ResendVerification)

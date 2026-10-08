@@ -27,12 +27,14 @@ type Snapshot struct {
 	CreatedAt, RestrictionChangedAt *time.Time
 	PolicyAcceptedAt                *time.Time
 	TelegramStartParam              *string
+	RegistrationSourceCode          *string
 	RestrictionOperatorAccountID    *uuid.UUID
 	AccessProfile                   *string
 }
 
 type RegisterInput struct {
 	AcceptedPrivacyVersion, AcceptedTermsVersion, Email, Locale string
+	SourceCode                                                  *string
 }
 type RegistrationAccepted struct {
 	ChallengeId uuid.UUID
@@ -110,8 +112,9 @@ type OperatorSearchResult struct {
 	Total         int64
 }
 type TelegramInput struct {
-	TelegramID          int64
-	DisplayName, Locale string
+	TelegramID             int64
+	DisplayName, Locale    string
+	RegistrationSourceCode *string
 }
 
 // TelegramSessionInput is trusted identity supplied only after Telegram signature validation.

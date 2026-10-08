@@ -37,6 +37,7 @@ type Account struct {
 	TelegramStartParam           pgtype.Text
 	OriginalKind                 pgtype.Text
 	TelegramLoginDisabled        bool
+	RegistrationSourceCode       pgtype.Text
 }
 
 type CredentialChallenge struct {
@@ -103,6 +104,7 @@ type RegistrationChallenge struct {
 	CodeExpiresAt  pgtype.Timestamptz
 	FailedGuesses  int32
 	Revoked        bool
+	SourceCode     pgtype.Text
 }
 
 type Session struct {
