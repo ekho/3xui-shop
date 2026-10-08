@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"example.com/cabinet/backend/internal/app"
-	"example.com/cabinet/backend/internal/wire"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -16,7 +15,7 @@ type compositionFixture struct {
 
 func composeForTest(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[pgx.Tx], cfg app.Config) *compositionFixture {
 	modules := app.NewModules(pool, limiter, queue, &cfg)
-	contract, err := wire.GetSwagger()
+	contract, err := regressionContract()
 	if err != nil {
 		panic(err)
 	}

@@ -10,6 +10,11 @@
 проверке поддержки; отдельный диагностический запуск этого теста PASS.
 Author pass ожидает полный зелёный exact-source CI; ручное слияние в v2 и
 предварительный релиз тоже ожидаются. Итог доставки фиксируется в #33.
+Первый exact-source CI на `40e723e` завершился ошибкой: cumulative20m timeout
+HTTP-пакета и missing update в fake TLS panel при genuine cycle. Исправлены
+только тестовые helpers; продуктовые исходники после `537e6c2` не менялись.
+Новый полный локальный набор с тем же fake TLS transport запущен; PASS пока
+не заявляется, следующий exact-source CI требуется на исправленных inputs.
 
 ## Проверки
 
@@ -26,6 +31,9 @@ Author pass ожидает полный зелёный exact-source CI; ручн
 | go vet / TypeScript typecheck / build | PASS |
 | Генерация Go/SQL/TypeScript | 39 outputs: повторная генерация идентична |
 | Owning author-fix regressions | RED2.690s → focused GREEN18.459s |
+| Первый exact-source CI, 40e723e | Platform37744667538 FAIL: cumulative20m timeout и native fake-panel child; preview37744667497 три images PASS |
+| Native fake TLS cycle + panel identity/readback | RED18.483s + boundary RED1.094s → GREEN6.234s, без изменений access/money owners |
+| Six resume guards / read-only fixture schema | race PASS11.713s; профиль attributed GetSwagger в regression helper0.65s →0.07s, полный набор ещё pending |
 | git diff --check рабочей копии | PASS; committed-range имеет Minor M1 ниже |
 
 ## Что проверяет реализация
@@ -169,6 +177,41 @@ resume_allowed. Контролы используют прежние auth/CSRF/i
 30. Final: Ruling: declined real provider money/Telegram/production checks remain excluded from reviewer and local acceptance; release artifacts will be independently verified during authorized delivery — owned fake transport and TLS3X-UI do not prove actual provider behavior — cost if wrong: native external-service behavior can still differ and requires future explicitly authorized external acceptance.
 
 31. Final: Ruling: retain the actual post-fix full local failure TestRegressionSupportQuotaAndRate (SERVICE_UNAVAILABLE), unchanged support source and single isolated race PASS4.090s; require one exact-source full green CI before the author pass/issue delivery is complete — no speculative support edit or unchanged eighteen-minute local repeat; the failure cause is unknown and local PASS is not claimed — cost if wrong: the local environment failure can recur, and CI must remain a merge gate rather than hiding it.
+
+32. Final: Ruling: repair the owned native fake panel's missing existing update endpoint, with a direct identity-preserving PanelClient boundary RED-GREEN check and the unchanged native cycle test — CI/no-Docker test reaches child update while the locally tested real TLS3X-UI3.7.0 supports it; no provider/product money or access code changes — cost if wrong: the fake panel could still differ from real3X-UI, so both transports remain required acceptance inputs.
+
+33. Final: Ruling: reuse the read-only compiled API schema through stdlib sync.OnceValues in existing regression/composition test helpers only — the exact CI timeout was cumulative at a fresh loader, and the six-case CPU profile measured repeated GetSwagger23.89%/New16.37% before counting GC/race overhead; production New/validation and every money/security assertion remain unchanged — cost if wrong: future tests that mutate a schema must use an independent instance; the whole race suite and actual negative-input checks must remain green, and reduced runtime is measured rather than assumed.
+
+34. Final: Ruling: the single author pass remains open while its full suite is red; bounded CI test-fixture repairs are part of that same verification boundary, without a second product fix pass or re-review — the mandatory full-green rule cannot be fulfilled by hiding timeout/missing fake protocol or rerunning unchanged inputs — cost if wrong: a fixture repair could conceal a product defect; retain the unchanged real-panel/native proof, actual owner tests and exact-source CI gate.
+
+## Исправление тестовых inputs после CI
+
+[CI37744667538](https://github.com/ekho/3xui-shop/actions/runs/37744667538)
+исчерпал global20m budget во время нового loader в HTTP fixture. Это cumulative
+package timeout; текущий `starter-applied` тест исполнялся1s, stack находился
+в JSON parser. Зависание этого отдельного теста не установлено.
+В том же run `TestNativeStarsRecurring` не получил applied child: existing fake
+panel отвечала405 на настоящий `/panel/api/clients/update/...`. Owned no-Docker
+race запуск воспроизвёл этот сбой18.483s; direct TLS PanelClient test дал RED1.094s.
+Update fixture теперь сохраняет email/UUID/subID и неизвестные Client поля,
+отклоняет три чужие identity substitutions и подтверждает актуальные limits/expiry.
+Этот check, прежний traffic check и неизменённый native recurring test GREEN6.234s.
+
+HTTP CPUprofile шести resume guard cases: GetSwagger23.89% cumulative CPU,
+API New16.37%; доля именно regression helper7.19% (0.65s). Shared stdlib once
+в двух read-only test helpers снизил attributed helper loader до0.07s/0.94%.
+Six-case race PASS11.713s, before14.518s; величина ускорения всего набора пока
+не известна. Production New/compiled model/validation не изменены. Не добавлены
+timeout increase, новые зависимости, process или второй product fix pass.
+
+Первый C07 diagnostic event оказался INVALID_EVENT: отсутствовал обязательный
+nullable field, затем обнаружены prose вместо reference IDs. Два bounded owned
+diagnostics были начаты до корректировки event — это workflow deviation;
+malformed check не объявляется разрешением задним числом. После чтения полной
+schema corrected event ALLOWED; changed-input full-run event отдельно ALLOWED.
+Полный локальный Go/race fake TLS + RUN_BROWSER_TESTS=1 выполняется;
+новый точный CI и author-pass completion остаются обязательными до merge.
+Предыдущий local SupportQuotaAndRate failure сохраняется с неизвестной причиной.
 
 ## Итоговое ревью
 
