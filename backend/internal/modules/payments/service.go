@@ -20,6 +20,7 @@ import (
 type Config struct {
 	CabinetOrigin, PanelID, YooMoneyWalletID string
 	YooMoneyEnabled                          bool
+	StarsEnabled                             bool
 	YooMoneyNotificationSecret               []byte
 	ManualEnabled                            bool
 	ManualCardDetails                        string
@@ -51,6 +52,7 @@ type Service struct {
 	config        func() Config
 	now           func() time.Time
 	http          *http.Client
+	stars         *StarsGateway
 }
 
 func New(pool *pgxpool.Pool, authority *accounts.Service, catalogueOwner *catalogue.Service, subscriptionOwner *subscriptions.Service, accessOwner *vpn.Service, queue func() *river.Client[pgx.Tx], config func() Config, now func() time.Time, notices *notifications.Service) *Service {

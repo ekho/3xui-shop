@@ -80,7 +80,7 @@ bot+charge receipt key. Она сохраняет pending/uncertain/confirmed pr
 ordered polling перед успешным платежом. Собственный корректный ранний refund
 коммитится и подтверждается; поздний receipt уже не может финансировать доступ.
 
-Операторский endpoint POST `/api/operator/accounts/{id}/orders/{order_id}/stars-refund`
+Операторский endpoint POST `/api/v1/operator/clients/{id}/orders/{order_id}/stars-refund`
 принимает receipt_operation_id, reason, confirm_full=true, keep_access=true.
 Текущая роль/защищённый target/idempotency/account-access owner обязательны.
 До network вызова коммитится реальная авторизованная попытка; pending/uncertain

@@ -108,11 +108,24 @@ func (s *Service) purchasePolicyTx(ctx context.Context, tx pgx.Tx, p purchaseRow
 	if err != nil {
 		return "", unavailable()
 	}
-	if !independentBilling(a) {
+	if !purchaseBillingEligible(a, p.method) {
 		return "external_billing_unverified", nil
 	}
-	if a.Restricted || a.VpnBanned || stringValue(a.AccessProfile) == "unlimited" {
+	if !purchaseSourceEligible(a, p.method) || a.Restricted || a.VpnBanned || stringValue(a.AccessProfile) == "unlimited" {
 		return "account_not_eligible", nil
+	}
+	if p.method == "telegram_stars" && p.id != uuid.Nil {
+		var payer, bot int64
+		var q store.DBTX = s.pool
+		if tx != nil {
+			q = tx
+		}
+		if err := q.QueryRow(ctx, `SELECT payer_id,bot_id FROM stars_checkouts WHERE order_id=$1`, p.id).Scan(&payer, &bot); err != nil {
+			return "", unavailable()
+		}
+		if p.action != "purchase" || a.TelegramID == nil || *a.TelegramID != payer {
+			return "stars_identity_changed", nil
+		}
 	}
 	if p.action == "purchase" {
 		blocked, err := s.purchaseHistoryBlockedTx(ctx, tx, p.account, p.id, p.action)

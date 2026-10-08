@@ -18,6 +18,7 @@ type State struct {
 }
 type Runtime struct {
 	enabled                            bool
+	started                            bool
 	token                              string
 	api                                *botapi.Client
 	dispatcher                         *dispatcher
@@ -125,6 +126,7 @@ func nextDelay(d time.Duration) time.Duration {
 }
 
 func (r *Runtime) Run(parent context.Context) error {
+	defer func() { r.mu.Lock(); r.started = false; r.mu.Unlock() }()
 	if !r.enabled {
 		return nil
 	}
@@ -143,6 +145,9 @@ func (r *Runtime) Run(parent context.Context) error {
 			err = r.clients.start(ctx, r.api, r.token)
 		}
 		if err == nil {
+			r.mu.Lock()
+			r.started = true
+			r.mu.Unlock()
 			r.setCode(true, "")
 			break
 		}
@@ -320,7 +325,10 @@ func (r *Runtime) deliver(ctx context.Context, d Delivery) error {
 }
 
 func (r *Runtime) handle(ctx context.Context, u botapi.Update) error {
-	if present(u.PreCheckout) || (u.Message != nil && (present(u.Message.SuccessfulPayment) || present(u.Message.RefundedPayment))) {
+	if present(u.PreCheckout) {
+		return r.preCheckout(ctx, u.PreCheckout)
+	}
+	if u.Message != nil && (present(u.Message.SuccessfulPayment) || present(u.Message.RefundedPayment)) {
 		return &ActionError{Code: "UNSUPPORTED_PAYMENT"}
 	}
 	if r.clients != nil {

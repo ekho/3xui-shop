@@ -21,7 +21,14 @@ func NewTelegram(cfg telegram.Config, modules *Modules, origin string, client *h
 			return nil, err
 		}
 	}
-	return telegram.New(cfg, client, bridge, bridge, channel)
+	runtime, err := telegram.New(cfg, client, bridge, bridge, channel)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.Enabled && channel != nil {
+		modules.Payments.ConfigureStars(runtime.StarsGateway())
+	}
+	return runtime, nil
 }
 
 func NewTelegramMiniApp(cfg telegram.Config, owner *accounts.Service, now func() time.Time) *telegram.MiniApp {

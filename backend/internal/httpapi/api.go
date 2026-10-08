@@ -198,6 +198,7 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig) *echo.Ech
 	e.POST("/api/v1/payment-history", a.GetPaymentHistory)
 	e.POST("/api/v1/operator/clients/:id/payment-history", a.GetOperatorPaymentHistory)
 	e.POST("/api/v1/orders", a.CreatePurchaseOrder)
+	e.POST("/api/v1/orders/:id/stars-invoice", a.CreateStarsInvoice)
 	e.GET("/api/v1/orders/current", a.GetCurrentPurchaseOrder)
 	e.GET("/api/v1/orders/:id", a.GetPurchaseOrder)
 	e.POST("/api/v1/orders/:id/cancel", a.CancelPurchaseOrder)

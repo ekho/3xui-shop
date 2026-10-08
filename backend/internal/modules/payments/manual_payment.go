@@ -16,6 +16,8 @@ import (
 func (s *Service) methodEnabled(method string) bool {
 	c := s.config()
 	switch method {
+	case "telegram_stars":
+		return c.StarsEnabled && s.stars != nil
 	case "yoomoney":
 		return c.YooMoneyEnabled
 	case "manual":
