@@ -83,7 +83,7 @@ func (s *Service) completeStarsRefundTx(ctx context.Context, tx pgx.Tx, p purcha
 		return unavailable()
 	}
 	if p.fundingID != nil && *p.fundingID == key && p.fulfillmentStatus != "applied" {
-		if owner != nil && p.accessID != nil {
+		if p.accessID != nil {
 			if err = s.vpn.RetirePurchaseAccessTx(ctx, tx, owner, p.account, p.id, *p.accessID); err != nil {
 				return unavailable()
 			}
@@ -105,7 +105,24 @@ func (s *Service) RecordStarsRefund(ctx context.Context, in StarsPaymentInput) e
 	}
 	key := starsReceiptKey(in.BotID, in.ChargeID)
 	proof := starsPaymentProof(in)
-	tx, err := s.pool.Begin(ctx)
+	id, _ := starsOrderID(in.Payload)
+	var account uuid.UUID
+	err := s.pool.QueryRow(ctx, `SELECT account_id FROM purchase_orders WHERE id=$1`, id).Scan(&account)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return failure(409, "STARS_UNSUPPORTED_PAYMENT")
+	}
+	if err != nil {
+		return unavailable()
+	}
+	owner, err := s.vpn.OpenAccessOwner(ctx, account)
+	if err != nil {
+		return unavailable()
+	}
+	defer owner.Release()
+	if err = owner.TryLock(ctx); err != nil {
+		return unavailable() // The durable event is retried after the active writer.
+	}
+	tx, err := owner.Begin(ctx)
 	if err != nil {
 		return unavailable()
 	}
@@ -139,7 +156,7 @@ func (s *Service) RecordStarsRefund(ctx context.Context, in StarsPaymentInput) e
 			return unavailable()
 		}
 	}
-	if err = s.completeStarsRefundTx(ctx, tx, p, key, nil); err != nil {
+	if err = s.completeStarsRefundTx(ctx, tx, p, key, owner); err != nil {
 		return err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -241,7 +258,15 @@ func (s *Service) RefundStarsPurchase(ctx context.Context, actor, target, order,
 		if prior.actor != nil && (*prior.actor != actor || !bytes.Equal(prior.hash, hash)) {
 			return empty, failure(409, "IDEMPOTENCY_CONFLICT")
 		}
-		if err = tx.Rollback(ctx); err != nil {
+		if prior.state == "confirmed" {
+			if err = s.completeStarsRefundTx(ctx, tx, p, in.ReceiptOperationId, owner); err != nil {
+				return empty, err
+			}
+			err = tx.Commit(ctx)
+		} else {
+			err = tx.Rollback(ctx)
+		}
+		if err != nil {
 			return empty, unavailable()
 		}
 		return s.starsRefundResult(ctx, in.ReceiptOperationId)

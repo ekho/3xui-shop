@@ -71,9 +71,9 @@ func (s *Service) requireOrderPlan(ctx context.Context, tx pgx.Tx, account uuid.
 
 // Completed payments are reusable for managing access or proved starter clearing.
 // Review and unresolved funding stay blocked regardless of the current plan.
-func (s *Service) purchaseHistoryBlockedTx(ctx context.Context, tx pgx.Tx, account, except uuid.UUID, action string) (bool, error) {
+func (s *Service) purchaseHistoryBlockedTx(ctx context.Context, tx pgx.Tx, account, except uuid.UUID, action, method string) (bool, error) {
 	ignoreApplied := action == "renew" || action == "change_plan"
-	if !ignoreApplied {
+	if !ignoreApplied && method != "telegram_stars" {
 		var err error
 		ignoreApplied, err = s.vpn.PlanClearedTx(ctx, tx, account)
 		if err != nil {
@@ -131,7 +131,7 @@ func (s *Service) purchasePolicyTx(ctx context.Context, tx pgx.Tx, p purchaseRow
 		}
 	}
 	if p.action == "purchase" {
-		blocked, err := s.purchaseHistoryBlockedTx(ctx, tx, p.account, p.id, p.action)
+		blocked, err := s.purchaseHistoryBlockedTx(ctx, tx, p.account, p.id, p.action, p.method)
 		if err != nil {
 			return "", err
 		}

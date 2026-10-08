@@ -346,7 +346,7 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if a.VpnBanned || stringValue(a.AccessProfile) == "unlimited" || (a.HadSubscription && a.AssignedPanelID == nil) || (a.AssignedPanelID != nil && stringValue(a.AssignedPanelID) != s.config().PanelID) {
 		return empty, failure(409, "PURCHASE_NOT_ELIGIBLE")
 	}
-	blocked, err := s.purchaseHistoryBlockedTx(ctx, tx, account, uuid.Nil, in.Action)
+	blocked, err := s.purchaseHistoryBlockedTx(ctx, tx, account, uuid.Nil, in.Action, in.PaymentMethod)
 	if err != nil {
 		return empty, err
 	}

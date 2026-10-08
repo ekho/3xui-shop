@@ -216,3 +216,40 @@ func TestStarsCookieCannotCreate(t *testing.T) {
 		t.Fatal("cookie Stars source boundary", r.Code)
 	}
 }
+
+// Clearing paid plan provenance keeps the five external purchase paths, but
+// cannot bypass C34's first Stars purchase scope. First-trial eligibility stays.
+func TestStarsCannotRepurchaseAfterStarterClear(t *testing.T) {
+	s, e, auth, order := starsTestOrder(t)
+	panelFixture(t, s)
+	ctx := context.Background()
+	if err := s.payments.RecordStarsPayment(ctx, starsPayment(order.OrderId, e.Clock())); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.payments.FulfillPurchase(ctx, order.OrderId); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.payments.PurchaseOrder(ctx, auth.Account.AccountId, order.OrderId)
+	if err != nil || got.AccessOperationId == nil || s.vpn.ApplyAccess(ctx, *got.AccessOperationId) != nil {
+		t.Fatal("paid purchase setup", err)
+	}
+	actor := verified(t, s, e, "stars-clear-operator@example.test")
+	if err := s.changeOperatorRole(ctx, actor, true); err != nil {
+		t.Fatal(err)
+	}
+	op, err := s.createAccessOperation(ctx, actor, auth.Account.AccountId, uuid.New(), wire.AccessOperationInput{Kind: "starter_trial", Reason: "Owned starter reset"})
+	if err != nil || s.vpn.ApplyAccess(ctx, op.OperationId) != nil {
+		t.Fatal("starter reset setup", err)
+	}
+	cleared, err := s.vpn.PlanClearedTx(ctx, nil, auth.Account.AccountId)
+	if err != nil || !cleared {
+		t.Fatal("plan provenance was not cleared", err)
+	}
+	if can, err := s.payments.CanPurchaseStars(ctx, auth.Account.AccountId); err != nil || can {
+		t.Fatal("cleared paid history bypassed first Stars policy", err)
+	}
+	_, err = s.payments.CreatePurchaseOrder(ctx, auth.Account.AccountId, uuid.New(), payments.PurchaseOrderInput{Action: "purchase", PaymentMethod: "telegram_stars", PaymentType: "STARS", PlanId: order.Quote.PlanId, Revision: 1, PeriodDays: 30})
+	if err == nil {
+		t.Fatal("starter reset allowed a second first Stars purchase")
+	}
+}

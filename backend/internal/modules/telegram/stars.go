@@ -53,7 +53,13 @@ func (r *Runtime) preCheckout(parent context.Context, raw json.RawMessage) error
 	if !ok {
 		message = clientText(clientLang(q.From), "Счёт недоступен. Обновите заказ в кабинете или обратитесь в поддержку.", "This invoice is unavailable. Refresh your order in the cabinet or contact support.")
 	}
-	return r.api.AnswerStarsPreCheckout(ctx, q.ID, ok, message)
+	err := r.api.AnswerStarsPreCheckout(ctx, q.ID, ok, message)
+	// Telegram closes expired/already answered queries with 400. Retrying them
+	// cannot change money and would pin all subsequent paid/refund updates.
+	if safeCode(err) == "BAD_REQUEST" {
+		return nil
+	}
+	return err
 }
 
 func (r *Runtime) starsPayment(ctx context.Context, m *botapi.Message) error {

@@ -571,7 +571,7 @@ func (s *Service) recordCrypto(ctx context.Context, c cryptoRow, payment cryptoP
 		}
 		return false, tx.Commit(ctx) // updated_at alone never rewrites the first financial time.
 	}
-	otherPaid, err := s.purchaseHistoryBlockedTx(ctx, tx, p.account, c.order, p.action)
+	otherPaid, err := s.purchaseHistoryBlockedTx(ctx, tx, p.account, c.order, p.action, p.method)
 	if err != nil {
 		return false, unavailable()
 	}

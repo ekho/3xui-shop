@@ -435,3 +435,71 @@ func TestStarsPendingRefundBlocksFunding(t *testing.T) {
 		t.Fatal("canceled payout did not retain uncertainty", err)
 	}
 }
+
+// Matching proof after a restart closes pending/partial access, without losing
+// its frozen target/steps or paying a second refund after an uncertain result.
+func TestStarsProviderRefundRetiresAccess(t *testing.T) {
+	for _, kind := range []string{"pending", "partial", "uncertain"} {
+		t.Run(kind, func(t *testing.T) {
+			s, e, auth, order := starsTestOrder(t)
+			p := panelFixture(t, s)
+			ctx := context.Background()
+			in := starsPayment(order.OrderId, e.Clock())
+			if err := s.payments.RecordStarsPayment(ctx, in); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.payments.FulfillPurchase(ctx, order.OrderId); err != nil {
+				t.Fatal(err)
+			}
+			got, err := s.payments.PurchaseOrder(ctx, auth.Account.AccountId, order.OrderId)
+			if err != nil || got.AccessOperationId == nil {
+				t.Fatal("access not prepared", err)
+			}
+			if kind == "partial" {
+				if _, err := e.Pool.Exec(ctx, `CREATE FUNCTION fail_stars_finish() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.kind='purchase' AND NEW.status='applied' THEN RAISE EXCEPTION 'owned refund partial write'; END IF; RETURN NEW; END $$; CREATE TRIGGER fail_stars_finish BEFORE UPDATE ON access_operations FOR EACH ROW EXECUTE FUNCTION fail_stars_finish()`); err != nil {
+					t.Fatal(err)
+				}
+				if err := s.vpn.ApplyAccess(ctx, *got.AccessOperationId); err != nil || p.adds != 1 {
+					t.Fatal("controlled partial write did not reach the panel", err)
+				}
+			}
+			var before, after string
+			if err := e.Pool.QueryRow(ctx, `SELECT target::text||':'||completed_steps::text FROM access_operations WHERE id=$1`, *got.AccessOperationId).Scan(&before); err != nil {
+				t.Fatal(err)
+			}
+			actor := verified(t, s, e, "refund-retirement-operator@example.test")
+			if err := s.changeOperatorRole(ctx, actor, true); err != nil {
+				t.Fatal(err)
+			}
+			calls := 0
+			input := payments.StarsRefundInput{ReceiptOperationId: starsReceipt(t, s, order.OrderId), Reason: "Owned refund completion", ConfirmFull: true, KeepAccess: true}
+			if kind == "uncertain" {
+				s.payments.ConfigureStars(payments.StarsGateway{BotID: 123, Invoice: func(context.Context, payments.StarsInvoice) (string, error) { return "", nil }, Refund: func(context.Context, int64, string) error { calls++; return errors.New("owned response loss") }})
+				out, err := s.payments.RefundStarsPurchase(ctx, actor, auth.Account.AccountId, order.OrderId, uuid.New(), input)
+				if err != nil || out.State != "uncertain" || calls != 1 {
+					t.Fatal("ambiguous refund setup", err)
+				}
+			}
+			restarted := app.NewModules(e.Pool, e.Redis, s.queue, s.cfg)
+			for range 2 {
+				if err := restarted.Payments.RecordStarsRefund(ctx, in); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var status string
+			if err := e.Pool.QueryRow(ctx, `SELECT status,target::text||':'||completed_steps::text FROM access_operations WHERE id=$1`, *got.AccessOperationId).Scan(&status, &after); err != nil || status != "skipped" || before != after {
+				t.Fatal("provider refund left access unresolved or lost partial evidence", err, status)
+			}
+			blocked, err := restarted.VPN.UnresolvedTx(ctx, nil, auth.Account.AccountId)
+			if err != nil || blocked {
+				t.Fatal("confirmed refund kept an unresolved account blocker", err)
+			}
+			if err := restarted.VPN.ApplyAccess(ctx, *got.AccessOperationId); err != nil || p.disables != 0 || (kind != "partial" && p.adds != 0) {
+				t.Fatal("retired operation made a panel write", err)
+			}
+			if out, err := restarted.Payments.RefundStarsPurchase(ctx, actor, auth.Account.AccountId, order.OrderId, uuid.New(), input); err != nil || out.State != "confirmed" || out.Refund == nil || calls > 1 {
+				t.Fatal("matching proof retried payout or lost confirmed result", err)
+			}
+		})
+	}
+}

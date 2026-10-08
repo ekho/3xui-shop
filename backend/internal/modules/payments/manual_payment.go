@@ -170,7 +170,7 @@ func (s *Service) DecideManualPayment(ctx context.Context, actor, target, id, ke
 		if s.queue == nil || s.queue() == nil {
 			return empty, unavailable()
 		}
-		otherPaid, err := s.purchaseHistoryBlockedTx(ctx, tx, target, id, p.action)
+		otherPaid, err := s.purchaseHistoryBlockedTx(ctx, tx, target, id, p.action, p.method)
 		if err != nil {
 			return empty, unavailable()
 		}

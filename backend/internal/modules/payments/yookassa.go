@@ -426,7 +426,7 @@ func (s *Service) settleKassaTx(ctx context.Context, c kassaRow, payment kassaPa
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return false, unavailable()
 	}
-	otherPaid, err := s.purchaseHistoryBlockedTx(ctx, tx, account, c.order, p.action)
+	otherPaid, err := s.purchaseHistoryBlockedTx(ctx, tx, account, c.order, p.action, p.method)
 	if err != nil {
 		return false, unavailable()
 	}

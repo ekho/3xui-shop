@@ -145,6 +145,25 @@ func TestNativeTrialStarsRestartAndRefund(t *testing.T) {
 		var count int
 		return f.env.Pool.QueryRow(ctx, `SELECT count(*) FROM purchase_refunds WHERE order_id=$1`, early.OrderId).Scan(&count) == nil && count == 1
 	})
+	retiredAuth, retired := nativeStarsOrder(t, f, key, tg+2, plan)
+	retiredProof := nativeStarsProof(tg+2, retired.OrderId, "owned-native-prepared-refund", time.Now())
+	bot.starsMoney(retiredProof, false)
+	wait(t, func() bool {
+		var count int
+		return f.env.Pool.QueryRow(ctx, `SELECT count(*) FROM purchase_receipts WHERE order_id=$1`, retired.OrderId).Scan(&count) == nil && count == 1
+	})
+	if err := f.svc.Payments.FulfillPurchase(ctx, retired.OrderId); err != nil {
+		t.Fatal("native refunded access preparation", err)
+	}
+	var retiredEvidence string
+	if err := f.env.Pool.QueryRow(ctx, `SELECT a.target::text||':'||a.completed_steps::text FROM access_operations a JOIN purchase_orders p ON p.access_operation_id=a.id WHERE p.id=$1 AND a.status='pending'`, retired.OrderId).Scan(&retiredEvidence); err != nil {
+		t.Fatal("native pending target missing", err)
+	}
+	bot.starsMoney(retiredProof, true)
+	wait(t, func() bool {
+		var done bool
+		return f.env.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM purchase_orders p JOIN access_operations a ON a.id=p.access_operation_id JOIN purchase_refunds r ON r.order_id=p.id WHERE p.id=$1 AND a.status='skipped')`, retired.OrderId).Scan(&done) == nil && done
+	})
 	var before string
 	if err := f.env.Pool.QueryRow(ctx, `SELECT vpn_id::text||':'||sub_id||':'||panel_key FROM accounts WHERE id=$1`, auth.Account.AccountId).Scan(&before); err != nil {
 		t.Fatal(err)
@@ -169,6 +188,16 @@ func TestNativeTrialStarsRestartAndRefund(t *testing.T) {
 	f.svc.MiniApp = telegram.NewMiniApp(123456789, key.Public().(ed25519.PublicKey), f.svc.Accounts, time.Now)
 	handler = httpapi.New(f.svc, f.env.Pool, f.cfg.HTTP)
 	launchNative(t, f, bot, false, true)
+	if err := f.svc.Payments.RecordStarsRefund(ctx, retiredProof); err != nil {
+		t.Fatal("native retired refund replay after restart", err)
+	}
+	var retainedEvidence string
+	if err := f.env.Pool.QueryRow(ctx, `SELECT a.target::text||':'||a.completed_steps::text FROM access_operations a JOIN purchase_orders p ON p.access_operation_id=a.id WHERE p.id=$1 AND a.status='skipped'`, retired.OrderId).Scan(&retainedEvidence); err != nil || retainedEvidence != retiredEvidence {
+		t.Fatal("native refund lost frozen access evidence", err)
+	}
+	if unresolved, err := f.svc.VPN.UnresolvedTx(ctx, nil, retiredAuth.Account.AccountId); err != nil || unresolved {
+		t.Fatal("native provider refund kept account blocked after restart", err)
+	}
 	wait(t, func() bool {
 		var state string
 		return f.env.Pool.QueryRow(ctx, `SELECT fulfillment_status FROM purchase_orders WHERE id=$1`, order.OrderId).Scan(&state) == nil && state == "needs_review"

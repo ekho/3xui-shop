@@ -29,7 +29,7 @@ func starsUpdate(order uuid.UUID, charge string, refunded bool, id, date int64) 
 	}
 	return map[string]any{"update_id": id, "message": map[string]any{"message_id": id, "date": date, "chat": map[string]any{"id": 701, "type": "private"}, "from": map[string]any{"id": 701, "is_bot": false, "language_code": "en"}, field: payment}}
 }
-func starsRunUpdates(t *testing.T, s *regressionFixture, updates []map[string]any) error {
+func starsRunUpdates(t *testing.T, s *regressionFixture, updates []map[string]any, preCheckoutCodes ...int) error {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -47,6 +47,16 @@ func starsRunUpdates(t *testing.T, s *regressionFixture, updates []map[string]an
 			}
 			json.NewDecoder(req.Body).Decode(&in)
 			return starsReply(map[string]any{"message_id": 900, "chat": map[string]any{"id": in.Chat}}), nil
+		case strings.HasSuffix(req.URL.Path, "answerPreCheckoutQuery"):
+			code := preCheckoutCodes[0]
+			if len(preCheckoutCodes) > 1 {
+				preCheckoutCodes = preCheckoutCodes[1:]
+			}
+			if code == 200 {
+				return starsReply(true), nil
+			}
+			b, _ := json.Marshal(map[string]any{"ok": false, "error_code": code, "description": "owned query is too old or already answered", "parameters": map[string]int{"retry_after": 1}})
+			return &http.Response{StatusCode: code, Body: io.NopCloser(strings.NewReader(string(b)))}, nil
 		case strings.HasSuffix(req.URL.Path, "getUpdates"):
 			var in struct{ Offset int64 }
 			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
@@ -71,6 +81,29 @@ func starsRunUpdates(t *testing.T, s *regressionFixture, updates []map[string]an
 		t.Fatal(err)
 	}
 	return r.Run(ctx)
+}
+
+// A closed query has no money effect and must not pin later genuine charges.
+// Transient answer failures still retry before acknowledging the query.
+func TestStarsRuntimePreCheckoutLiveness(t *testing.T) {
+	for _, code := range []int{400, 429, 500} {
+		t.Run(http.StatusText(code), func(t *testing.T) {
+			s, e, _, order := starsTestOrder(t)
+			codes := []int{code}
+			if code != 400 {
+				codes = append(codes, 200)
+			}
+			query := map[string]any{"update_id": int64(10), "pre_checkout_query": map[string]any{"id": "owned-closed-query", "from": map[string]any{"id": 701}, "currency": "XTR", "total_amount": 100, "invoice_payload": "stars:v1:" + order.OrderId.String()}}
+			paid := starsUpdate(order.OrderId, "after-pre-checkout", false, 11, e.Clock().Unix()+1)
+			if err := starsRunUpdates(t, s, []map[string]any{query, paid}, codes...); err != nil {
+				t.Fatal(err)
+			}
+			var receipts, audits, jobs int
+			if err := e.Pool.QueryRow(context.Background(), `SELECT (SELECT count(*) FROM purchase_receipts WHERE order_id=$1),(SELECT count(*) FROM audit_events WHERE account_id=(SELECT account_id FROM purchase_orders WHERE id=$1) AND action='stars_payment_received'),(SELECT count(*) FROM river_job WHERE kind='purchase_fulfillment' AND args->>'order_id'=$1::uuid::text)`, order.OrderId).Scan(&receipts, &audits, &jobs); err != nil || receipts != 1 || audits != 1 || jobs != 1 {
+				t.Fatal("answer failure pinned a genuine charge or duplicated its receipt/audit/job", err)
+			}
+		})
+	}
 }
 
 // Catches acknowledging a genuine payment without its durable receipt/job.

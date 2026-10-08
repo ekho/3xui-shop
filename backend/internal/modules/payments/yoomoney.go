@@ -171,7 +171,7 @@ func (s *Service) ReceiveYooMoney(ctx context.Context, fields url.Values) error 
 		return unavailable()
 	}
 	review := ""
-	otherPaid, err := s.purchaseHistoryBlockedTx(ctx, tx, accountID, orderID, p.action)
+	otherPaid, err := s.purchaseHistoryBlockedTx(ctx, tx, accountID, orderID, p.action, p.method)
 	if err != nil {
 		return unavailable()
 	}
