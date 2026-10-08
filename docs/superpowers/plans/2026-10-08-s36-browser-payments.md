@@ -99,7 +99,7 @@ Run: `env RUN_BROWSER_TESTS=1 TEST_DATABASE_URL_FILE=$PWD/.superpowers/acceptanc
 Run: same database files `poetry run python -m unittest discover -s tests -v`; `go -C backend vet ./...`; `make -C backend generate`; `npm --prefix web run api:generate`; `python3 deploy/acceptance/check_names.py`; `git diff --check`.
 Expected: actual full suites PASS, generators keep all39 existing generated files identical, no backend/runtime diff. Record real counts/exit/source hashes and old failures honestly; no unchanged expensive retry.
 
-- [ ] **Step 6: Commit, ledger and single final review**
+- [x] **Step 6: Commit, ledger and single final review**
 
 Commit verified scoped source/tests/evidence with Conventional Commit + Co-Authored-By; task-done uses focused Mini+native command after all required checks. Produce full branch package; one fresh Astra/high reviewer gets literal5 Review Focus items, spec/plan/ledger/exact base/source. Root re-grades findings and all declined behavior, applies one Important/Critical RED→GREEN fix pass with whole green suites, defers Minor; no re-review.
 

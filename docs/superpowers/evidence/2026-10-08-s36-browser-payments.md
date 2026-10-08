@@ -18,6 +18,7 @@
 | Native RED после исправления test fixture | exit1, 35.741s; signed session + trial дошли до `public_navigation`, CTA отсутствовал |
 | Mini/identity/Stars rendered GREEN | 84/84, exit0, 39.715s |
 | Current native + browser + real TLS3X-UI3.7.0/SMTP | exit0, 12.707s; Go package10.980s |
+| Task-done after verified commit79b4399 | Mini34/34 + actual native10.128s, exit0/35.334s |
 | Полный web | 418/418, exit0, 180.994s |
 | Полный Python | 110/110, exit0, 15.331s; без skips/failures |
 | Go vet, TypeScript, semantic names, runtime config | exit0 |
@@ -49,6 +50,14 @@
 5. Старые negative payment-button assertions ограничены `.purchase-order`, checkout form/manual instructions проверки сохранены отдельно. Цена — будущий payment action вне этого компонента требует своего negative guard.
 6. Полный Go-набор добавляет стандартный `-json` для точного подсчёта individual tests/packages/skips при прежних race/count1/timeout20m входах. Цена — больший private output, без изменения поведения тестов.
 
+7. Step7 — post-review delivery, отдельно от task-done локальной реализации. Цена — локальное complete нельзя показывать как Issue/Project/roadmap Done.
+8. Reviewer не оценивал live Telegram/OS browser/popup blockers: local criterion доказывает попытку SDK/fallback, не создание живого окна или login. Цена — отдельная проверка реальных клиентов может выявить блокировку открытия.
+9. Reviewer не оценивал реальные деньги/provider callbacks/внешний SMTP: применены разрешённые owned stubs. Цена — реальная доставка и провайдер остаются непроверенными до отдельных ресурсов.
+10. Reviewer не оценивал production/live Happ/VPN/Mac trust: исключено из scope, live Happ switching запрещено. Цена — локальный результат не доказывает production/live VPN трафик.
+11. Reviewer не оценивал фактическую доставку С36/повторную внешнюю аттестацию С35: root проверяет current CI/manual merge/prerelease/tag/OCI перед Done, старые доказательства остаются историческими. Цена — внешнее состояние или публикация могут измениться и оставить delivery pending.
+
+Deferred minors: нет.
+
 ## Доставка
 
-Task completion, fresh review, точные PR CI, ручное guarded merge и фактический v2 prerelease/OCI proof ещё ожидаются. Issue/Project пока не Done. Продолжение после доставки — С25 рекламные приглашения.
+Task completion прошёл на79b43995108fc7091e8ea179d114794dfc67e826. Одно fresh Astra/high whole-branch review:0Critical/0Important/0Minor, verdictYes; все5 focus items и raw evidence прочитаны, author fix passes0, no re-review. Точные PR CI, ручное guarded merge и фактический v2 prerelease/OCI proof ещё ожидаются. Issue/Project пока не Done. Продолжение после доставки — С25 рекламные приглашения.
