@@ -88,8 +88,14 @@ const purchaseFundingCheck = `SELECT EXISTS(SELECT 1 FROM purchase_orders p JOIN
          AND r.provider_data->>'bot_id'=c.bot_id::text AND r.provider_data->>'payer_id'=c.payer_id::text
          AND r.provider_data->>'payload'=c.payload AND r.provider_data->>'currency'='XTR'
          AND r.provider_data->>'amount_minor'=r.gross_minor::text
-         AND r.provider_data->>'recurring'='false' AND r.provider_data->>'first_recurring'='false'
-         AND r.provider_data->>'subscription_expires_at'='0'
+         AND ((c.subscription_period=0 AND r.provider_data->>'recurring'='false' AND r.provider_data->>'first_recurring'='false'
+               AND r.provider_data->>'subscription_expires_at'='0')
+           OR (c.subscription_period=2592000 AND p.quote->>'stars_recurring'='true' AND p.quote->>'period_days'='30' AND p.amount_minor<=10000
+               AND r.provider_data->>'recurring'='true' AND r.provider_data->>'first_recurring'='true'
+               AND EXISTS(SELECT 1 FROM stars_subscription_cycles cy JOIN stars_subscriptions sub ON sub.first_receipt_id=cy.subscription_receipt_id
+                   WHERE cy.order_id=p.id AND cy.root_order_id=c.order_id AND cy.receipt_id=r.operation_id AND cy.subscription_receipt_id=r.operation_id
+                   AND sub.canonical AND sub.root_order_id=c.order_id AND sub.bot_id=c.bot_id AND sub.payer_id=c.payer_id
+                   AND r.provider_data->>'subscription_expires_at'=extract(epoch FROM cy.paid_until)::bigint::text)))
          AND r.operation_id='stars:'||encode(sha256(convert_to(c.bot_id::text||':'||(r.provider_data->>'charge_id'),'UTF8')),'hex')))))`
 
 func scanPurchase(row pgx.Row) (purchaseRow, error) {
@@ -220,6 +226,9 @@ func (s *Service) PaymentMethods(ctx context.Context, account uuid.UUID) (Paymen
 
 func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUID, in PurchaseOrderInput) (PurchaseOrder, error) {
 	var empty PurchaseOrder
+	if in.StarsRecurring && (in.Action != "purchase" || in.PaymentMethod != "telegram_stars" || in.PeriodDays != 30) {
+		return empty, failure(400, "INVALID_INPUT")
+	}
 	if account == uuid.Nil || key == uuid.Nil || (in.Action != "purchase" && in.Action != "renew" && in.Action != "change_plan") || (in.Action == "change_plan") != (in.SourceAccessOperationId != nil) || (in.SourceAccessOperationId != nil && *in.SourceAccessOperationId == uuid.Nil) || !((in.PaymentMethod == "yoomoney" && (in.PaymentType == "AC" || in.PaymentType == "PC")) || (in.PaymentMethod == "manual" && in.PaymentType == "MANUAL") || (in.PaymentMethod == "yookassa" && in.PaymentType == "YOOKASSA") || (in.PaymentMethod == "cryptomus" && in.PaymentType == "CRYPTOMUS") || (in.PaymentMethod == "heleket" && in.PaymentType == "HELEKET") || (in.PaymentMethod == "telegram_stars" && in.PaymentType == "STARS" && in.Action == "purchase")) || in.PlanId == uuid.Nil || in.Revision < 1 || in.PeriodDays < 1 || in.PeriodDays > 106751 {
 		return empty, failure(400, "INVALID_INPUT")
 	}
@@ -404,7 +413,10 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if !found {
 		return empty, failure(409, "PURCHASE_PLAN_CONFLICT")
 	}
-	quote := PurchaseQuote{PlanId: in.PlanId, Revision: in.Revision, PeriodDays: in.PeriodDays, Devices: int64(terms.Devices), TrafficGb: int64(terms.TrafficGb), Profile: profile, AmountMinor: strconv.FormatInt(amount, 10), Currency: currency, SourceAccessOperationId: in.SourceAccessOperationId}
+	if in.StarsRecurring && amount > 10000 {
+		return empty, failure(400, "INVALID_INPUT")
+	}
+	quote := PurchaseQuote{PlanId: in.PlanId, Revision: in.Revision, PeriodDays: in.PeriodDays, Devices: int64(terms.Devices), TrafficGb: int64(terms.TrafficGb), Profile: profile, AmountMinor: strconv.FormatInt(amount, 10), Currency: currency, SourceAccessOperationId: in.SourceAccessOperationId, StarsRecurring: in.StarsRecurring}
 	quoteRaw, _ := json.Marshal(quote)
 	id := uuid.New()
 	expires := now.Add(30 * time.Minute)
@@ -422,7 +434,11 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 		return empty, unavailable()
 	}
 	if in.PaymentMethod == "telegram_stars" {
-		if _, err = tx.Exec(ctx, `INSERT INTO stars_checkouts(order_id,bot_id,payer_id,payload) VALUES($1,$2,$3,$4)`, id, s.stars.BotID, *a.TelegramID, "stars:v1:"+id.String()); err != nil {
+		var period int64
+		if in.StarsRecurring {
+			period = starsSubscriptionPeriod
+		}
+		if _, err = tx.Exec(ctx, `INSERT INTO stars_checkouts(order_id,bot_id,payer_id,payload,subscription_period) VALUES($1,$2,$3,$4,$5)`, id, s.stars.BotID, *a.TelegramID, "stars:v1:"+id.String(), period); err != nil {
 			return empty, unavailable()
 		}
 	}

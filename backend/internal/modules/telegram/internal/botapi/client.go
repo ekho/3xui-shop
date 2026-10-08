@@ -279,12 +279,16 @@ func (c *Client) SetChatMenuButton(ctx context.Context, raw string) error {
 	return e
 }
 
-func (c *Client) CreateStarsInvoice(ctx context.Context, title, description, payload string, amount int64) (string, error) {
+func (c *Client) CreateStarsInvoice(ctx context.Context, title, description, payload string, amount, period int64) (string, error) {
 	var out string
-	if amount <= 0 || !utf8.ValidString(payload) || len(payload) < 1 || len(payload) > 128 || len(title) < 1 || utf8.RuneCountInString(title) > 32 || len(description) < 1 || utf8.RuneCountInString(description) > 255 {
+	if amount <= 0 || period != 0 && (period != 2592000 || amount > 10000) || !utf8.ValidString(payload) || len(payload) < 1 || len(payload) > 128 || len(title) < 1 || utf8.RuneCountInString(title) > 32 || len(description) < 1 || utf8.RuneCountInString(description) > 255 {
 		return out, &APIError{Code: "INVALID_INPUT"}
 	}
-	err := c.call(ctx, "createInvoiceLink", map[string]any{"title": title, "description": description, "payload": payload, "provider_token": "", "currency": "XTR", "prices": []map[string]any{{"label": "Subscription", "amount": amount}}}, &out, 10*time.Second)
+	in := map[string]any{"title": title, "description": description, "payload": payload, "provider_token": "", "currency": "XTR", "prices": []map[string]any{{"label": "Subscription", "amount": amount}}}
+	if period != 0 {
+		in["subscription_period"] = period
+	}
+	err := c.call(ctx, "createInvoiceLink", in, &out, 10*time.Second)
 	return out, err
 }
 func (c *Client) RefundStars(ctx context.Context, payer int64, charge string) error {

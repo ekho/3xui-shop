@@ -14034,6 +14034,10 @@
             "type": "string",
             "format": "uuid",
             "description": "Applied source operation, required only for change_plan and forbidden for other actions. Frozen in the immutable quote; a changed source stops automatic fulfillment."
+          },
+          "stars_recurring": {
+            "type": "boolean",
+            "description": "Explicit 30-day recurring Stars choice, only for the first signed Mini purchase. Omitted or false preserves one-time payment."
           }
         },
         "required": [
@@ -14101,6 +14105,10 @@
             "type": "string",
             "format": "uuid",
             "description": "Applied source operation, required only for change_plan and forbidden for other actions. Frozen in the immutable quote; a changed source stops automatic fulfillment."
+          },
+          "stars_recurring": {
+            "type": "boolean",
+            "description": "Explicit 30-day recurring Stars choice, only for the first signed Mini purchase. Omitted or false preserves one-time payment."
           }
         },
         "required": [

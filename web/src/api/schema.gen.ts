@@ -2228,6 +2228,8 @@ export interface components {
              * @description Applied source operation, required only for change_plan and forbidden for other actions. Frozen in the immutable quote; a changed source stops automatic fulfillment.
              */
             source_access_operation_id?: string;
+            /** @description Explicit 30-day recurring Stars choice, only for the first signed Mini purchase. Omitted or false preserves one-time payment. */
+            stars_recurring?: boolean;
         };
         PurchaseQuote: {
             /** Format: uuid */
@@ -2251,6 +2253,8 @@ export interface components {
              * @description Applied source operation, required only for change_plan and forbidden for other actions. Frozen in the immutable quote; a changed source stops automatic fulfillment.
              */
             source_access_operation_id?: string;
+            /** @description Explicit 30-day recurring Stars choice, only for the first signed Mini purchase. Omitted or false preserves one-time payment. */
+            stars_recurring?: boolean;
         };
         YooMoneyCheckoutFields: {
             receiver: string;

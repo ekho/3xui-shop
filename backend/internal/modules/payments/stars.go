@@ -25,12 +25,14 @@ import (
 type StarsInvoice struct {
 	Payload, Title, Description string
 	Amount                      int64
+	SubscriptionPeriod          int64
 }
 type StarsGateway struct {
-	BotID   int64
-	Invoice func(context.Context, StarsInvoice) (string, error)
-	Refund  func(context.Context, int64, string) error
-	Ready   func() bool
+	BotID            int64
+	Invoice          func(context.Context, StarsInvoice) (string, error)
+	Refund           func(context.Context, int64, string) error
+	Ready            func() bool
+	EditSubscription func(context.Context, int64, string, bool) error
 }
 type StarsCheckout struct {
 	State string  `json:"state"`
@@ -39,6 +41,7 @@ type StarsCheckout struct {
 type StarsPreCheckoutInput struct {
 	BotID, PayerID, Amount int64
 	Currency, Payload      string
+	QueryID                string
 }
 
 type StarsPaymentInput struct {
@@ -67,8 +70,11 @@ func starsReceiptKey(bot int64, charge string) string {
 	return "stars:" + hex.EncodeToString(hash[:])
 }
 func validStarsPayment(in StarsPaymentInput) bool {
+	return validStarsPaymentBase(in) && !in.Recurring && !in.FirstRecurring && in.SubscriptionExpiresAt == 0
+}
+func validStarsPaymentBase(in StarsPaymentInput) bool {
 	_, valid := starsOrderID(in.Payload)
-	return valid && in.BotID > 0 && in.PayerID > 0 && in.PayerID <= 1<<52-1 && in.Amount > 0 && validText(in.Currency, 1, 16) && len(in.ChargeID) > 0 && len(in.ChargeID) <= 4096 && utf8.ValidString(in.ChargeID) && !strings.ContainsRune(in.ChargeID, '\x00') && len(in.ProviderChargeID) <= 4096 && utf8.ValidString(in.ProviderChargeID) && !strings.ContainsRune(in.ProviderChargeID, '\x00') && in.At.Unix() > 0 && in.At.Year() <= 9999 && !in.Recurring && !in.FirstRecurring && in.SubscriptionExpiresAt == 0
+	return valid && in.BotID > 0 && in.PayerID > 0 && in.PayerID <= 1<<52-1 && in.Amount > 0 && validText(in.Currency, 1, 16) && len(in.ChargeID) > 0 && len(in.ChargeID) <= 4096 && utf8.ValidString(in.ChargeID) && !strings.ContainsRune(in.ChargeID, '\x00') && len(in.ProviderChargeID) <= 4096 && utf8.ValidString(in.ProviderChargeID) && !strings.ContainsRune(in.ProviderChargeID, '\x00') && in.At.Unix() > 0 && in.At.Year() <= 9999
 }
 func starsPaymentProof(in StarsPaymentInput) []byte {
 	raw, _ := json.Marshal(starsProof{Provider: "telegram_stars", BotID: in.BotID, PayerID: in.PayerID, Payload: in.Payload, ChargeID: in.ChargeID, ProviderChargeID: in.ProviderChargeID, Amount: strconv.FormatInt(in.Amount, 10), Currency: in.Currency, Recurring: in.Recurring, FirstRecurring: in.FirstRecurring, SubscriptionExpiresAt: in.SubscriptionExpiresAt})
@@ -109,7 +115,7 @@ func (s *Service) starsOrderTx(ctx context.Context, tx pgx.Tx, in StarsPaymentIn
 // RecordStarsPayment is reachable only through the trusted Telegram adapter.
 // Current sales/identity errors retain the charge and prevent automatic issue.
 func (s *Service) RecordStarsPayment(ctx context.Context, in StarsPaymentInput) error {
-	if !validStarsPayment(in) {
+	if !validStarsPaymentBase(in) {
 		return failure(409, "STARS_UNSUPPORTED_PAYMENT")
 	}
 	in.At = in.At.UTC().Truncate(time.Microsecond)
@@ -126,6 +132,9 @@ func (s *Service) RecordStarsPayment(ctx context.Context, in StarsPaymentInput) 
 	p, bot, payer, err := s.starsOrderTx(ctx, tx, in)
 	if err != nil {
 		return err
+	}
+	if !recurringQuote(p.quote) && !validStarsPayment(in) {
+		return failure(409, "STARS_UNSUPPORTED_PAYMENT")
 	}
 	var oldOrder uuid.UUID
 	var oldAt time.Time
@@ -164,6 +173,8 @@ func (s *Service) RecordStarsPayment(ctx context.Context, in StarsPaymentInput) 
 		reason = "payment_identity_mismatch"
 	case in.Amount != p.amount || in.Currency != "XTR" || in.At.Before(p.created.Add(-5*time.Minute)):
 		reason = "payment_mismatch"
+	case recurringQuote(p.quote) && (!in.FirstRecurring || !validStarsRecurringPeriod(in)):
+		reason = "invalid_recurring_payment"
 	case in.At.After(p.expires) || p.paymentStatus == "canceled":
 		reason = "late_or_canceled"
 	case p.review:
@@ -189,6 +200,11 @@ func (s *Service) RecordStarsPayment(ctx context.Context, in StarsPaymentInput) 
 	_, err = tx.Exec(ctx, `INSERT INTO purchase_receipts(operation_id,order_id,occurred_at,gross_minor,net_minor,currency,notification_type,codepro,unaccepted,review_reason,created_at,provider_data) VALUES($1,$2,$3,$4,NULL,$5,'telegram_stars.paid',false,false,NULLIF($6,''),$7,$8)`, key, p.id, in.At, in.Amount, in.Currency, reason, s.now(), proof)
 	if err != nil {
 		return unavailable()
+	}
+	if recurringQuote(p.quote) {
+		if err = s.recordStarsFirstSubscriptionTx(ctx, tx, p, in, key, reason); err != nil {
+			return err
+		}
 	}
 	if reason != "" {
 		_, err = tx.Exec(ctx, `UPDATE purchase_orders SET payment_status='paid',paid_at=COALESCE(paid_at,$2),active=false,review_required=true,review_reason=$3,fulfillment_status=CASE WHEN access_operation_id IS NULL THEN 'needs_review' ELSE fulfillment_status END WHERE id=$1`, p.id, in.At, reason)
@@ -303,13 +319,14 @@ func (s *Service) CreateStarsInvoice(ctx context.Context, account, order uuid.UU
 	}
 	var payload string
 	var bot int64
-	if err = s.pool.QueryRow(ctx, `SELECT bot_id,payload FROM stars_checkouts WHERE order_id=$1`, order).Scan(&bot, &payload); err != nil {
+	var period int64
+	if err = s.pool.QueryRow(ctx, `SELECT bot_id,payload,subscription_period FROM stars_checkouts WHERE order_id=$1`, order).Scan(&bot, &payload, &period); err != nil {
 		return empty, unavailable()
 	}
 	if s.stars == nil || s.stars.BotID != bot {
 		return empty, failure(409, "PAYMENT_METHOD_UNAVAILABLE")
 	}
-	link, err := s.stars.Invoice(ctx, StarsInvoice{Payload: payload, Amount: p.amount, Title: "VPN subscription", Description: fmt.Sprintf("%d days, %d devices", out.Quote.PeriodDays, out.Quote.Devices)})
+	link, err := s.stars.Invoice(ctx, StarsInvoice{Payload: payload, Amount: p.amount, Title: "VPN subscription", Description: fmt.Sprintf("%d days, %d devices", out.Quote.PeriodDays, out.Quote.Devices), SubscriptionPeriod: period})
 	if err != nil || !validStarsURL(link) {
 		return empty, unavailable()
 	}
@@ -366,7 +383,9 @@ func (s *Service) CheckStarsPreCheckout(ctx context.Context, in StarsPreCheckout
 	}
 	var payer, bot int64
 	var refunded bool
-	if err = tx.QueryRow(ctx, `SELECT payer_id,bot_id,EXISTS(SELECT 1 FROM stars_refunds WHERE order_id=$1) FROM stars_checkouts WHERE order_id=$1`, id).Scan(&payer, &bot, &refunded); errors.Is(err, pgx.ErrNoRows) {
+	var period int64
+	var reserved *string
+	if err = tx.QueryRow(ctx, `SELECT payer_id,bot_id,EXISTS(SELECT 1 FROM stars_refunds WHERE order_id=$1),subscription_period,pre_checkout_id FROM stars_checkouts WHERE order_id=$1`, id).Scan(&payer, &bot, &refunded, &period, &reserved); errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
@@ -383,7 +402,23 @@ func (s *Service) CheckStarsPreCheckout(ctx context.Context, in StarsPreCheckout
 	if err != nil {
 		return false, unavailable()
 	}
-	return !unresolved, nil
+	if unresolved {
+		return false, nil
+	}
+	if period != 0 {
+		if len(in.QueryID) > 128 || !validText(in.QueryID, 1, 128) || reserved != nil && *reserved != in.QueryID {
+			return false, nil
+		}
+		if reserved == nil {
+			if _, err = tx.Exec(ctx, `UPDATE stars_checkouts SET pre_checkout_id=$2 WHERE order_id=$1 AND pre_checkout_id IS NULL`, id, in.QueryID); err != nil {
+				return false, unavailable()
+			}
+		}
+		if err = tx.Commit(ctx); err != nil {
+			return false, unavailable()
+		}
+	}
+	return true, nil
 }
 
 func (s *Service) CanPurchaseStars(ctx context.Context, account uuid.UUID) (bool, error) {

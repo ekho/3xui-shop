@@ -137,7 +137,7 @@ func TestStarsWireContract(t *testing.T) {
 	})}
 	c := New("owned-test-token", h)
 	ctx := context.Background()
-	link, err := c.CreateStarsInvoice(ctx, "Subscription", "30 days", "stars:v1:00000000-0000-4000-8000-000000000001", 100)
+	link, err := c.CreateStarsInvoice(ctx, "Subscription", "30 days", "stars:v1:00000000-0000-4000-8000-000000000001", 100, 0)
 	if err != nil || link != "https://t.me/$owned_invoice" {
 		t.Fatal("invoice response", err)
 	}

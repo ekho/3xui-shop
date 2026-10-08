@@ -20,7 +20,7 @@ func (r *Runtime) StarsGateway() payments.StarsGateway {
 		if !ready() {
 			return "", &botapi.APIError{Code: "UNAVAILABLE"}
 		}
-		return r.api.CreateStarsInvoice(ctx, in.Title, in.Description, in.Payload, in.Amount)
+		return r.api.CreateStarsInvoice(ctx, in.Title, in.Description, in.Payload, in.Amount, in.SubscriptionPeriod)
 	}, Refund: func(ctx context.Context, payer int64, charge string) error {
 		if !ready() {
 			return &botapi.APIError{Code: "UNAVAILABLE"}
@@ -44,7 +44,7 @@ func (r *Runtime) preCheckout(parent context.Context, raw json.RawMessage) error
 	ok := false
 	if r.clients != nil && !q.From.IsBot && q.From.ID > 0 && q.From.ID <= 1<<52-1 {
 		var err error
-		ok, err = r.clients.payments.CheckStarsPreCheckout(ctx, payments.StarsPreCheckoutInput{BotID: r.clients.botID, PayerID: q.From.ID, Amount: q.Amount, Currency: q.Currency, Payload: q.Payload})
+		ok, err = r.clients.payments.CheckStarsPreCheckout(ctx, payments.StarsPreCheckoutInput{BotID: r.clients.botID, PayerID: q.From.ID, Amount: q.Amount, Currency: q.Currency, Payload: q.Payload, QueryID: q.ID})
 		if err != nil {
 			return err
 		}
