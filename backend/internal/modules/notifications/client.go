@@ -16,17 +16,23 @@ import (
 
 type ClientGuard func(context.Context, uuid.UUID, int64, int64, func(pgx.Tx) error) (bool, error)
 type ClientNotice struct {
-	AccountID                     uuid.UUID
-	ReminderID                    uuid.UUID
-	TelegramID, CredentialVersion int64
-	Locale, EventKey, Route       string
+	AccountID                       uuid.UUID
+	ReminderID                      uuid.UUID
+	NoticeActionID, PriorDeliveryID uuid.UUID
+	TelegramID, CredentialVersion   int64
+	Locale, EventKey, Route         string
 }
 type ClientJob struct {
 	ClientNotice
-	ID             uuid.UUID
-	LeaseToken     string
-	LeaseExpiresAt time.Time
-	ReminderText   string
+	ID                     uuid.UUID
+	LeaseToken             string
+	LeaseExpiresAt         time.Time
+	ReminderText           string
+	NoticeActorID          uuid.UUID
+	NoticeMode, NoticeHTML string
+	NoticeMessageID        int64
+	NoticeMessageAt        *time.Time
+	NoticeResult           *NoticeWireResult
 }
 type ClientOutcome struct {
 	State      string
@@ -53,6 +59,9 @@ func (s *Service) EnqueueClientTx(ctx context.Context, tx pgx.Tx, n ClientNotice
 	if n.ReminderID != uuid.Nil && (n.EventKey != "reminder:"+n.ReminderID.String() || (n.Route != "renew" && n.Route != "cabinet")) {
 		return failure(400, "INVALID_INPUT")
 	}
+	if n.NoticeActionID != uuid.Nil && (n.ReminderID != uuid.Nil || n.Route != "cabinet" || n.EventKey != "notice:"+n.NoticeActionID.String()) || n.NoticeActionID == uuid.Nil && n.PriorDeliveryID != uuid.Nil {
+		return failure(400, "INVALID_INPUT")
+	}
 	// Legacy/operator identities are int64 facts; an undeliverable ID must not abort their business transaction.
 	if n.TelegramID > 1<<52-1 {
 		return nil
@@ -62,9 +71,9 @@ func (s *Service) EnqueueClientTx(ctx context.Context, tx pgx.Tx, n ClientNotice
 	if n.ReminderID != uuid.Nil {
 		reminder = &n.ReminderID
 	}
-	_, err := tx.Exec(ctx, `INSERT INTO client_telegram_deliveries(id,account_id,telegram_id,credential_version,locale,event_key,route,created_at,reminder_id)
- VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(account_id,event_key) DO NOTHING`,
-		uuid.New(), n.AccountID, n.TelegramID, n.CredentialVersion, n.Locale, n.EventKey, n.Route, created, reminder)
+	_, err := tx.Exec(ctx, `INSERT INTO client_telegram_deliveries(id,account_id,telegram_id,credential_version,locale,event_key,route,created_at,reminder_id,notice_action_id,prior_delivery_id)
+ VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(account_id,event_key) DO NOTHING`,
+		uuid.New(), n.AccountID, n.TelegramID, n.CredentialVersion, n.Locale, n.EventKey, n.Route, created, reminder, nullableUUID(n.NoticeActionID), nullableUUID(n.PriorDeliveryID))
 	if err != nil {
 		return unavailable()
 	}
@@ -79,15 +88,24 @@ func (s *Service) ClaimClient(ctx context.Context) (*ClientJob, error) {
 	j := ClientJob{LeaseToken: token}
 	err := s.pool.QueryRow(ctx, `WITH candidate AS(
  SELECT id FROM client_telegram_deliveries WHERE state='pending' AND available_at<=clock_timestamp()
+ AND (notice_action_id IS NULL OR attempts<5)
  AND (lease_expires_at IS NULL OR lease_expires_at<=clock_timestamp()) ORDER BY sequence LIMIT 1 FOR UPDATE SKIP LOCKED)
  UPDATE client_telegram_deliveries SET lease_hash=$1,lease_expires_at=clock_timestamp()+interval '60 seconds',attempts=attempts+1
- WHERE id=(SELECT id FROM candidate) RETURNING id,account_id,telegram_id,credential_version,locale,event_key,route,lease_expires_at,COALESCE(reminder_id,'00000000-0000-0000-0000-000000000000'::uuid)`, digest(token)).
-		Scan(&j.ID, &j.AccountID, &j.TelegramID, &j.CredentialVersion, &j.Locale, &j.EventKey, &j.Route, &j.LeaseExpiresAt, &j.ReminderID)
+ WHERE id=(SELECT id FROM candidate) RETURNING id,account_id,telegram_id,credential_version,locale,event_key,route,lease_expires_at,COALESCE(reminder_id,'00000000-0000-0000-0000-000000000000'::uuid),COALESCE(notice_action_id,'00000000-0000-0000-0000-000000000000'::uuid),COALESCE(prior_delivery_id,'00000000-0000-0000-0000-000000000000'::uuid)`, digest(token)).
+		Scan(&j.ID, &j.AccountID, &j.TelegramID, &j.CredentialVersion, &j.Locale, &j.EventKey, &j.Route, &j.LeaseExpiresAt, &j.ReminderID, &j.NoticeActionID, &j.PriorDeliveryID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, unavailable()
+	}
+	if j.NoticeActionID != uuid.Nil {
+		if s.notices == nil {
+			return nil, unavailable()
+		}
+		if err = s.notices.claim(ctx, &j); err != nil {
+			return nil, err
+		}
 	}
 	if j.ReminderID != uuid.Nil {
 		r, err := scanReminder(s.pool.QueryRow(ctx, `SELECT `+reminderColumns+` FROM reminders WHERE id=$1 AND account_id=$2`, j.ReminderID, j.AccountID))
@@ -106,9 +124,9 @@ func lockClient(ctx context.Context, tx pgx.Tx, j ClientJob) (string, error) {
 	var hash []byte
 	var state string
 	var valid bool
-	err := tx.QueryRow(ctx, `SELECT account_id,telegram_id,credential_version,locale,event_key,route,COALESCE(reminder_id,'00000000-0000-0000-0000-000000000000'::uuid),lease_hash,state,
+	err := tx.QueryRow(ctx, `SELECT account_id,telegram_id,credential_version,locale,event_key,route,COALESCE(reminder_id,'00000000-0000-0000-0000-000000000000'::uuid),COALESCE(notice_action_id,'00000000-0000-0000-0000-000000000000'::uuid),COALESCE(prior_delivery_id,'00000000-0000-0000-0000-000000000000'::uuid),lease_hash,state,
  lease_expires_at>clock_timestamp()+interval '10 seconds' FROM client_telegram_deliveries WHERE id=$1 FOR UPDATE`, j.ID).
-		Scan(&n.AccountID, &n.TelegramID, &n.CredentialVersion, &n.Locale, &n.EventKey, &n.Route, &n.ReminderID, &hash, &state, &valid)
+		Scan(&n.AccountID, &n.TelegramID, &n.CredentialVersion, &n.Locale, &n.EventKey, &n.Route, &n.ReminderID, &n.NoticeActionID, &n.PriorDeliveryID, &hash, &state, &valid)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", failure(409, "REQUEST_STATE_CONFLICT")
 	}
@@ -173,6 +191,12 @@ func finishClient(ctx context.Context, tx pgx.Tx, j ClientJob, out ClientOutcome
 	return nil
 }
 func (s *Service) DeliverClient(parent context.Context, j ClientJob, send func() (ClientOutcome, error)) error {
+	if j.NoticeActionID != uuid.Nil {
+		if s.notices == nil {
+			return unavailable()
+		}
+		return s.notices.deliver(parent, j, send)
+	}
 	if s.clientGuard == nil || send == nil {
 		return unavailable()
 	}

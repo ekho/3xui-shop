@@ -377,6 +377,20 @@ func TestNotificationsRemindersSQLBoundary(t *testing.T) {
 	checkSQLBoundary(t, "notifications", ownsSQL)
 }
 
+func TestNotificationsNoticesSQLBoundary(t *testing.T) {
+	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:notices|notice_previews|notice_recipients|notice_actions|notice_preferences)\b`)
+	ownsSQL := func(text string) bool { return pattern.MatchString(strings.ReplaceAll(text, `"`, "")) }
+	for _, sql := range []string{`SELECT * FROM notices`, `UPDATE notice_actions SET telegram_state='unknown'`, `INSERT INTO notice_preferences VALUES($1)`, `DELETE FROM public.notice_previews`, `SELECT * FROM "public"."notice_recipients"`} {
+		if !ownsSQL(sql) {
+			t.Fatal("notice ownership bypass", sql)
+		}
+	}
+	if ownsSQL(`SELECT id FROM accounts`) {
+		t.Fatal("foreign owner rejected")
+	}
+	checkSQLBoundary(t, "notifications", ownsSQL)
+}
+
 func TestAuditReportsSQLBoundary(t *testing.T) {
 	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?audit_events\b`)
 	ownsSQL := func(text string) bool { return pattern.MatchString(strings.ReplaceAll(text, `"`, "")) }

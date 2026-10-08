@@ -19,6 +19,7 @@ type MailDelivery struct {
 	Kind                  string
 	CredentialChallengeID *uuid.UUID
 	ReminderID            *uuid.UUID
+	NoticeActionID        *uuid.UUID
 }
 
 type TelegramDelivery struct {

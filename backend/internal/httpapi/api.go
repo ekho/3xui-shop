@@ -41,6 +41,7 @@ type API struct {
 	supportOwner   *support.Service
 	notifications  *notifications.Service
 	reminders      *notifications.ReminderService
+	notices        *notifications.NoticeService
 	auditReports   *auditreports.Service
 	pool           *pgxpool.Pool
 	cfg            app.HTTPConfig
@@ -59,7 +60,7 @@ func failure(status int, code string) error {
 }
 func unavailable() error { return failure(503, "SERVICE_UNAVAILABLE") }
 func newAPI(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, contract *openapi3.T) *API {
-	return &API{miniApp: modules.MiniApp, accounts: modules.Accounts, catalogueOwner: modules.Catalogue, campaignsOwner: modules.Campaigns, subscriptions: modules.Subscriptions, payments: modules.Payments, supportOwner: modules.Support, notifications: modules.Notifications, reminders: modules.Reminders, auditReports: modules.AuditReports, pool: pool, cfg: cfg, contract: contract}
+	return &API{miniApp: modules.MiniApp, accounts: modules.Accounts, catalogueOwner: modules.Catalogue, campaignsOwner: modules.Campaigns, subscriptions: modules.Subscriptions, payments: modules.Payments, supportOwner: modules.Support, notifications: modules.Notifications, reminders: modules.Reminders, notices: modules.Notices, auditReports: modules.AuditReports, pool: pool, cfg: cfg, contract: contract}
 }
 
 func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig) *echo.Echo {
@@ -112,7 +113,7 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig) *echo.Ech
 			c.Response().Header().Set("Cache-Control", "no-store")
 			c.Response().Header().Set("X-Content-Type-Options", "nosniff")
 			c.Response().Header().Set("Referrer-Policy", "no-referrer")
-			if c.Request().URL.RawQuery != "" && !(c.Request().Method == "GET" && c.Request().URL.Path == "/api/v1/operator/catalogue") {
+			if c.Request().URL.RawQuery != "" && !(c.Request().Method == "GET" && (c.Request().URL.Path == "/api/v1/operator/catalogue" || c.Request().URL.Path == "/api/v1/notices")) {
 				return invalid()
 			}
 			if c.Request().Method == "POST" && len(c.Path()) >= 4 && c.Path()[:4] == "/api" && c.Request().Header.Get("Origin") != cfg.CabinetOrigin {
@@ -191,6 +192,12 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig) *echo.Ech
 	e.POST("/internal/v1/telegram/jobs/:id/result", a.CompleteTelegramJob)
 	e.GET("/api/v1/support", a.GetSupport)
 	e.GET("/api/v1/reminders", a.GetReminders)
+	e.GET("/api/v1/notices", a.GetNotices)
+	e.POST("/api/v1/notices/preferences", a.SetNoticeEmailPreference)
+	e.POST("/api/v1/notices/:id/dismiss", a.DismissNotice)
+	e.POST("/api/v1/operator/notices/previews", a.PreviewNotice)
+	e.POST("/api/v1/operator/notices/previews/:id/confirm", a.ConfirmNotice)
+	e.GET("/api/v1/operator/notices/last", a.GetLastNotice)
 	e.POST("/api/v1/reminders/preferences", a.SetReminderEmailPreference)
 	e.POST("/api/v1/reminders/:id/dismiss", a.DismissReminder)
 	e.POST("/api/v1/support/history", a.GetSupportHistory)

@@ -40,7 +40,7 @@ func TestReminderDowngradePreservesFacts(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			_, err = provider.Down(ctx)
+			_, err = provider.DownTo(ctx, 30)
 			if mode == "empty" {
 				if err != nil {
 					t.Fatal("empty reminder layer downgrade", err)

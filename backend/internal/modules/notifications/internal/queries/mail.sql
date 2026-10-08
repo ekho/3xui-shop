@@ -14,3 +14,5 @@ INSERT INTO mail_deliveries(id,credential_challenge_id,email_key,ciphertext,crea
 UPDATE mail_deliveries SET ciphertext=NULL WHERE credential_challenge_id=ANY(sqlc.arg(proof_ids)::uuid[]) AND kind='credential';
 -- name: AddReminderMail :exec
 INSERT INTO mail_deliveries(id,reminder_id,email_key,ciphertext,created_at,kind) VALUES($1,$2,$3,$4,$5,'reminder');
+-- name: AddNoticeMail :exec
+INSERT INTO mail_deliveries(id,notice_action_id,email_key,ciphertext,created_at,kind) VALUES($1,$2,$3,$4,$5,'operator_notice');
