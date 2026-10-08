@@ -114,6 +114,9 @@ func (s *Service) purchasePolicyTx(ctx context.Context, tx pgx.Tx, p purchaseRow
 	if !purchaseSourceEligible(a, p.method) || a.Restricted || a.VpnBanned || stringValue(a.AccessProfile) == "unlimited" {
 		return "account_not_eligible", nil
 	}
+	if p.method == "telegram_stars" && !s.config().StarsEnabled {
+		return "stars_disabled", nil
+	}
 	if p.method == "telegram_stars" && p.id != uuid.Nil {
 		var payer, bot int64
 		var q store.DBTX = s.pool

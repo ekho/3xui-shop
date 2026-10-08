@@ -2,6 +2,7 @@ package payments
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -26,19 +27,19 @@ type PurchaseRefundInput struct {
 	ReturnedAmount     *string `json:"returned_amount,omitempty"`
 }
 type PaymentRefund struct {
-	RefundId           uuid.UUID `json:"refund_id"`
-	OrderId            uuid.UUID `json:"order_id"`
-	OperatorAccountId  uuid.UUID `json:"operator_account_id"`
-	ReceiptOperationId string    `json:"receipt_operation_id"`
-	PaymentMethod      string    `json:"payment_method"`
-	CreatedAt          time.Time `json:"created_at"`
-	ReceiptGrossMinor  string    `json:"receipt_gross_minor"`
-	ReceiptCurrency    string    `json:"receipt_currency"`
-	ReturnedAmount     string    `json:"returned_amount"`
-	ReturnedCurrency   string    `json:"returned_currency"`
-	Reference          string    `json:"reference"`
-	Reason             string    `json:"reason"`
-	Source             string    `json:"source"`
+	RefundId           uuid.UUID  `json:"refund_id"`
+	OrderId            uuid.UUID  `json:"order_id"`
+	OperatorAccountId  *uuid.UUID `json:"operator_account_id"`
+	ReceiptOperationId string     `json:"receipt_operation_id"`
+	PaymentMethod      string     `json:"payment_method"`
+	CreatedAt          time.Time  `json:"created_at"`
+	ReceiptGrossMinor  string     `json:"receipt_gross_minor"`
+	ReceiptCurrency    string     `json:"receipt_currency"`
+	ReturnedAmount     string     `json:"returned_amount"`
+	ReturnedCurrency   string     `json:"returned_currency"`
+	Reference          string     `json:"reference"`
+	Reason             string     `json:"reason"`
+	Source             string     `json:"source"`
 }
 type PaymentCase struct {
 	Order               PurchaseOrder
@@ -46,6 +47,8 @@ type PaymentCase struct {
 	Refund              *PaymentRefund
 	FinancialReviewOpen bool
 	CanConfirmRefund    bool
+	CanRefundStars      bool
+	StarsRefundState    *string
 }
 
 var refundReference = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
@@ -57,17 +60,16 @@ const purchaseRefundClosed = `EXISTS(SELECT 1 FROM purchase_receipts r WHERE r.o
  AND NOT EXISTS(SELECT 1 FROM purchase_refunds f WHERE f.receipt_operation_id=r.operation_id))`
 
 const refundColumns = `f.id,f.order_id,f.operator_account_id,f.receipt_operation_id,f.payment_method,f.created_at,
- r.gross_minor,r.currency,f.returned_amount,f.returned_currency,f.reference,f.reason`
+ r.gross_minor,r.currency,f.returned_amount,f.returned_currency,f.reference,f.reason,f.source`
 
 func scanRefund(row pgx.Row) (PaymentRefund, error) {
 	var f PaymentRefund
 	var gross int64
-	err := row.Scan(&f.RefundId, &f.OrderId, &f.OperatorAccountId, &f.ReceiptOperationId, &f.PaymentMethod, &f.CreatedAt, &gross, &f.ReceiptCurrency, &f.ReturnedAmount, &f.ReturnedCurrency, &f.Reference, &f.Reason)
+	err := row.Scan(&f.RefundId, &f.OrderId, &f.OperatorAccountId, &f.ReceiptOperationId, &f.PaymentMethod, &f.CreatedAt, &gross, &f.ReceiptCurrency, &f.ReturnedAmount, &f.ReturnedCurrency, &f.Reference, &f.Reason, &f.Source)
 	f.ReceiptGrossMinor = strconv.FormatInt(gross, 10)
 	if f.ReceiptCurrency == "643" {
 		f.ReceiptCurrency = "RUB"
 	}
-	f.Source = "operator"
 	return f, err
 }
 
@@ -136,6 +138,32 @@ func (s *Service) OperatorPaymentCase(ctx context.Context, actor, target, order 
 		return out, unavailable()
 	}
 	out.CanConfirmRefund = out.Refund == nil && refundableReceipt(r)
+	if p.method == "telegram_stars" {
+		var state string
+		err := s.pool.QueryRow(ctx, `SELECT state FROM stars_refunds WHERE receipt_operation_id=$1`, r.OperationId).Scan(&state)
+		if err == nil {
+			out.StarsRefundState = &state
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			return out, unavailable()
+		}
+		out.CanRefundStars = out.Refund == nil && out.StarsRefundState == nil && r.Currency != nil && *r.Currency == "XTR" && s.stars != nil && (s.stars.Ready == nil || s.stars.Ready())
+		if out.CanRefundStars {
+			protected, err := s.authority.OperatorRoleExists(ctx, nil, target)
+			if err != nil {
+				return out, err
+			}
+			a, err := s.accountByID(ctx, target)
+			if err != nil {
+				return out, unavailable()
+			}
+			var proof []byte
+			if err = s.pool.QueryRow(ctx, `SELECT provider_data FROM purchase_receipts WHERE operation_id=$1 AND order_id=$2`, r.OperationId, order).Scan(&proof); err != nil {
+				return out, unavailable()
+			}
+			var native starsProof
+			out.CanRefundStars = !protected && actor != target && (a.TelegramID == nil || !s.authority.OperatorAllowed(*a.TelegramID)) && json.Unmarshal(proof, &native) == nil && native.BotID == s.stars.BotID
+		}
+	}
 	return out, nil
 }
 
@@ -216,7 +244,7 @@ func (s *Service) ConfirmPurchaseRefund(ctx context.Context, actor, target, orde
 		gross, _ := strconv.ParseInt(r.GrossMinor, 10, 64)
 		amount, currency = fmt.Sprintf("%d.%02d", gross/100, gross%100), "RUB"
 	}
-	out := PaymentRefund{RefundId: uuid.New(), OrderId: order, OperatorAccountId: actor, ReceiptOperationId: r.OperationId, PaymentMethod: r.PaymentMethod, CreatedAt: s.now().UTC().Truncate(time.Microsecond), ReceiptGrossMinor: r.GrossMinor, ReceiptCurrency: *r.Currency, ReturnedAmount: amount, ReturnedCurrency: currency, Reference: in.Reference, Reason: strings.TrimSpace(in.Reason), Source: "operator"}
+	out := PaymentRefund{RefundId: uuid.New(), OrderId: order, OperatorAccountId: &actor, ReceiptOperationId: r.OperationId, PaymentMethod: r.PaymentMethod, CreatedAt: s.now().UTC().Truncate(time.Microsecond), ReceiptGrossMinor: r.GrossMinor, ReceiptCurrency: *r.Currency, ReturnedAmount: amount, ReturnedCurrency: currency, Reference: in.Reference, Reason: strings.TrimSpace(in.Reason), Source: "operator"}
 	_, err = tx.Exec(ctx, `INSERT INTO purchase_refunds(id,order_id,operator_account_id,receipt_operation_id,payment_method,created_at,returned_amount,returned_currency,reference,reason) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, out.RefundId, order, actor, r.OperationId, r.PaymentMethod, out.CreatedAt, amount, currency, out.Reference, out.Reason)
 	if err != nil {
 		var pg *pgconn.PgError

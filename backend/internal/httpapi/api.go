@@ -208,6 +208,7 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig) *echo.Ech
 	e.POST("/api/v1/operator/clients/:id/orders/:order_id/reconcile", a.ReconcilePurchaseOrder)
 	e.POST("/api/v1/operator/clients/:id/orders/:order_id/payment-case", a.GetOperatorPaymentCase)
 	e.POST("/api/v1/operator/clients/:id/orders/:order_id/refunds", a.ConfirmPurchaseRefund)
+	e.POST("/api/v1/operator/clients/:id/orders/:order_id/stars-refund", a.RefundStarsPurchase)
 	e.POST("/api/v1/operator/clients/:id/orders/:order_id/manual-decision", a.DecideManualPayment)
 	e.POST("/webhooks/yoomoney", a.ReceiveYooMoney)
 	e.POST("/webhooks/yookassa", a.ReceiveYooKassa)

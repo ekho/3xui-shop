@@ -329,7 +329,7 @@ func (r *Runtime) handle(ctx context.Context, u botapi.Update) error {
 		return r.preCheckout(ctx, u.PreCheckout)
 	}
 	if u.Message != nil && (present(u.Message.SuccessfulPayment) || present(u.Message.RefundedPayment)) {
-		return &ActionError{Code: "UNSUPPORTED_PAYMENT"}
+		return r.starsPayment(ctx, u.Message)
 	}
 	if r.clients != nil {
 		handled, err := r.clients.handle(ctx, u)

@@ -158,7 +158,7 @@ func (c *Client) handle(ctx context.Context, u botapi.Update) (bool, error) {
 	}
 	command := strings.SplitN(fields[0], "@", 2)
 	switch command[0] {
-	case "/start", "/help", "/support":
+	case "/start", "/help", "/support", "/paysupport":
 	default:
 		return false, nil
 	}
@@ -171,7 +171,7 @@ func (c *Client) handle(ctx context.Context, u botapi.Update) (bool, error) {
 		return true, cosmetic(err)
 	}
 	path, source := "", ""
-	if command[0] == "/support" {
+	if command[0] == "/support" || command[0] == "/paysupport" {
 		path = "/support"
 	}
 	if len(fields) == 2 {

@@ -45,9 +45,11 @@ CREATE TABLE stars_refunds (
  proof jsonb CHECK(proof IS NULL OR jsonb_typeof(proof)='object'),
  created_at timestamptz NOT NULL,
  confirmed_at timestamptz,
+ UNIQUE(operator_account_id,idempotency_key),
  CHECK((operator_account_id IS NULL AND reason IS NULL AND idempotency_key IS NULL AND body_hash IS NULL)
     OR (operator_account_id IS NOT NULL AND reason IS NOT NULL AND idempotency_key IS NOT NULL AND body_hash IS NOT NULL)),
- CHECK((state='confirmed')=(proof IS NOT NULL AND confirmed_at IS NOT NULL))
+ CHECK((state='confirmed' AND proof IS NOT NULL AND confirmed_at IS NOT NULL)
+    OR (state IN ('pending','uncertain') AND proof IS NULL AND confirmed_at IS NULL))
 );
 CREATE INDEX stars_refund_order ON stars_refunds(order_id);
 -- +goose StatementBegin
@@ -72,15 +74,15 @@ ALTER TABLE purchase_receipts DROP CONSTRAINT purchase_provider_net, DROP CONSTR
 ALTER TABLE purchase_receipts ADD CONSTRAINT purchase_provider_net CHECK (
  net_minor IS NOT NULL OR (provider_data IS NOT NULL AND COALESCE(
   (notification_type='yookassa.succeeded' AND provider_data->>'provider'='yookassa')
-  OR (notification_type='telegram_stars.paid' AND provider_data->>'provider'='telegram_stars' AND currency='XTR')
+  OR (notification_type='telegram_stars.paid' AND provider_data->>'provider'='telegram_stars')
   OR (notification_type IN ('cryptomus.paid','cryptomus.paid_over','heleket.paid','heleket.paid_over') AND provider_data->>'provider' IN ('cryptomus','heleket')),false)));
 ALTER TABLE purchase_receipts ADD CONSTRAINT purchase_provider_data CHECK (
  provider_data IS NULL OR (jsonb_typeof(provider_data)='object' AND
   (notification_type='yookassa.succeeded' OR COALESCE(
-   (notification_type='telegram_stars.paid' AND currency='XTR' AND net_minor IS NULL
+   (notification_type='telegram_stars.paid' AND net_minor IS NULL
     AND provider_data->>'provider'='telegram_stars'
     AND provider_data ?& ARRAY['bot_id','payer_id','payload','charge_id','provider_charge_id','amount_minor','currency','recurring','first_recurring','subscription_expires_at']
-    AND provider_data->>'currency'='XTR' AND provider_data->>'amount_minor'=gross_minor::text
+    AND provider_data->>'currency'=currency AND provider_data->>'amount_minor'=gross_minor::text
     AND jsonb_typeof(provider_data->'bot_id')='number' AND jsonb_typeof(provider_data->'payer_id')='number'
     AND jsonb_typeof(provider_data->'charge_id')='string' AND octet_length(provider_data->>'charge_id') BETWEEN 1 AND 4096
     AND jsonb_typeof(provider_data->'payload')='string' AND octet_length(provider_data->>'payload') BETWEEN 1 AND 128

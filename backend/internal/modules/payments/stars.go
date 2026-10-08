@@ -2,13 +2,21 @@ package payments
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"example.com/cabinet/backend/internal/modules/accounts"
+	auditreports "example.com/cabinet/backend/internal/modules/audit_reports"
+	"example.com/cabinet/backend/internal/modules/payments/internal/store"
 	"example.com/cabinet/backend/internal/modules/vpn"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -22,6 +30,7 @@ type StarsGateway struct {
 	BotID   int64
 	Invoice func(context.Context, StarsInvoice) (string, error)
 	Refund  func(context.Context, int64, string) error
+	Ready   func() bool
 }
 type StarsCheckout struct {
 	State string  `json:"state"`
@@ -30,6 +39,186 @@ type StarsCheckout struct {
 type StarsPreCheckoutInput struct {
 	BotID, PayerID, Amount int64
 	Currency, Payload      string
+}
+
+type StarsPaymentInput struct {
+	StarsPreCheckoutInput
+	ChargeID, ProviderChargeID string
+	At                         time.Time
+	Recurring, FirstRecurring  bool
+	SubscriptionExpiresAt      int64
+}
+type starsProof struct {
+	Provider              string `json:"provider"`
+	BotID                 int64  `json:"bot_id"`
+	PayerID               int64  `json:"payer_id"`
+	Payload               string `json:"payload"`
+	ChargeID              string `json:"charge_id"`
+	ProviderChargeID      string `json:"provider_charge_id"`
+	Amount                string `json:"amount_minor"`
+	Currency              string `json:"currency"`
+	Recurring             bool   `json:"recurring"`
+	FirstRecurring        bool   `json:"first_recurring"`
+	SubscriptionExpiresAt int64  `json:"subscription_expires_at"`
+}
+
+func starsReceiptKey(bot int64, charge string) string {
+	hash := sha256.Sum256([]byte(strconv.FormatInt(bot, 10) + ":" + charge))
+	return "stars:" + hex.EncodeToString(hash[:])
+}
+func validStarsPayment(in StarsPaymentInput) bool {
+	_, valid := starsOrderID(in.Payload)
+	return valid && in.BotID > 0 && in.PayerID > 0 && in.PayerID <= 1<<52-1 && in.Amount > 0 && validText(in.Currency, 1, 16) && len(in.ChargeID) > 0 && len(in.ChargeID) <= 4096 && utf8.ValidString(in.ChargeID) && !strings.ContainsRune(in.ChargeID, '\x00') && len(in.ProviderChargeID) <= 4096 && utf8.ValidString(in.ProviderChargeID) && !strings.ContainsRune(in.ProviderChargeID, '\x00') && in.At.Unix() > 0 && in.At.Year() <= 9999 && !in.Recurring && !in.FirstRecurring && in.SubscriptionExpiresAt == 0
+}
+func starsPaymentProof(in StarsPaymentInput) []byte {
+	raw, _ := json.Marshal(starsProof{Provider: "telegram_stars", BotID: in.BotID, PayerID: in.PayerID, Payload: in.Payload, ChargeID: in.ChargeID, ProviderChargeID: in.ProviderChargeID, Amount: strconv.FormatInt(in.Amount, 10), Currency: in.Currency, Recurring: in.Recurring, FirstRecurring: in.FirstRecurring, SubscriptionExpiresAt: in.SubscriptionExpiresAt})
+	return raw
+}
+func starsLockCharge(ctx context.Context, tx pgx.Tx, key string) error {
+	return store.New(tx).LockIdempotency(ctx, store.LockIdempotencyParams{Principal: "telegram-stars", Operation: "charge", Key: uuid.NewSHA1(uuid.Nil, []byte(key))})
+}
+func (s *Service) starsOrderTx(ctx context.Context, tx pgx.Tx, in StarsPaymentInput) (purchaseRow, int64, int64, error) {
+	var empty purchaseRow
+	id, _ := starsOrderID(in.Payload)
+	var account uuid.UUID
+	err := tx.QueryRow(ctx, `SELECT account_id FROM purchase_orders WHERE id=$1`, id).Scan(&account)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return empty, 0, 0, failure(409, "STARS_UNSUPPORTED_PAYMENT")
+	}
+	if err != nil {
+		return empty, 0, 0, unavailable()
+	}
+	if _, err = s.lockAccount(ctx, tx, account); err != nil {
+		return empty, 0, 0, unavailable()
+	}
+	p, err := scanPurchase(tx.QueryRow(ctx, "SELECT "+purchaseColumns+" FROM purchase_orders WHERE id=$1 FOR UPDATE", id))
+	if err != nil {
+		return empty, 0, 0, unavailable()
+	}
+	var bot, payer int64
+	err = tx.QueryRow(ctx, `SELECT bot_id,payer_id FROM stars_checkouts WHERE order_id=$1`, id).Scan(&bot, &payer)
+	if errors.Is(err, pgx.ErrNoRows) || p.method != "telegram_stars" {
+		return empty, 0, 0, failure(409, "STARS_UNSUPPORTED_PAYMENT")
+	}
+	if err != nil {
+		return empty, 0, 0, unavailable()
+	}
+	return p, bot, payer, nil
+}
+
+// RecordStarsPayment is reachable only through the trusted Telegram adapter.
+// Current sales/identity errors retain the charge and prevent automatic issue.
+func (s *Service) RecordStarsPayment(ctx context.Context, in StarsPaymentInput) error {
+	if !validStarsPayment(in) {
+		return failure(409, "STARS_UNSUPPORTED_PAYMENT")
+	}
+	in.At = in.At.UTC().Truncate(time.Microsecond)
+	key := starsReceiptKey(in.BotID, in.ChargeID)
+	proof := starsPaymentProof(in)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return unavailable()
+	}
+	defer tx.Rollback(ctx)
+	if err = starsLockCharge(ctx, tx, key); err != nil {
+		return unavailable()
+	}
+	p, bot, payer, err := s.starsOrderTx(ctx, tx, in)
+	if err != nil {
+		return err
+	}
+	var oldOrder uuid.UUID
+	var oldAt time.Time
+	var oldAmount int64
+	var oldCurrency string
+	var oldProof []byte
+	var oldReview *string
+	err = tx.QueryRow(ctx, `SELECT order_id,occurred_at,gross_minor,currency,provider_data,review_reason FROM purchase_receipts WHERE operation_id=$1 FOR UPDATE`, key).Scan(&oldOrder, &oldAt, &oldAmount, &oldCurrency, &oldProof, &oldReview)
+	if err == nil {
+		var saved, current starsProof
+		conflict := json.Unmarshal(oldProof, &saved) != nil || json.Unmarshal(proof, &current) != nil || saved != current || oldOrder != p.id || !oldAt.Equal(in.At) || oldAmount != in.Amount || oldCurrency != in.Currency
+		if conflict {
+			if _, err = tx.Exec(ctx, `UPDATE purchase_receipts SET review_reason='conflicting_operation_id' WHERE operation_id=$1`, key); err != nil {
+				return unavailable()
+			}
+			if _, err = tx.Exec(ctx, `UPDATE purchase_orders SET review_required=true,review_reason='conflicting_operation_id',active=false,fulfillment_status=CASE WHEN access_operation_id IS NULL THEN 'needs_review' ELSE fulfillment_status END WHERE id=$1 OR id=$2`, p.id, oldOrder); err != nil {
+				return unavailable()
+			}
+			if oldReview == nil || *oldReview != "conflicting_operation_id" {
+				if err = auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), AccountID: p.account, CreatedAt: s.now(), Action: "stars_payment_conflict", Reason: &key}); err != nil {
+					return unavailable()
+				}
+			}
+		}
+		if err = tx.Commit(ctx); err != nil {
+			return unavailable()
+		}
+		return nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return unavailable()
+	}
+	reason := ""
+	switch {
+	case bot != in.BotID || payer != in.PayerID:
+		reason = "payment_identity_mismatch"
+	case in.Amount != p.amount || in.Currency != "XTR" || in.At.Before(p.created.Add(-5*time.Minute)):
+		reason = "payment_mismatch"
+	case in.At.After(p.expires) || p.paymentStatus == "canceled":
+		reason = "late_or_canceled"
+	case p.review:
+		reason = "order_requires_review"
+	case p.paymentStatus == "paid":
+		reason = "another_first_payment"
+	case !s.config().StarsEnabled:
+		reason = "stars_disabled"
+	}
+	if reason == "" {
+		reason, err = s.purchasePolicyTx(ctx, tx, p)
+		if err != nil {
+			return err
+		}
+	}
+	var refunded bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM stars_refunds WHERE receipt_operation_id=$1)`, key).Scan(&refunded); err != nil {
+		return unavailable()
+	}
+	if refunded {
+		reason = "funding_refunded"
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO purchase_receipts(operation_id,order_id,occurred_at,gross_minor,net_minor,currency,notification_type,codepro,unaccepted,review_reason,created_at,provider_data) VALUES($1,$2,$3,$4,NULL,$5,'telegram_stars.paid',false,false,NULLIF($6,''),$7,$8)`, key, p.id, in.At, in.Amount, in.Currency, reason, s.now(), proof)
+	if err != nil {
+		return unavailable()
+	}
+	if reason != "" {
+		_, err = tx.Exec(ctx, `UPDATE purchase_orders SET payment_status='paid',paid_at=COALESCE(paid_at,$2),active=false,review_required=true,review_reason=$3,fulfillment_status=CASE WHEN access_operation_id IS NULL THEN 'needs_review' ELSE fulfillment_status END WHERE id=$1`, p.id, in.At, reason)
+	} else {
+		if s.queue == nil || s.queue() == nil {
+			return unavailable()
+		}
+		_, err = tx.Exec(ctx, `UPDATE purchase_orders SET payment_status='paid',paid_at=$2,active=false,fulfillment_status='queued',funding_operation_id=$3 WHERE id=$1`, p.id, in.At, key)
+		if err == nil {
+			_, err = tx.Exec(ctx, `UPDATE purchase_orders SET active=false WHERE account_id=$1 AND id<>$2`, p.account, p.id)
+		}
+		if err == nil {
+			_, err = s.queueFundedPurchaseTx(ctx, tx, p)
+		}
+	}
+	if err != nil {
+		return unavailable()
+	}
+	if err = auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), AccountID: p.account, CreatedAt: s.now(), Action: "stars_payment_received", Reason: &key}); err != nil {
+		return unavailable()
+	}
+	if refunded {
+		if err = s.completeStarsRefundTx(ctx, tx, p, key, nil); err != nil {
+			return err
+		}
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return unavailable()
+	}
+	return nil
 }
 
 // ConfigureStars is called once by root composition, before serving requests.

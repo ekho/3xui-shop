@@ -28,7 +28,11 @@ func (a *API) GetOperatorPaymentCase(c *echo.Context) error {
 	if err != nil {
 		return paymentError(err)
 	}
-	result := wire.PaymentCase{Order: purchaseOrderResult(out.Order), FinancialReviewOpen: out.FinancialReviewOpen, CanConfirmRefund: out.CanConfirmRefund}
+	result := wire.PaymentCase{Order: purchaseOrderResult(out.Order), FinancialReviewOpen: out.FinancialReviewOpen, CanConfirmRefund: out.CanConfirmRefund, CanRefundStars: &out.CanRefundStars}
+	if out.StarsRefundState != nil {
+		value := wire.PaymentCaseStarsRefundState(*out.StarsRefundState)
+		result.StarsRefundState = &value
+	}
 	if out.Receipt != nil {
 		page := paymentHistoryResult(payments.PaymentHistoryPage{Receipts: []payments.HistoryReceipt{*out.Receipt}})
 		result.Receipt = &page.Receipts[0]
@@ -61,5 +65,30 @@ func (a *API) ConfirmPurchaseRefund(c *echo.Context) error {
 }
 
 func paymentRefundResult(f payments.PaymentRefund) wire.PaymentRefund {
-	return wire.PaymentRefund{RefundId: f.RefundId, OrderId: f.OrderId, OperatorAccountId: f.OperatorAccountId, ReceiptOperationId: f.ReceiptOperationId, PaymentMethod: wire.PaymentRefundPaymentMethod(f.PaymentMethod), CreatedAt: f.CreatedAt, ReceiptGrossMinor: f.ReceiptGrossMinor, ReceiptCurrency: wire.PaymentRefundReceiptCurrency(f.ReceiptCurrency), ReturnedAmount: f.ReturnedAmount, ReturnedCurrency: f.ReturnedCurrency, Reference: f.Reference, Reason: f.Reason, Source: "operator"}
+	return wire.PaymentRefund{RefundId: f.RefundId, OrderId: f.OrderId, OperatorAccountId: f.OperatorAccountId, ReceiptOperationId: f.ReceiptOperationId, PaymentMethod: wire.PaymentRefundPaymentMethod(f.PaymentMethod), CreatedAt: f.CreatedAt, ReceiptGrossMinor: f.ReceiptGrossMinor, ReceiptCurrency: wire.PaymentRefundReceiptCurrency(f.ReceiptCurrency), ReturnedAmount: f.ReturnedAmount, ReturnedCurrency: f.ReturnedCurrency, Reference: f.Reference, Reason: f.Reason, Source: wire.PaymentRefundSource(f.Source)}
+}
+
+func (a *API) RefundStarsPurchase(c *echo.Context) error {
+	actor, target, key, err := a.operatorAction(c)
+	if err != nil {
+		return err
+	}
+	order, err := uuid.Parse(c.Param("order_id"))
+	if err != nil || order == uuid.Nil {
+		return invalid()
+	}
+	in, err := decode[wire.StarsRefundInput](a, c, "StarsRefundInput")
+	if err != nil {
+		return err
+	}
+	out, err := a.payments.RefundStarsPurchase(c.Request().Context(), actor, target, order, key, payments.StarsRefundInput{ReceiptOperationId: in.ReceiptOperationId, Reason: in.Reason, ConfirmFull: bool(in.ConfirmFull), KeepAccess: bool(in.KeepAccess)})
+	if err != nil {
+		return paymentError(err)
+	}
+	result := wire.StarsRefund{State: wire.StarsRefundState(out.State)}
+	if out.Refund != nil {
+		value := paymentRefundResult(*out.Refund)
+		result.Refund = &value
+	}
+	return c.JSON(200, result)
 }

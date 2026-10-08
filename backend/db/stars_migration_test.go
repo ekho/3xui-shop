@@ -55,6 +55,11 @@ func TestStarsMigration(t *testing.T) {
 			t.Fatal("Stars provenance mutation allowed")
 		}
 	}
+	for _, state := range []string{"pending", "uncertain"} {
+		if _, err = e.Pool.Exec(ctx, `INSERT INTO stars_refunds(receipt_operation_id,order_id,bot_id,payer_id,charge_id,payload,amount,currency,state,proof,created_at) VALUES($1,$2::uuid,123,701,'owned-refund-charge','stars:v1:'||$2::uuid::text,100,'XTR',$3,'{}',now())`, "stars:"+strings.Repeat("a", 64), order, state); err == nil {
+			t.Fatal("unconfirmed refund retained fake proof", state)
+		}
+	}
 	if _, err = p.Down(ctx); err == nil || !strings.Contains(err.Error(), "Stars downgrade blocked") {
 		t.Fatal("invoice history downgrade", err)
 	}

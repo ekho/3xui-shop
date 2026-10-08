@@ -78,7 +78,19 @@ const purchaseFundingCheck = `SELECT EXISTS(SELECT 1 FROM purchase_orders p JOIN
            AND CASE WHEN r.provider_data->>'payment_amount' ~ '^[0-9]{1,40}(\.[0-9]{1,40})?$'
                      AND r.provider_data->>'payer_amount' ~ '^[0-9]{1,40}(\.[0-9]{1,40})?$'
                     THEN (r.provider_data->>'payment_amount')::numeric >= (r.provider_data->>'payer_amount')::numeric
-                         AND (r.provider_data->>'payer_amount')::numeric>0 ELSE false END))))`
+                         AND (r.provider_data->>'payer_amount')::numeric>0 ELSE false END))
+   OR (p.payment_method='telegram_stars' AND p.payment_type='STARS' AND p.quote->>'currency'='XTR'
+       AND r.notification_type='telegram_stars.paid' AND r.currency='XTR' AND r.net_minor IS NULL
+       AND r.occurred_at>=p.created_at-interval '5 minutes' AND r.occurred_at<=p.expires_at
+       AND NOT EXISTS(SELECT 1 FROM stars_refunds f WHERE f.receipt_operation_id=r.operation_id)
+       AND EXISTS(SELECT 1 FROM stars_checkouts c WHERE c.order_id=p.id
+         AND r.provider_data->>'provider'='telegram_stars'
+         AND r.provider_data->>'bot_id'=c.bot_id::text AND r.provider_data->>'payer_id'=c.payer_id::text
+         AND r.provider_data->>'payload'=c.payload AND r.provider_data->>'currency'='XTR'
+         AND r.provider_data->>'amount_minor'=r.gross_minor::text
+         AND r.provider_data->>'recurring'='false' AND r.provider_data->>'first_recurring'='false'
+         AND r.provider_data->>'subscription_expires_at'='0'
+         AND r.operation_id='stars:'||encode(sha256(convert_to(c.bot_id::text||':'||(r.provider_data->>'charge_id'),'UTF8')),'hex')))))`
 
 func scanPurchase(row pgx.Row) (purchaseRow, error) {
 	var p purchaseRow

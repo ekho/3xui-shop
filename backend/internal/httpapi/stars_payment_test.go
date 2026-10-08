@@ -57,6 +57,7 @@ func starsHTTPFixture(t *testing.T) (http.Handler, *regressionFixture, *testkit.
 		t.Fatal("signed fixture login", r.Code)
 	}
 	s.payments = modules.Payments
+	s.vpn = modules.VPN
 	return h, s, e, auth, plan
 }
 
