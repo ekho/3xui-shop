@@ -15,26 +15,18 @@ import (
 	"github.com/riverqueue/river"
 )
 
-// Until C35 owns authoritative recurrence states, only unlinked new web
-// accounts prove they cannot also be billed by the legacy Stars handler.
-func independentBilling(a accounts.Snapshot) bool {
-	return a.Kind == "web" && a.TelegramID == nil && a.LegacyUserID == nil
-}
-
 // All five funding paths retain valid money proof before checking live access.
 // An eligibility conflict needs review; it must not invalidate the receipt.
 func (s *Service) queueFundedPurchaseTx(ctx context.Context, tx pgx.Tx, p purchaseRow) (string, error) {
-	if p.action != "purchase" {
-		reason, err := s.purchasePolicyTx(ctx, tx, p)
-		if err != nil {
-			return "", err
-		}
-		if reason != "" {
-			_, err = tx.Exec(ctx, "UPDATE purchase_orders SET fulfillment_status='needs_review',review_required=true,review_reason=$2 WHERE id=$1", p.id, reason)
-			return reason, err
-		}
+	reason, err := s.purchasePolicyTx(ctx, tx, p)
+	if err != nil {
+		return "", err
 	}
-	_, err := s.queue().InsertTx(ctx, tx, PurchaseArgs{OrderID: p.id}, &river.InsertOpts{Queue: "provision", MaxAttempts: 1000000})
+	if reason != "" {
+		_, err = tx.Exec(ctx, "UPDATE purchase_orders SET fulfillment_status='needs_review',review_required=true,review_reason=$2 WHERE id=$1", p.id, reason)
+		return reason, err
+	}
+	_, err = s.queue().InsertTx(ctx, tx, PurchaseArgs{OrderID: p.id}, &river.InsertOpts{Queue: "provision", MaxAttempts: 1000000})
 	return "", err
 }
 
@@ -108,7 +100,11 @@ func (s *Service) purchasePolicyTx(ctx context.Context, tx pgx.Tx, p purchaseRow
 	if err != nil {
 		return "", unavailable()
 	}
-	if !purchaseBillingEligible(a, p.method) {
+	eligible, err := s.purchaseBillingEligibleTx(ctx, tx, a, p.method)
+	if err != nil {
+		return "", err
+	}
+	if !eligible {
 		return "external_billing_unverified", nil
 	}
 	if !purchaseSourceEligible(a, p.method) || a.Restricted || a.VpnBanned || stringValue(a.AccessProfile) == "unlimited" {
@@ -165,7 +161,11 @@ func (s *Service) RenewalOffer(ctx context.Context, account uuid.UUID) (catalogu
 	if err != nil {
 		return empty, unavailable()
 	}
-	if !independentBilling(a) {
+	eligible, err := s.ExternalBillingEligibleTx(ctx, nil, a)
+	if err != nil {
+		return empty, err
+	}
+	if !eligible {
 		return empty, failure(409, "EXTERNAL_BILLING_UNVERIFIED")
 	}
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
@@ -209,7 +209,11 @@ func (s *Service) PlanChangeContext(ctx context.Context, account uuid.UUID) (Pla
 	if err != nil {
 		return empty, unavailable()
 	}
-	if !independentBilling(a) {
+	eligible, err := s.ExternalBillingEligibleTx(ctx, nil, a)
+	if err != nil {
+		return empty, err
+	}
+	if !eligible {
 		return empty, failure(409, "EXTERNAL_BILLING_UNVERIFIED")
 	}
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})

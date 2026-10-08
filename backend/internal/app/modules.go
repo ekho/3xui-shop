@@ -42,6 +42,7 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 		return time.Now()
 	}
 	var owner *accounts.Service
+	var paymentsOwner *payments.Service
 	mailOwner := notifications.NewMail(pool, queue, func() notifications.MailConfig {
 		c := cfg.Mail
 		c.CabinetOrigin, c.Now = cfg.HTTP.CabinetOrigin, now
@@ -53,10 +54,15 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 	}, nil)
 	accountConfig := cfg.Accounts
 	accountConfig.Now = now
+	accountConfig.RequireStarsCancellation = func(ctx context.Context, tx pgx.Tx, id uuid.UUID, reason string) error {
+		return paymentsOwner.RequireStarsCancellationTx(ctx, tx, id, reason)
+	}
+	accountConfig.CanUnlinkTelegram = func(ctx context.Context, tx pgx.Tx, id uuid.UUID) (bool, error) {
+		return paymentsOwner.CanUnlinkTelegramTx(ctx, tx, id)
+	}
 	owner = accounts.New(pool, limiter, mailOwner, accountConfig)
 	catalogueOwner := catalogue.New(pool, owner, now)
 	var subscriptionOwner *subscriptions.Service
-	var paymentsOwner *payments.Service
 	notificationsOwner := notifications.New(pool, func() []int64 { return cfg.Accounts.Operators }, owner.OperatorAllowed, func(ctx context.Context, tx pgx.Tx, request uuid.UUID, chat int64) (json.RawMessage, error) {
 		payload, err := subscriptionOwner.CardTx(ctx, tx, request, chat)
 		if err != nil {
@@ -78,6 +84,7 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 	subscriptionOwner = subscriptions.New(pool, owner, catalogueOwner, vpnOwner, notificationsOwner, func() subscriptions.Config {
 		c := cfg.Subscriptions
 		c.Operators = cfg.Accounts.Operators
+		c.RequireStarsCancellation = accountConfig.RequireStarsCancellation
 		return c
 	}, now)
 	paymentsOwner = payments.New(pool, owner, catalogueOwner, subscriptionOwner, vpnOwner, func() *river.Client[pgx.Tx] { return queue }, func() payments.Config {

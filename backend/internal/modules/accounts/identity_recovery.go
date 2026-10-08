@@ -108,6 +108,11 @@ func (s *Service) RequestOperatorRecovery(ctx context.Context, raw string, actor
 	if q.QuarantineTelegramIdentity(ctx, target) != nil || q.DeleteAccountSessions(ctx, target) != nil {
 		return out, unavailable()
 	}
+	if s.cfg.RequireStarsCancellation != nil {
+		if err = s.cfg.RequireStarsCancellation(ctx, tx, target, "Telegram identity quarantined"); err != nil {
+			return out, unavailable()
+		}
+	}
 	if err = s.addCredentialProofBy(ctx, tx, proofID, "identity_recovery", &target, nil, "", email, a.CredentialVersion+1, a.Locale, now, &actor); err != nil {
 		return out, err
 	}

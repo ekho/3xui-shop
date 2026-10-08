@@ -25,6 +25,9 @@ func TestRenewalUnknownBillingBlocksExistingPurchase(t *testing.T) {
 		t.Run(column, func(t *testing.T) {
 			s, e, account, plan := purchaseFixture(t)
 			ctx := context.Background()
+			if column == "telegram_id" {
+				column = "telegram_id=1234567,legacy_user_id"
+			}
 			if _, err := e.Pool.Exec(ctx, "UPDATE accounts SET "+column+"=1234567 WHERE id=$1", account); err != nil {
 				t.Fatal(err)
 			}
@@ -58,7 +61,7 @@ func TestRenewalLateBillingGuardProtectsCheckoutAndPhysicalWrite(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if _, err = e.Pool.Exec(ctx, "UPDATE accounts SET telegram_id=1234567 WHERE id=$1", account); err != nil {
+			if _, err = e.Pool.Exec(ctx, "UPDATE accounts SET telegram_id=1234567,legacy_user_id=1234567 WHERE id=$1", account); err != nil {
 				t.Fatal(err)
 			}
 			current, err := s.purchaseOrder(ctx, account, order.OrderId)
@@ -301,7 +304,7 @@ func TestRenewalEligibilityAndSnapshot(t *testing.T) {
 			case "unlimited":
 				_, err = e.Pool.Exec(ctx, "UPDATE accounts SET access_profile='unlimited' WHERE id=$1", account)
 			case "telegram":
-				_, err = e.Pool.Exec(ctx, "UPDATE accounts SET telegram_id=1234567 WHERE id=$1", account)
+				_, err = e.Pool.Exec(ctx, "UPDATE accounts SET telegram_id=1234567,legacy_user_id=1234567 WHERE id=$1", account)
 			case "legacy":
 				_, err = e.Pool.Exec(ctx, "UPDATE accounts SET legacy_user_id=1234567 WHERE id=$1", account)
 			case "other server":

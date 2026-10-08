@@ -60,6 +60,11 @@ func (s *Service) SetOperatorRestriction(ctx context.Context, actor, target, key
 			return out, unavailable()
 		}
 		if in.Restricted {
+			if s.cfg.RequireStarsCancellation != nil {
+				if err := s.cfg.RequireStarsCancellation(ctx, tx, target, "Account restricted"); err != nil {
+					return out, err
+				}
+			}
 			if err := q.DeleteAccountSessions(ctx, target); err != nil {
 				return out, unavailable()
 			}

@@ -465,6 +465,11 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 			return out, failure(409, "ACCESS_PLAN_CONFLICT")
 		}
 	}
+	if (in.Kind == "assign_plan" || in.Kind == "starter_trial" || (in.Kind == "set_profile" || in.Kind == "set_vpn_ban" && t.Banned) && step != "state_unchanged") && s.config().RequireStarsCancellation != nil {
+		if err = s.config().RequireStarsCancellation(ctx, tx, target, "Operator access intent changed"); err != nil {
+			return out, unavailable()
+		}
+	}
 	auditReason := strings.TrimSpace(in.Reason)
 	if immediate {
 		if t.NoClientIntent && step != "state_unchanged" {
@@ -555,6 +560,7 @@ func (s *Service) ReconcileAccessOperation(ctx context.Context, actor, target, i
 	if err != nil {
 		return out, vpnError(err)
 	}
+
 	auditReason := strings.TrimSpace(in.Reason)
 	if err = auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), CreatedAt: now, Action: "access_reconcile_requested", AccountID: target, OperatorAccountID: &actor, Reason: &auditReason, AccessOperationID: &id}); err != nil {
 		return out, unavailable()

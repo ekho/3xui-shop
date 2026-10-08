@@ -124,8 +124,9 @@ func run() error {
 		<-ctx.Done()
 		return nil
 	}
-	monthlyResult := make(chan error, 1)
-	go func() { monthlyResult <- svc.VPN.RunMonthlyResetScheduler(ctx) }()
+	schedulerResult := make(chan error, 2)
+	go func() { schedulerResult <- svc.VPN.RunMonthlyResetScheduler(ctx) }()
+	go func() { schedulerResult <- svc.Payments.RunStarsSubscriptionScheduler(ctx) }()
 	address := os.Getenv("LISTEN_ADDRESS")
 	if address == "" {
 		address = "127.0.0.1:8080"
@@ -133,7 +134,7 @@ func run() error {
 	server := &http.Server{Addr: address, Handler: httpapi.New(svc, pool, cfg.HTTP), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 	result := make(chan error, 1)
 	go func() { result <- server.ListenAndServe() }()
-	return app.Serve(ctx, server, result, monthlyResult, tg)
+	return app.Serve(ctx, server, result, schedulerResult, tg)
 }
 
 func runOperatorCommand(action, flag, path string) error {

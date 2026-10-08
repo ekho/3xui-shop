@@ -272,7 +272,11 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if !s.methodEnabled(in.PaymentMethod) {
 		return empty, failure(409, "PAYMENT_METHOD_UNAVAILABLE")
 	}
-	if !purchaseBillingEligible(pre, in.PaymentMethod) {
+	eligible, err := s.purchaseBillingEligibleTx(ctx, preTx, pre, in.PaymentMethod)
+	if err != nil {
+		return empty, err
+	}
+	if !eligible {
 		return empty, failure(409, "EXTERNAL_BILLING_UNVERIFIED")
 	}
 	if in.Action != "purchase" {
@@ -341,7 +345,11 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if !s.methodEnabled(in.PaymentMethod) {
 		return empty, failure(409, "PAYMENT_METHOD_UNAVAILABLE")
 	}
-	if !purchaseBillingEligible(a, in.PaymentMethod) {
+	eligible, err = s.purchaseBillingEligibleTx(ctx, tx, a, in.PaymentMethod)
+	if err != nil {
+		return empty, err
+	}
+	if !eligible {
 		return empty, failure(409, "EXTERNAL_BILLING_UNVERIFIED")
 	}
 	if in.Action != "purchase" {

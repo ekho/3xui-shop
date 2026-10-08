@@ -60,7 +60,7 @@ Expected проверяется по реальному выводу, а не п
 - Produces: `RequireStarsCancellationTx(ctx context.Context,tx pgx.Tx,account uuid.UUID,reason string)error`; `StarsSubscription(ctx context.Context,account uuid.UUID)(StarsSubscription,error)`.
 - `StarsSubscription`: state string; nullable OrderId *uuid.UUID, ProviderState/ControlState *string, PaidUntil *time.Time; PeriodPhase string; CanCancel/CanResume/ExternalBillingBlocked/NeedsReview bool. No raw native IDs.
 
-- [ ] **Step 1: Write migration/hash and first-payment tests.**
+- [x] **Step 1: Write migration/hash and first-payment tests.**
 
 `TestStarsRecurringMigration` moves actual owned DB28→29 without changing old quote/body_hash/one-time checkout; payer/root/first receipt/cycle/intent mutation/delete rejected; used downgrade atomicblocked. `TestStarsRecurringInputCompatibility` marshals old/false Input/Quote and compares exact old JSON/hash; true is appended.
 `TestStarsRecurringFirstPayment` uses signed HTTP fixture and real SQL/queue. Assertions:
@@ -79,12 +79,12 @@ if ok, err := owner.CheckStarsPreCheckout(ctx, otherQuery); err != nil || ok { t
 Invalid true for60days/renew/change/external/amount10001/cookie fails; defaultone-time C34 still works.
 Test code uses existing starsHTTPFixture/starsPayment/starsReceipt/panelFixture/testkit, no new fixture framework.
 
-- [ ] **Step 2: Run RED.**
+- [x] **Step 2: Run RED.**
 
 Run (backend): `C35_ENV go test ./db ./internal/httpapi -run 'TestStarsRecurring(Migration|InputCompatibility|FirstPayment)$' -count=1 -timeout=5m`.
 Expected: actual behavior FAIL because new migration/recurring acceptance/reservation/funding absent. JSON injection for missing fields avoids compile-only RED.
 
-- [ ] **Step 3: Implement first recurring vertical slice.**
+- [x] **Step 3: Implement first recurring vertical slice.**
 
 Migration adds immutable native period, set-once query ID and the three spec tables (firstreceipt PK, unique canonical/root and root+period cycle).
 Keep old input/quote bytes; add boundary rules before quote; native period onlyrecurring.
@@ -92,7 +92,7 @@ Split base payment validation from paid recurring metadata (refunds lack metadat
 Extend shared funding proof for valid first recurring cycle without relaxing old method/amount/bot/payer/root/hash/negative-money guards. No child checkouts.
 Only confirmed trustworthy first native receipt funds root; additional/malformed money remains review.
 
-- [ ] **Step 4: Regenerate and run GREEN plus C34 regressions.**
+- [x] **Step 4: Regenerate and run GREEN plus C34 regressions.**
 
 Run (root): `make -C backend generate`; `npm --prefix web run api:generate`.
 Expected: generated contracts updated from the owning JSON OpenAPI, no hand edits.
@@ -101,7 +101,7 @@ Expected: all selected Stars tests PASS including retained one-time provenance/r
 Run (root): `git diff --check`.
 Expected: exit0.
 
-- [ ] **Step 5: Commit and task-done.**
+- [x] **Step 5: Commit and task-done.**
 
 Commit `feat(payments): retain first recurring Stars subscriptions` with Co-Authored trailer; stage onlytask-owned files.
 Whole-task task-done command: backend `C35_ENV go test ./db ./internal/httpapi -run 'TestStars' -count=1 -timeout=10m`.

@@ -42,10 +42,11 @@ type Callback struct {
 	Data    string   `json:"data"`
 }
 type Update struct {
-	ID          int64           `json:"update_id"`
-	Message     *Message        `json:"message"`
-	Callback    *Callback       `json:"callback_query"`
-	PreCheckout json.RawMessage `json:"pre_checkout_query"`
+	ID           int64           `json:"update_id"`
+	Message      *Message        `json:"message"`
+	Callback     *Callback       `json:"callback_query"`
+	PreCheckout  json.RawMessage `json:"pre_checkout_query"`
+	Subscription json.RawMessage `json:"subscription"`
 }
 type Button struct {
 	Text   string      `json:"text"`
@@ -162,13 +163,13 @@ func (c *Client) call(ctx context.Context, method string, body, result any, time
 }
 func (c *Client) GetUpdates(ctx context.Context, offset int64) ([]Update, error) {
 	var out []Update
-	err := c.call(ctx, "getUpdates", map[string]any{"offset": offset, "limit": 1, "timeout": 30, "allowed_updates": []string{"message", "callback_query", "pre_checkout_query"}}, &out, 40*time.Second)
+	err := c.call(ctx, "getUpdates", map[string]any{"offset": offset, "limit": 1, "timeout": 30, "allowed_updates": []string{"message", "callback_query", "pre_checkout_query", "subscription"}}, &out, 40*time.Second)
 	if err == nil {
 		if len(out) > 1 {
 			return nil, invalid()
 		}
 		for _, u := range out {
-			if u.ID < offset || u.ID < 0 || u.ID == math.MaxInt64 {
+			if u.ID < 0 || u.ID == math.MaxInt64 {
 				return nil, invalid()
 			}
 		}
@@ -313,6 +314,18 @@ func (c *Client) AnswerStarsPreCheckout(ctx context.Context, id string, ok bool,
 	var result bool
 	err := c.call(ctx, "answerPreCheckoutQuery", in, &result, 5*time.Second)
 	if err == nil && !result {
+		return invalid()
+	}
+	return err
+}
+
+func (c *Client) EditStarsSubscription(ctx context.Context, payer int64, charge string, canceled bool) error {
+	if payer <= 0 || payer > 1<<52-1 || len(charge) < 1 || len(charge) > 4096 || !utf8.ValidString(charge) || strings.ContainsRune(charge, '\x00') {
+		return &APIError{Code: "INVALID_INPUT"}
+	}
+	var ok bool
+	err := c.call(ctx, "editUserStarSubscription", map[string]any{"user_id": payer, "telegram_payment_charge_id": charge, "is_canceled": canceled}, &ok, 10*time.Second)
+	if err == nil && !ok {
 		return invalid()
 	}
 	return err

@@ -19,6 +19,7 @@ type Config struct {
 	PanelID, SubscriptionBaseURL                  string
 	TrialEnabled                                  bool
 	TrialPeriodDays, TrialTrafficGB, TrialDevices int64
+	RequireStarsCancellation                      func(context.Context, pgx.Tx, uuid.UUID, string) error
 }
 type Error struct {
 	Status        int

@@ -49,12 +49,8 @@ func (s *Service) RequireStarsCancellationTx(ctx context.Context, tx pgx.Tx, acc
 		return unavailable()
 	}
 	for _, key := range keys {
-		id := uuid.New()
-		if _, err = tx.Exec(ctx, `INSERT INTO stars_subscription_controls(id,subscription_receipt_id,idempotency_key,action,reason,source,created_at) VALUES($1,$2,$3,'cancel',$4,'policy',$5)`, id, key, uuid.New(), reason, s.now()); err != nil {
-			return unavailable()
-		}
-		if _, err = tx.Exec(ctx, `UPDATE stars_subscriptions SET desired_action='cancel',control_state='pending',latest_control_id=$2 WHERE first_receipt_id=$1`, key, id); err != nil {
-			return unavailable()
+		if err = s.setStarsControlTx(ctx, tx, key, uuid.New(), "cancel", reason, "policy", nil); err != nil {
+			return err
 		}
 	}
 	return nil

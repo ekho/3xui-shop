@@ -179,6 +179,15 @@ func (s *Service) UnlinkTelegram(ctx context.Context, rawWeb string, in CurrentP
 	if a.LegacyUserID.Valid {
 		return empty, failure(409, "UNLINK_UNAVAILABLE")
 	}
+	if s.cfg.CanUnlinkTelegram != nil {
+		allowed, err := s.cfg.CanUnlinkTelegram(ctx, tx, a.ID)
+		if err != nil {
+			return empty, unavailable()
+		}
+		if !allowed {
+			return empty, failure(409, "UNLINK_UNAVAILABLE")
+		}
+	}
 	rows, err := q.RetireTelegramIdentity(ctx, store.RetireTelegramIdentityParams{TelegramID: a.TelegramID.Int64, AccountID: a.ID, RetiredAt: stamp(s.now())})
 	if err != nil {
 		return empty, unavailable()

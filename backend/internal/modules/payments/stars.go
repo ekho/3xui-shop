@@ -249,11 +249,11 @@ func purchaseSourceEligible(a accounts.Snapshot, method string) bool {
 	}
 	return accounts.SourceEligible(a) && a.TelegramID != nil && *a.TelegramID > 0 && !a.TelegramLoginDisabled && a.TermsVersion != nil && a.PrivacyVersion != nil
 }
-func purchaseBillingEligible(a accounts.Snapshot, method string) bool {
+func (s *Service) purchaseBillingEligibleTx(ctx context.Context, tx pgx.Tx, a accounts.Snapshot, method string) (bool, error) {
 	if method != "telegram_stars" {
-		return independentBilling(a)
+		return s.ExternalBillingEligibleTx(ctx, tx, a)
 	}
-	return a.LegacyUserID == nil && purchaseSourceEligible(a, method)
+	return a.LegacyUserID == nil && purchaseSourceEligible(a, method), nil
 }
 func (s *Service) StarsPaymentMethods(ctx context.Context, account uuid.UUID) (PaymentMethods, error) {
 	out := PaymentMethods{Methods: []PaymentMethod{}}
