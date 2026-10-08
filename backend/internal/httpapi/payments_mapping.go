@@ -39,6 +39,9 @@ func purchaseOrderResult(p payments.PurchaseOrder) wire.PurchaseOrder {
 	if c := p.HeleketCheckout; c != nil {
 		out.HeleketCheckout = &wire.HeleketCheckout{State: wire.HeleketCheckoutState(c.State), Url: c.URL}
 	}
+	if c := p.StarsCheckout; c != nil {
+		out.StarsCheckout = &wire.StarsCheckout{State: wire.StarsCheckoutState(c.State), Url: c.URL}
+	}
 	return out
 }
 
@@ -53,11 +56,14 @@ func currentPurchaseResult(p payments.CurrentPurchaseOrder) wire.CurrentPurchase
 
 func (a *API) paymentMethods(ctx context.Context, account uuid.UUID) (wire.PaymentMethods, error) {
 	p, err := a.payments.PaymentMethods(ctx, account)
+	return paymentMethodsResult(p), paymentError(err)
+}
+func paymentMethodsResult(p payments.PaymentMethods) wire.PaymentMethods {
 	out := wire.PaymentMethods{Methods: []wire.PaymentMethod{}}
 	for _, method := range p.Methods {
 		out.Methods = append(out.Methods, wire.PaymentMethod{Currency: wire.PaymentMethodCurrency(method.Currency), Id: wire.PaymentMethodId(method.Id)})
 	}
-	return out, paymentError(err)
+	return out
 }
 
 func (a *API) createPurchaseOrder(ctx context.Context, account, key uuid.UUID, in wire.PurchaseOrderInput) (wire.PurchaseOrder, error) {

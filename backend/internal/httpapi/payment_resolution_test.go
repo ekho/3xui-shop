@@ -121,7 +121,7 @@ func TestPaymentResolutionHTTP(t *testing.T) {
 		write(&operator, bad, uuid.New(), 400)
 	}
 	refund := write(&operator, input, key, 201)
-	if refund.RefundId == uuid.Nil || refund.OrderId != id || refund.Source != "operator" || refund.OperatorAccountId != operator.id || refund.ReturnedAmount != "90071992547409.93" || refund.ReturnedCurrency != "RUB" || refund.ReceiptGrossMinor != "9007199254740993" {
+	if refund.RefundId == uuid.Nil || refund.OrderId != id || refund.Source != "operator" || (refund.OperatorAccountId == nil || *refund.OperatorAccountId != operator.id) || refund.ReturnedAmount != "90071992547409.93" || refund.ReturnedCurrency != "RUB" || refund.ReceiptGrossMinor != "9007199254740993" {
 		t.Fatal("refund fabricated, rounded or attributed incorrectly")
 	}
 	if again := write(&operator, input, key, 201); again.RefundId != refund.RefundId {

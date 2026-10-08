@@ -10,6 +10,7 @@ import (
 	"example.com/cabinet/backend/internal/httpapi"
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/notifications"
+	"example.com/cabinet/backend/internal/modules/payments"
 	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/telegram"
 	"example.com/cabinet/backend/internal/modules/vpn"
@@ -142,6 +143,8 @@ type nativeBot struct {
 	rateLimitReplies    int
 	clientBlockedChat   int64
 	menus               []string
+	starsInvoices       []string
+	starsPreChecks      []bool
 }
 
 func nativeReply(v any) *http.Response {
@@ -209,6 +212,23 @@ func (b *nativeBot) RoundTrip(r *http.Request) (*http.Response, error) {
 		case <-timer.C:
 			return nativeReply([]any{}), nil
 		}
+	case "createInvoiceLink":
+		var currency, payload string
+		json.Unmarshal(body["currency"], &currency)
+		json.Unmarshal(body["payload"], &payload)
+		if currency != "XTR" || !strings.HasPrefix(payload, "stars:v1:") {
+			b.mu.Unlock()
+			return nil, errors.New("invalid owned native invoice")
+		}
+		b.starsInvoices = append(b.starsInvoices, payload)
+		b.mu.Unlock()
+		return nativeReply("https://t.me/$Owned_native_invoice"), nil
+	case "answerPreCheckoutQuery":
+		var accepted bool
+		json.Unmarshal(body["ok"], &accepted)
+		b.starsPreChecks = append(b.starsPreChecks, accepted)
+		b.mu.Unlock()
+		return nativeReply(true), nil
 	case "answerCallbackQuery":
 		if b.rateLimitReplies > 0 {
 			b.rateLimitReplies--
@@ -281,6 +301,7 @@ func launchNative(t *testing.T, f *fixture, bot *nativeBot, enabled, provision b
 	river.AddWorker(workers, &vpn.ProvisionWorker{Service: f.svc.VPN})
 	river.AddWorker(workers, &vpn.AccessWorker{Service: f.svc.VPN})
 	river.AddWorker(workers, &vpn.MonthlyResetWorker{Service: f.svc.VPN})
+	river.AddWorker(workers, &payments.PurchaseWorker{Service: f.svc.Payments})
 	queues := map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: 2}}
 	if provision {
 		queues["provision"] = river.QueueConfig{MaxWorkers: 2}

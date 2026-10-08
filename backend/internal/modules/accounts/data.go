@@ -76,6 +76,18 @@ func (s *Service) AnyWebOperator(ctx context.Context, tx pgx.Tx) (bool, error) {
 	}
 	return result, nil
 }
+
+func (s *Service) OperatorRoleExists(ctx context.Context, tx pgx.Tx, id uuid.UUID) (bool, error) {
+	q := store.New(s.pool)
+	if tx != nil {
+		q = store.New(tx)
+	}
+	protected, err := q.OperatorRoleExists(ctx, id)
+	if err != nil {
+		return false, unavailable()
+	}
+	return protected, nil
+}
 func (s *Service) VPNBanned(ctx context.Context, id uuid.UUID) (bool, error) {
 	result, err := store.New(s.pool).AccountVPNBan(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {

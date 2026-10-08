@@ -1466,6 +1466,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/{id}/stars-invoice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepare the saved one-time Stars invoice (signed Mini only)
+         * @description Reuses the immutable order/payer/bot and payload. No browser cookie grant, external URL or SDK money proof.
+         */
+        post: operations["createStarsInvoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operator/clients/{id}/orders/{order_id}/stars-refund": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Request one full native Telegram Stars refund against the original payer and saved charge. Intent is durable before the provider call; ambiguous attempts are observed, never blindly repeated. Existing applied access is retained. Strict operator role, protected target, Origin/CSRF/idempotency. */
+        post: operations["refundStarsPurchase"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2163,16 +2200,16 @@ export interface components {
         };
         PaymentMethod: {
             /** @enum {string} */
-            id: "yoomoney" | "manual" | "yookassa" | "cryptomus" | "heleket";
+            id: "yoomoney" | "manual" | "yookassa" | "cryptomus" | "heleket" | "telegram_stars";
             /** @enum {string} */
-            currency: "RUB" | "USD";
+            currency: "RUB" | "USD" | "XTR";
         };
         PaymentMethods: {
             methods: components["schemas"]["PaymentMethod"][];
         };
         PurchaseOrderInput: {
             /**
-             * @description purchase retains first-purchase rules; renew uses the own current finite plan and adds from max(expiry,now); change_plan replaces remaining days from preparation now. All enabled external methods apply. Unknown Telegram/legacy billing fails closed.
+             * @description purchase retains first-purchase rules; renew uses the own current finite plan and adds from max(expiry,now); change_plan replaces remaining days from preparation now. All enabled external methods apply. Unknown Telegram/legacy billing fails closed. Stars is currently one-time purchase only, granted only to signed Mini App sessions. The five external-method guards are unchanged.
              * @enum {string}
              */
             action: "purchase" | "renew" | "change_plan";
@@ -2183,9 +2220,9 @@ export interface components {
             /** Format: int64 */
             period_days: number;
             /** @enum {string} */
-            payment_method: "yoomoney" | "manual" | "yookassa" | "cryptomus" | "heleket";
+            payment_method: "yoomoney" | "manual" | "yookassa" | "cryptomus" | "heleket" | "telegram_stars";
             /** @enum {string} */
-            payment_type: "AC" | "PC" | "MANUAL" | "YOOKASSA" | "CRYPTOMUS" | "HELEKET";
+            payment_type: "AC" | "PC" | "MANUAL" | "YOOKASSA" | "CRYPTOMUS" | "HELEKET" | "STARS";
             /**
              * Format: uuid
              * @description Applied source operation, required only for change_plan and forbidden for other actions. Frozen in the immutable quote; a changed source stops automatic fulfillment.
@@ -2208,7 +2245,7 @@ export interface components {
             /** @description Exact integer minor units within signed int64; no floating point. */
             amount_minor: string;
             /** @enum {string} */
-            currency: "RUB" | "USD";
+            currency: "RUB" | "USD" | "XTR";
             /**
              * Format: uuid
              * @description Applied source operation, required only for change_plan and forbidden for other actions. Frozen in the immutable quote; a changed source stops automatic fulfillment.
@@ -2241,9 +2278,9 @@ export interface components {
             action: "purchase" | "renew" | "change_plan";
             quote: components["schemas"]["PurchaseQuote"];
             /** @enum {string} */
-            payment_method: "yoomoney" | "manual" | "yookassa" | "cryptomus" | "heleket";
+            payment_method: "yoomoney" | "manual" | "yookassa" | "cryptomus" | "heleket" | "telegram_stars";
             /** @enum {string} */
-            payment_type: "AC" | "PC" | "MANUAL" | "YOOKASSA" | "CRYPTOMUS" | "HELEKET";
+            payment_type: "AC" | "PC" | "MANUAL" | "YOOKASSA" | "CRYPTOMUS" | "HELEKET" | "STARS";
             /** @enum {string} */
             payment_status: "pending" | "paid" | "canceled";
             /** @enum {string} */
@@ -2265,6 +2302,7 @@ export interface components {
             heleket_checkout?: components["schemas"]["HeleketCheckout"] | null;
             /** @description All saved receipts have an operator-confirmed full refund. Original paid/access facts remain unchanged. */
             fully_refunded?: boolean;
+            stars_checkout?: components["schemas"]["StarsCheckout"] | null;
         };
         CurrentPurchaseOrder: {
             /** @description Whether an applied historical order permits a new first purchase after proved starter-plan clearing. Omitted or false preserves the historical paid-order block; live price, method, pending and account checks still apply at creation. */
@@ -2379,9 +2417,9 @@ export interface components {
             action: "purchase" | "renew" | "change_plan";
             quote: components["schemas"]["PurchaseQuote"];
             /** @enum {string} */
-            payment_method: "yoomoney" | "manual" | "yookassa" | "cryptomus" | "heleket";
+            payment_method: "yoomoney" | "manual" | "yookassa" | "cryptomus" | "heleket" | "telegram_stars";
             /** @enum {string} */
-            payment_type: "AC" | "PC" | "MANUAL" | "YOOKASSA" | "CRYPTOMUS" | "HELEKET";
+            payment_type: "AC" | "PC" | "MANUAL" | "YOOKASSA" | "CRYPTOMUS" | "HELEKET" | "STARS";
             /** @enum {string} */
             payment_status: "pending" | "paid" | "canceled";
             /** @enum {string} */
@@ -2407,7 +2445,7 @@ export interface components {
             /** Format: uuid */
             order_id: string;
             /** @enum {string} */
-            payment_method: "yoomoney" | "manual" | "yookassa" | "cryptomus" | "heleket";
+            payment_method: "yoomoney" | "manual" | "yookassa" | "cryptomus" | "heleket" | "telegram_stars";
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -2417,7 +2455,7 @@ export interface components {
             /** @description Exact integer minor units within signed int64; no floating point. */
             net_minor: string | null;
             /** @enum {string|null} */
-            currency: "RUB" | "USD" | null;
+            currency: "RUB" | "USD" | "XTR" | null;
             raw_currency: string;
             /** @enum {string} */
             source: "provider" | "operator";
@@ -2486,20 +2524,20 @@ export interface components {
             order_id: string;
             receipt_operation_id: string;
             /** @enum {string} */
-            payment_method: "yoomoney" | "manual" | "yookassa" | "cryptomus" | "heleket";
+            payment_method: "yoomoney" | "manual" | "yookassa" | "cryptomus" | "heleket" | "telegram_stars";
             /** Format: date-time */
             created_at: string;
             receipt_gross_minor: string;
             /** @enum {string} */
-            receipt_currency: "RUB" | "USD";
+            receipt_currency: "RUB" | "USD" | "XTR";
             returned_amount: string;
             returned_currency: string;
             reference: string;
             reason: string;
             /** Format: uuid */
-            operator_account_id: string;
+            operator_account_id: string | null;
             /** @enum {string} */
-            source: "operator";
+            source: "operator" | "telegram";
         };
         PaymentCase: {
             order: components["schemas"]["PurchaseOrder"];
@@ -2507,6 +2545,9 @@ export interface components {
             refund: components["schemas"]["PaymentRefund"] | null;
             financial_review_open: boolean;
             can_confirm_refund: boolean;
+            can_refund_stars?: boolean;
+            /** @enum {string|null} */
+            stars_refund_state?: "pending" | "uncertain" | "confirmed" | null;
         };
         MiniAppSessionInput: {
             init_data: string;
@@ -2627,6 +2668,24 @@ export interface components {
             accepted_privacy_version: string;
         } & (unknown | unknown);
         TrialActivationInput: Record<string, never>;
+        StarsCheckout: {
+            /** @enum {string} */
+            state: "preparing" | "ready" | "unavailable";
+            url: string | null;
+        };
+        StarsRefundInput: {
+            receipt_operation_id: string;
+            reason: string;
+            /** @enum {boolean} */
+            confirm_full: true;
+            /** @enum {boolean} */
+            keep_access: true;
+        };
+        StarsRefund: {
+            /** @enum {string} */
+            state: "pending" | "uncertain" | "confirmed";
+            refund: components["schemas"]["PaymentRefund"] | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -10295,6 +10354,196 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TrialRequest"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    /** @description Seconds before retry */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    createStarsInvoice: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurchaseCancelInput"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrder"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    /** @description Seconds before retry */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    refundStarsPurchase: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token": string;
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StarsRefundInput"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StarsRefund"];
                 };
             };
             /** @description Safe error */

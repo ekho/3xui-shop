@@ -86,7 +86,7 @@ func TestPollingTransportContract(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 			t.Fatal(err)
 		}
-		if in.Offset != 41 || in.Limit != 1 || in.Timeout != 30 || len(in.Allowed) != 2 {
+		if in.Offset != 41 || in.Limit != 1 || in.Timeout != 30 || len(in.Allowed) != 3 || in.Allowed[2] != "pre_checkout_query" {
 			t.Fatal("polling contract")
 		}
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true,"result":[{"update_id":41,"callback_query":{"id":"cb","from":{"id":101},"data":"wt1:a:id"}}]}`))}, nil
@@ -98,5 +98,53 @@ func TestPollingTransportContract(t *testing.T) {
 	}
 	if h.CheckRedirect != nil {
 		t.Fatal("caller client mutated")
+	}
+}
+
+// Catches wrong provider currency, decimal scaling, recurrence and unsafe payout arguments.
+func TestStarsWireContract(t *testing.T) {
+	h := &http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
+		var in map[string]json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			t.Fatal(err)
+		}
+		body := `{"ok":true,"result":true}`
+		switch {
+		case strings.HasSuffix(r.URL.Path, "createInvoiceLink"):
+			if string(in["currency"]) != `"XTR"` || string(in["provider_token"]) != `""` || in["subscription_period"] != nil || string(in["payload"]) != `"stars:v1:00000000-0000-4000-8000-000000000001"` {
+				t.Fatal("invoice provider boundary")
+			}
+			var prices []struct{ Amount int64 }
+			if json.Unmarshal(in["prices"], &prices) != nil || len(prices) != 1 || prices[0].Amount != 100 {
+				t.Fatal("integer Stars price lost")
+			}
+			body = `{"ok":true,"result":"https://t.me/$owned_invoice"}`
+		case strings.HasSuffix(r.URL.Path, "answerPreCheckoutQuery"):
+			if string(in["pre_checkout_query_id"]) != `"owned-query"` || string(in["ok"]) != "false" || string(in["error_message"]) != `"Unavailable"` {
+				t.Fatal("precheckout refusal boundary")
+			}
+			if deadline, ok := r.Context().Deadline(); !ok || time.Until(deadline) > 5*time.Second {
+				t.Fatal("precheckout provider deadline")
+			}
+		case strings.HasSuffix(r.URL.Path, "refundStarPayment"):
+			if string(in["user_id"]) != "701" || string(in["telegram_payment_charge_id"]) != `"owned-charge"` {
+				t.Fatal("refund payer/charge lost")
+			}
+		default:
+			t.Fatal("unexpected Stars API")
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}
+	c := New("owned-test-token", h)
+	ctx := context.Background()
+	link, err := c.CreateStarsInvoice(ctx, "Subscription", "30 days", "stars:v1:00000000-0000-4000-8000-000000000001", 100)
+	if err != nil || link != "https://t.me/$owned_invoice" {
+		t.Fatal("invoice response", err)
+	}
+	if err = c.AnswerStarsPreCheckout(ctx, "owned-query", false, "Unavailable"); err != nil {
+		t.Fatal(err)
+	}
+	if err = c.RefundStars(ctx, 701, "owned-charge"); err != nil {
+		t.Fatal(err)
 	}
 }

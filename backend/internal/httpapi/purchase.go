@@ -17,7 +17,14 @@ func (a *API) GetPaymentMethods(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.paymentMethods(c.Request().Context(), account.Account.ID)
+	var out wire.PaymentMethods
+	if c.Request().Header.Get("Authorization") != "" {
+		p, e := a.payments.StarsPaymentMethods(c.Request().Context(), account.Account.ID)
+		err = paymentError(e)
+		out = paymentMethodsResult(p)
+	} else {
+		out, err = a.paymentMethods(c.Request().Context(), account.Account.ID)
+	}
 	if err != nil {
 		return err
 	}
@@ -53,6 +60,15 @@ func (a *API) CreatePurchaseOrder(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if c.Request().Header.Get("Authorization") != "" {
+		methods, e := a.payments.StarsPaymentMethods(c.Request().Context(), account.Account.ID)
+		if e != nil {
+			return paymentError(e)
+		}
+		if len(methods.Methods) == 0 {
+			return failure(403, "INVALID_CREDENTIALS")
+		}
+	}
 	key, err := idempotencyKey(c)
 	if err != nil {
 		return err
@@ -60,6 +76,10 @@ func (a *API) CreatePurchaseOrder(c *echo.Context) error {
 	in, err := decode[wire.PurchaseOrderInput](a, c, "PurchaseOrderInput")
 	if err != nil {
 		return err
+	}
+	mini := c.Request().Header.Get("Authorization") != ""
+	if mini && (in.PaymentMethod != "telegram_stars" || in.PaymentType != "STARS" || in.Action != "purchase") || !mini && in.PaymentMethod == "telegram_stars" {
+		return failure(403, "INVALID_CREDENTIALS")
 	}
 	out, err := a.createPurchaseOrder(c.Request().Context(), account.Account.ID, key, in)
 	if err != nil {
@@ -82,7 +102,10 @@ func (a *API) GetCurrentPurchaseOrder(c *echo.Context) error {
 			projected := miniAppReadOnlyOrder(c, *out.Order)
 			out.Order = &projected
 		}
-		allowed := false
+		allowed, e := a.payments.CanPurchaseStars(c.Request().Context(), account.Account.ID)
+		if e != nil {
+			return paymentError(e)
+		}
 		out.CanPurchase = &allowed
 	}
 	return c.JSON(200, out)
@@ -241,4 +264,26 @@ func (a *API) ReceiveHeleket(c *echo.Context) error {
 		return paymentError(err)
 	}
 	return c.NoContent(200)
+}
+
+func (a *API) CreateStarsInvoice(c *echo.Context) error {
+	account, err := a.auth(c, true)
+	if err != nil {
+		return err
+	}
+	if c.Request().Header.Get("Authorization") == "" {
+		return failure(403, "INVALID_CREDENTIALS")
+	}
+	id, err := resourceID(c)
+	if err != nil {
+		return err
+	}
+	if _, err = decode[wire.PurchaseCancelInput](a, c, "PurchaseCancelInput"); err != nil {
+		return err
+	}
+	out, err := a.payments.CreateStarsInvoice(c.Request().Context(), account.Account.ID, id)
+	if err != nil {
+		return paymentError(err)
+	}
+	return c.JSON(200, miniAppReadOnlyOrder(c, purchaseOrderResult(out)))
 }

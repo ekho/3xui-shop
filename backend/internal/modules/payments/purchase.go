@@ -78,7 +78,19 @@ const purchaseFundingCheck = `SELECT EXISTS(SELECT 1 FROM purchase_orders p JOIN
            AND CASE WHEN r.provider_data->>'payment_amount' ~ '^[0-9]{1,40}(\.[0-9]{1,40})?$'
                      AND r.provider_data->>'payer_amount' ~ '^[0-9]{1,40}(\.[0-9]{1,40})?$'
                     THEN (r.provider_data->>'payment_amount')::numeric >= (r.provider_data->>'payer_amount')::numeric
-                         AND (r.provider_data->>'payer_amount')::numeric>0 ELSE false END))))`
+                         AND (r.provider_data->>'payer_amount')::numeric>0 ELSE false END))
+   OR (p.payment_method='telegram_stars' AND p.payment_type='STARS' AND p.quote->>'currency'='XTR'
+       AND r.notification_type='telegram_stars.paid' AND r.currency='XTR' AND r.net_minor IS NULL
+       AND r.occurred_at>=p.created_at-interval '5 minutes' AND r.occurred_at<=p.expires_at
+       AND NOT EXISTS(SELECT 1 FROM stars_refunds f WHERE f.receipt_operation_id=r.operation_id)
+       AND EXISTS(SELECT 1 FROM stars_checkouts c WHERE c.order_id=p.id
+         AND r.provider_data->>'provider'='telegram_stars'
+         AND r.provider_data->>'bot_id'=c.bot_id::text AND r.provider_data->>'payer_id'=c.payer_id::text
+         AND r.provider_data->>'payload'=c.payload AND r.provider_data->>'currency'='XTR'
+         AND r.provider_data->>'amount_minor'=r.gross_minor::text
+         AND r.provider_data->>'recurring'='false' AND r.provider_data->>'first_recurring'='false'
+         AND r.provider_data->>'subscription_expires_at'='0'
+         AND r.operation_id='stars:'||encode(sha256(convert_to(c.bot_id::text||':'||(r.provider_data->>'charge_id'),'UTF8')),'hex')))))`
 
 func scanPurchase(row pgx.Row) (purchaseRow, error) {
 	var p purchaseRow
@@ -153,6 +165,20 @@ func (s *Service) publicPurchase(ctx context.Context, p purchaseRow) (PurchaseOr
 			out.CryptomusCheckout = &CryptomusCheckout{State: state, URL: link}
 		}
 	}
+	if p.method == "telegram_stars" {
+		var link *string
+		if err := s.pool.QueryRow(ctx, `SELECT invoice_url FROM stars_checkouts WHERE order_id=$1`, p.id).Scan(&link); err != nil {
+			return PurchaseOrder{}, unavailable()
+		}
+		state := "preparing"
+		if link != nil {
+			state = "ready"
+		}
+		if !canPay {
+			state, link = "unavailable", nil
+		}
+		out.StarsCheckout = &StarsCheckout{State: state, URL: link}
+	}
 	if canPay && p.method == "yoomoney" {
 		out.Checkout = &YooMoneyCheckout{Action: "https://yoomoney.ru/quickpay/confirm", Method: "POST", Fields: YooMoneyCheckoutFields{Receiver: s.config().YooMoneyWalletID, QuickpayForm: "button", PaymentType: p.paymentType, Sum: fmt.Sprintf("%d.%02d", p.amount/100, p.amount%100), Label: p.id, SuccessURL: strings.TrimRight(s.config().CabinetOrigin, "/") + "/orders/" + p.id.String()}}
 	}
@@ -194,7 +220,7 @@ func (s *Service) PaymentMethods(ctx context.Context, account uuid.UUID) (Paymen
 
 func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUID, in PurchaseOrderInput) (PurchaseOrder, error) {
 	var empty PurchaseOrder
-	if account == uuid.Nil || key == uuid.Nil || (in.Action != "purchase" && in.Action != "renew" && in.Action != "change_plan") || (in.Action == "change_plan") != (in.SourceAccessOperationId != nil) || (in.SourceAccessOperationId != nil && *in.SourceAccessOperationId == uuid.Nil) || !((in.PaymentMethod == "yoomoney" && (in.PaymentType == "AC" || in.PaymentType == "PC")) || (in.PaymentMethod == "manual" && in.PaymentType == "MANUAL") || (in.PaymentMethod == "yookassa" && in.PaymentType == "YOOKASSA") || (in.PaymentMethod == "cryptomus" && in.PaymentType == "CRYPTOMUS") || (in.PaymentMethod == "heleket" && in.PaymentType == "HELEKET")) || in.PlanId == uuid.Nil || in.Revision < 1 || in.PeriodDays < 1 || in.PeriodDays > 106751 {
+	if account == uuid.Nil || key == uuid.Nil || (in.Action != "purchase" && in.Action != "renew" && in.Action != "change_plan") || (in.Action == "change_plan") != (in.SourceAccessOperationId != nil) || (in.SourceAccessOperationId != nil && *in.SourceAccessOperationId == uuid.Nil) || !((in.PaymentMethod == "yoomoney" && (in.PaymentType == "AC" || in.PaymentType == "PC")) || (in.PaymentMethod == "manual" && in.PaymentType == "MANUAL") || (in.PaymentMethod == "yookassa" && in.PaymentType == "YOOKASSA") || (in.PaymentMethod == "cryptomus" && in.PaymentType == "CRYPTOMUS") || (in.PaymentMethod == "heleket" && in.PaymentType == "HELEKET") || (in.PaymentMethod == "telegram_stars" && in.PaymentType == "STARS" && in.Action == "purchase")) || in.PlanId == uuid.Nil || in.Revision < 1 || in.PeriodDays < 1 || in.PeriodDays > 106751 {
 		return empty, failure(400, "INVALID_INPUT")
 	}
 	hash := bodyHash(in)
@@ -221,7 +247,7 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if err != nil {
 		return empty, unavailable()
 	}
-	if pre.Kind != "web" || pre.VerifiedAt == nil {
+	if !purchaseSourceEligible(pre, in.PaymentMethod) {
 		return empty, failure(401, "INVALID_CREDENTIALS")
 	}
 	prior, err := scanPurchase(preTx.QueryRow(ctx, "SELECT "+purchaseColumns+" FROM purchase_orders WHERE account_id=$1 AND idempotency_key=$2", account, key))
@@ -237,7 +263,7 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if !s.methodEnabled(in.PaymentMethod) {
 		return empty, failure(409, "PAYMENT_METHOD_UNAVAILABLE")
 	}
-	if !independentBilling(pre) {
+	if !purchaseBillingEligible(pre, in.PaymentMethod) {
 		return empty, failure(409, "EXTERNAL_BILLING_UNVERIFIED")
 	}
 	if in.Action != "purchase" {
@@ -287,10 +313,10 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if err != nil {
 		return empty, unavailable()
 	}
-	if a.Kind != "web" || a.VerifiedAt == nil {
+	if !purchaseSourceEligible(a, in.PaymentMethod) {
 		return empty, failure(401, "INVALID_CREDENTIALS")
 	}
-	if a.PanelKey != pre.PanelKey || a.VpnID != pre.VpnID || a.SubID != pre.SubID || !reflect.DeepEqual(a.AssignedPanelID, pre.AssignedPanelID) || !reflect.DeepEqual(a.AccessProfile, pre.AccessProfile) || a.HadSubscription != pre.HadSubscription || a.VpnBanned != pre.VpnBanned || a.Restricted != pre.Restricted {
+	if a.PanelKey != pre.PanelKey || a.VpnID != pre.VpnID || a.SubID != pre.SubID || !reflect.DeepEqual(a.AssignedPanelID, pre.AssignedPanelID) || !reflect.DeepEqual(a.AccessProfile, pre.AccessProfile) || a.HadSubscription != pre.HadSubscription || a.VpnBanned != pre.VpnBanned || a.Restricted != pre.Restricted || !reflect.DeepEqual(a.TelegramID, pre.TelegramID) || a.TelegramLoginDisabled != pre.TelegramLoginDisabled || !reflect.DeepEqual(a.LegacyUserID, pre.LegacyUserID) {
 		return empty, failure(409, "PURCHASE_NOT_ELIGIBLE")
 	}
 	prior, err = scanPurchase(tx.QueryRow(ctx, "SELECT "+purchaseColumns+" FROM purchase_orders WHERE account_id=$1 AND idempotency_key=$2", account, key))
@@ -306,7 +332,7 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if !s.methodEnabled(in.PaymentMethod) {
 		return empty, failure(409, "PAYMENT_METHOD_UNAVAILABLE")
 	}
-	if !independentBilling(a) {
+	if !purchaseBillingEligible(a, in.PaymentMethod) {
 		return empty, failure(409, "EXTERNAL_BILLING_UNVERIFIED")
 	}
 	if in.Action != "purchase" {
@@ -320,7 +346,7 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if a.VpnBanned || stringValue(a.AccessProfile) == "unlimited" || (a.HadSubscription && a.AssignedPanelID == nil) || (a.AssignedPanelID != nil && stringValue(a.AssignedPanelID) != s.config().PanelID) {
 		return empty, failure(409, "PURCHASE_NOT_ELIGIBLE")
 	}
-	blocked, err := s.purchaseHistoryBlockedTx(ctx, tx, account, uuid.Nil, in.Action)
+	blocked, err := s.purchaseHistoryBlockedTx(ctx, tx, account, uuid.Nil, in.Action, in.PaymentMethod)
 	if err != nil {
 		return empty, err
 	}
@@ -360,6 +386,9 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if in.PaymentMethod == "cryptomus" || in.PaymentMethod == "heleket" {
 		currency = "USD"
 	}
+	if in.PaymentMethod == "telegram_stars" {
+		currency = "XTR"
+	}
 	var amount int64
 	found := false
 	for _, price := range terms.Prices {
@@ -391,6 +420,11 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 			return empty, failure(409, "PURCHASE_ORDER_CONFLICT")
 		}
 		return empty, unavailable()
+	}
+	if in.PaymentMethod == "telegram_stars" {
+		if _, err = tx.Exec(ctx, `INSERT INTO stars_checkouts(order_id,bot_id,payer_id,payload) VALUES($1,$2,$3,$4)`, id, s.stars.BotID, *a.TelegramID, "stars:v1:"+id.String()); err != nil {
+			return empty, unavailable()
+		}
 	}
 	if in.PaymentMethod == "yookassa" {
 		if err = s.queueYooKassaTx(ctx, tx, id, quote); err != nil {

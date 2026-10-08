@@ -239,7 +239,7 @@ func legacyPaymentQuote(packed string, tgID int64) (*string, *LegacyQuote) {
 }
 
 const receiptColumns = `r.operation_id,r.order_id,
- CASE WHEN r.provider_data->>'provider' IN ('yookassa','cryptomus','heleket') THEN r.provider_data->>'provider'
+ CASE WHEN r.provider_data->>'provider' IN ('yookassa','cryptomus','heleket','telegram_stars') THEN r.provider_data->>'provider'
  WHEN r.notification_type='manual_confirmation' THEN 'manual' ELSE 'yoomoney' END,
  r.created_at,r.occurred_at,r.gross_minor,r.net_minor,r.currency,r.notification_type,COALESCE(p.funding_operation_id=r.operation_id,false),r.review_reason,r.codepro,r.unaccepted,
  CASE WHEN r.provider_data->>'provider' IN ('cryptomus','heleket') THEN r.provider_data->>'payment_amount' END,
@@ -265,8 +265,8 @@ func scanHistoryReceipt(row pgx.Row) (HistoryReceipt, error) {
 	case "643", "RUB":
 		value := "RUB"
 		receipt.Currency = &value
-	case "USD":
-		value := "USD"
+	case "USD", "XTR":
+		value := receipt.RawCurrency
 		receipt.Currency = &value
 	}
 	receipt.Source = "provider"

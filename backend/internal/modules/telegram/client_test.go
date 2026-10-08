@@ -34,6 +34,7 @@ func TestClientTelegramStart(t *testing.T) {
 		{"/start Campaign_01-x", "en", "https://t.me/fixture_bot?startapp=Campaign_01-x"},
 		{"/start@fixture_bot", "ru", "https://cabinet.example.test/mini-app/cabinet?lang=ru"},
 		{"/support", "en", "https://cabinet.example.test/mini-app/cabinet/support?lang=en"},
+		{"/paysupport", "ru", "https://cabinet.example.test/mini-app/cabinet/support?lang=ru"},
 	} {
 		t.Run(tc.text+"/"+tc.lang, func(t *testing.T) {
 			var sent []botapi.InlineKeyboard

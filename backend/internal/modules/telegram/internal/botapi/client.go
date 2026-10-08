@@ -162,7 +162,7 @@ func (c *Client) call(ctx context.Context, method string, body, result any, time
 }
 func (c *Client) GetUpdates(ctx context.Context, offset int64) ([]Update, error) {
 	var out []Update
-	err := c.call(ctx, "getUpdates", map[string]any{"offset": offset, "limit": 1, "timeout": 30, "allowed_updates": []string{"message", "callback_query"}}, &out, 40*time.Second)
+	err := c.call(ctx, "getUpdates", map[string]any{"offset": offset, "limit": 1, "timeout": 30, "allowed_updates": []string{"message", "callback_query", "pre_checkout_query"}}, &out, 40*time.Second)
 	if err == nil {
 		if len(out) > 1 {
 			return nil, invalid()
@@ -277,4 +277,39 @@ func (c *Client) SetChatMenuButton(ctx context.Context, raw string) error {
 		return invalid()
 	}
 	return e
+}
+
+func (c *Client) CreateStarsInvoice(ctx context.Context, title, description, payload string, amount int64) (string, error) {
+	var out string
+	if amount <= 0 || !utf8.ValidString(payload) || len(payload) < 1 || len(payload) > 128 || len(title) < 1 || utf8.RuneCountInString(title) > 32 || len(description) < 1 || utf8.RuneCountInString(description) > 255 {
+		return out, &APIError{Code: "INVALID_INPUT"}
+	}
+	err := c.call(ctx, "createInvoiceLink", map[string]any{"title": title, "description": description, "payload": payload, "provider_token": "", "currency": "XTR", "prices": []map[string]any{{"label": "Subscription", "amount": amount}}}, &out, 10*time.Second)
+	return out, err
+}
+func (c *Client) RefundStars(ctx context.Context, payer int64, charge string) error {
+	if payer <= 0 || payer > 1<<52-1 || len(charge) < 1 || len(charge) > 4096 || !utf8.ValidString(charge) || strings.ContainsRune(charge, '\x00') {
+		return &APIError{Code: "INVALID_INPUT"}
+	}
+	var ok bool
+	err := c.call(ctx, "refundStarPayment", map[string]any{"user_id": payer, "telegram_payment_charge_id": charge}, &ok, 10*time.Second)
+	if err == nil && !ok {
+		return invalid()
+	}
+	return err
+}
+func (c *Client) AnswerStarsPreCheckout(ctx context.Context, id string, ok bool, message string) error {
+	if len(id) < 1 || len(id) > 128 || !utf8.ValidString(id) || strings.ContainsRune(id, '\x00') || !utf8.ValidString(message) || !ok && message == "" {
+		return &APIError{Code: "INVALID_INPUT"}
+	}
+	in := map[string]any{"pre_checkout_query_id": id, "ok": ok}
+	if !ok {
+		in["error_message"] = message
+	}
+	var result bool
+	err := c.call(ctx, "answerPreCheckoutQuery", in, &result, 5*time.Second)
+	if err == nil && !result {
+		return invalid()
+	}
+	return err
 }

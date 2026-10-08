@@ -10802,6 +10802,310 @@
           }
         }
       }
+    },
+    "/api/v1/orders/{id}/stars-invoice": {
+      "post": {
+        "operationId": "createStarsInvoice",
+        "description": "Reuses the immutable order/payer/bot and payload. No browser cookie grant, external URL or SDK money proof.",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "miniAppBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                },
+                "description": "Seconds before retry"
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrder"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseCancelInput"
+              }
+            }
+          }
+        },
+        "summary": "Prepare the saved one-time Stars invoice (signed Mini only)"
+      }
+    },
+    "/api/v1/operator/clients/{id}/orders/{order_id}/stars-refund": {
+      "post": {
+        "operationId": "refundStarsPurchase",
+        "description": "Request one full native Telegram Stars refund against the original payer and saved charge. Intent is durable before the provider call; ambiguous attempts are observed, never blindly repeated. Existing applied access is retained. Strict operator role, protected target, Origin/CSRF/idempotency.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                },
+                "description": "Seconds before retry"
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StarsRefund"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StarsRefundInput"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -13641,14 +13945,16 @@
               "manual",
               "yookassa",
               "cryptomus",
-              "heleket"
+              "heleket",
+              "telegram_stars"
             ]
           },
           "currency": {
             "type": "string",
             "enum": [
               "RUB",
-              "USD"
+              "USD",
+              "XTR"
             ]
           }
         },
@@ -13684,7 +13990,7 @@
               "renew",
               "change_plan"
             ],
-            "description": "purchase retains first-purchase rules; renew uses the own current finite plan and adds from max(expiry,now); change_plan replaces remaining days from preparation now. All enabled external methods apply. Unknown Telegram/legacy billing fails closed."
+            "description": "purchase retains first-purchase rules; renew uses the own current finite plan and adds from max(expiry,now); change_plan replaces remaining days from preparation now. All enabled external methods apply. Unknown Telegram/legacy billing fails closed. Stars is currently one-time purchase only, granted only to signed Mini App sessions. The five external-method guards are unchanged."
           },
           "plan_id": {
             "type": "string",
@@ -13708,7 +14014,8 @@
               "manual",
               "yookassa",
               "cryptomus",
-              "heleket"
+              "heleket",
+              "telegram_stars"
             ]
           },
           "payment_type": {
@@ -13719,7 +14026,8 @@
               "MANUAL",
               "YOOKASSA",
               "CRYPTOMUS",
-              "HELEKET"
+              "HELEKET",
+              "STARS"
             ]
           },
           "source_access_operation_id": {
@@ -13785,7 +14093,8 @@
             "type": "string",
             "enum": [
               "RUB",
-              "USD"
+              "USD",
+              "XTR"
             ]
           },
           "source_access_operation_id": {
@@ -13900,7 +14209,8 @@
               "manual",
               "yookassa",
               "cryptomus",
-              "heleket"
+              "heleket",
+              "telegram_stars"
             ]
           },
           "payment_type": {
@@ -13911,7 +14221,8 @@
               "MANUAL",
               "YOOKASSA",
               "CRYPTOMUS",
-              "HELEKET"
+              "HELEKET",
+              "STARS"
             ]
           },
           "payment_status": {
@@ -14000,6 +14311,14 @@
           "fully_refunded": {
             "type": "boolean",
             "description": "All saved receipts have an operator-confirmed full refund. Original paid/access facts remain unchanged."
+          },
+          "stars_checkout": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StarsCheckout"
+              }
+            ],
+            "nullable": true
           }
         },
         "required": [
@@ -14427,7 +14746,8 @@
               "manual",
               "yookassa",
               "cryptomus",
-              "heleket"
+              "heleket",
+              "telegram_stars"
             ]
           },
           "payment_type": {
@@ -14438,7 +14758,8 @@
               "MANUAL",
               "YOOKASSA",
               "CRYPTOMUS",
-              "HELEKET"
+              "HELEKET",
+              "STARS"
             ]
           },
           "payment_status": {
@@ -14547,7 +14868,8 @@
               "manual",
               "yookassa",
               "cryptomus",
-              "heleket"
+              "heleket",
+              "telegram_stars"
             ]
           },
           "created_at": {
@@ -14575,7 +14897,8 @@
             "type": "string",
             "enum": [
               "RUB",
-              "USD"
+              "USD",
+              "XTR"
             ],
             "nullable": true
           },
@@ -14889,7 +15212,8 @@
               "manual",
               "yookassa",
               "cryptomus",
-              "heleket"
+              "heleket",
+              "telegram_stars"
             ]
           },
           "created_at": {
@@ -14904,7 +15228,8 @@
             "type": "string",
             "enum": [
               "RUB",
-              "USD"
+              "USD",
+              "XTR"
             ]
           },
           "returned_amount": {
@@ -14918,7 +15243,7 @@
           },
           "reference": {
             "type": "string",
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+            "pattern": "^([A-Za-z0-9][A-Za-z0-9._-]{0,127}|stars:[0-9a-f]{64})$",
             "maxLength": 128
           },
           "reason": {
@@ -14928,12 +15253,14 @@
           },
           "operator_account_id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "nullable": true
           },
           "source": {
             "type": "string",
             "enum": [
-              "operator"
+              "operator",
+              "telegram"
             ]
           }
         },
@@ -14981,6 +15308,18 @@
           },
           "can_confirm_refund": {
             "type": "boolean"
+          },
+          "can_refund_stars": {
+            "type": "boolean"
+          },
+          "stars_refund_state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "uncertain",
+              "confirmed"
+            ],
+            "nullable": true
           }
         },
         "required": [
@@ -15511,6 +15850,91 @@
         "additionalProperties": false,
         "properties": {},
         "required": []
+      },
+      "StarsCheckout": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "preparing",
+              "ready",
+              "unavailable"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 280,
+            "pattern": "^https://t\\.me/\\$[A-Za-z0-9_-]{1,256}$"
+          }
+        },
+        "required": [
+          "state",
+          "url"
+        ]
+      },
+      "StarsRefundInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "receipt_operation_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^stars:[0-9a-f]{64}$"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "confirm_full": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "keep_access": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "receipt_operation_id",
+          "reason",
+          "confirm_full",
+          "keep_access"
+        ]
+      },
+      "StarsRefund": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "uncertain",
+              "confirmed"
+            ]
+          },
+          "refund": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PaymentRefund"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "state",
+          "refund"
+        ]
       }
     }
   }

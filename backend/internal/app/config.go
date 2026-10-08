@@ -68,7 +68,7 @@ func LoadConfig() (Config, error) {
 	c.Payments.YooKassaShopID, c.Payments.ShopEmail = os.Getenv("YOOKASSA_SHOP_ID"), os.Getenv("SHOP_EMAIL")
 	c.Payments.CryptomusMerchantID = os.Getenv("CRYPTOMUS_MERCHANT_ID")
 	c.Payments.HeleketMerchantID = os.Getenv("HELEKET_MERCHANT_ID")
-	for name, dest := range map[string]*bool{"SHOP_PAYMENT_YOOKASSA_ENABLED": &c.Payments.YooKassaEnabled, "YOOKASSA_TEST_MODE": &c.Payments.YooKassaTestMode, "SHOP_PAYMENT_CRYPTOMUS_ENABLED": &c.Payments.CryptomusEnabled, "SHOP_PAYMENT_HELEKET_ENABLED": &c.Payments.HeleketEnabled} {
+	for name, dest := range map[string]*bool{"SHOP_PAYMENT_STARS_ENABLED": &c.Payments.StarsEnabled, "SHOP_PAYMENT_YOOKASSA_ENABLED": &c.Payments.YooKassaEnabled, "YOOKASSA_TEST_MODE": &c.Payments.YooKassaTestMode, "SHOP_PAYMENT_CRYPTOMUS_ENABLED": &c.Payments.CryptomusEnabled, "SHOP_PAYMENT_HELEKET_ENABLED": &c.Payments.HeleketEnabled} {
 		if value := os.Getenv(name); value != "" {
 			*dest, err = strconv.ParseBool(value)
 			if err != nil {

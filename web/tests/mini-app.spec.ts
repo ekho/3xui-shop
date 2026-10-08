@@ -35,6 +35,7 @@ async function fixture(page:Page,options:Options={}){
   if(path==='/api/v1/subscription/key')return r.fulfill({json:{subscription_url:'https://subscriptions.example.test/sub/owned-private-link'}});
   if(path==='/api/v1/trial-requests/current')return r.fulfill({json:{request:null}});
   if(path==='/api/v1/orders/current')return r.fulfill({json:{order:null,can_purchase:false}});
+  if(path==='/api/v1/payment-methods')return r.fulfill({json:{methods:[]}});
   if(path==='/api/v1/catalogue')return r.fulfill({json:{plans:[]}});
   if(path==='/api/v1/support')return r.fulfill({json:emptySupport});
   if(path==='/api/v1/payment-history')return r.fulfill({json:emptyHistory});
@@ -135,7 +136,7 @@ test('Mini App catalogue shows common prices without external checkout requests'
  const f=await fixture(page,{extra:async(r,path)=>{if(path==='/api/v1/catalogue'){await r.fulfill({json:{plans:[plan]}});return true}return false}});
  await page.setViewportSize({width:375,height:812});await page.goto('/mini-app/catalogue?lang=en');
  await page.getByRole('button',{name:'Select plan'}).click();await expect(page.getByText('Price: 123.45 RUB')).toBeVisible();
- await expect(page.getByRole('button',{name:'Buy plan'})).toHaveCount(0);expect(f.calls.some(c=>c.path.endsWith('/payment-methods')||c.path==='/api/v1/orders')).toBe(false);
+ await expect(page.getByRole('button',{name:'Buy plan'})).toHaveCount(0);expect(f.calls.some(c=>c.path==='/api/v1/orders')).toBe(false);expect(f.calls.filter(c=>c.path.endsWith('/payment-methods'))).toHaveLength(1);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 for(const manual of [false,true])test('Mini App order hides external checkout even when response permits '+(manual?'manual report':'YooMoney'),async({page})=>{

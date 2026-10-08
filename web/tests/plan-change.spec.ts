@@ -53,7 +53,7 @@ test('plan change warns and freezes source through a lost response',async({page}
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 
-function methodOrder(method:Model<'PurchaseOrder'>['payment_method']):Model<'PurchaseOrder'>{
+function methodOrder(method:Exclude<Model<'PurchaseOrder'>['payment_method'],'telegram_stars'>):Model<'PurchaseOrder'>{
  const payment_type={yoomoney:'AC',manual:'MANUAL',yookassa:'YOOKASSA',cryptomus:'CRYPTOMUS',heleket:'HELEKET'} as const;
  const crypto=method==='cryptomus'||method==='heleket';
  return {...order,payment_method:method,payment_type:payment_type[method],quote:{...order.quote,currency:crypto?'USD':'RUB',amount_minor:crypto?'200':'12345'},checkout:method==='yoomoney'?order.checkout:null,

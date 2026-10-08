@@ -91,6 +91,12 @@ func (p *panel) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		reply(true, map[string]any{"email": email, "uuid": id, "subId": subID, "up": int64(0), "down": int64(0)})
+	case r.Method == "POST" && strings.HasPrefix(r.URL.Path, "/panel/api/clients/resetTraffic/"):
+		key := strings.TrimPrefix(r.URL.Path, "/panel/api/clients/resetTraffic/")
+		c := p.clients[key]
+		// This owned fixture always reports zero traffic. A confirmed reset
+		// acknowledges that same state without changing access or identity.
+		reply(c != nil && c["email"] == key && c["id"] != nil && c["subId"] != nil, nil)
 	case r.Method == "POST" && r.URL.Path == "/panel/api/clients/add":
 		var b struct {
 			Client     map[string]any `json:"client"`
