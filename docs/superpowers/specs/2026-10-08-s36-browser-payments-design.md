@@ -18,7 +18,7 @@
 - Передать одноразовый login/checkout token в URL: создаёт новый секрет и дополнительный auth-контракт; противоречит самостоятельному входу.
 - Создать новый identity/status reader для кнопки: уже есть AccountIdentity и самостоятельный login; лишние запросы не помогают публичной навигации.
 
-Общий блок в `main.tsx` виден только внутри готового Mini App на cabinet, catalogue, renew, change-plan и корректном order route. Он содержит обычную кнопку, короткое объяснение и существующую setup-ссылку. Бизнес-компоненты Catalogue/PurchaseOrder и их guards не меняются.
+Общий блок в `main.tsx` виден только внутри готового Mini App на cabinet (включая существующие root aliases), catalogue, renew, change-plan и корректном order route. Он содержит обычную кнопку, короткое объяснение и существующую setup-ссылку. Бизнес-компоненты Catalogue/PurchaseOrder и их guards не меняются.
 
 ## Основной путь
 

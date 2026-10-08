@@ -17,6 +17,11 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -197,4 +202,122 @@ func TestNativeTrialClientTelegram(t *testing.T) {
 		m := bot.message(tg, "There is an update in your cabinet.")
 		return string(m.Markup) == `{"inline_keyboard":[]}`
 	})
+}
+
+func TestNativeMiniBrowserPayments(t *testing.T) {
+	if os.Getenv("RUN_BROWSER_TESTS") != "1" {
+		t.Skip("requires RUN_BROWSER_TESTS=1")
+	}
+	f, bot, key, _ := nativeStarsFixture(t, "12345")
+	f.cfg.Payments.YooMoneyEnabled = true
+	f.cfg.Payments.YooMoneyWalletID = "410000000000000"
+	f.cfg.Payments.YooMoneyNotificationSecret = []byte("owned browser payment fixture")
+	launchNative(t, f, bot, true, true, true)
+	ctx := context.Background()
+	other, _, otherTrial := f.signup(t, nativeEmail("other-browser-owner"))
+	var otherID uuid.UUID
+	if err := f.env.Pool.QueryRow(ctx, "SELECT account_id FROM trial_requests WHERE id=$1", otherTrial.RequestId).Scan(&otherID); err != nil {
+		t.Fatal("owned other account missing")
+	}
+	const otherFacts = `SELECT jsonb_build_object('kind',kind,'email',email_key,'verified_at',verified_at,'password_hash',password_hash,'telegram_id',telegram_id,'vpn_id',vpn_id,'sub_id',sub_id,'panel_key',panel_key)::text FROM accounts WHERE id=$1`
+	var otherBefore string
+	if err := f.env.Pool.QueryRow(ctx, otherFacts, otherID).Scan(&otherBefore); err != nil {
+		t.Fatal("owned other account snapshot unavailable")
+	}
+	u, _ := url.Parse(f.public.URL)
+	cookie := ""
+	for _, c := range other.Jar.Cookies(u) {
+		if c.Name == "__Host-session" {
+			cookie = c.Value
+		}
+	}
+	if cookie == "" {
+		t.Fatal("owned browser cookie missing")
+	}
+	tg := int64(uuid.New().ID()) + 1000000000
+	email := nativeEmail("browser-payment")
+	before := make(chan string, 1)
+	control := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" || r.URL.Path != "/code" {
+			http.NotFound(w, r)
+			return
+		}
+		var in struct {
+			Challenge uuid.UUID `json:"challenge_id"`
+		}
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in) != nil || in.Challenge == uuid.Nil {
+			http.Error(w, "owned challenge required", 400)
+			return
+		}
+		code := ""
+		wait(t, func() bool {
+			for _, letter := range f.letters(t, email) {
+				if strings.Contains(letter, "To: "+email) && strings.Contains(letter, "Challenge: "+in.Challenge.String()) {
+					match := regexp.MustCompile(`Code: ([0-9]{8})`).FindStringSubmatch(letter)
+					if len(match) == 2 {
+						code = match[1]
+						return true
+					}
+				}
+			}
+			return false
+		})
+		var snapshot string
+		if err := f.env.Pool.QueryRow(ctx, "SELECT vpn_id::text||':'||sub_id||':'||panel_key FROM accounts WHERE telegram_id=$1", tg).Scan(&snapshot); err != nil {
+			http.Error(w, "owned active identity unavailable", 409)
+			return
+		}
+		select {
+		case before <- snapshot:
+		default:
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		json.NewEncoder(w).Encode(map[string]string{"code": code})
+	}))
+	t.Cleanup(control.Close)
+	file := filepath.Join(t.TempDir(), "browser-payments.json")
+	data, _ := json.Marshal(map[string]any{"init_data": nativeStarsInit(key, tg), "control_url": control.URL, "email": email, "password": "owned browser payment password ✨", "other_account_id": otherID, "other_cookie": map[string]any{"name": "__Host-session", "value": cookie, "url": f.public.URL, "httpOnly": true, "secure": true, "sameSite": "Lax"}})
+	if err := os.WriteFile(file, data, 0600); err != nil {
+		t.Fatal("owned private browser input unavailable")
+	}
+	cmd := exec.Command("npm", "run", "test:e2e", "--", "--grep", "Telegram browser payments real")
+	cmd.Dir = filepath.Join(f.root, "web")
+	cmd.Env = append(os.Environ(), "E2E_MODE=real", "TEST_ORIGIN="+f.public.URL, "TEST_BROWSER_PAYMENTS_FILE="+file)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("owned browser payments failed: %s", out)
+	}
+	var baseline string
+	select {
+	case baseline = <-before:
+	default:
+		t.Fatal("actual SMTP/active identity checkpoint missing")
+	}
+	var account, operation uuid.UUID
+	var current string
+	var grants, trials, orders, receipts, accesses int
+	err := f.env.Pool.QueryRow(ctx, `SELECT a.id,a.vpn_id::text||':'||a.sub_id||':'||a.panel_key,r.operation_id,
+ (SELECT count(*) FROM trial_grants WHERE account_id=a.id),
+ (SELECT count(*) FROM trial_operations WHERE account_id=a.id),
+ (SELECT count(*) FROM purchase_orders WHERE account_id=a.id AND payment_method='yoomoney' AND payment_type='PC' AND amount_minor=12345 AND payment_status='pending' AND fulfillment_status='not_started'),
+ (SELECT count(*) FROM purchase_receipts pr JOIN purchase_orders po ON po.id=pr.order_id WHERE po.account_id=a.id),
+ (SELECT count(*) FROM access_operations WHERE account_id=a.id AND purchase_order_id IS NOT NULL)
+ FROM accounts a JOIN trial_requests r ON r.account_id=a.id WHERE a.telegram_id=$1 AND a.email_key=$2 AND r.decision_source='telegram_auto' AND r.status='approved'`, tg, email).Scan(&account, &current, &operation, &grants, &trials, &orders, &receipts, &accesses)
+	if err != nil || account == otherID || current != baseline || grants != 1 || trials != 1 || orders != 1 || receipts != 0 || accesses != 0 {
+		t.Fatal("browser handoff changed identity/trial or treated redirect as payment")
+	}
+	assertNativePanel(t, f, operation)
+	var otherAfter string
+	if err = f.env.Pool.QueryRow(ctx, otherFacts, otherID).Scan(&otherAfter); err != nil || otherAfter != otherBefore {
+		t.Fatal("browser handoff mutated the other owned account")
+	}
+	status, raw, _ := f.send(t, other, "GET", "/api/v1/me", nil, "", "", false)
+	var still wire.AccountResult
+	if status != 200 || json.Unmarshal(raw, &still) != nil || still.Account.AccountId != otherID {
+		t.Fatal("browser handoff revoked another account's session")
+	}
+	var totalAccounts, totalOrders int
+	if err = f.env.Pool.QueryRow(ctx, "SELECT (SELECT count(*) FROM accounts),(SELECT count(*) FROM purchase_orders)").Scan(&totalAccounts, &totalOrders); err != nil || totalAccounts != 2 || totalOrders != 1 {
+		t.Fatal("browser handoff created another account or extra order")
+	}
 }

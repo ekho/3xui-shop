@@ -85,10 +85,10 @@ test('Mini App SDK theme viewport back and internal navigation use shared screen
 test('Mini App handles older/broken optional SDK methods without losing login',async({page})=>{
  await fixture(page,{sdk:'broken-methods'});await page.goto('/mini-app?lang=en');await expect(page.getByRole('heading',{name:'Mini client'})).toBeVisible();
 });
-test('Mini App browser-open action forwards only the public cabinet URL',async({page})=>{
+test('Mini App browser-open action forwards only the public login URL',async({page})=>{
  await fixture(page);await page.goto('/mini-app?lang=en');await expect(page.getByRole('heading',{name:'Mini client'})).toBeVisible();
  await page.getByRole('link',{name:'Open cabinet in browser',exact:true}).click();
- const opened=await page.evaluate(()=>(window as any).__sdk.opened);expect(opened).toEqual(['http://127.0.0.1:4173/cabinet?lang=en']);
+ const opened=await page.evaluate(()=>(window as any).__sdk.opened);expect(opened).toEqual(['http://127.0.0.1:4173/login?lang=en']);
  expect(JSON.stringify(opened)).not.toMatch(/owned-signed|mini_|csrf|11111111|sub\//);
 });
 test('Mini App logout destroys private key and does not sign in automatically',async({page})=>{
@@ -97,12 +97,14 @@ test('Mini App logout destroys private key and does not sign in automatically',a
  await page.getByRole('button',{name:'Show subscription link',exact:true}).click();await expect(page.getByRole('textbox',{name:'Subscription link',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Sign out',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Session ended');
  await expect(page.getByRole('textbox',{name:'Subscription link',exact:true})).toHaveCount(0);expect(f.sessions()).toBe(1);
+ await expect(page.getByRole('button',{name:'Other payment methods',exact:true})).toHaveCount(0);
  expect(await page.locator('body').textContent()).not.toContain('owned-private-link');expect(await storage(page)).not.toMatch(/owned-private|mini_|csrf_token/);
 });
 test('Mini App expired response destroys the screen without cookie fallback',async({page})=>{
  const f=await fixture(page,{extra:async(r,path)=>{if(path==='/api/v1/subscription'){await r.fulfill({status:401,json:{error:{code:'INVALID_CREDENTIALS',message:'INVALID_CREDENTIALS',request_id:''}}});return true}return false}});
  await page.goto('/mini-app?lang=en');await expect(page.getByRole('alert')).toContainText('Session ended');
  expect(f.sessions()).toBe(1);await expect(page.getByRole('heading',{name:'Mini client'})).toHaveCount(0);await expect(page.getByLabel('Email',{exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Other payment methods',exact:true})).toHaveCount(0);
 });
 test('Mini App support attachment uses authenticated fetch without tokens in its URL',async({page})=>{
  const id='00000000-0000-4000-8000-000000000001';let authorized=false;
@@ -117,7 +119,7 @@ test('Mini App support attachment uses authenticated fetch without tokens in its
 test('Normal browser cabinet does not load Telegram SDK',async({page})=>{
  let sdk=0;await page.route('https://telegram.org/**',async r=>{sdk++;await r.abort()});
  await page.route('**/api/v1/**',async r=>{const path=new URL(r.request().url()).pathname;await r.fulfill({json:path==='/api/v1/me'?{...profile,account:{account_id:profile.account.account_id,email:'browser@example.test',email_verified:true,locale:'en',telegram_linked:false}}:path==='/api/v1/subscription'?none:{request:null,order:null}})});
- await page.goto('/cabinet?lang=en');await expect(page.getByRole('heading',{name:'browser@example.test'})).toBeVisible();expect(sdk).toBe(0);
+ await page.goto('/cabinet?lang=en');await expect(page.getByRole('heading',{name:'browser@example.test'})).toBeVisible();expect(sdk).toBe(0);await expect(page.getByRole('button',{name:'Other payment methods',exact:true})).toHaveCount(0);
 });
 
 test('Mini App rejected signed launch asks to reopen without an email-password error',async({page})=>{
@@ -145,9 +147,42 @@ for(const manual of [false,true])test('Mini App order hides external checkout ev
  const order:Model<'PurchaseOrder'>={order_id:id,action:'purchase',quote:{plan_id:plan.plan_id,revision:3,devices:2,period_days:30,traffic_gb:20,profile:'regular',amount_minor:'12345',currency:'RUB'},payment_method:manual?'manual':'yoomoney',payment_type:manual?'MANUAL':'AC',payment_status:'pending',fulfillment_status:'not_started',created_at:'2026-10-03T10:00:00Z',expires_at:'2030-01-01T00:00:00Z',expired:false,can_pay:true,can_cancel:false,review_required:false,access_operation_id:null,...(manual?{checkout:null,manual_payment:{state:'not_reported',reported_at:null,decided_at:null,instructions:'Owned manual instructions',reason:null,can_report:true}}:{checkout:{action:'https://yoomoney.ru/quickpay/confirm',method:'POST',fields:{receiver:'410011111111111','quickpay-form':'button',paymentType:'AC',sum:'123.45',label:id,successURL:'http://127.0.0.1:4173/orders/'+id}}})};
  await fixture(page,{extra:async(r,path)=>{if(path==='/api/v1/orders/'+id){await r.fulfill({json:order});return true}return false}});
  await page.goto('/mini-app/orders/'+id+'?lang=en');await expect(page.getByRole('heading',{name:'Order',exact:true})).toBeVisible();await expect(page.getByText(id,{exact:true})).toBeVisible();
- await expect(page.locator('form[action*="yoomoney"]')).toHaveCount(0);await expect(page.getByRole('button',{name:/payment|paid/i})).toHaveCount(0);await expect(page.getByText('Owned manual instructions',{exact:true})).toHaveCount(0);
+ await expect(page.locator('form[action*="yoomoney"]')).toHaveCount(0);await expect(page.locator('.purchase-order').getByRole('button',{name:/payment|paid/i})).toHaveCount(0);await expect(page.getByText('Owned manual instructions',{exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Other payment methods',exact:true})).toBeVisible();
 });
 test('Mini App admin URL falls back to the customer cabinet',async({page})=>{
  const f=await fixture(page);await page.goto('/mini-app/admin/clients?lang=en');await expect(page.getByRole('heading',{name:'Mini client'})).toBeVisible();
  expect(f.calls.some(c=>c.path.includes('/operator/')||c.path.includes('/me/security'))).toBe(false);await expect(page.getByLabel('Email',{exact:true})).toHaveCount(0);
+});
+
+for(const lang of ['ru','en'] as const)for(const path of ['/','/cabinet','/catalogue','/cabinet/renew','/cabinet/change-plan','/orders/80000000-0000-4000-8000-000000000001']){
+ test('Mini App other payments '+lang+' '+path+' opens a clean public login without writes',async({page})=>{
+  const f=await fixture(page);await page.setViewportSize({width:375,height:812});
+  await page.goto('/mini-app'+path+'?lang='+lang+'&token=owned-query&account_id=11111111-1111-4111-8111-111111111111#tgWebAppData='+encodeURIComponent(launch));
+  const action=page.getByRole('button',{name:lang==='ru'?'Другие способы оплаты':'Other payment methods',exact:true});
+  await expect(action).toBeVisible();await expect(action).toHaveAccessibleDescription(/email/i);
+  const writes=f.calls.filter(c=>c.body!==undefined).length;
+  await action.focus();await page.keyboard.press('Enter');await action.focus();await page.keyboard.press('Space');
+  const url='http://127.0.0.1:4173/login'+(lang==='en'?'?lang=en':'');
+  expect(await page.evaluate(()=>(window as any).__sdk.opened)).toEqual([url,url]);
+  expect(f.calls.filter(c=>c.body!==undefined)).toHaveLength(writes);expect(f.sessions()).toBe(1);
+  expect(await storage(page)).not.toMatch(/owned-signed|mini_|csrf_token|__telegram__initParams/);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ });
+}
+test('Mini App other payments setup link uses the existing first email screen',async({page})=>{
+ const identity:Model<'IdentityContext'>={email:null,source_kind:'telegram',independent_login:false,telegram_linked:true,can_unlink:false,unlink_blocked_reason:'INDEPENDENT_LOGIN_REQUIRED',pending_initial_email:null};
+ const f=await fixture(page,{extra:async(r,path)=>{if(path==='/api/v1/me/identity'){await r.fulfill({json:identity});return true}return false}});
+ await page.goto('/mini-app/cabinet?lang=en');await page.getByRole('link',{name:'Set up email sign-in',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Sign-in methods',exact:true})).toBeVisible();await expect(page.getByLabel('Email',{exact:true})).toBeVisible();
+ expect(new URL(page.url()).pathname).toBe('/mini-app/cabinet/identity');expect(f.sessions()).toBe(1);expect(await page.evaluate(()=>(window as any).__sdk.opened)).toEqual([]);
+});
+for(const mode of ['missing','throws'] as const)test('Mini App other payments '+mode+' SDK uses the existing safe synchronous fallback',async({page})=>{
+ await fixture(page);await page.goto('/mini-app/cabinet?lang=en');await expect(page.getByRole('heading',{name:'Mini client'})).toBeVisible();
+ await page.evaluate(mode=>{
+  (window as any).__sdk.fallback=[];(window as any).open=(...args:unknown[])=>{(window as any).__sdk.fallback.push(args);return null};
+  if(mode==='missing')delete (window as any).Telegram.WebApp.openLink;else (window as any).Telegram.WebApp.openLink=()=>{throw new Error('owned optional method failure')};
+ },mode);
+ const action=page.getByRole('button',{name:'Other payment methods',exact:true});await action.focus();await page.keyboard.press('Enter');
+ expect(await page.evaluate(()=>(window as any).__sdk.fallback)).toEqual([['http://127.0.0.1:4173/login?lang=en','_blank','noopener,noreferrer']]);
 });

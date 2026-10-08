@@ -51,7 +51,7 @@
 - Native test input0600: signed init_data, owned email/password, other owned cookie, test-only TLS control_url; values never argv/URL/log.
 - Test-only POST /code accepts a UUID challenge, matches owned recipient+actual delivered SMTP letter, returns its8-digit code; no product auth shortcut or public callback.
 
-- [ ] **Step 1: Write rendered failing checks**
+- [x] **Step 1: Write rendered failing checks**
 
 Add `Mini App other payments ru/en` on cabinet/catalogue/renew/change-plan/order:
 `button('Other payment methods')` / ru exact name; focus+Enter opens only origin/login(locale); setup-link→existing identity; dirty URL strips all but selected locale; repeat preserves POST count. Add existing SDK missing/throw fallback arguments; ended/expired/no SDK and normal browser no private payment button.
@@ -69,7 +69,7 @@ expect(await page.evaluate(()=>(window as any).__sdk.opened)).toEqual(['http://1
 Run: `npm --prefix web run test:e2e -- tests/mini-app.spec.ts`
 Expected: FAIL because button is absent and old header still /cabinet, not fixture/parser/prerequisite errors.
 
-- [ ] **Step 2: Write current native/browser failing check**
+- [x] **Step 2: Write current native/browser failing check**
 
 In native_client_telegram_test.go add TestNativeMiniBrowserPayments guarded by RUN_BROWSER_TESTS=1. Reuse nativeStarsFixture(t,"12345"), enable owned YooMoney config, launch current Go graph; create another owned web account/cookie. Existing helpers verify actual SMTP.
 
@@ -80,19 +80,19 @@ Go asserts before/after account vpn_id/sub_id/panel_key, original trial1grant/1o
 Run: `env RUN_BROWSER_TESTS=1 NATIVE_DOCKER_STATE=$PWD/.superpowers/acceptance/native-docker TEST_DATABASE_URL_FILE=$PWD/.superpowers/acceptance/c36-browser-payments/database-url TEST_REDIS_URL_FILE=$PWD/.superpowers/acceptance/c36-browser-payments/redis-url go -C backend test ./tests -run '^TestNativeMiniBrowserPayments$' -count=1 -timeout=10m`
 Expected: FAIL at missing Other payment methods/header public login, not missing infrastructure. Native immutable RUB helper changes are test inputs, not product behavior.
 
-- [ ] **Step 3: Implement the minimum UI**
+- [x] **Step 3: Implement the minimum UI**
 
-main imports existing openMiniBrowser; one derived browserLogin URL feeds header and button. Inside ready Mini children append section only for five payment routes. Native button calls helper directly; accessible help and setup anchor use existing card/account-links/primary styles. MiniApp copy exact spec ru/en; own HTTP interceptor adds exact /login. No async read or auth state added.
+main imports existing openMiniBrowser; one derived browserLogin URL feeds header and button. Inside ready Mini children append section only for five payment routes, including existing cabinet root aliases. Native button calls helper directly; accessible help and setup anchor use existing card/account-links/primary styles. MiniApp copy exact spec ru/en; own HTTP interceptor adds exact /login. No async read or auth state added.
 
 Run: `npm --prefix web run typecheck`
 Expected: exit0; existing SDK/helper/type contracts agree.
 
-- [ ] **Step 4: Prove GREEN and connected UI consumers**
+- [x] **Step 4: Prove GREEN and connected UI consumers**
 
 Run: same focused Mini command, then same native command, plus `npm --prefix web run test:e2e -- tests/account-identity.spec.ts tests/stars.spec.ts`.
 Expected: all PASS, exact same UUID/real TLS panel, external pending/no proof preserved, existing Stars/identity UI unchanged. Read actual test outputs; don't count provider form interception as real money/default OS browser.
 
-- [ ] **Step 5: Full current source verification**
+- [x] **Step 5: Full current source verification**
 
 Run: `npm --prefix web run test:e2e`; `npm --prefix web run typecheck`; build is included in Playwright.
 Run: `env RUN_BROWSER_TESTS=1 TEST_DATABASE_URL_FILE=$PWD/.superpowers/acceptance/c36-browser-payments/database-url TEST_REDIS_URL_FILE=$PWD/.superpowers/acceptance/c36-browser-payments/redis-url go -C backend test -race -count=1 -timeout=20m ./...` with NATIVE_DOCKER_STATE unset (exact Behavior CI transport); real3.7 proof from Step4 retained.

@@ -55,3 +55,68 @@ if(process.env.TEST_STARS_INIT_FILE){
   }finally{process.stdout.write('TG_STARS_CHECKPOINT:'+checkpoint+'\n');}
  });
 }
+
+if(process.env.TEST_BROWSER_PAYMENTS_FILE){
+ test('Telegram browser payments real independent login and pending YooMoney',async({page,browser})=>{
+  let checkpoint='navigation';
+  const input=JSON.parse(readFileSync(process.env.TEST_BROWSER_PAYMENTS_FILE!,'utf8'));
+  const external=await browser.newContext({ignoreHTTPSErrors:true});
+  try{
+   await page.context().addCookies([input.other_cookie]);await external.addCookies([input.other_cookie]);
+   await page.route('https://telegram.org/js/telegram-web-app.js',r=>r.fulfill({contentType:'application/javascript',body:`window.__ownedBrowserPayments={opened:[]};window.Telegram={WebApp:{initData:${JSON.stringify(input.init_data)},ready(){},expand(){},onEvent(){},offEvent(){},BackButton:{show(){},hide(){},onClick(){},offClick(){}},openLink(url){window.__ownedBrowserPayments.opened.push(url)}}};`}));
+   await page.goto('/mini-app/cabinet?lang=en');checkpoint='consent';
+   await page.getByRole('checkbox',{name:/terms of use/i}).check();await page.getByRole('checkbox',{name:/privacy/i}).check();
+   const session=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/v1/telegram/mini-app/session'&&r.status()===200);
+   await page.getByRole('button',{name:'Continue',exact:true}).click();const auth=await(await session).json();
+   expect(auth.account.account_id).not.toBe(input.other_account_id);checkpoint='trial';
+   await page.getByRole('button',{name:'Activate trial',exact:true}).click();await expect(page.getByText('Trial active',{exact:true})).toBeVisible({timeout:20000});
+   const miniSubscription=await page.evaluate(async token=>{const r=await fetch('/api/v1/subscription',{credentials:'omit',headers:{Authorization:'Bearer '+token}});return{status:r.status,body:await r.json()};},auth.session_token);
+   expect(miniSubscription.status).toBe(200);checkpoint='public_navigation';
+   const action=page.getByRole('button',{name:'Other payment methods',exact:true});await action.focus();await page.keyboard.press('Enter');
+   const opened=await page.evaluate(()=>(window as any).__ownedBrowserPayments.opened);
+   expect(opened).toEqual([new URL(page.url()).origin+'/login?lang=en']);
+   const web=await external.newPage();let sdkLoads=0;
+   await web.route('https://telegram.org/**',async r=>{sdkLoads++;await r.abort()});
+   await web.goto(opened[0]);await expect(web.getByLabel('Email',{exact:true})).toBeVisible();
+   expect((await(await web.request.get(new URL('/api/v1/me',opened[0]).href)).json()).account.account_id).toBe(input.other_account_id);
+   await page.getByRole('link',{name:'Set up email sign-in',exact:true}).click();checkpoint='email';
+   await expect(page.getByRole('heading',{name:'Sign-in methods',exact:true})).toBeVisible();await page.getByLabel('Email',{exact:true}).fill(input.email);
+   const challenge=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/v1/telegram/initial-email'&&r.request().method()==='POST');
+   await page.getByRole('button',{name:'Send confirmation code',exact:true}).click();const sent=await challenge;expect(sent.status()).toBe(202);
+   const code=await page.request.post(input.control_url+'/code',{data:{challenge_id:(await sent.json()).challenge_id}});expect(code.status()).toBe(200);
+   await page.getByLabel('Confirmation code',{exact:true}).fill((await code.json()).code);
+   await page.getByLabel('New password',{exact:true}).fill(input.password);await page.getByLabel(/Repeat.*password/i).fill(input.password);
+   await page.getByRole('checkbox',{name:/terms of use/i}).check();await page.getByRole('checkbox',{name:/privacy/i}).check();checkpoint='identity';
+   await page.getByRole('button',{name:'Enable email sign-in',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Email sign-in enabled');
+   await expect(page.getByRole('button',{name:'Other payment methods',exact:true})).toHaveCount(0);
+   expect(await page.evaluate(async token=>(await fetch('/api/v1/telegram/mini-app/account',{credentials:'omit',headers:{Authorization:'Bearer '+token}})).status,auth.session_token)).toBe(401);
+   await page.getByRole('link',{name:'Open cabinet in browser',exact:true}).click();
+   expect(await page.evaluate(()=>(window as any).__ownedBrowserPayments.opened)).toEqual([opened[0],opened[0]]);
+   expect((await page.context().cookies()).find(c=>c.name==='__Host-session')?.value).toBe(input.other_cookie.value);
+   expect(await page.evaluate(()=>JSON.stringify(localStorage)+JSON.stringify(sessionStorage))).not.toMatch(/mini_|init_data|tgWebAppData|csrf_token|subscription_url/);
+   checkpoint='browser_login';await web.getByLabel('Email',{exact:true}).fill(input.email);await web.getByLabel('Password',{exact:true}).fill(input.password);
+   await web.getByRole('button',{name:'Sign in',exact:true}).click();await expect(web.getByRole('heading',{name:input.email,exact:true})).toBeVisible();
+   const origin=new URL(web.url()).origin;const me=await(await web.request.get(origin+'/api/v1/me')).json();expect(me.account.account_id).toBe(auth.account.account_id);
+   const subscription=await(await web.request.get(origin+'/api/v1/subscription')).json();
+   for(const key of ['status','devices','traffic_limit_bytes','expires_at','access_profile','access_operation_id'])expect(subscription[key]).toEqual(miniSubscription.body[key]);
+   expect(sdkLoads).toBe(0);checkpoint='checkout';
+   await web.getByRole('link',{name:'Plans',exact:true}).click();await web.getByRole('button',{name:'Select plan',exact:true}).click();await web.getByRole('radio',{name:'Wallet',exact:true}).check();
+   await expect(web.getByRole('radio',{name:'Telegram Stars',exact:true})).toHaveCount(0);
+   await web.getByRole('button',{name:'Buy plan',exact:true}).click();await web.getByRole('button',{name:'Confirm purchase',exact:true}).click();
+   await expect(web).toHaveURL(/\/orders\/[0-9a-f-]{36}/);const orderPath=new URL(web.url()).pathname;expect(orderPath).toMatch(/^\/orders\/[0-9a-f-]{36}$/);
+   let submitted=false;
+   await web.route('https://yoomoney.ru/**',async r=>{
+    const fields=new URLSearchParams(r.request().postData()??'');
+    expect(r.request().method()).toBe('POST');expect(new URL(r.request().url()).pathname).toBe('/quickpay/confirm');
+    expect(fields.get('receiver')).toBe('410000000000000');expect(fields.get('paymentType')).toBe('PC');expect(fields.get('sum')).toBe('123.45');
+    expect(fields.get('label')).toBe(orderPath.split('/').at(-1));submitted=true;
+    await r.fulfill({status:303,headers:{location:fields.get('successURL')!},body:''});
+   });
+   const returned=web.waitForURL(url=>url.origin===origin&&url.pathname===orderPath&&submitted);
+   await web.getByRole('button',{name:'Continue to payment',exact:true}).click();await returned;checkpoint='provider_return';
+   const order=await(await web.request.get(origin+'/api/v1'+orderPath)).json();expect(order.payment_method).toBe('yoomoney');expect(order.payment_status).toBe('pending');expect(order.fulfillment_status).toBe('not_started');expect(order.access_operation_id).toBeNull();
+   const after=await(await web.request.get(origin+'/api/v1/subscription')).json();
+   for(const key of ['status','devices','traffic_limit_bytes','expires_at','access_profile','access_operation_id'])expect(after[key]).toEqual(miniSubscription.body[key]);
+  }finally{await external.close();process.stdout.write('TG_BROWSER_CHECKPOINT:'+checkpoint+'\n');}
+ });
+}
