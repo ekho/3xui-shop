@@ -1,7 +1,7 @@
 export const isMiniApp=()=>location.pathname==='/mini-app'||location.pathname.startsWith('/mini-app/');
 export const miniSessionEnded='mini-session-ended';
 type Insets={top?:number;bottom?:number;left?:number;right?:number};
-export type TelegramApp={initData:string;themeParams?:Record<string,string>;viewportStableHeight?:number;safeAreaInset?:Insets;contentSafeAreaInset?:Insets;ready?:()=>void;expand?:()=>void;onEvent?:(name:string,fn:()=>void)=>void;offEvent?:(name:string,fn:()=>void)=>void;BackButton?:{show?:()=>void;hide?:()=>void;onClick?:(fn:()=>void)=>void;offClick?:(fn:()=>void)=>void};openLink?:(url:string)=>void};
+export type TelegramApp={initData:string;themeParams?:Record<string,string>;viewportStableHeight?:number;safeAreaInset?:Insets;contentSafeAreaInset?:Insets;ready?:()=>void;expand?:()=>void;onEvent?:(name:string,fn:()=>void)=>void;offEvent?:(name:string,fn:()=>void)=>void;BackButton?:{show?:()=>void;hide?:()=>void;onClick?:(fn:()=>void)=>void;offClick?:(fn:()=>void)=>void};openLink?:(url:string)=>void;openInvoice?:(url:string,callback:(status:'paid'|'cancelled'|'failed'|'pending')=>void)=>void};
 declare global{interface Window{Telegram?:{WebApp?:TelegramApp}}}
 let launchHash=isMiniApp()?location.hash:'';
 export function clearMiniLaunch(forget=false){if(forget)launchHash='';try{sessionStorage.removeItem('__telegram__initParams');}catch{}if(location.hash)history.replaceState(null,'',location.pathname+location.search);}
