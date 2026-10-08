@@ -1,6 +1,6 @@
 # С26 — локальная приёмка статистики
 
-Goal/decision: 2026-10-08-s26-statistics-v1, owner audit_reports/#36; runtime version statistics-v1. Base940b8138aa300ecac8062735748abeee182ad303. Native implementation/local acceptance завершены. Один whole-branch Astra/high review source9b440b6b41d7cb8aa10e95b26e9c0d178407faf2: Critical0/Important2/Minor0; оба Important закрыты одним авторским проходом. Exact-source CI/merge/prerelease ещё pending.
+Goal/decision: 2026-10-08-s26-statistics-v1, owner audit_reports/#36; runtime version statistics-v1. Base940b8138aa300ecac8062735748abeee182ad303. Native implementation/local acceptance завершены. Один whole-branch Astra/high review source9b440b6b41d7cb8aa10e95b26e9c0d178407faf2: Critical0/Important2/Minor0; оба Important закрыты одним авторским проходом. Exact-source Platform37817641061/images37817641176 CI прошли. PR#90 вручную слит в v2/73dd9de3a19f614d9a270e83578d3d0bb7a6ec24; родители940b8138aa300ecac8062735748abeee182ad303/04422e81920adc81c53c40951b66d12f6773bb71 и tree229b1fa1b4cbf88fcf3177bdac76f59e908f90d5 подтверждены. Push37821464204 SUCCESS, prerelease2.0.0-dev.78/tag peeled/3OCIindices6labels проверены. #36 CLOSED/ProjectDone; итог https://github.com/ekho/3xui-shop/issues/36#issuecomment-6066264435.
 
 ## Проверки исправленного исходника
 
