@@ -165,6 +165,8 @@ export const reviseCataloguePlan=(id:string,input:components['schemas']['Catalog
 export const archiveCataloguePlan=(id:string,input:components['schemas']['CataloguePlanArchiveInput'],key:string,signal?:AbortSignal)=>request<OperatorCataloguePlan>('operator/catalogue/plans/'+encodeURIComponent(id)+'/archive','POST',input,signal,true,key);
 
 export type Campaign=components['schemas']['Campaign'];
+export type StatisticsReport=components['schemas']['StatisticsReport'];
+export const getOperatorStatistics=(campaignId?:string,signal?:AbortSignal)=>request<StatisticsReport>('operator/reports/statistics','POST',{campaign_id:campaignId??null},signal,true);
 export type CampaignListResult=components['schemas']['CampaignListResult'];
 export type CampaignDetail=components['schemas']['CampaignDetail'];
 export type CampaignCreateInput=components['schemas']['CampaignCreateInput'];

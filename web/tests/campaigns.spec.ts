@@ -1,15 +1,17 @@
 import {test,expect,type Page,type Route} from '@playwright/test';
 import type {components} from '../src/api/schema.gen';
+import {statisticsPayments,statisticsReport} from './statistics-fixture';
 type Model<K extends keyof components['schemas']>=components['schemas'][K];
 const id='70000000-0000-4000-8000-000000000001',otherId='70000000-0000-4000-8000-000000000002';
 const actor='10000000-0000-4000-8000-000000000001';
 const session={account:{account_id:actor,email:'operator@example.test',email_verified:true,locale:'en',telegram_linked:false},csrf_token:'s'.repeat(43)};
 const row:Model<'Campaign'>={campaign_id:id,name:'<Campaign>',code:'c_owned',state:'active',revision:1,web_visits:17,legacy_clicks:null,legacy_invite_id:null,created_at:'2026-10-08T10:00:00Z',source:'operator'};
-const statistics:Model<'CampaignStatistics'>={users:4,web_registrations:2,telegram_registrations:1,legacy_name_users:1,legacy_trial_used:1,trials:{trial_users:1},payments:{paid_orders:6,paid_users:3,repeat_users:2,money:[{currency:'RUB',gross_minor:'18446744073709551614',known_net_minor:'18446744073709551614',unknown_net_receipts:0},{currency:'USD',gross_minor:'12345',known_net_minor:'0',unknown_net_receipts:1},{currency:'XTR',gross_minor:'300',known_net_minor:'0',unknown_net_receipts:3}],refunds:[{currency:'USDT',returned_amount:'0.000000000000000000000001'}],legacy:{completed_transactions:3,paid_users:1,repeat_users:1,unknown_quote_count:2,money:[{currency:'RUB',quoted_minor:'1025'}]}}};
+const statistics:Model<'CampaignStatistics'>={users:4,web_registrations:2,telegram_registrations:1,legacy_name_users:1,legacy_trial_used:1,trials:{trial_users:1},payments:statisticsPayments};
 const detail=(campaign=row):Model<'CampaignDetail'>=>({campaign,statistics,events:[{event_id:otherId,actor_account_id:actor,action:'create',created_at:'2026-10-08T10:00:00Z',reason:'Owned creation',before:null,after:campaign}],events_has_more:true});
 async function routes(page:Page,extra?:(route:Route,path:string)=>Promise<boolean>){await page.route('**/api/v1/**',async route=>{
  const path=new URL(route.request().url()).pathname;if(extra&&await extra(route,path))return;
  if(path.endsWith('/operator/session')||path.endsWith('/auth/session'))return route.fulfill({json:session});
+ if(path.endsWith('/operator/reports/statistics'))return route.fulfill({json:statisticsReport(route.request().postDataJSON().campaign_id)});
  if(path.endsWith('/operator/campaigns/search'))return route.fulfill({json:{campaigns:[row],page:1,per_page:50,total:1}});
  if(path==='/api/v1/operator/campaigns/'+id)return route.fulfill({json:detail()});
  if(path.endsWith('/campaign-visits'))return route.fulfill({status:204});
@@ -108,4 +110,27 @@ test('login and reset requests never capture a campaign source or count a visit'
  await page.goto('/login?lang=en&invite=c_owned');await page.getByLabel('Email',{exact:true}).fill('owned-login@example.test');await page.getByLabel('Password',{exact:true}).fill('owned-demo-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page.getByRole('alert')).toBeVisible();
  await page.goto('/forgot-password?lang=en&invite=c_owned');await page.getByLabel('Email',{exact:true}).fill('owned-login@example.test');await page.getByRole('button',{name:'Continue',exact:true}).click();await expect.poll(()=>bodies.length).toBe(2);
  for(const body of bodies)expect(body).not.toHaveProperty('source_code');expect(visits).toHaveLength(0);
+});
+
+test('empty campaign statistics keeps zero accounts, unknown percentages and global panel counters',async({page})=>{
+ const report=statisticsReport(id);report.users=0;report.trials={trial_users:0};report.payments={paid_orders:0,paid_users:0,repeat_users:0,money:[],refunds:[],legacy:{completed_transactions:0,paid_users:0,repeat_users:0,unknown_quote_count:0,money:[]}};report.conversions={trial_percent:null,paid_percent:null,repeat_percent:null};report.activity={...report.activity,active_users:0,known_active_users:0,known_inactive_users:0,unknown_users:0};report.groups=report.groups.map(group=>({...group,user_references:0}));report.unknown_user_profiles=0;
+ await routes(page,async(route,path)=>{
+  if(path.endsWith('/operator/reports/statistics')){expect(route.request().postDataJSON()).toEqual({campaign_id:id});await route.fulfill({json:report});return true;}
+  if(path==='/api/v1/operator/campaigns/'+id){const empty=detail();empty.statistics={...empty.statistics,users:0,web_registrations:0,telegram_registrations:0,legacy_name_users:0,legacy_trial_used:0,trials:report.trials,payments:report.payments};await route.fulfill({json:empty});return true;}return false;
+ });
+ await page.goto('/admin/campaigns?lang=en');await page.getByRole('button',{name:'Open campaign',exact:true}).click();const view=page.getByRole('region',{name:'Statistics',exact:true});await expect(view.getByText('No accounts in this scope yet.',{exact:true})).toBeVisible();
+ for(const [label,value] of [['Accounts','0'],['Active accounts','0'],['Trial percentage','No data'],['Paying percentage','No data'],['Repeat paying percentage','No data'],['Panel clients','22']])await expect(view.locator('dt').filter({hasText:new RegExp('^'+label+'$')}).locator('..').locator('dd').first()).toHaveText(value);
+ await expect(view.getByText('Global service overview. Panel client counts may differ from account counts.')).toBeVisible();
+});
+
+test('aborted old statistics cannot overwrite a different campaign report',async({page})=>{
+ let release!:()=>void;const pending=new Promise<void>(resolve=>release=resolve);let first=false;const other={...row,campaign_id:otherId,name:'Second campaign',code:'c_second'};
+ await routes(page,async(route,path)=>{
+  if(path.endsWith('/search')){await route.fulfill({json:{campaigns:[row,other],page:1,per_page:50,total:2}});return true;}
+  if(path==='/api/v1/operator/campaigns/'+otherId){await route.fulfill({json:detail(other)});return true;}
+  if(path.endsWith('/operator/reports/statistics')){const scope=route.request().postDataJSON().campaign_id;if(scope===id){first=true;await pending;try{await route.fulfill({json:statisticsReport(id)});}catch{}return true;}const report=statisticsReport(otherId);report.users=7;await route.fulfill({json:report});return true;}return false;
+ });
+ try{
+  await page.goto('/admin/campaigns?lang=en');await page.getByRole('button',{name:'Open campaign',exact:true}).first().click();await expect.poll(()=>first).toBe(true);await page.getByRole('button',{name:'Open campaign',exact:true}).last().click();const view=page.getByRole('region',{name:'Statistics',exact:true});const accounts=view.locator('dt').filter({hasText:/^Accounts$/}).locator('..').locator('dd');await expect(accounts).toHaveText('7');release();await expect(accounts).toHaveText('7');await expect(page.getByRole('region',{name:'Campaign details'}).getByRole('heading',{name:'Second campaign',exact:true})).toBeVisible();
+ }finally{release();}
 });

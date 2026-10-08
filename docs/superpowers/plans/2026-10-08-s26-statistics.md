@@ -40,7 +40,7 @@ Consumes owner facts/accounts.LookupManyTx(ctx,tx,ids) ([]Snapshot,error), exist
 - [x] **Step 2:** Запустить go -C backend test ./internal/httpapi -run 'TestOperatorStatistics|TestCampaignStatisticsProofs' -count=1. Expected RED: новый endpoint404 вместо200; старый campaign path по-прежнему работает.
 - [x] **Step 3:** Добавить coherent OpenAPI contract до consumer кода; typed owner callbacks/aliases, read-only snapshot и свежий role guard после snapshot/provider перед ответом. Добавить TestPanelStatisticsSnapshot/TestOperatorStatisticsPanel/RoleRevoked: two bulk GETs, expiry0/quota0/1-of3, pending/review/NoClientIntent, malformed/negative/overflow/duplicate/identity drift/missing traffic/disabled memberships, deadline/oversize/outage, role revoked on held response =>403, no provider/DB writes. RED отдельно на новых public methods/branch behaviors.
 - [x] **Step 4:** Минимальная реализация exact spec; generate/typecheck/vet/boundaries и focused Go tests. Expected GREEN: все перечисленные классы, JSON schema и old campaign contract.
-- [ ] **Step 5:** Scoped diff, commit feat(reports): add shared operator statistics, exact SSH branch/upstream guard/push; task-done с тем же focused command. Expected exit0 и записанный ledger.
+- [x] **Step 5:** Scoped diff, commit feat(reports): add shared operator statistics, exact SSH branch/upstream guard/push; task-done с тем же focused command. Expected exit0 и записанный ledger.
 
 ### Task 2: Общий React-admin экран и карточка кампании
 **Files:** Create web/src/AdminStatistics.tsx, web/tests/statistics.spec.ts.
@@ -48,10 +48,10 @@ Modify web/src/Admin.tsx, web/src/AdminCampaigns.tsx, web/src/api/client.ts, web
 **Interfaces:** Consumes Task1 StatisticsReport/ReadOperatorStatistics. Produces AdminStatistics({lang,campaignId?,onForbidden}), getOperatorStatistics(campaignId?:string,signal?:AbortSignal):Promise<StatisticsReport>.
 Uses existing displayPrice, errorText, semantic dl/buttons/focus, AbortController.
 
-- [ ] **Step 1:** Добавить rendered tests: RU/EN global and campaign same reports, money18446744073709551614 exact; unknown/partial vs0, empty denominator=>unknown, panel safe errors/observation time/groups/archived plan references. Campaign fixture responds new report endpoint; old metadata/events/replay paths сохраняются.
-- [ ] **Step 2:** npm --prefix web run test:e2e -- tests/statistics.spec.ts. Expected RED: resource/labels absent.
-- [ ] **Step 3:** Создать один report component и /admin/statistics resource; использовать его в campaign card без копии финансовых формул. Manual refresh/retry, abort+scope identity, 401/403 parent denial; source-specific metadata карточки С25 сохранены.
-- [ ] **Step 4:** Добавить blocked delayed responses/lang/roleloss/error/retry/375px keyboard checks. Run typecheck + tests/statistics.spec.ts tests/campaigns.spec.ts. Expected GREEN, no horizontal overflow/private key fields.
+- [x] **Step 1:** Добавить rendered tests: RU/EN global and campaign same reports, money18446744073709551614 exact; unknown/partial vs0, empty denominator=>unknown, panel safe errors/observation time/groups/archived plan references. Campaign fixture responds new report endpoint; old metadata/events/replay paths сохраняются.
+- [x] **Step 2:** npm --prefix web run test:e2e -- tests/statistics.spec.ts. Expected RED: resource/labels absent.
+- [x] **Step 3:** Создать один report component и /admin/statistics resource; использовать его в campaign card без копии финансовых формул. Manual refresh/retry, abort+scope identity, 401/403 parent denial; source-specific metadata карточки С25 сохранены.
+- [x] **Step 4:** Добавить blocked delayed responses/lang/roleloss/error/retry/375px keyboard checks. Run typecheck + tests/statistics.spec.ts tests/campaigns.spec.ts. Expected GREEN, no horizontal overflow/private key fields.
 - [ ] **Step 5:** Scoped commit feat(admin): show shared statistics reports, guarded push, task-done focused rendered command. Expected exit0 и ledger.
 
 ### Task 3: Нативная приёмка, финальное review и доставка
