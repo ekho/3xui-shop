@@ -46,7 +46,7 @@ func TestRegressionOperatorWebOnlyDecisionAndRole(t *testing.T) {
 		t.Fatal("web-only own key", err)
 	}
 	decision, err := testTrialRow(ctx, s.pool, request.RequestId)
-	if err != nil || decision.OperatorAccountID == nil || *decision.OperatorAccountID != operator || decision.OperatorTgID.Valid {
+	if err != nil || decision.OperatorAccountID == nil || *decision.OperatorAccountID != operator || decision.OperatorTgID.Valid || decision.DecisionSource != "operator" {
 		t.Fatal("actor persisted", err)
 	}
 	var grants, jobs, audit int
@@ -115,7 +115,7 @@ func TestRegressionOperatorTelegramOriginHasNoWebCredentials(t *testing.T) {
 		t.Fatal("invented web credentials", err)
 	}
 	r, err := testTrialRow(ctx, s.pool, out.Request.RequestId)
-	if err != nil || r.OperatorAccountID == nil || *r.OperatorAccountID != operator || r.OperatorTgID.Valid {
+	if err != nil || r.OperatorAccountID == nil || *r.OperatorAccountID != operator || r.OperatorTgID.Valid || r.DecisionSource != "operator" {
 		t.Fatal("trial actor", err)
 	}
 	raw := opaque()

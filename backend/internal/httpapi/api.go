@@ -169,6 +169,7 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig) *echo.Ech
 	e.POST("/api/v1/me/email-change/cancel", a.CancelEmailChange)
 	e.POST("/api/v1/me/sessions/revoke-others", a.RevokeOtherSessions)
 	e.POST("/api/v1/trial-requests", a.CreateTrialRequest)
+	e.POST("/api/v1/trials/activate", a.ActivateTelegramTrial)
 	e.GET("/api/v1/trial-requests/current", a.GetCurrentTrialRequest)
 	e.POST("/internal/v1/trial-requests/:id/decision", a.DecideTrialRequest)
 	e.POST("/internal/v1/trial-requests/:id/reconsider", a.ReconsiderTrialRequest)
@@ -333,11 +334,11 @@ func (a *API) GetAccount(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	available, err := a.subscriptions.CanRequestTrial(c.Request().Context(), out.Account)
+	capabilities, err := a.trialCapabilities(c.Request().Context(), out.Account)
 	if err != nil {
-		return subscriptionError(err)
+		return err
 	}
-	return c.JSON(200, wire.AccountResult{Account: publicAccount(out.Account), CsrfToken: out.CsrfToken, Capabilities: wire.Capabilities{TrialAvailable: available}})
+	return c.JSON(200, wire.AccountResult{Account: publicAccount(out.Account), CsrfToken: out.CsrfToken, Capabilities: capabilities})
 }
 func (a *API) LogoutAccount(c *echo.Context) error {
 	if err := requireEmptyBody(c); err != nil {
@@ -396,6 +397,28 @@ func (a *API) CreateTrialRequest(c *echo.Context) error {
 		return err
 	}
 	out, created, err := a.createTrialRequest(c.Request().Context(), account.Account.ID, key, in)
+	if err != nil {
+		return err
+	}
+	status := 200
+	if created {
+		status = 201
+	}
+	return c.JSON(status, out)
+}
+func (a *API) ActivateTelegramTrial(c *echo.Context) error {
+	account, err := a.auth(c, true)
+	if err != nil {
+		return err
+	}
+	key, err := idempotencyKey(c)
+	if err != nil {
+		return err
+	}
+	if _, err = decode[struct{}](a, c, "TrialActivationInput"); err != nil {
+		return err
+	}
+	out, created, err := a.activateTelegramTrial(c.Request().Context(), account.Account.ID, key)
 	if err != nil {
 		return err
 	}

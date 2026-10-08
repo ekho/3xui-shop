@@ -38,7 +38,7 @@ func (q *Queries) AddCallback(ctx context.Context, arg AddCallbackParams) error 
 }
 
 const addTrial = `-- name: AddTrial :one
-INSERT INTO trial_requests(id,account_id,status,comment,created_at,previous_request_id) VALUES($1,$2,'pending',$3,$4,$5) RETURNING id, sequence, account_id, status, comment, created_at, decided_at, operator_tg_id, reason, operation_id, previous_request_id, operator_account_id
+INSERT INTO trial_requests(id,account_id,status,comment,created_at,previous_request_id) VALUES($1,$2,'pending',$3,$4,$5) RETURNING id, sequence, account_id, status, comment, created_at, decided_at, operator_tg_id, reason, operation_id, previous_request_id, operator_account_id, decision_source
 `
 
 type AddTrialParams struct {
@@ -71,6 +71,7 @@ func (q *Queries) AddTrial(ctx context.Context, arg AddTrialParams) (TrialReques
 		&i.OperationID,
 		&i.PreviousRequestID,
 		&i.OperatorAccountID,
+		&i.DecisionSource,
 	)
 	return i, err
 }
@@ -94,7 +95,7 @@ func (q *Queries) CallbackByID(ctx context.Context, id string) (DecisionCallback
 }
 
 const currentTrial = `-- name: CurrentTrial :one
-SELECT id, sequence, account_id, status, comment, created_at, decided_at, operator_tg_id, reason, operation_id, previous_request_id, operator_account_id FROM trial_requests WHERE account_id=$1 ORDER BY sequence DESC LIMIT 1
+SELECT id, sequence, account_id, status, comment, created_at, decided_at, operator_tg_id, reason, operation_id, previous_request_id, operator_account_id, decision_source FROM trial_requests WHERE account_id=$1 ORDER BY sequence DESC LIMIT 1
 `
 
 func (q *Queries) CurrentTrial(ctx context.Context, accountID uuid.UUID) (TrialRequest, error) {
@@ -113,12 +114,13 @@ func (q *Queries) CurrentTrial(ctx context.Context, accountID uuid.UUID) (TrialR
 		&i.OperationID,
 		&i.PreviousRequestID,
 		&i.OperatorAccountID,
+		&i.DecisionSource,
 	)
 	return i, err
 }
 
 const decideTrial = `-- name: DecideTrial :one
-UPDATE trial_requests SET status=$2,decided_at=$3,operator_tg_id=$4,reason=$5,operation_id=$6 WHERE id=$1 AND status='pending' RETURNING id, sequence, account_id, status, comment, created_at, decided_at, operator_tg_id, reason, operation_id, previous_request_id, operator_account_id
+UPDATE trial_requests SET status=$2,decided_at=$3,operator_tg_id=$4,reason=$5,operation_id=$6 WHERE id=$1 AND status='pending' RETURNING id, sequence, account_id, status, comment, created_at, decided_at, operator_tg_id, reason, operation_id, previous_request_id, operator_account_id, decision_source
 `
 
 type DecideTrialParams struct {
@@ -153,13 +155,46 @@ func (q *Queries) DecideTrial(ctx context.Context, arg DecideTrialParams) (Trial
 		&i.OperationID,
 		&i.PreviousRequestID,
 		&i.OperatorAccountID,
+		&i.DecisionSource,
+	)
+	return i, err
+}
+
+const decideTrialAutomatic = `-- name: DecideTrialAutomatic :one
+UPDATE trial_requests SET status='approved',decision_source='telegram_auto',decided_at=$2,operation_id=$3
+WHERE id=$1 AND status='pending' RETURNING id, sequence, account_id, status, comment, created_at, decided_at, operator_tg_id, reason, operation_id, previous_request_id, operator_account_id, decision_source
+`
+
+type DecideTrialAutomaticParams struct {
+	ID          uuid.UUID
+	DecidedAt   pgtype.Timestamptz
+	OperationID *uuid.UUID
+}
+
+func (q *Queries) DecideTrialAutomatic(ctx context.Context, arg DecideTrialAutomaticParams) (TrialRequest, error) {
+	row := q.db.QueryRow(ctx, decideTrialAutomatic, arg.ID, arg.DecidedAt, arg.OperationID)
+	var i TrialRequest
+	err := row.Scan(
+		&i.ID,
+		&i.Sequence,
+		&i.AccountID,
+		&i.Status,
+		&i.Comment,
+		&i.CreatedAt,
+		&i.DecidedAt,
+		&i.OperatorTgID,
+		&i.Reason,
+		&i.OperationID,
+		&i.PreviousRequestID,
+		&i.OperatorAccountID,
+		&i.DecisionSource,
 	)
 	return i, err
 }
 
 const decideTrialWeb = `-- name: DecideTrialWeb :one
 UPDATE trial_requests SET status=$2,decided_at=$3,operator_account_id=$4,reason=$5,operation_id=$6
-WHERE id=$1 AND status='pending' RETURNING id, sequence, account_id, status, comment, created_at, decided_at, operator_tg_id, reason, operation_id, previous_request_id, operator_account_id
+WHERE id=$1 AND status='pending' RETURNING id, sequence, account_id, status, comment, created_at, decided_at, operator_tg_id, reason, operation_id, previous_request_id, operator_account_id, decision_source
 `
 
 type DecideTrialWebParams struct {
@@ -194,6 +229,7 @@ func (q *Queries) DecideTrialWeb(ctx context.Context, arg DecideTrialWebParams) 
 		&i.OperationID,
 		&i.PreviousRequestID,
 		&i.OperatorAccountID,
+		&i.DecisionSource,
 	)
 	return i, err
 }
@@ -240,7 +276,7 @@ func (q *Queries) HasGrant(ctx context.Context, accountID uuid.UUID) (bool, erro
 }
 
 const lockTrial = `-- name: LockTrial :one
-SELECT id, sequence, account_id, status, comment, created_at, decided_at, operator_tg_id, reason, operation_id, previous_request_id, operator_account_id FROM trial_requests WHERE id=$1 FOR UPDATE
+SELECT id, sequence, account_id, status, comment, created_at, decided_at, operator_tg_id, reason, operation_id, previous_request_id, operator_account_id, decision_source FROM trial_requests WHERE id=$1 FOR UPDATE
 `
 
 func (q *Queries) LockTrial(ctx context.Context, id uuid.UUID) (TrialRequest, error) {
@@ -259,12 +295,13 @@ func (q *Queries) LockTrial(ctx context.Context, id uuid.UUID) (TrialRequest, er
 		&i.OperationID,
 		&i.PreviousRequestID,
 		&i.OperatorAccountID,
+		&i.DecisionSource,
 	)
 	return i, err
 }
 
 const operatorTrialPage = `-- name: OperatorTrialPage :many
-SELECT id, sequence, account_id, status, comment, created_at, decided_at, operator_tg_id, reason, operation_id, previous_request_id, operator_account_id FROM trial_requests WHERE account_id=$1
+SELECT id, sequence, account_id, status, comment, created_at, decided_at, operator_tg_id, reason, operation_id, previous_request_id, operator_account_id, decision_source FROM trial_requests WHERE account_id=$1
  AND ($2::timestamptz IS NULL OR
       (created_at,id)<($2::timestamptz,$3::uuid))
 ORDER BY created_at DESC,id DESC LIMIT 51
@@ -298,6 +335,7 @@ func (q *Queries) OperatorTrialPage(ctx context.Context, arg OperatorTrialPagePa
 			&i.OperationID,
 			&i.PreviousRequestID,
 			&i.OperatorAccountID,
+			&i.DecisionSource,
 		); err != nil {
 			return nil, err
 		}
@@ -331,7 +369,7 @@ func (q *Queries) ReserveGrant(ctx context.Context, arg ReserveGrantParams) erro
 }
 
 const trialByID = `-- name: TrialByID :one
-SELECT id, sequence, account_id, status, comment, created_at, decided_at, operator_tg_id, reason, operation_id, previous_request_id, operator_account_id FROM trial_requests WHERE id=$1
+SELECT id, sequence, account_id, status, comment, created_at, decided_at, operator_tg_id, reason, operation_id, previous_request_id, operator_account_id, decision_source FROM trial_requests WHERE id=$1
 `
 
 func (q *Queries) TrialByID(ctx context.Context, id uuid.UUID) (TrialRequest, error) {
@@ -350,6 +388,7 @@ func (q *Queries) TrialByID(ctx context.Context, id uuid.UUID) (TrialRequest, er
 		&i.OperationID,
 		&i.PreviousRequestID,
 		&i.OperatorAccountID,
+		&i.DecisionSource,
 	)
 	return i, err
 }

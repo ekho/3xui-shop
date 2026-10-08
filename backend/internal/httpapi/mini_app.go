@@ -21,7 +21,7 @@ func miniAppRouteAllowed(path, method string) bool {
 	}
 	if method == "POST" {
 		switch path {
-		case "/api/v1/telegram/mini-app/logout", "/api/v1/telegram/initial-email", "/api/v1/telegram/initial-email/confirm", "/api/v1/trial-requests", "/api/v1/payment-history", "/api/v1/support/history", "/api/v1/support/messages", "/api/v1/support/read", "/api/v1/support/state", "/api/v1/orders/:id/cancel":
+		case "/api/v1/telegram/mini-app/logout", "/api/v1/telegram/initial-email", "/api/v1/telegram/initial-email/confirm", "/api/v1/trial-requests", "/api/v1/trials/activate", "/api/v1/payment-history", "/api/v1/support/history", "/api/v1/support/messages", "/api/v1/support/read", "/api/v1/support/state", "/api/v1/orders/:id/cancel":
 			return true
 		}
 	}
@@ -43,9 +43,9 @@ func (a *API) miniAppAuth(c *echo.Context, allowRestricted bool) (accounts.Authe
 	return out, accountError(err)
 }
 func (a *API) miniAppAccount(c *echo.Context, out accounts.Authentication) (wire.MiniAppAccountResult, error) {
-	available, err := a.subscriptions.CanRequestTrial(c.Request().Context(), out.Account)
+	capabilities, err := a.trialCapabilities(c.Request().Context(), out.Account)
 	if err != nil {
-		return wire.MiniAppAccountResult{}, subscriptionError(err)
+		return wire.MiniAppAccountResult{}, err
 	}
 	account := out.Account
 	var email *openapi_types.Email
@@ -53,7 +53,7 @@ func (a *API) miniAppAccount(c *echo.Context, out accounts.Authentication) (wire
 		v := openapi_types.Email(*account.EmailKey)
 		email = &v
 	}
-	return wire.MiniAppAccountResult{Account: wire.MiniAppAccount{AccountId: account.ID, Email: email, EmailVerified: account.VerifiedAt != nil, DisplayName: account.DisplayName, TelegramId: *account.TelegramID, TelegramLinked: true, Locale: wire.MiniAppAccountLocale(account.Locale)}, CsrfToken: out.CsrfToken, Capabilities: wire.Capabilities{TrialAvailable: available}}, nil
+	return wire.MiniAppAccountResult{Account: wire.MiniAppAccount{AccountId: account.ID, Email: email, EmailVerified: account.VerifiedAt != nil, DisplayName: account.DisplayName, TelegramId: *account.TelegramID, TelegramLinked: true, Locale: wire.MiniAppAccountLocale(account.Locale)}, CsrfToken: out.CsrfToken, Capabilities: capabilities}, nil
 }
 func (a *API) CreateMiniAppSession(c *echo.Context) error {
 	if a.miniApp == nil {

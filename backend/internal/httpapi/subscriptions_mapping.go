@@ -271,6 +271,11 @@ func (a *API) createTrialRequest(ctx context.Context, accountID, key uuid.UUID, 
 	return toSubscriptionTrialRequest(v), created, subscriptionError(err)
 }
 
+func (a *API) activateTelegramTrial(ctx context.Context, accountID, key uuid.UUID) (wire.TrialRequest, bool, error) {
+	v, created, err := a.subscriptions.ActivateTelegramTrial(ctx, accountID, key)
+	return toSubscriptionTrialRequest(v), created, subscriptionError(err)
+}
+
 func (a *API) currentTrialRequest(ctx context.Context, accountID uuid.UUID) (wire.CurrentTrialRequest, error) {
 	v, err := a.subscriptions.CurrentTrialRequest(ctx, accountID)
 	return toSubscriptionCurrentTrialRequest(v), subscriptionError(err)

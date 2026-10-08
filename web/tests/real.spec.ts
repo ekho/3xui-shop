@@ -14,3 +14,22 @@ test('Web trial real HTTP + River + Python actor + browser',async({page})=>{
  const internal=await page.request.post('/internal/v1/telegram/jobs/claim',{data:{limit:1}});expect(internal.status()).toBe(404);
  await page.getByRole('button',{name:'Sign out'}).click();await expect(page).toHaveURL(/login/);expect((await page.request.get('/api/v1/subscription/key')).status()).toBe(401);
 });
+
+if(process.env.TEST_MINI_INIT_FILE){
+ test('Telegram trial real signed SDK + HTTP + River + panel',async({page})=>{
+  let checkpoint='navigation',sessionStatus=0;
+  page.on('response',r=>{if(new URL(r.url()).pathname==='/api/v1/telegram/mini-app/session')sessionStatus=r.status();});
+  try{
+  const {init_data}=JSON.parse(readFileSync(process.env.TEST_MINI_INIT_FILE!,'utf8'));
+  await page.route('https://telegram.org/js/telegram-web-app.js',r=>r.fulfill({contentType:'application/javascript',body:`window.Telegram={WebApp:{initData:${JSON.stringify(init_data)},version:'9.6',platform:'web',themeParams:{},viewportStableHeight:720,ready(){},expand(){},onEvent(){},offEvent(){},BackButton:{show(){},hide(){},onClick(){},offClick(){}}}};`}));
+  const keys:string[]=[];page.on('request',r=>{if(new URL(r.url()).pathname==='/api/v1/trials/activate')keys.push(r.headers()['idempotency-key']);});
+  await page.goto('/mini-app/cabinet?lang=en');checkpoint='consent';await page.getByRole('checkbox',{name:/terms of use/i}).check();await page.getByRole('checkbox',{name:/privacy/i}).check();await page.getByRole('button',{name:'Continue',exact:true}).click();checkpoint='capability';
+  const activate=page.getByRole('button',{name:'Activate trial',exact:true});await expect(activate).toBeVisible();await expect(page.getByRole('textbox')).toHaveCount(0);
+  checkpoint='activation';const response=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/v1/trials/activate');await activate.focus();await page.keyboard.press('Enter');const result=await response;expect(result.status()).toBe(201);expect(result.headers()['cache-control']).toBe('no-store');expect(result.request().postDataJSON()).toEqual({});expect(result.request().headers().authorization).toMatch(/^Bearer mini_/);expect(result.request().headers()['x-csrf-token']).toBeTruthy();checkpoint='provision';
+  await expect(page.getByText('Trial active',{exact:true})).toBeVisible({timeout:20000});await expect(activate).toHaveCount(0);expect(keys).toHaveLength(1);
+  expect(await page.evaluate(()=>JSON.stringify(localStorage)+JSON.stringify(sessionStorage))).not.toMatch(/mini_|init_data|tgWebAppData|subscription_url/);
+  checkpoint='connection';await page.getByRole('button',{name:'Show subscription link'}).click();await expect(page.getByLabel('Subscription link',{exact:true})).toHaveValue(/^https:\/\/.+\/sub\/[0-9a-z]{16}$/);
+  await page.getByRole('button',{name:'Hide connection details'}).click();await expect(page.getByLabel('Subscription link',{exact:true})).toHaveCount(0);
+  }finally{process.stdout.write('TG_TRIAL_CHECKPOINT:'+checkpoint+'\n');if(sessionStatus)process.stdout.write('TG_TRIAL_CHECKPOINT:session:'+sessionStatus+'\n');}
+ });
+}
