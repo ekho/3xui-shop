@@ -6,7 +6,7 @@ const trial:Model<'TrialRequest'>={request_id:'425e3641-912b-4e50-b4d2-6b4a21598
 const none:Model<'Subscription'>={status:'none',devices:0,traffic_limit_bytes:0,traffic_used_bytes:null,observed_at:null,data_stale:true,expires_at:null,access_profile:'unknown',vpn_banned:false,access_operation_id:null,access_operation_status:null};
 async function mock(page:Page,current:Model<'CurrentTrialRequest'>={request:null},sub:Model<'Subscription'>=none){
  await page.route('**/api/v1/**',async route=>{
-  const p=new URL(route.request().url()).pathname;const body=p.endsWith('/me')?account:p.endsWith('/current')?current:p.endsWith('/subscription')?sub:p.endsWith('/key')?{subscription_url:'https://subscriptions.example.test/sub/fixtureprivate000'}:{};
+  const p=new URL(route.request().url()).pathname;const body=p.endsWith('/reminders')?{version:'reminders-v1',email_enabled:false,email_available:true,reminders:[]}:p.endsWith('/me')?account:p.endsWith('/current')?current:p.endsWith('/subscription')?sub:p.endsWith('/key')?{subscription_url:'https://subscriptions.example.test/sub/fixtureprivate000'}:{};
   await route.fulfill({json:body});
  });
 }

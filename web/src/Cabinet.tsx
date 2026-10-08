@@ -5,6 +5,7 @@ import {text,link,loginRedirect,errorText,type Lang} from './i18n';
 import {Connection} from './Connection';
 import {isMiniApp} from './telegramSDK';
 import {StarsSubscription} from './StarsSubscription';
+import {ClientReminders} from './ClientReminders';
 import {miniText} from './MiniApp';
 
 const keyStatuses=new Set<api.Subscription['status']>(['active','expired']);
@@ -47,6 +48,7 @@ export function Cabinet({lang}:{lang:Lang}){
    {panelMessage?<div className="warning" role="alert"><p>{panelMessage}</p><button onClick={retry} disabled={busy}>{t.retry}</button></div>:null}
    {keyStatuses.has(sub.status)&&allowsKey(sub)?<Connection lang={lang} subscriptionURL={key} busy={keyBusy} onReveal={reveal} onHide={clearKey}/>:null}
   </>}
+  {account&&canLogout&&!busy&&!error?<ClientReminders lang={lang} accountID={account.account.account_id} refreshKey={revision}/>:null}
   {account&&(isMiniApp()||('telegram_linked' in account.account&&account.account.telegram_linked)||order?.payment_method==='telegram_stars')?<StarsSubscription lang={lang} refreshKey={revision}/>:null}
   {account?<p className="account-links"><a href={link('/catalogue',lang)}>{t.plans}</a>{sub&&['regular','euru'].includes(sub.access_profile)&&!sub.vpn_banned&&['active','expired','exhausted'].includes(sub.status)?<><a href={link('/cabinet/renew',lang)}>{t.renewalTitle}</a><a href={link('/cabinet/change-plan',lang)}>{t.changePlanTitle}</a></>:null}{order?<a href={link('/orders/'+order.order_id,lang)}>{t.currentOrder}</a>:null}<a href={link('/cabinet/history',lang)}>{t.paymentHistory}</a><a href={link('/cabinet/identity',lang)}>{t.identityTitle}</a>{!isMiniApp()?<a href={link('/cabinet/security',lang)}>{t.security}</a>:null}<a href={link('/cabinet/support',lang)}>{t.supportMessages}</a></p>:null}<a className="support" href={config.supportURL}>{t.support}</a>
  </section>;

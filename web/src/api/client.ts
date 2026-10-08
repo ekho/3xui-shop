@@ -48,6 +48,12 @@ export const getCurrentTrialRequest=(signal?:AbortSignal)=>request<CurrentTrialR
 export const getSubscription=(signal?:AbortSignal)=>request<Subscription>('subscription','GET',undefined,signal);
 export const getSubscriptionKey=(signal?:AbortSignal)=>request<SubscriptionKey>('subscription/key','GET',undefined,signal);
 
+export type Reminder=components['schemas']['Reminder'];
+export type ReminderResult=components['schemas']['ReminderResult'];
+export const getReminders=(signal?:AbortSignal)=>request<ReminderResult>('reminders','GET',undefined,signal);
+export const setReminderEmailPreference=(enabled:boolean,signal?:AbortSignal)=>request<ReminderResult>('reminders/preferences','POST',{email_enabled:enabled},signal,true);
+export const dismissReminder=(id:string,signal?:AbortSignal)=>request<void>('reminders/'+encodeURIComponent(id)+'/dismiss','POST',undefined,signal,true);
+
 export type PasswordResetInput=components['schemas']['PasswordResetInput'];
 export type PasswordResetAccepted=components['schemas']['PasswordResetAccepted'];
 export type PasswordResetCompleteInput=components['schemas']['PasswordResetCompleteInput'];
