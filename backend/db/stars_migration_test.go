@@ -27,7 +27,7 @@ func TestStarsMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	account, old, order := uuid.New(), uuid.New(), uuid.New()
-	if _, err = e.Pool.Exec(ctx, `INSERT INTO accounts(id,kind,telegram_id,display_name,locale,vpn_id,sub_id,panel_key,terms_version,privacy_version,policy_accepted_at) VALUES($1,'telegram',701,'Owned Stars fixture','en',$2,'starsmigration','acct_stars_migration','1','1',now())`, account, uuid.New()); err != nil {
+	if _, err = e.Pool.Exec(ctx, `INSERT INTO accounts(id,kind,telegram_id,display_name,locale,vpn_id,sub_id,panel_key,terms_version,privacy_version,policy_accepted_at) VALUES($1,'telegram',701,'Owned Stars fixture','en',$2,'starsmigration01','acct_stars_migration','1','1',now())`, account, uuid.New()); err != nil {
 		t.Fatal(err)
 	}
 	insert := `INSERT INTO purchase_orders(id,account_id,idempotency_key,body_hash,quote,amount_minor,payment_type,payment_method,created_at,expires_at,active) VALUES($1,$2,$3,$4,$5,100,$6,$7,now(),now()+interval '30 minutes',false)`
