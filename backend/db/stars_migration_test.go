@@ -47,7 +47,7 @@ func TestStarsMigration(t *testing.T) {
 	if _, err = e.Pool.Exec(ctx, insert, order, account, uuid.New(), []byte{2}, json.RawMessage(`{"currency":"XTR"}`), "STARS", "telegram_stars"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = e.Pool.Exec(ctx, `INSERT INTO stars_checkouts(order_id,bot_id,payer_id,payload) VALUES($1,123,701,'stars:v1:'||$1::text)`, order); err != nil {
+	if _, err = e.Pool.Exec(ctx, `INSERT INTO stars_checkouts(order_id,bot_id,payer_id,payload) VALUES($1::uuid,123,701,'stars:v1:'||$1::uuid::text)`, order); err != nil {
 		t.Fatal(err)
 	}
 	for _, sql := range []string{`UPDATE stars_checkouts SET payer_id=702 WHERE order_id=$1`, `UPDATE stars_checkouts SET bot_id=124 WHERE order_id=$1`, `DELETE FROM stars_checkouts WHERE order_id=$1`} {
