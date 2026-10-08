@@ -195,12 +195,14 @@ func (s *Service) starsResumeEligibleTx(ctx context.Context, tx pgx.Tx, a accoun
 	}
 	var operation *uuid.UUID
 	var status string
-	if err = q.QueryRow(ctx, `SELECT access_operation_id,fulfillment_status FROM purchase_orders WHERE id=$1 AND account_id=$2 AND NOT (`+purchaseRefundClosed+`)`, *sub.current, a.ID).Scan(&operation, &status); errors.Is(err, pgx.ErrNoRows) {
+	var raw []byte
+	if err = q.QueryRow(ctx, `SELECT access_operation_id,fulfillment_status,quote FROM purchase_orders WHERE id=$1 AND account_id=$2 AND NOT (`+purchaseRefundClosed+`)`, *sub.current, a.ID).Scan(&operation, &status, &raw); errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	} else if err != nil {
 		return false, unavailable()
 	}
-	return status == "applied" && operation != nil && *operation == source.OperationID, nil
+	var quote PurchaseQuote
+	return json.Unmarshal(raw, &quote) == nil && quote.StarsRecurring && stringValue(a.AccessProfile) == string(quote.Profile) && status == "applied" && operation != nil && *operation == source.OperationID, nil
 }
 
 func (s *Service) StarsSubscription(ctx context.Context, account uuid.UUID) (StarsSubscription, error) {

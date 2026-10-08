@@ -151,7 +151,7 @@ func (s *Service) prepareStarsCycleTx(ctx context.Context, tx pgx.Tx, root purch
 	if !s.config().StarsEnabled {
 		return refuse("stars_disabled")
 	}
-	if s.stars == nil || s.stars.BotID != bot || a.LegacyUserID != nil || !purchaseSourceEligible(a, "telegram_stars") || a.TelegramID == nil || *a.TelegramID != payer || a.Restricted || a.VpnBanned || a.AssignedPanelID == nil || *a.AssignedPanelID != s.config().PanelID || (stringValue(a.AccessProfile) != "regular" && stringValue(a.AccessProfile) != "euru") {
+	if s.stars == nil || s.stars.BotID != bot || a.LegacyUserID != nil || !purchaseSourceEligible(a, "telegram_stars") || a.TelegramID == nil || *a.TelegramID != payer || a.Restricted || a.VpnBanned || a.AssignedPanelID == nil || *a.AssignedPanelID != s.config().PanelID || (stringValue(a.AccessProfile) != "regular" && stringValue(a.AccessProfile) != "euru") || stringValue(a.AccessProfile) != string(quote.Profile) {
 		return refuse("account_not_eligible")
 	}
 	if !refunded && (sub.desired == "cancel" || sub.botCanceled || sub.desired == "resume" && sub.control != "confirmed") {

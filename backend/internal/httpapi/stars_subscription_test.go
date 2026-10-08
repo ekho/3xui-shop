@@ -619,6 +619,136 @@ func TestStarsSubscriptionResumeGuards(t *testing.T) {
 	}
 }
 
+// Catches resuming the old recurring contract and undoing a finite operator profile change.
+func TestStarsRecurringProfileAuthority(t *testing.T) {
+	h, s, e, auth, m, root, panel := starsCycleFixture(t)
+	ctx := context.Background()
+	actor := renewalOperator(t, s, e)
+	profile := "euru"
+	op, err := m.Subscriptions.CreateAccessOperation(ctx, actor, auth.Account.AccountId, uuid.New(), subscriptions.AccessOperationInput{Kind: "set_profile", Profile: &profile, Reason: "Owned finite profile replacement"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = m.VPN.ApplyAccess(ctx, op.OperationId); err != nil {
+		t.Fatal(err)
+	}
+	source, err := m.VPN.CurrentPlanSourceTx(ctx, nil, auth.Account.AccountId)
+	if err != nil || source == nil || source.OperationID != *root.AccessOperationId {
+		t.Fatal("finite profile fixture unexpectedly changed plan source", err)
+	}
+	calls := 0
+	starsSetter(s, func(_ context.Context, payer int64, charge string, canceled bool) error {
+		calls++
+		if payer != 701 || charge != "owned-stars-charge" || !canceled {
+			t.Error("profile policy reached native resume or changed captured identity")
+		}
+		return nil
+	})
+	if err = s.payments.ReconcileStarsSubscriptions(ctx); err != nil || calls != 1 {
+		t.Fatal("profile policy cancellation missing", err)
+	}
+	if starsSubscriptionState(t, h, s, auth).CanResume {
+		t.Error("old profile contract offered resume")
+	}
+	r := starsRequest(h, s, auth, "POST", "/api/v1/stars-subscription/control", `{"action":"resume","confirmed":true}`, uuid.New())
+	if r.Code != 409 || calls != 1 {
+		t.Error("old profile contract reached native resume", r.Code)
+	}
+	writes := panel.updates + panel.resets + panel.attaches + panel.detaches
+	expiry := integer(t, panel.client["expiryTime"])
+	e.Advance(30 * 24 * time.Hour)
+	in := starsCyclePayment(root.OrderId, e.Clock())
+	if err = s.payments.RecordStarsPayment(ctx, in); err != nil {
+		t.Fatal(err)
+	}
+	var observed uuid.UUID
+	if err = e.Pool.QueryRow(ctx, `SELECT order_id FROM purchase_receipts WHERE provider_data->>'charge_id'=$1`, in.ChargeID).Scan(&observed); err != nil {
+		t.Fatal("late profile charge lost", err)
+	}
+	if err = s.payments.FulfillPurchase(ctx, observed); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.payments.PurchaseOrder(ctx, auth.Account.AccountId, observed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.AccessOperationId != nil {
+		if err = m.VPN.ApplyAccess(ctx, *got.AccessOperationId); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var retained bool
+	if err = e.Pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM purchase_orders)=1 AND (SELECT count(*) FROM purchase_receipts)=2 AND EXISTS(SELECT 1 FROM purchase_receipts WHERE provider_data->>'charge_id'=$1 AND review_reason IS NOT NULL) AND EXISTS(SELECT 1 FROM accounts WHERE id=$2 AND access_profile='euru') AND EXISTS(SELECT 1 FROM access_operations WHERE id=$3 AND status='applied')`, in.ChargeID, auth.Account.AccountId, *root.AccessOperationId).Scan(&retained); err != nil || !retained || writes != panel.updates+panel.resets+panel.attaches+panel.detaches || expiry != integer(t, panel.client["expiryTime"]) {
+		t.Fatal("late recurring charge undid operator profile or lost paid/review evidence", err)
+	}
+}
+
+// Catches leaving billing enabled after a conflicting first/cycle replay, or canceling exact replay.
+func TestStarsRecurringConflictCancellation(t *testing.T) {
+	for _, cycle := range []bool{false, true} {
+		t.Run(map[bool]string{false: "first", true: "cycle"}[cycle], func(t *testing.T) {
+			_, s, e, auth, m, root, _ := starsCycleFixture(t)
+			ctx := context.Background()
+			in := starsPayment(root.OrderId, e.Clock())
+			in.Recurring, in.FirstRecurring = true, true
+			in.SubscriptionExpiresAt = in.At.Add(30 * 24 * time.Hour).Unix()
+			order := root
+			if cycle {
+				e.Advance(30 * 24 * time.Hour)
+				in = starsCyclePayment(root.OrderId, e.Clock())
+				if err := s.payments.RecordStarsPayment(ctx, in); err != nil {
+					t.Fatal(err)
+				}
+				order = starsCycleOrder(t, s, auth.Account.AccountId, root.OrderId, in.ChargeID)
+				if err := s.payments.FulfillPurchase(ctx, order.OrderId); err != nil {
+					t.Fatal(err)
+				}
+				var err error
+				order, err = s.payments.PurchaseOrder(ctx, auth.Account.AccountId, order.OrderId)
+				if err != nil || order.AccessOperationId == nil {
+					t.Fatal("cycle access missing", err)
+				}
+				if err = m.VPN.ApplyAccess(ctx, *order.AccessOperationId); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var proof []byte
+			var receipt string
+			if err := e.Pool.QueryRow(ctx, `SELECT operation_id,provider_data FROM purchase_receipts WHERE order_id=$1`, order.OrderId).Scan(&receipt, &proof); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.payments.RecordStarsPayment(ctx, in); err != nil {
+				t.Fatal(err)
+			}
+			var unchanged bool
+			if err := e.Pool.QueryRow(ctx, `SELECT NOT EXISTS(SELECT 1 FROM stars_subscription_controls) AND EXISTS(SELECT 1 FROM stars_subscriptions WHERE root_order_id=$1 AND desired_action='none')`, root.OrderId).Scan(&unchanged); err != nil || !unchanged {
+				t.Fatal("exact replay canceled billing", err)
+			}
+			in.Amount = 101
+			for i := 0; i < 2; i++ {
+				if err := s.payments.RecordStarsPayment(ctx, in); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var retained, canceled bool
+			if err := e.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM purchase_receipts WHERE operation_id=$1 AND provider_data=$2::jsonb AND gross_minor=100 AND occurred_at=$3 AND review_reason='conflicting_operation_id') AND EXISTS(SELECT 1 FROM access_operations WHERE id=$4 AND status='applied') AND EXISTS(SELECT 1 FROM purchase_orders WHERE id=$5 AND access_operation_id=$4 AND fulfillment_status='applied' AND review_required), EXISTS(SELECT 1 FROM stars_subscriptions s JOIN stars_subscription_controls c ON c.id=s.latest_control_id WHERE s.root_order_id=$6 AND s.desired_action='cancel' AND c.source='policy') AND (SELECT count(*) FROM stars_subscription_controls)=1`, receipt, proof, in.At, *order.AccessOperationId, order.OrderId, root.OrderId).Scan(&retained, &canceled); err != nil || !retained || !canceled {
+				t.Fatal("conflict lost original paid evidence or immediate cancellation", err, retained, canceled)
+			}
+			calls := 0
+			starsSetter(s, func(_ context.Context, payer int64, charge string, cancel bool) error {
+				calls++
+				if payer != 701 || charge != "owned-stars-charge" || !cancel {
+					t.Error("conflict cancellation used cycle/changed billing coordinates")
+				}
+				return nil
+			})
+			if err := s.payments.ReconcileStarsSubscriptions(ctx); err != nil || calls != 1 {
+				t.Fatal("conflict waited for a new charge/lapse to cancel", err)
+			}
+		})
+	}
+}
+
 // Catches accepting an unrelated payer/bot as authoritative provider state.
 func TestStarsSubscriptionUpdateAuthority(t *testing.T) {
 	_, s, e, auth, _, order := starsSubscriptionFixture(t)

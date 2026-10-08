@@ -137,12 +137,13 @@ func (s *Service) RecordStarsPayment(ctx context.Context, in StarsPaymentInput) 
 		return failure(409, "STARS_UNSUPPORTED_PAYMENT")
 	}
 	var oldOrder uuid.UUID
+	var oldAccount uuid.UUID
 	var oldAt time.Time
 	var oldAmount int64
 	var oldCurrency string
 	var oldProof []byte
 	var oldReview *string
-	err = tx.QueryRow(ctx, `SELECT order_id,occurred_at,gross_minor,currency,provider_data,review_reason FROM purchase_receipts WHERE operation_id=$1 FOR UPDATE`, key).Scan(&oldOrder, &oldAt, &oldAmount, &oldCurrency, &oldProof, &oldReview)
+	err = tx.QueryRow(ctx, `SELECT r.order_id,p.account_id,r.occurred_at,r.gross_minor,r.currency,r.provider_data,r.review_reason FROM purchase_receipts r JOIN purchase_orders p ON p.id=r.order_id WHERE r.operation_id=$1 FOR UPDATE OF r`, key).Scan(&oldOrder, &oldAccount, &oldAt, &oldAmount, &oldCurrency, &oldProof, &oldReview)
 	if err == nil {
 		var saved, current starsProof
 		mapped := oldOrder == p.id
@@ -158,6 +159,14 @@ func (s *Service) RecordStarsPayment(ctx context.Context, in StarsPaymentInput) 
 			}
 			if _, err = tx.Exec(ctx, `UPDATE purchase_orders SET review_required=true,review_reason='conflicting_operation_id',active=false,fulfillment_status=CASE WHEN access_operation_id IS NULL THEN 'needs_review' ELSE fulfillment_status END WHERE id=$1 OR id=$2`, p.id, oldOrder); err != nil {
 				return unavailable()
+			}
+			if err = s.RequireStarsCancellationTx(ctx, tx, p.account, "Conflicting Stars payment requires review"); err != nil {
+				return err
+			}
+			if oldAccount != p.account {
+				if err = s.RequireStarsCancellationTx(ctx, tx, oldAccount, "Conflicting Stars payment requires review"); err != nil {
+					return err
+				}
 			}
 			if oldReview == nil || *oldReview != "conflicting_operation_id" {
 				if err = auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), AccountID: p.account, CreatedAt: s.now(), Action: "stars_payment_conflict", Reason: &key}); err != nil {
