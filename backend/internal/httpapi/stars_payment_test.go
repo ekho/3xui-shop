@@ -198,11 +198,20 @@ func TestStarsSignedHTTPOrder(t *testing.T) {
 	if err := e.Pool.QueryRow(context.Background(), `SELECT payer_id,bot_id,payload FROM stars_checkouts WHERE order_id=$1`, order.OrderId).Scan(&payer, &bot, &payload); err != nil || payer != 701 || bot != 123 || payload != "stars:v1:"+order.OrderId.String() {
 		t.Fatal("invoice provenance not retained", err)
 	}
-	for _, body := range []string{strings.ReplaceAll(strings.ReplaceAll(in, "telegram_stars", "yoomoney"), "STARS", "AC"), strings.ReplaceAll(in, `"purchase"`, `"renew"`)} {
-		r = starsRequest(h, s, auth, "POST", "/api/v1/orders", body, uuid.New())
-		if r.Code != 403 {
-			t.Fatal("Stars grant widened Mini external/renew authority", r.Code)
+	for _, tc := range []struct {
+		body string
+		want int
+	}{
+		{strings.ReplaceAll(strings.ReplaceAll(in, "telegram_stars", "yoomoney"), "STARS", "AC"), 403},
+		{strings.ReplaceAll(in, `"purchase"`, `"renew"`), 409}, // No applied finite source yet.
+	} {
+		r = starsRequest(h, s, auth, "POST", "/api/v1/orders", tc.body, uuid.New())
+		if r.Code != tc.want {
+			t.Fatal("Mini external or unapplied renewal authority widened", r.Code)
 		}
+	}
+	if count(t, e, "purchase_orders") != 1 {
+		t.Fatal("refused Mini checkout created another order")
 	}
 }
 

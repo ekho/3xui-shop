@@ -37,7 +37,7 @@ func (s *Service) CurrentPlanSourceTx(ctx context.Context, tx pgx.Tx, account uu
 	if err != nil {
 		return empty, unavailable()
 	}
-	if a.Kind != "web" || a.VerifiedAt == nil {
+	if !accounts.SourceEligible(a) {
 		return empty, failure(401, "INVALID_CREDENTIALS")
 	}
 	if a.Restricted {

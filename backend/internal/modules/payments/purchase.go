@@ -83,7 +83,7 @@ const purchaseFundingCheck = `SELECT EXISTS(SELECT 1 FROM purchase_orders p JOIN
        AND r.notification_type='telegram_stars.paid' AND r.currency='XTR' AND r.net_minor IS NULL
        AND r.occurred_at>=p.created_at-interval '5 minutes' AND r.occurred_at<=p.expires_at
        AND NOT EXISTS(SELECT 1 FROM stars_refunds f WHERE f.receipt_operation_id=r.operation_id)
-       AND EXISTS(SELECT 1 FROM stars_checkouts c WHERE c.order_id=p.id
+       AND EXISTS(SELECT 1 FROM stars_checkouts c WHERE c.order_id=COALESCE((SELECT cy.root_order_id FROM stars_subscription_cycles cy WHERE cy.order_id=p.id),p.id)
          AND r.provider_data->>'provider'='telegram_stars'
          AND r.provider_data->>'bot_id'=c.bot_id::text AND r.provider_data->>'payer_id'=c.payer_id::text
          AND r.provider_data->>'payload'=c.payload AND r.provider_data->>'currency'='XTR'
@@ -91,10 +91,15 @@ const purchaseFundingCheck = `SELECT EXISTS(SELECT 1 FROM purchase_orders p JOIN
          AND ((c.subscription_period=0 AND r.provider_data->>'recurring'='false' AND r.provider_data->>'first_recurring'='false'
                AND r.provider_data->>'subscription_expires_at'='0')
            OR (c.subscription_period=2592000 AND p.quote->>'stars_recurring'='true' AND p.quote->>'period_days'='30' AND p.amount_minor<=10000
-               AND r.provider_data->>'recurring'='true' AND r.provider_data->>'first_recurring'='true'
+               AND r.provider_data->>'recurring'='true'
                AND EXISTS(SELECT 1 FROM stars_subscription_cycles cy JOIN stars_subscriptions sub ON sub.first_receipt_id=cy.subscription_receipt_id
-                   WHERE cy.order_id=p.id AND cy.root_order_id=c.order_id AND cy.receipt_id=r.operation_id AND cy.subscription_receipt_id=r.operation_id
+                   JOIN purchase_orders root ON root.id=cy.root_order_id
+                   WHERE cy.order_id=p.id AND cy.root_order_id=c.order_id AND cy.receipt_id=r.operation_id
                    AND sub.canonical AND sub.root_order_id=c.order_id AND sub.bot_id=c.bot_id AND sub.payer_id=c.payer_id
+                   AND ((p.id=c.order_id AND p.action='purchase' AND cy.subscription_receipt_id=r.operation_id
+                         AND cy.previous_access_operation_id IS NULL AND r.provider_data->>'first_recurring'='true')
+                     OR (p.id<>c.order_id AND p.action='renew' AND p.quote=root.quote AND p.account_id=root.account_id
+                         AND cy.previous_access_operation_id IS NOT NULL AND r.provider_data->>'first_recurring'='false'))
                    AND r.provider_data->>'subscription_expires_at'=extract(epoch FROM cy.paid_until)::bigint::text)))
          AND r.operation_id='stars:'||encode(sha256(convert_to(c.bot_id::text||':'||(r.provider_data->>'charge_id'),'UTF8')),'hex')))))`
 
@@ -173,7 +178,15 @@ func (s *Service) publicPurchase(ctx context.Context, p purchaseRow) (PurchaseOr
 	}
 	if p.method == "telegram_stars" {
 		var link *string
-		if err := s.pool.QueryRow(ctx, `SELECT invoice_url FROM stars_checkouts WHERE order_id=$1`, p.id).Scan(&link); err != nil {
+		err := s.pool.QueryRow(ctx, `SELECT invoice_url FROM stars_checkouts WHERE order_id=$1`, p.id).Scan(&link)
+		if errors.Is(err, pgx.ErrNoRows) {
+			var cycle bool
+			if err = s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM stars_subscription_cycles WHERE order_id=$1 AND root_order_id<>order_id)`, p.id).Scan(&cycle); err != nil || !cycle {
+				return PurchaseOrder{}, unavailable()
+			}
+			return out, nil // A native renewal cycle never creates another invoice.
+		}
+		if err != nil {
 			return PurchaseOrder{}, unavailable()
 		}
 		state := "preparing"
@@ -229,7 +242,7 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if in.StarsRecurring && (in.Action != "purchase" || in.PaymentMethod != "telegram_stars" || in.PeriodDays != 30) {
 		return empty, failure(400, "INVALID_INPUT")
 	}
-	if account == uuid.Nil || key == uuid.Nil || (in.Action != "purchase" && in.Action != "renew" && in.Action != "change_plan") || (in.Action == "change_plan") != (in.SourceAccessOperationId != nil) || (in.SourceAccessOperationId != nil && *in.SourceAccessOperationId == uuid.Nil) || !((in.PaymentMethod == "yoomoney" && (in.PaymentType == "AC" || in.PaymentType == "PC")) || (in.PaymentMethod == "manual" && in.PaymentType == "MANUAL") || (in.PaymentMethod == "yookassa" && in.PaymentType == "YOOKASSA") || (in.PaymentMethod == "cryptomus" && in.PaymentType == "CRYPTOMUS") || (in.PaymentMethod == "heleket" && in.PaymentType == "HELEKET") || (in.PaymentMethod == "telegram_stars" && in.PaymentType == "STARS" && in.Action == "purchase")) || in.PlanId == uuid.Nil || in.Revision < 1 || in.PeriodDays < 1 || in.PeriodDays > 106751 {
+	if account == uuid.Nil || key == uuid.Nil || (in.Action != "purchase" && in.Action != "renew" && in.Action != "change_plan") || (in.Action == "change_plan") != (in.SourceAccessOperationId != nil) || (in.SourceAccessOperationId != nil && *in.SourceAccessOperationId == uuid.Nil) || !((in.PaymentMethod == "yoomoney" && (in.PaymentType == "AC" || in.PaymentType == "PC")) || (in.PaymentMethod == "manual" && in.PaymentType == "MANUAL") || (in.PaymentMethod == "yookassa" && in.PaymentType == "YOOKASSA") || (in.PaymentMethod == "cryptomus" && in.PaymentType == "CRYPTOMUS") || (in.PaymentMethod == "heleket" && in.PaymentType == "HELEKET") || (in.PaymentMethod == "telegram_stars" && in.PaymentType == "STARS")) || in.PlanId == uuid.Nil || in.Revision < 1 || in.PeriodDays < 1 || in.PeriodDays > 106751 {
 		return empty, failure(400, "INVALID_INPUT")
 	}
 	hash := bodyHash(in)
@@ -272,7 +285,7 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if !s.methodEnabled(in.PaymentMethod) {
 		return empty, failure(409, "PAYMENT_METHOD_UNAVAILABLE")
 	}
-	eligible, err := s.purchaseBillingEligibleTx(ctx, preTx, pre, in.PaymentMethod)
+	eligible, err := s.purchaseBillingEligibleTx(ctx, preTx, pre, purchaseRow{method: in.PaymentMethod, action: in.Action})
 	if err != nil {
 		return empty, err
 	}
@@ -345,7 +358,7 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if !s.methodEnabled(in.PaymentMethod) {
 		return empty, failure(409, "PAYMENT_METHOD_UNAVAILABLE")
 	}
-	eligible, err = s.purchaseBillingEligibleTx(ctx, tx, a, in.PaymentMethod)
+	eligible, err = s.purchaseBillingEligibleTx(ctx, tx, a, purchaseRow{method: in.PaymentMethod, action: in.Action})
 	if err != nil {
 		return empty, err
 	}

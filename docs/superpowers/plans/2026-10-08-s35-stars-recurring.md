@@ -128,7 +128,7 @@ Expected: PASS and actual completion ledger line.
 - Root injects public callback fields `RequireStarsCancellation func(context.Context,pgx.Tx,uuid.UUID,string)error` into accounts/subscriptions.Config and `CanUnlinkTelegram func(context.Context,pgx.Tx,uuid.UUID)(bool,error)` into accounts.Config.
 - HTTP GET `/api/v1/stars-subscription`, POST `/api/v1/stars-subscription/control`: cookie+CSRF or Mini bearer; own UUID only.
 
-- [ ] **Step 1: Write control/native/authority/scheduler RED tests.**
+- [x] **Step 1: Write control/native/authority/scheduler RED tests.**
 
 `TestStarsSubscriptionControl`: actual native True cancel retains existing finite paid access; cancel replay returnssamefacts; false/400/lostreply neverconfirmed; resume True showsresume_allowed, needsTelegramaction, no grant. Foreign/missingconsent/unconfirmed/missingkey/cookieCSRF fail, pendingexternal/refund/extraidentity/noCurrentAppliedSource blockresume.
 `TestStarsSubscriptionAuthorityRace`: pause native resume, transactionally restrict/quarantine/replaceplan, then finish oldTrue; billing remainsclosed and latestrequiredcancelprocessed with capturedoriginalpayer afterTGclear.
@@ -146,12 +146,12 @@ clock = clock.Add(time.Second)
 
 Native fake transport asserts editUserStarSubscription user_id/firstcharge/is_canceled and booleanresponse/allowed_updates; no realTelegram. Test all transaction hooks with real SQL state/actual calls, not only configfields.
 
-- [ ] **Step 2: Run RED.**
+- [x] **Step 2: Run RED.**
 
 Run (backend): `C35_ENV go test ./internal/httpapi -run 'TestStarsSubscription' -count=1 -timeout=10m`.
 Expected: behavior FAIL for missing endpoint/nativecontrol/timer/requiredcancel. Boundary/type fields supplied through JSON until new APIexists.
 
-- [ ] **Step 3: Implement public control/state and shared guards.**
+- [x] **Step 3: Implement public control/state and shared guards.**
 
 Persist controlintent/authority/idempotency before HTTP, use current per-account AccessOwner and rechecklatestcommand; immutable resultprovenance retained.
 Gateway successonlytrue; no DBTX duringHTTP. Retry onlycurrentsetter, uncertaintyclosesbilling. Resume revalidatescurrentcanonical/appliedsource/binding/noexternalpending; nofakeactive.
@@ -161,14 +161,14 @@ Replace static billing predicate at sharedcreate/policy and unlinkpoints with pu
 Add one timer with existing main schedulerchannel pattern; no worker/process/dependency. Safe logs contain no payer/charge/token.
 SDK/unlink/cookie cannot infercancel from providerstate/elapsedtime.
 
-- [ ] **Step 4: Run GREEN and relevant identity/operator regressions.**
+- [x] **Step 4: Run GREEN and relevant identity/operator regressions.**
 
 Run (backend): `C35_ENV go test ./internal/httpapi ./internal/modules/accounts ./internal/modules/telegram -run 'Test(Stars|.*Identity|.*Recovery|.*Restriction|.*AccessOperation|.*Starter)' -count=1 -timeout=15m`.
 Expected: PASS, no skipped selected tests; currentcanonical APIs and HTTP retain consent/restriction protections.
 Run (root): generators task1, `git diff --check`.
 Expected: generation/exit0.
 
-- [ ] **Step 5: Commit and task-done.**
+- [x] **Step 5: Commit and task-done.**
 
 Commit `feat(payments): control Stars renewal with native cancellation proof`, Co-Authored.
 Whole-task command: backend preceding GREEN command.
@@ -187,7 +187,7 @@ Expected: PASS and actual ledgercompletion.
 - Produces: existing RefundStarsPurchase and RecordStarsRefund map original invoice-root receipt to actualchildorder while retaining immutable stars_refunds.order_id=root.
 - Produces: existing CreatePurchaseOrder/RenewalOffer/PlanChangeContext support one-time Mini Stars renew/change and safe verified-web external methods under current guards; no new recurringchange order.
 
-- [ ] **Step 1: Write cycle/refund/handoff RED tests.**
+- [x] **Step 1: Write cycle/refund/handoff RED tests.**
 
 `TestStarsRecurringCycle`: actual appliedfirstorder, next genuine30d charge atprevpaiduntil, frozenrootterms despite cataloguechange, same VPN UUID/subID/account, 1 childreceipt/renewgrant; exactreplay1; duplicateperiodmoneyreview; invalidfirstflags/missingcanonical/outoforderexpiry/earlycharge/disabled/ban/sourcechange/pendingpartial retainmoneywithoutgrant.
 `TestStarsRecurringRefund`: childnative refund exactproof/capturedfirstbinding; earlyproviderrefund before childsuccess keeps root provenance but maps actualchildledger; pending/partial retirementpreservessteps/target; alreadyappliedaccess isn't erased; payoutuncertain no blindretry; refundmarkrequiredcancel but isn't nativecancelproof.
@@ -201,12 +201,12 @@ if !nextExpiry.Equal(oldExpiry.Add(30*24*time.Hour)) { t.Fatal("cycle double/los
 // actual retainedAccess target/steps/applied checked after negative event.
 ```
 
-- [ ] **Step 2: Run RED.**
+- [x] **Step 2: Run RED.**
 
 Run (backend): `C35_ENV go test ./internal/httpapi -run 'TestStarsRecurring(Cycle|Refund|SourceAndHandoff)$' -count=1 -timeout=10m`.
 Expected: FAIL for absentchildcycle/negative-moneyrootmapping/one-shotStarsrenew.
 
-- [ ] **Step 3: Implement cycles/refund at financial owners.**
+- [x] **Step 3: Implement cycles/refund at financial owners.**
 
 Keep charge/account/order lock order; receipt conflict dedup knows root and actualcycle mapping.
 For validcanonicalnextcharge, validate exactpriorappliedsource/frozenquote/amount/date/expiry first; create immutablechildrenew order/receipt/cycle atomically, with original invoicepayload and no childcheckout. General funding SQL joins declared cycle and root checkout, keeps refund/reviewguards.
@@ -214,7 +214,7 @@ Separate proofbase from paid recurringmetadata; negativeproof resolves receiptac
 Starsrenew/change use existing plan eligibility/livepolicy, own currentcheckoutidentity and proof; CurrentPlanSourceTx accepts eligible Telegram source but payments methodguard remainsauthoritative. Allfiveexternalhandlers convergeon sharedeligibility throughqueue/prepare/reconcile/finalwrite.
 No operatorfunding escape hatch or manualrecurrencegrants.
 
-- [ ] **Step 4: Run GREEN and all payment/renewal/access regressions.**
+- [x] **Step 4: Run GREEN and all payment/renewal/access regressions.**
 
 Run (backend): `C35_ENV go test ./internal/httpapi -run 'Test(Stars|.*Purchase|.*Renewal|.*PlanChange|.*Refund|.*Payment|.*Access)' -count=1 -timeout=15m`.
 Expected: PASS for existing andnew tests, no unrelated money weakening.
@@ -285,4 +285,3 @@ Expected: #33closed onlywithlocalimplementation/exactv2deliveryproof; production
 Spec firstinvoice/provenance/hash → task1; actualnativecontrol/billing/identity/timer → task2; allcycle/refund/renew/source/five-method money → task3; UI/OpenAPI/wholegraph/review/CI/delivery → task4. ReviewFocus allfive eachhasanowningtest above.
 Task1 Produces names/types matchtask2 Consumes; task2 publictypedcallbacks matchrootintegration andtask3 guards; task3 existingactions/DTOs consumedunchangedtask4. No unsupportedreceipt-to-order reconstructionorchildcheckout.
 C27notices/C36externalbrowser/C45runtimeconfig/C46reallegacyimport/C47Pythonremoval remaincanonicaldependentissues, notclaimedimplementedinC35.
-

@@ -78,7 +78,7 @@ func (a *API) CreatePurchaseOrder(c *echo.Context) error {
 		return err
 	}
 	mini := c.Request().Header.Get("Authorization") != ""
-	if mini && (in.PaymentMethod != "telegram_stars" || in.PaymentType != "STARS" || in.Action != "purchase") || !mini && in.PaymentMethod == "telegram_stars" {
+	if mini && (in.PaymentMethod != "telegram_stars" || in.PaymentType != "STARS") || !mini && in.PaymentMethod == "telegram_stars" {
 		return failure(403, "INVALID_CREDENTIALS")
 	}
 	out, err := a.createPurchaseOrder(c.Request().Context(), account.Account.ID, key, in)

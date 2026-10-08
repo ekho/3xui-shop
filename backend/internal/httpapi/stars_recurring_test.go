@@ -4,6 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
+	"example.com/cabinet/backend/internal/modules/subscriptions"
+	"example.com/cabinet/backend/internal/wire"
 	"fmt"
 	"strings"
 	"testing"
@@ -217,4 +220,493 @@ func TestStarsRecurringFirstPaymentInvalid(t *testing.T) {
 			}
 		})
 	}
+}
+
+func starsCyclePayment(root uuid.UUID, at time.Time) payments.StarsPaymentInput {
+	in := starsPayment(root, at)
+	in.ChargeID = "owned-next-cycle"
+	in.Recurring = true
+	in.SubscriptionExpiresAt = in.At.Add(30 * 24 * time.Hour).Unix()
+	return in
+}
+func starsCycleOrder(t *testing.T, s *regressionFixture, account, root uuid.UUID, charge string) payments.PurchaseOrder {
+	t.Helper()
+	var id uuid.UUID
+	if err := s.pool.QueryRow(context.Background(), `SELECT order_id FROM purchase_receipts WHERE provider_data->>'charge_id'=$1`, charge).Scan(&id); err != nil || id == root {
+		t.Fatal("subsequent charge has no separate cycle", err)
+	}
+	order, err := s.payments.PurchaseOrder(context.Background(), account, id)
+	if err != nil {
+		t.Fatal("cycle state", err)
+	}
+	return order
+}
+
+// Catches repeated grants, changed catalogue terms and provider time being used as VPN expiry.
+func TestStarsRecurringCycle(t *testing.T) {
+	for _, mode := range []string{"normal", "gap", "duplicate-period", "early", "old-expiry", "wrong-first", "disabled", "ban", "operator-source", "pending-partial", "paid-client-cancel", "late-operator-source", "late-profile-after-cancel"} {
+		t.Run(mode, func(t *testing.T) {
+			_, s, e, auth, m, root, p := starsCycleFixture(t)
+			ctx := context.Background()
+			oldExpiry := integer(t, p.client["expiryTime"])
+			var vpnID uuid.UUID
+			var subID string
+			if err := e.Pool.QueryRow(ctx, `SELECT vpn_id,sub_id FROM accounts WHERE id=$1`, auth.Account.AccountId).Scan(&vpnID, &subID); err != nil {
+				t.Fatal(err)
+			}
+			terms := catalogueTerms(8)
+			terms.TrafficGb = 500
+			terms.Prices[2].AmountMinor = "900"
+			raw, _ := json.Marshal(terms)
+			if _, err := e.Pool.Exec(ctx, `INSERT INTO catalogue_revisions(plan_id,revision,terms,archived,source,changed_at) VALUES($1,2,$2,false,'legacy_import',$3)`, root.Quote.PlanId, raw, e.Clock()); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := e.Pool.Exec(ctx, `UPDATE catalogue_plans SET current_revision=2,current_devices=8 WHERE id=$1`, root.Quote.PlanId); err != nil {
+				t.Fatal(err)
+			}
+			e.Advance(30 * 24 * time.Hour)
+			if mode == "gap" {
+				e.Advance(4 * 24 * time.Hour)
+			}
+			in := starsCyclePayment(root.OrderId, e.Clock())
+			switch mode {
+			case "early":
+				in.At = in.At.Add(-10 * time.Minute)
+				in.SubscriptionExpiresAt = in.At.Add(30 * 24 * time.Hour).Unix()
+			case "old-expiry":
+				in.SubscriptionExpiresAt = in.At.Unix()
+			case "wrong-first":
+				in.FirstRecurring = true
+			case "disabled":
+				s.cfg.Payments.StarsEnabled = false
+			case "ban":
+				if _, err := e.Pool.Exec(ctx, `UPDATE accounts SET vpn_banned=true WHERE id=$1`, auth.Account.AccountId); err != nil {
+					t.Fatal(err)
+				}
+			case "operator-source":
+				actor := verified(t, s, e, "cycle-source-operator@example.test")
+				if err := m.Accounts.ChangeOperatorRole(ctx, actor, true); err != nil {
+					t.Fatal(err)
+				}
+				days := int64(30)
+				rev := int64(2)
+				op, err := m.Subscriptions.CreateAccessOperation(ctx, actor, auth.Account.AccountId, uuid.New(), subscriptions.AccessOperationInput{Kind: "assign_plan", Reason: "Owned same-plan source", PlanId: &root.Quote.PlanId, Revision: &rev, PeriodDays: &days})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = m.VPN.ApplyAccess(ctx, op.OperationId); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := s.payments.RecordStarsPayment(ctx, in); err != nil {
+				t.Fatal("owned recurring observation", err)
+			}
+			invalid := mode == "early" || mode == "old-expiry" || mode == "wrong-first" || mode == "disabled" || mode == "ban" || mode == "operator-source"
+			if invalid {
+				var review bool
+				var orders int
+				if err := e.Pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM purchase_orders),EXISTS(SELECT 1 FROM purchase_receipts WHERE provider_data->>'charge_id'=$1 AND review_reason IS NOT NULL)`, in.ChargeID).Scan(&orders, &review); err != nil || orders != 1 || !review {
+					t.Fatal("invalid cycle lost money or granted access", err)
+				}
+				return
+			}
+			child := starsCycleOrder(t, s, auth.Account.AccountId, root.OrderId, in.ChargeID)
+			if child.Action != "renew" || child.Quote.PeriodDays != 30 || child.Quote.Revision != 1 || child.Quote.Devices != 2 || child.Quote.TrafficGb != 100 || child.Quote.AmountMinor != "100" || child.StarsCheckout != nil {
+				t.Fatal("cycle changed frozen terms or made a child invoice")
+			}
+			if mode == "late-operator-source" || mode == "late-profile-after-cancel" {
+				starsSetter(s, func(context.Context, int64, string, bool) error { return nil })
+				if mode == "late-profile-after-cancel" {
+					if _, err := s.payments.ControlStarsSubscription(ctx, auth.Account.AccountId, uuid.New(), payments.StarsSubscriptionControlInput{Action: "cancel", Confirmed: true}); err != nil {
+						t.Fatal(err)
+					}
+				}
+				actor := renewalOperator(t, s, e)
+				days, rev := int64(30), int64(2)
+				input := subscriptions.AccessOperationInput{Kind: "assign_plan", Reason: "Owned source after cycle funding", PlanId: &root.Quote.PlanId, Revision: &rev, PeriodDays: &days}
+				if mode == "late-profile-after-cancel" {
+					profile := "euru"
+					input = subscriptions.AccessOperationInput{Kind: "set_profile", Reason: "Owned profile after cancel", Profile: &profile}
+				}
+				op, err := m.Subscriptions.CreateAccessOperation(ctx, actor, auth.Account.AccountId, uuid.New(), input)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = m.VPN.ApplyAccess(ctx, op.OperationId); err != nil {
+					t.Fatal(err)
+				}
+				writes := p.updates + p.resets + p.attaches + p.detaches
+				if err = s.payments.FulfillPurchase(ctx, child.OrderId); err != nil {
+					t.Fatal(err)
+				}
+				child, err = s.payments.PurchaseOrder(ctx, auth.Account.AccountId, child.OrderId)
+				if err != nil || child.FulfillmentStatus != "needs_review" || !child.ReviewRequired || child.AccessOperationId != nil || p.updates+p.resets+p.attaches+p.detaches != writes {
+					t.Fatal("late operator change was overwritten by old paid cycle", err)
+				}
+				return
+			}
+			if err := s.payments.FulfillPurchase(ctx, child.OrderId); err != nil {
+				t.Fatal(err)
+			}
+			child, err := s.payments.PurchaseOrder(ctx, auth.Account.AccountId, child.OrderId)
+			if err != nil || child.AccessOperationId == nil {
+				t.Fatal("cycle grant not prepared", err)
+			}
+			if mode == "pending-partial" {
+				if _, err = e.Pool.Exec(ctx, `CREATE FUNCTION fail_cycle_finish() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.kind='purchase' AND NEW.status='applied' THEN RAISE EXCEPTION 'owned cycle partial'; END IF; RETURN NEW; END $$; CREATE TRIGGER fail_cycle_finish BEFORE UPDATE ON access_operations FOR EACH ROW EXECUTE FUNCTION fail_cycle_finish()`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			starsSetter(s, func(context.Context, int64, string, bool) error { return nil })
+			if mode == "paid-client-cancel" {
+				if _, err = s.payments.ControlStarsSubscription(ctx, auth.Account.AccountId, uuid.New(), payments.StarsSubscriptionControlInput{Action: "cancel", Confirmed: true}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err = s.vpn.ApplyAccess(ctx, *child.AccessOperationId); err != nil {
+				t.Fatal("cycle native write", err)
+			}
+			if mode == "pending-partial" {
+				e.Advance(30 * 24 * time.Hour)
+				third := starsCyclePayment(root.OrderId, e.Clock())
+				third.ChargeID = "owned-third-while-partial"
+				if err = s.payments.RecordStarsPayment(ctx, third); err != nil {
+					t.Fatal(err)
+				}
+				if count(t, e, "purchase_orders") != 2 || count(t, e, "purchase_receipts") != 3 {
+					t.Fatal("partial cycle allowed another grant")
+				}
+				return
+			}
+			want := oldExpiry + int64(30*24*time.Hour/time.Millisecond)
+			if mode == "gap" {
+				want = e.Clock().Add(30 * 24 * time.Hour).UnixMilli()
+			}
+			if integer(t, p.client["expiryTime"]) != want || p.adds != 1 {
+				t.Fatal("cycle doubled/lost access or changed VPN identity")
+			}
+			if mode == "paid-client-cancel" {
+				child, err = s.payments.PurchaseOrder(ctx, auth.Account.AccountId, child.OrderId)
+				if err != nil || child.FulfillmentStatus != "applied" || child.ReviewRequired {
+					t.Fatal("client cancellation erased already paid cycle", err)
+				}
+			}
+			for range 2 {
+				if err = s.payments.RecordStarsPayment(ctx, in); err != nil {
+					t.Fatal("cycle replay", err)
+				}
+			}
+			if count(t, e, "purchase_orders") != 2 || count(t, e, "stars_subscription_cycles") != 2 || count(t, e, "purchase_receipts") != 2 {
+				t.Fatal("cycle replay duplicated funds/orders")
+			}
+			var same bool
+			if err = e.Pool.QueryRow(ctx, `SELECT vpn_id=$2 AND sub_id=$3 FROM accounts WHERE id=$1`, auth.Account.AccountId, vpnID, subID).Scan(&same); err != nil || !same {
+				t.Fatal("cycle changed identifiers", err)
+			}
+			if mode == "duplicate-period" {
+				in.ChargeID = "owned-duplicate-period"
+				if err = s.payments.RecordStarsPayment(ctx, in); err != nil {
+					t.Fatal(err)
+				}
+				if count(t, e, "purchase_orders") != 2 || count(t, e, "purchase_receipts") != 3 {
+					t.Fatal("duplicate paid period granted twice or lost money")
+				}
+			}
+		})
+	}
+	t.Run("missing-canonical", func(t *testing.T) {
+		_, s, e, auth, plan := starsHTTPFixture(t)
+		ctx := context.Background()
+		starsSetter(s, func(context.Context, int64, string, bool) error { return nil })
+		root, err := s.payments.CreatePurchaseOrder(ctx, auth.Account.AccountId, uuid.New(), payments.PurchaseOrderInput{Action: "purchase", PaymentMethod: "telegram_stars", PaymentType: "STARS", PeriodDays: 30, PlanId: plan, Revision: 1, StarsRecurring: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		in := starsCyclePayment(root.OrderId, e.Clock())
+		if err = s.payments.RecordStarsPayment(ctx, in); err != nil {
+			t.Fatal(err)
+		}
+		if count(t, e, "purchase_receipts") != 1 || count(t, e, "stars_subscription_cycles") != 0 || count(t, e, "purchase_orders") != 1 {
+			t.Fatal("missing first proof granted a cycle")
+		}
+	})
+}
+
+// Catches losing the immutable invoice root or retiring the wrong cycle after a negative event.
+func TestStarsRecurringRefund(t *testing.T) {
+	for _, mode := range []string{"early", "pending", "partial", "applied", "native-uncertain"} {
+		t.Run(mode, func(t *testing.T) {
+			_, s, e, auth, m, root, p := starsCycleFixture(t)
+			ctx := context.Background()
+			e.Advance(30 * 24 * time.Hour)
+			in := starsCyclePayment(root.OrderId, e.Clock())
+			negative := in
+			negative.Recurring = false
+			negative.FirstRecurring = false
+			negative.SubscriptionExpiresAt = 0
+			if mode == "early" {
+				if err := s.payments.RecordStarsRefund(ctx, negative); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := s.payments.RecordStarsPayment(ctx, in); err != nil {
+				t.Fatal(err)
+			}
+			child := starsCycleOrder(t, s, auth.Account.AccountId, root.OrderId, in.ChargeID)
+			var before string
+			if mode != "early" {
+				if err := s.payments.FulfillPurchase(ctx, child.OrderId); err != nil {
+					t.Fatal(err)
+				}
+				var err error
+				child, err = s.payments.PurchaseOrder(ctx, auth.Account.AccountId, child.OrderId)
+				if err != nil || child.AccessOperationId == nil {
+					t.Fatal("refund cycle has no access", err)
+				}
+				if mode == "partial" {
+					if _, err = e.Pool.Exec(ctx, `CREATE FUNCTION fail_cycle_refund_finish() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.kind='purchase' AND NEW.status='applied' THEN RAISE EXCEPTION 'owned cycle refund partial'; END IF; RETURN NEW; END $$; CREATE TRIGGER fail_cycle_refund_finish BEFORE UPDATE ON access_operations FOR EACH ROW EXECUTE FUNCTION fail_cycle_refund_finish()`); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if mode == "partial" || mode == "applied" {
+					if err = s.vpn.ApplyAccess(ctx, *child.AccessOperationId); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err = e.Pool.QueryRow(ctx, `SELECT target::text||':'||completed_steps::text FROM access_operations WHERE id=$1`, *child.AccessOperationId).Scan(&before); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if mode == "native-uncertain" {
+				actor := verified(t, s, e, "cycle-refund-operator@example.test")
+				if err := m.Accounts.ChangeOperatorRole(ctx, actor, true); err != nil {
+					t.Fatal(err)
+				}
+				calls := 0
+				s.payments.ConfigureStars(payments.StarsGateway{BotID: 123, Invoice: func(context.Context, payments.StarsInvoice) (string, error) { return "", nil }, Refund: func(_ context.Context, payer int64, charge string) error {
+					calls++
+					if payer != 701 || charge != in.ChargeID {
+						t.Error("cycle refund redirected")
+					}
+					return errors.New("owned lost payout reply")
+				}})
+				input := payments.StarsRefundInput{ReceiptOperationId: starsReceipt(t, s, child.OrderId), Reason: "Owned cycle refund", ConfirmFull: true, KeepAccess: true}
+				for range 2 {
+					out, err := s.payments.RefundStarsPurchase(ctx, actor, auth.Account.AccountId, child.OrderId, uuid.New(), input)
+					if err != nil || out.State != "uncertain" {
+						t.Fatal("cycle payout uncertainty lost", err)
+					}
+				}
+				if calls != 1 {
+					t.Fatal("cycle payout retried blindly")
+				}
+			}
+			if mode != "early" {
+				for range 2 {
+					if err := s.payments.RecordStarsRefund(ctx, negative); err != nil {
+						t.Fatal("cycle negative proof", err)
+					}
+				}
+			}
+			var mapped bool
+			if err := e.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM stars_refunds f JOIN purchase_refunds r ON r.receipt_operation_id=f.receipt_operation_id WHERE f.order_id=$1 AND r.order_id=$2 AND r.source='telegram')`, root.OrderId, child.OrderId).Scan(&mapped); err != nil || !mapped {
+				t.Fatal("root/cycle refund provenance lost", err)
+			}
+			if mode != "early" {
+				var status, after string
+				if err := e.Pool.QueryRow(ctx, `SELECT status,target::text||':'||completed_steps::text FROM access_operations WHERE id=$1`, *child.AccessOperationId).Scan(&status, &after); err != nil || after != before || mode == "applied" && status != "applied" || mode != "applied" && status != "skipped" {
+					t.Fatal("refund erased applied/partial evidence", err)
+				}
+				writes := p.updates + p.resets
+				if err := s.vpn.ApplyAccess(ctx, *child.AccessOperationId); err != nil || p.updates+p.resets != writes || p.disables != 0 {
+					t.Fatal("retired cycle wrote panel", err)
+				}
+			} else if child.AccessOperationId != nil || !child.FullyRefunded {
+				t.Fatal("early negative funded a grant")
+			}
+			var intent bool
+			if err := e.Pool.QueryRow(ctx, `SELECT desired_action='cancel' AND NOT bot_canceled FROM stars_subscriptions WHERE root_order_id=$1 AND canonical`, root.OrderId).Scan(&intent); err != nil || !intent {
+				t.Fatal("refund inferred native cancellation or lost cancel intent", err)
+			}
+		})
+	}
+}
+
+// Catches silently granting Mini renew/change without cancellation, or keeping
+// Stars-only accounts stuck at the old first-purchase guard after actual cancel.
+func TestStarsRecurringSourceAndHandoff(t *testing.T) {
+	for _, action := range []string{"renew", "change_plan"} {
+		t.Run(action, func(t *testing.T) {
+			h, s, e, auth, m, root, _ := starsCycleFixture(t)
+			ctx := context.Background()
+			starsSetter(s, func(context.Context, int64, string, bool) error { return nil })
+			target := root.Quote.PlanId
+			rev := int64(1)
+			if action == "change_plan" {
+				actor := verified(t, s, e, "cycle-change-operator@example.test")
+				if err := m.Accounts.ChangeOperatorRole(ctx, actor, true); err != nil {
+					t.Fatal(err)
+				}
+				terms := catalogueTerms(3)
+				terms.Prices[2].AmountMinor = "150"
+				plan, err := s.createCataloguePlan(ctx, actor, uuid.New(), wire.CataloguePlanCreateInput{Terms: terms, Reason: "Owned target"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				target = plan.PlanId
+			}
+			input := map[string]any{"action": action, "payment_method": "telegram_stars", "payment_type": "STARS", "period_days": 30, "plan_id": target, "revision": rev}
+			if action == "change_plan" {
+				input["source_access_operation_id"] = *root.AccessOperationId
+			}
+			body, _ := json.Marshal(input)
+			if r := starsRequest(h, s, auth, "POST", "/api/v1/orders", string(body), uuid.New()); r.Code < 400 {
+				t.Fatal("active recurrence allowed a second checkout")
+			}
+			if _, err := s.payments.ControlStarsSubscription(ctx, auth.Account.AccountId, uuid.New(), payments.StarsSubscriptionControlInput{Action: "cancel", Confirmed: true}); err != nil {
+				t.Fatal(err)
+			}
+			if action == "renew" {
+				if _, err := s.payments.RenewalOffer(ctx, auth.Account.AccountId); err != nil {
+					t.Fatal("Mini renewal offer refused", err)
+				}
+			}
+			if action == "change_plan" {
+				if _, err := s.payments.PlanChangeContext(ctx, auth.Account.AccountId); err != nil {
+					t.Fatal("Mini change context refused", err)
+				}
+			}
+			r := starsRequest(h, s, auth, "POST", "/api/v1/orders", string(body), uuid.New())
+			if r.Code != 201 {
+				t.Fatal("Mini one-shot managing checkout refused", r.Code)
+			}
+			var order payments.PurchaseOrder
+			if json.Unmarshal(r.Body.Bytes(), &order) != nil {
+				t.Fatal("managing order body")
+			}
+			if order.Quote.StarsRecurring {
+				t.Fatal("managing checkout silently recurring")
+			}
+			state, err := s.payments.StarsSubscription(ctx, auth.Account.AccountId)
+			if err != nil || state.CanResume {
+				t.Fatal("pending one-shot checkout allowed double billing", err)
+			}
+			if _, err = s.payments.ControlStarsSubscription(ctx, auth.Account.AccountId, uuid.New(), payments.StarsSubscriptionControlInput{Action: "resume", Confirmed: true}); err == nil {
+				t.Fatal("pending one-shot checkout resumed recurrence")
+			}
+			allowed, err := s.payments.CheckStarsPreCheckout(ctx, payments.StarsPreCheckoutInput{BotID: 123, PayerID: 701, Payload: "stars:v1:" + order.OrderId.String(), Currency: "XTR", Amount: 100})
+			if action == "change_plan" {
+				allowed, err = s.payments.CheckStarsPreCheckout(ctx, payments.StarsPreCheckoutInput{BotID: 123, PayerID: 701, Payload: "stars:v1:" + order.OrderId.String(), Currency: "XTR", Amount: 150})
+			}
+			if err != nil || !allowed {
+				t.Fatal("native managing pre-checkout refused", err)
+			}
+			in := starsPayment(order.OrderId, e.Clock())
+			in.ChargeID = "owned-one-shot-" + action
+			in.Amount = 100
+			if action == "change_plan" {
+				in.Amount = 150
+			}
+			if err := s.payments.RecordStarsPayment(ctx, in); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.payments.FulfillPurchase(ctx, order.OrderId); err != nil {
+				t.Fatal(err)
+			}
+			order, err = s.payments.PurchaseOrder(ctx, auth.Account.AccountId, order.OrderId)
+			if err != nil || order.AccessOperationId == nil {
+				t.Fatal("one-shot managing grant missing", err)
+			}
+			if err = s.vpn.ApplyAccess(ctx, *order.AccessOperationId); err != nil {
+				t.Fatal(err)
+			}
+			state, err = s.payments.StarsSubscription(ctx, auth.Account.AccountId)
+			if err != nil || state.CanResume {
+				t.Fatal("old recurrence resumed after one-shot source changed", err)
+			}
+		})
+	}
+	// The shared billing proof must open every configured external checkout,
+	// keep the same account, and close resume while any such order is unresolved.
+	for _, method := range []string{"yoomoney", "manual", "yookassa", "cryptomus", "heleket"} {
+		t.Run(method, func(t *testing.T) {
+			h, s, e, auth, m, root, p := starsCycleFixture(t)
+			ctx := context.Background()
+			session := starsWebLogin(t, h, s, e, auth, m)
+			starsSetter(s, func(context.Context, int64, string, bool) error { return nil })
+			s.cfg.Payments.ManualEnabled, s.cfg.Payments.ManualCardDetails = true, "Owned transfer instructions"
+			s.cfg.Payments.YooMoneyEnabled, s.cfg.Payments.YooKassaEnabled = true, true
+			s.cfg.Payments.YooMoneyNotificationSecret = []byte("owned-test-notification-secret")
+			s.cfg.Payments.YooKassaShopID, s.cfg.Payments.ShopEmail = "100001", "receipts@example.test"
+			s.cfg.Payments.CryptomusEnabled, s.cfg.Payments.HeleketEnabled = true, true
+			s.cfg.Payments.CryptomusMerchantID, s.cfg.Payments.CryptomusAPIKey = "00000000-0000-4000-8000-000000000001", "owned-test-key"
+			s.cfg.Payments.HeleketMerchantID, s.cfg.Payments.HeleketAPIKey = "00000000-0000-4000-8000-000000000002", "owned-test-key"
+			terms := catalogueTerms(2)
+			terms.Prices[0].AmountMinor, terms.Prices[2].AmountMinor = "10000", "100"
+			raw, _ := json.Marshal(terms)
+			if _, err := e.Pool.Exec(ctx, `INSERT INTO catalogue_revisions(plan_id,revision,terms,archived,source,changed_at) VALUES($1,2,$2,false,'legacy_import',$3)`, root.Quote.PlanId, raw, e.Clock()); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := e.Pool.Exec(ctx, `UPDATE catalogue_plans SET current_revision=2 WHERE id=$1`, root.Quote.PlanId); err != nil {
+				t.Fatal(err)
+			}
+			input := payments.PurchaseOrderInput{Action: "renew", PaymentMethod: method, PaymentType: map[string]string{"yoomoney": "AC", "manual": "MANUAL", "yookassa": "YOOKASSA", "cryptomus": "CRYPTOMUS", "heleket": "HELEKET"}[method], PeriodDays: 30, PlanId: root.Quote.PlanId, Revision: 2}
+			if _, err := s.payments.CreatePurchaseOrder(ctx, session.id, uuid.New(), input); err == nil {
+				t.Fatal("active recurrence opened external billing")
+			}
+			if _, err := s.payments.ControlStarsSubscription(ctx, session.id, uuid.New(), payments.StarsSubscriptionControlInput{Action: "cancel", Confirmed: true}); err != nil {
+				t.Fatal(err)
+			}
+			order, err := s.payments.CreatePurchaseOrder(ctx, session.id, uuid.New(), input)
+			if err != nil || order.PaymentMethod != method || order.Action != "renew" || session.id != auth.Account.AccountId {
+				t.Fatal("proved cancellation failed external handoff", err)
+			}
+			if _, err = s.payments.ControlStarsSubscription(ctx, session.id, uuid.New(), payments.StarsSubscriptionControlInput{Action: "resume", Confirmed: true}); err == nil {
+				t.Fatal("pending external order resumed recurrence")
+			}
+			if method == "yoomoney" {
+				if _, err = s.payments.CancelPurchaseOrder(ctx, session.id, order.OrderId, uuid.New()); err != nil {
+					t.Fatal(err)
+				}
+				if _, err = s.payments.ControlStarsSubscription(ctx, session.id, uuid.New(), payments.StarsSubscriptionControlInput{Action: "resume", Confirmed: true}); err != nil {
+					t.Fatal(err)
+				}
+				writes := p.updates + p.resets
+				fields := purchaseNotice(s, order.OrderId, uuid.NewString(), "99.00", "100.00")
+				if err = s.receiveYooMoney(ctx, fields); err != nil {
+					t.Fatal(err)
+				}
+				if err = s.payments.FulfillPurchase(ctx, order.OrderId); err != nil {
+					t.Fatal(err)
+				}
+				order, err = s.payments.PurchaseOrder(ctx, session.id, order.OrderId)
+				if err != nil || !order.ReviewRequired || order.PaymentStatus != "paid" || order.AccessOperationId != nil || p.updates+p.resets != writes || count(t, e, "purchase_receipts") != 2 {
+					t.Fatal("late external money bypassed latest resume or disappeared", err)
+				}
+			}
+		})
+	}
+	t.Run("starter-does-not-reopen-first-Stars-purchase", func(t *testing.T) {
+		_, s, e, auth, m, root, _ := starsCycleFixture(t)
+		ctx := context.Background()
+		starsSetter(s, func(context.Context, int64, string, bool) error { return nil })
+		actor := renewalOperator(t, s, e)
+		op, err := m.Subscriptions.CreateAccessOperation(ctx, actor, auth.Account.AccountId, uuid.New(), subscriptions.AccessOperationInput{Kind: "starter_trial", Reason: "Owned starter clearing"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = m.VPN.ApplyAccess(ctx, op.OperationId); err != nil {
+			t.Fatal(err)
+		}
+		if err = s.payments.ReconcileStarsSubscriptions(ctx); err != nil {
+			t.Fatal(err)
+		}
+		state, err := s.payments.StarsSubscription(ctx, auth.Account.AccountId)
+		if err != nil || state.CanResume {
+			t.Fatal("starter resumed old recurrence", err)
+		}
+		if _, err = s.payments.CreatePurchaseOrder(ctx, auth.Account.AccountId, uuid.New(), payments.PurchaseOrderInput{Action: "purchase", PaymentMethod: "telegram_stars", PaymentType: "STARS", PeriodDays: 30, PlanId: root.Quote.PlanId, Revision: 1}); err == nil {
+			t.Fatal("starter clearing bypassed first-purchase Stars guard")
+		}
+	})
 }

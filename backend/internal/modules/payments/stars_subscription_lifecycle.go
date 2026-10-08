@@ -167,7 +167,7 @@ func (s *Service) starsResumeEligibleTx(ctx context.Context, tx pgx.Tx, a accoun
 	}
 	var blocked bool
 	if err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE purchase_orders.account_id=$1 AND
- (purchase_orders.review_required AND NOT (`+purchaseRefundClosed+`) OR purchase_orders.payment_method<>'telegram_stars' AND (purchase_orders.active AND purchase_orders.payment_status='pending' OR purchase_orders.payment_status='paid' AND purchase_orders.fulfillment_status<>'applied' AND NOT (`+purchaseRefundClosed+`))))`, a.ID).Scan(&blocked); err != nil {
+ (purchase_orders.review_required AND NOT (`+purchaseRefundClosed+`) OR purchase_orders.active AND purchase_orders.payment_status='pending' OR purchase_orders.payment_status='paid' AND purchase_orders.fulfillment_status<>'applied' AND NOT (`+purchaseRefundClosed+`)))`, a.ID).Scan(&blocked); err != nil {
 		return false, unavailable()
 	}
 	if blocked {

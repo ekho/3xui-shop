@@ -20,6 +20,11 @@ import (
 
 func starsSubscriptionFixture(t *testing.T) (http.Handler, *regressionFixture, *testkit.Env, wire.MiniAppSessionResult, *app.Modules, payments.PurchaseOrder) {
 	t.Helper()
+	h, s, e, auth, m, order, _ := starsCycleFixture(t)
+	return h, s, e, auth, m, order
+}
+func starsCycleFixture(t *testing.T) (http.Handler, *regressionFixture, *testkit.Env, wire.MiniAppSessionResult, *app.Modules, payments.PurchaseOrder, *fakePanel) {
+	t.Helper()
 	_, s, e, auth, plan := starsHTTPFixture(t)
 	modules := app.NewModules(e.Pool, e.Redis, s.queue, s.cfg)
 	modules.Payments.ConfigureStars(payments.StarsGateway{BotID: 123, Invoice: func(context.Context, payments.StarsInvoice) (string, error) {
@@ -28,7 +33,7 @@ func starsSubscriptionFixture(t *testing.T) (http.Handler, *regressionFixture, *
 	s.payments = modules.Payments
 	s.vpn = modules.VPN
 	h := New(modules, e.Pool, s.cfg.HTTP)
-	panelFixture(t, s)
+	panel := panelFixture(t, s)
 	order, err := s.payments.CreatePurchaseOrder(context.Background(), auth.Account.AccountId, uuid.New(), payments.PurchaseOrderInput{Action: "purchase", PaymentMethod: "telegram_stars", PaymentType: "STARS", PeriodDays: 30, PlanId: plan, Revision: 1, StarsRecurring: true})
 	if err != nil {
 		t.Fatal("recurring fixture", err)
@@ -50,7 +55,7 @@ func starsSubscriptionFixture(t *testing.T) (http.Handler, *regressionFixture, *
 	if err = s.vpn.ApplyAccess(context.Background(), *got.AccessOperationId); err != nil {
 		t.Fatal(err)
 	}
-	return h, s, e, auth, modules, got
+	return h, s, e, auth, modules, got, panel
 }
 func starsSubscriptionState(t *testing.T, h http.Handler, s *regressionFixture, auth wire.MiniAppSessionResult) payments.StarsSubscription {
 	t.Helper()

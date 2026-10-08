@@ -66,7 +66,15 @@ func (s *Service) completeStarsRefundTx(ctx context.Context, tx pgx.Tx, p purcha
 		return unavailable()
 	}
 	var paid starsProof
-	if json.Unmarshal(proof, &paid) != nil || f.order != p.id || paid.Provider != "telegram_stars" || paid.BotID != f.bot || paid.PayerID != f.payer || paid.ChargeID != f.charge || paid.Payload != f.payload || f.amount != gross || currency != "XTR" || f.currency != "XTR" {
+	decoded := json.Unmarshal(proof, &paid) == nil
+	root, validRoot := starsOrderID(paid.Payload)
+	bound := root == p.id
+	if validRoot && !bound {
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM stars_subscription_cycles WHERE order_id=$1 AND root_order_id=$2 AND receipt_id=$3)`, p.id, root, key).Scan(&bound); err != nil {
+			return unavailable()
+		}
+	}
+	if !decoded || !validRoot || !bound || f.order != root || paid.Provider != "telegram_stars" || paid.BotID != f.bot || paid.PayerID != f.payer || paid.ChargeID != f.charge || paid.Payload != f.payload || f.amount != gross || currency != "XTR" || f.currency != "XTR" {
 		_, err = tx.Exec(ctx, `UPDATE purchase_orders SET review_required=true,review_reason='refund_proof_mismatch',active=false,fulfillment_status=CASE WHEN access_operation_id IS NULL THEN 'needs_review' ELSE fulfillment_status END WHERE id=$1`, p.id)
 		if err != nil {
 			return unavailable()
@@ -155,6 +163,19 @@ func (s *Service) RecordStarsRefund(ctx context.Context, in StarsPaymentInput) e
 		if err = auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), AccountID: p.account, CreatedAt: s.now(), Action: "stars_refund_observed", OperatorAccountID: old.actor, Reason: &key}); err != nil {
 			return unavailable()
 		}
+	}
+	if err = s.RequireStarsCancellationTx(ctx, tx, p.account, "Stars refund observed"); err != nil {
+		return err
+	}
+	// The immutable negative event belongs to its invoice root. Its receipt
+	// may belong to a declared child cycle; retire that access, never the root.
+	var actual uuid.UUID
+	err = tx.QueryRow(ctx, `SELECT cy.order_id FROM stars_subscription_cycles cy JOIN purchase_orders child ON child.id=cy.order_id WHERE cy.root_order_id=$1 AND cy.receipt_id=$2 AND child.account_id=$3`, p.id, key, p.account).Scan(&actual)
+	if err == nil && actual != p.id {
+		p, err = scanPurchase(tx.QueryRow(ctx, "SELECT "+purchaseColumns+" FROM purchase_orders WHERE id=$1 FOR UPDATE", actual))
+	}
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return unavailable()
 	}
 	if err = s.completeStarsRefundTx(ctx, tx, p, key, owner); err != nil {
 		return err
@@ -246,7 +267,15 @@ func (s *Service) RefundStarsPurchase(ctx context.Context, actor, target, order,
 		return empty, unavailable()
 	}
 	var proof starsProof
-	if p.method != "telegram_stars" || json.Unmarshal(raw, &proof) != nil || proof.Provider != "telegram_stars" || proof.BotID <= 0 || proof.PayerID <= 0 || proof.Amount != strconv.FormatInt(gross, 10) || currency != "XTR" || proof.Currency != "XTR" || proof.Payload != "stars:v1:"+order.String() || starsReceiptKey(proof.BotID, proof.ChargeID) != in.ReceiptOperationId {
+	decoded := json.Unmarshal(raw, &proof) == nil
+	root, validRoot := starsOrderID(proof.Payload)
+	bound := root == order
+	if validRoot && !bound {
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM stars_subscription_cycles WHERE order_id=$1 AND root_order_id=$2 AND receipt_id=$3)`, order, root, in.ReceiptOperationId).Scan(&bound); err != nil {
+			return empty, unavailable()
+		}
+	}
+	if p.method != "telegram_stars" || !decoded || !validRoot || !bound || proof.Provider != "telegram_stars" || proof.BotID <= 0 || proof.PayerID <= 0 || proof.Amount != strconv.FormatInt(gross, 10) || currency != "XTR" || proof.Currency != "XTR" || starsReceiptKey(proof.BotID, proof.ChargeID) != in.ReceiptOperationId {
 		return empty, failure(409, "PAYMENT_REFUND_CONFLICT")
 	}
 	hash := bodyHash(struct {
@@ -278,7 +307,7 @@ func (s *Service) RefundStarsPurchase(ctx context.Context, actor, target, order,
 		return empty, unavailable()
 	}
 	reason := strings.TrimSpace(in.Reason)
-	_, err = tx.Exec(ctx, `INSERT INTO stars_refunds(receipt_operation_id,order_id,bot_id,payer_id,charge_id,payload,amount,currency,state,operator_account_id,reason,idempotency_key,body_hash,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,'XTR','pending',$8,$9,$10,$11,$12)`, in.ReceiptOperationId, order, proof.BotID, proof.PayerID, proof.ChargeID, proof.Payload, gross, actor, reason, key, hash, s.now())
+	_, err = tx.Exec(ctx, `INSERT INTO stars_refunds(receipt_operation_id,order_id,bot_id,payer_id,charge_id,payload,amount,currency,state,operator_account_id,reason,idempotency_key,body_hash,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,'XTR','pending',$8,$9,$10,$11,$12)`, in.ReceiptOperationId, root, proof.BotID, proof.PayerID, proof.ChargeID, proof.Payload, gross, actor, reason, key, hash, s.now())
 	if err != nil {
 		var pg *pgconn.PgError
 		if errors.As(err, &pg) && pg.Code == "23505" {
@@ -288,6 +317,9 @@ func (s *Service) RefundStarsPurchase(ctx context.Context, actor, target, order,
 	}
 	if err = auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), AccountID: target, CreatedAt: s.now(), Action: "stars_refund_requested", OperatorAccountID: &actor, Reason: &reason}); err != nil {
 		return empty, unavailable()
+	}
+	if err = s.RequireStarsCancellationTx(ctx, tx, target, "Stars refund requested"); err != nil {
+		return empty, err
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return empty, unavailable()
