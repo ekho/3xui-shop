@@ -54,6 +54,9 @@ func TestReminderDatedMessages(t *testing.T) {
 	observed := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
 	for _, locale := range []string{"ru", "en"} {
 		for _, r := range []reminderRow{{Kind: "expiry", ObservedAt: observed, ExpiryMS: observed.Add(time.Hour).UnixMilli()}, {Kind: "traffic", ObservedAt: observed, Threshold: 100, UsedBytes: math.MaxInt64, LimitBytes: math.MaxInt64}, {Kind: "stars_lapsed", ObservedAt: observed, PaidUntil: &observed}} {
+			if r.public().Route != "cabinet" {
+				t.Fatal("warning bypasses cabinet eligibility for trial or Stars")
+			}
 			v := reminderMessage(r, locale)
 			if !strings.Contains(v, "2026-10-08T12:00:00Z") {
 				t.Fatal("message without observation")

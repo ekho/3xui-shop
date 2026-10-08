@@ -253,11 +253,7 @@ func (s *MailService) SendMail(ctx context.Context, id uuid.UUID) error {
 			if payload.Locale == "ru" {
 				subject = "Напоминание о подписке"
 			}
-			path := "/cabinet/renew"
-			if r.Kind == "stars_lapsed" {
-				path = "/"
-			}
-			body = reminderMessage(r, payload.Locale) + "\n" + cfg.CabinetOrigin + path + "?lang=" + payload.Locale
+			body = reminderMessage(r, payload.Locale) + "\n" + cfg.CabinetOrigin + "/cabinet?lang=" + payload.Locale
 		}
 
 		// Keep the email session guard, but release all SQL row locks before SMTP.

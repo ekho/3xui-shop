@@ -948,7 +948,7 @@ func TestNativeTrialReminders(t *testing.T) {
 		t.Log("owned fake bulk API is unavailable; actual 3X-UI proof requires the separate native Docker run")
 		return
 	}
-	if len(out.Reminders) != 1 || out.Reminders[0].Kind != "expiry" || out.Reminders[0].Threshold != 3 || out.Reminders[0].ExpiresAt == nil || out.Reminders[0].Route != "renew" {
+	if len(out.Reminders) != 1 || out.Reminders[0].Kind != "expiry" || out.Reminders[0].Threshold != 3 || out.Reminders[0].ExpiresAt == nil || out.Reminders[0].Route != "cabinet" {
 		t.Fatal("actual 3X-UI reminder lost current trial facts")
 	}
 	reminder := out.Reminders[0]
@@ -965,15 +965,15 @@ func TestNativeTrialReminders(t *testing.T) {
 	})
 	wait(t, func() bool {
 		for _, letter := range f.letters(t, email) {
-			if strings.Contains(letter, "Your subscription expires soon:") && strings.Contains(letter, reminder.ExpiresAt.UTC().Format(time.RFC3339)) && strings.Contains(letter, "Observed at "+reminder.ObservedAt.UTC().Format(time.RFC3339)) && strings.Contains(letter, f.cfg.HTTP.CabinetOrigin+"/cabinet/renew?lang=en") {
+			if strings.Contains(letter, "Your subscription expires soon:") && strings.Contains(letter, reminder.ExpiresAt.UTC().Format(time.RFC3339)) && strings.Contains(letter, "Observed at "+reminder.ObservedAt.UTC().Format(time.RFC3339)) && strings.Contains(letter, f.cfg.HTTP.CabinetOrigin+"/cabinet?lang=en") {
 				return true
 			}
 		}
 		return false
 	})
 	message := bot.message(tg, "Your subscription expires soon:")
-	if !strings.Contains(message.Text, "Observed at "+reminder.ObservedAt.UTC().Format(time.RFC3339)) || !strings.Contains(string(message.Markup), f.cfg.HTTP.CabinetOrigin+"/mini-app/cabinet/renew?lang=en") {
-		t.Fatal("native reminder lost dated text or literal renewal route")
+	if !strings.Contains(message.Text, "Observed at "+reminder.ObservedAt.UTC().Format(time.RFC3339)) || !strings.Contains(string(message.Markup), f.cfg.HTTP.CabinetOrigin+"/mini-app/cabinet?lang=en") {
+		t.Fatal("native reminder lost dated text or literal cabinet action route")
 	}
 	finish()
 	var events, mail, telegram int

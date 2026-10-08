@@ -120,15 +120,13 @@ func scanReminder(row pgx.Row) (r reminderRow, err error) {
 }
 
 func (r reminderRow) public() Reminder {
-	v := Reminder{ID: r.ID, Kind: r.Kind, Threshold: r.Threshold, ObservedAt: r.ObservedAt, PaidUntil: r.PaidUntil, Route: "renew"}
+	v := Reminder{ID: r.ID, Kind: r.Kind, Threshold: r.Threshold, ObservedAt: r.ObservedAt, PaidUntil: r.PaidUntil, Route: "cabinet"}
 	if r.Kind == "expiry" {
 		t := time.UnixMilli(r.ExpiryMS).UTC()
 		v.ExpiresAt = &t
 	} else if r.Kind == "traffic" {
 		used, limit := strconv.FormatInt(r.UsedBytes, 10), strconv.FormatInt(r.LimitBytes, 10)
 		v.TrafficUsedBytes, v.TrafficLimitBytes = &used, &limit
-	} else {
-		v.Route = "cabinet"
 	}
 	return v
 }

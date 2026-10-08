@@ -183,7 +183,7 @@ func TestReminderPeriodsAndDelivery(t *testing.T) {
 		t.Fatal("duplicate or unsolicited email", count, mails, err)
 	}
 	for _, r := range out.Reminders {
-		if r.Route != "renew" || !r.ObservedAt.Equal(e.Clock()) {
+		if r.Route != "cabinet" || !r.ObservedAt.Equal(e.Clock()) {
 			t.Fatal("undated/unsafe route")
 		}
 		if r.Kind == "traffic" && (r.TrafficUsedBytes == nil || *r.TrafficUsedBytes != "80" || *r.TrafficLimitBytes != "100") {
@@ -233,13 +233,13 @@ func TestReminderPeriodsAndDelivery(t *testing.T) {
 		t.Fatal("actual TLS mail missing")
 	}
 	for _, letter := range smtp.Letters() {
-		if !strings.Contains(letter, "https://cabinet.example.test/cabinet/renew?lang=ru") || !strings.Contains(letter, "2026-10-01T00:00:00Z") {
+		if !strings.Contains(letter, "https://cabinet.example.test/cabinet?lang=ru") || !strings.Contains(letter, "2026-10-01T00:00:00Z") {
 			t.Fatal("dated route mail")
 		}
 	}
 	for range 2 {
 		job, err := restarted.Notifications.ClaimClient(ctx)
-		if err != nil || job == nil || job.ReminderID == uuid.Nil || job.Route != "renew" || !strings.Contains(job.ReminderText, "2026-10-01T00:00:00Z") {
+		if err != nil || job == nil || job.ReminderID == uuid.Nil || job.Route != "cabinet" || !strings.Contains(job.ReminderText, "2026-10-01T00:00:00Z") {
 			t.Fatal("dated Telegram claim", err)
 		}
 		if err = restarted.Notifications.DeliverClient(ctx, *job, func() (notifications.ClientOutcome, error) {

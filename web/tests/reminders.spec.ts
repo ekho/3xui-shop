@@ -4,12 +4,12 @@ type Model<K extends keyof components['schemas']>=components['schemas'][K];
 const account:Model<'AccountResult'>={account:{account_id:'11111111-1111-4111-8111-111111111111',email:'reminders@example.test',email_verified:true,locale:'ru',telegram_linked:false},csrf_token:'c'.repeat(43),capabilities:{trial_available:false}};
 const none:Model<'Subscription'>={status:'none',devices:0,traffic_limit_bytes:0,traffic_used_bytes:null,observed_at:null,data_stale:true,expires_at:null,access_profile:'unknown',vpn_banned:false,access_operation_id:null,access_operation_status:null};
 const observed='2030-01-01T10:00:00Z';
-const expiry:Model<'Reminder'>={id:'22222222-2222-4222-8222-222222222222',kind:'expiry',threshold:1,observed_at:observed,expires_at:'2030-01-02T10:00:00Z',traffic_used_bytes:null,traffic_limit_bytes:null,paid_until:null,route:'renew'};
+const expiry:Model<'Reminder'>={id:'22222222-2222-4222-8222-222222222222',kind:'expiry',threshold:1,observed_at:observed,expires_at:'2030-01-02T10:00:00Z',traffic_used_bytes:null,traffic_limit_bytes:null,paid_until:null,route:'cabinet'};
 const traffic:Model<'Reminder'>={...expiry,id:'33333333-3333-4333-8333-333333333333',kind:'traffic',threshold:80,expires_at:null,traffic_used_bytes:'9007199254740993',traffic_limit_bytes:'9223372036854775807'};
 const lapse:Model<'Reminder'>={...expiry,id:'44444444-4444-4444-8444-444444444444',kind:'stars_lapsed',threshold:0,expires_at:null,paid_until:'2029-12-30T10:00:00Z',route:'cabinet'};
 const reminders:Model<'ReminderResult'>={version:'reminders-v1',email_enabled:false,email_available:true,reminders:[expiry,traffic,lapse]};
 const empty:Model<'ReminderResult'>={...reminders,reminders:[]};
-type Options={result?:Model<'ReminderResult'>;extra?:(r:Route,path:string)=>Promise<boolean>;profile?:()=>Model<'AccountResult'>;subscription?:Model<'Subscription'>};
+type Options={result?:Model<'ReminderResult'>;extra?:(r:Route,path:string)=>Promise<boolean>;profile?:()=>Model<'AccountResult'>|Model<'MiniAppAccountResult'>;subscription?:Model<'Subscription'>};
 async function fixture(page:Page,options:Options={}){
  let result=structuredClone(options.result??reminders);
  const writes:{path:string;body:unknown;csrf:string|undefined}[]=[];
@@ -42,7 +42,7 @@ for(const lang of ['ru','en'])test('dated reminders, explicit email preference a
  await expect(section.locator('time[datetime="'+expiry.expires_at+'"]')).toBeVisible();await expect(section.locator('time[datetime="'+lapse.paid_until+'"]')).toBeVisible();
  await expect(section).toContainText('9007199254740993');await expect(section).toContainText('9223372036854775807');
  await expect(section).toContainText(lang==='ru'?'Проверьте состояние автопродления':'Check the auto-renewal status');
- const renew=section.getByRole('link',{name:lang==='ru'?'Продлить подписку':'Renew subscription'}).first();await expect(renew).toHaveAttribute('href','/cabinet/renew'+(lang==='en'?'?lang=en':''));
+ const open=section.getByRole('link',{name:lang==='ru'?'Открыть кабинет':'Open cabinet'}).first();await expect(open).toHaveAttribute('href','/cabinet'+(lang==='en'?'?lang=en':''));
  await expect(section.getByRole('link',{name:lang==='ru'?'Проверить Stars':'Check Stars'})).toHaveAttribute('href','/cabinet'+(lang==='en'?'?lang=en':''));
  const consent=section.getByRole('checkbox',{name:lang==='ru'?'Получать предупреждения по email':'Receive reminders by email'});await expect(consent).not.toBeChecked();
  await expect(consent).toHaveAttribute('aria-describedby','reminder-email-help');
@@ -54,6 +54,39 @@ for(const lang of ['ru','en'])test('dated reminders, explicit email preference a
  expect(f.writes[1]).toEqual({path:'/api/v1/reminders/'+expiry.id+'/dismiss',body:null,csrf:account.csrf_token});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  expect(await page.evaluate(()=>JSON.stringify(localStorage)+JSON.stringify(sessionStorage))).not.toMatch(/9007199254740993|csrf_token|22222222/);
+});
+
+// A direct renewal warning blocks trial's first purchase and active Stars traffic management.
+for(const mini of [false,true])for(const source of ['trial','paid','stars'] as const)test('warning reaches available '+source+' action in '+(mini?'Mini':'web'),async({page})=>{
+ let paymentWrites=0;
+ const plan:Model<'CataloguePlanSnapshot'>={plan_id:'70000000-0000-4000-8000-000000000001',revision:1,devices:2,traffic_gb:10,profile:'regular',hidden:false,periods:[30],prices:[{period_days:30,currency:mini?'XTR':'RUB',amount_minor:'100'}]};
+ const stars:Model<'StarsSubscription'>={state:source==='stars'?'active':'none',order_id:source==='stars'?'80000000-0000-4000-8000-000000000001':null,provider_state:source==='stars'?'active':null,control_state:source==='stars'?'none':null,paid_until:source==='stars'?'2030-02-01T10:00:00Z':null,period_phase:source==='stars'?'current':'none',can_cancel:source==='stars',can_resume:false,external_billing_blocked:source==='stars',needs_review:false};
+ const profile:Model<'MiniAppAccountResult'>={account:{account_id:account.account.account_id,email:account.account.email,email_verified:true,display_name:'Owned reminder client',telegram_id:701,telegram_linked:true,locale:'en'},csrf_token:account.csrf_token,capabilities:{trial_available:false}};
+ if(mini)await page.route('https://telegram.org/js/telegram-web-app.js',r=>r.fulfill({contentType:'application/javascript',body:'window.Telegram={WebApp:{initData:"owned-reminder-launch",ready(){},expand(){}}};'}));
+ await fixture(page,{profile:()=>source==='stars'?profile:account,result:{...reminders,reminders:[source==='stars'?traffic:expiry]},subscription:{...none,status:'active',access_profile:'regular',devices:2,data_stale:false,expires_at:expiry.expires_at,traffic_used_bytes:80,traffic_limit_bytes:100},extra:async(r,path)=>{
+  if(path.endsWith('/telegram/mini-app/session')){await r.fulfill({json:{...profile,session_token:'mini_'+'b'.repeat(43)}});return true;}
+  if(path.endsWith('/telegram/mini-app/account')){await r.fulfill({json:profile});return true;}
+  if(path.endsWith('/auth/session')){await r.fulfill({json:{csrf_token:account.csrf_token}});return true;}
+  if(path==='/api/v1/stars-subscription'){await r.fulfill({json:stars});return true;}
+  if(path==='/api/v1/catalogue'){await r.fulfill({json:{plans:[plan]}});return true;}
+  if(path==='/api/v1/payment-methods'){await r.fulfill({json:{methods:[{id:mini?'telegram_stars':'yoomoney',currency:mini?'XTR':'RUB'}]}});return true;}
+  if(path==='/api/v1/orders/current'){await r.fulfill({json:{order:null,can_purchase:source==='trial'}});return true;}
+  if(path==='/api/v1/subscription/renewal'){await r.fulfill(source==='paid'?{json:plan}:{status:409,json:{error:{code:source==='stars'?'EXTERNAL_BILLING_UNVERIFIED':'RENEWAL_NOT_ELIGIBLE'}}});return true;}
+  if(path==='/api/v1/orders'&&r.request().method()==='POST'){paymentWrites++;await r.abort();return true;}
+  return false;
+ }});
+ const prefix=mini?'/mini-app':'';
+ await page.goto(prefix+'/cabinet?lang=en');const warning=page.getByRole('region',{name:'Subscription reminders'});
+ const open=warning.getByRole('link',{name:'Open cabinet'});await expect(open).toHaveAttribute('href',prefix+'/cabinet?lang=en');await open.click();
+ await expect(page).toHaveURL(new RegExp(prefix+'/cabinet\\?lang=en$'));
+ if(source==='stars'){
+  const controls=page.getByRole('region',{name:'Stars auto-renewal'});await expect(controls.getByText('Auto-renewal is active.',{exact:true})).toBeVisible();await expect(controls.getByRole('button',{name:'Cancel auto-renewal',exact:true})).toBeEnabled();
+ }else if(source==='trial'){
+  await page.getByRole('link',{name:'Plans',exact:true}).click();await page.getByRole('button',{name:'Select plan'}).click();await expect(page.getByRole('button',{name:'Buy plan',exact:true})).toBeEnabled();
+ }else{
+  await page.getByRole('link',{name:'Renew subscription',exact:true}).click();await expect(page.getByRole('button',{name:'Renew subscription',exact:true})).toBeEnabled();
+ }
+ await expect(page.getByRole('alert')).toHaveCount(0);expect(paymentWrites).toBe(0);
 });
 
 test('loading, safe error, manual retry and empty reminders',async({page})=>{

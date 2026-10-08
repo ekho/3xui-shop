@@ -541,7 +541,7 @@ def native_restart():
             assert status==200 and value['version']=='reminders-v1' and value['email_enabled']
             return value['reminders'][0] if len(value['reminders'])==1 else None
         notice=wait_until(reminder)
-        assert notice['kind']=='expiry' and notice['threshold']==3 and notice['route']=='renew'
+        assert notice['kind']=='expiry' and notice['threshold']==3 and notice['route']=='cabinet'
         assert notice['expires_at'] and notice['observed_at']
         def reminder_mail():
             _,_,raw=request(session(),'https://localhost:59446/api/v1/search?query='+quote('to:'+credentials['email'],safe=''))
@@ -549,7 +549,7 @@ def native_restart():
                 if any(recipient['Address']==credentials['email'] for recipient in row['To']):
                     _,_,raw=request(session(),'https://localhost:59446/api/v1/message/'+row['ID'])
                     text=json.loads(raw)['Text']
-                    if 'Your subscription expires soon:' in text and 'Observed at ' in text and ORIGIN+'/cabinet/renew?lang=en' in text:return True
+                    if 'Your subscription expires soon:' in text and 'Observed at ' in text and ORIGIN+'/cabinet?lang=en' in text:return True
             return False
         wait_until(reminder_mail)
         compose('stop','backend')
