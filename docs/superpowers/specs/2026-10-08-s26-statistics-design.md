@@ -2,7 +2,7 @@
 
 Основание: #36, автономный мандат #55/2026-10-06-v2-sequential-execution-and-merge; Native.
 Результат: оператор читает общие показатели и показатели неизменяемой когорты кампании, раздельные деньги, подтверждённую активность, серверы/клиентов и ссылки фиксированных tag-групп.
-Предпосылки #60/#25/#35 закрыты; source base940b8138aa300ecac8062735748abeee182ad303, branch feature/s26-statistics. Статус: backend и общий UI реализованы; исправленный исходник прошёл Go1284/1284, Web438/438, Python112/112 и actual local3.7.0 process/restart. Один финальный Astra/high reviewer, оба Important исправлены одним RED→GREEN проходом; Minor0. Exact-source CI и доставка ещё pending.
+Предпосылки #60/#25/#35 закрыты; source base940b8138aa300ecac8062735748abeee182ad303, branch feature/s26-statistics. Статус: backend и общий UI реализованы; исправленный исходник прошёл Go1284/1284, Web438/438, Python112/112 и actual local3.7.0 process/restart. Один финальный Astra/high reviewer, оба Important исправлены одним RED→GREEN проходом; Minor0. Exact-source Platform/images CI прошли; PR#90 вручную слит в v2/73dd9de3a19f614d9a270e83578d3d0bb7a6ec24. Prerelease2.0.0-dev.78/annotated tag/3OCIindices6labels проверены; #36 CLOSED/ProjectDone.
 Версия решения 2026-10-08-s26-statistics-v1, owner audit_reports/#36. Runtime discriminator StatisticsReport.version — statistics-v1; номер сценария остаётся только в документах/GitHub.
 
 Использую brainstorming для архитектурного пути: публичные report ports и единый компонент меняют связи нескольких владельцев. Повторного approval не требуется по прямому поручению вести остальные документы и реализацию автономно; Native сохраняется.

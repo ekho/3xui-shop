@@ -531,6 +531,38 @@ def native_restart():
         panel_readback(after['target'])
         assert active(opener) is not None
         print('PASS: compiled Go process stopped after commit and restarted; same operation, grant, keys and real panel readback; Telegram disabled',flush=True)
+        # Re-run the actual immediate scheduler on the same granted account.
+        assert api(opener,'/api/v1/reminders/preferences',{'email_enabled':True},login['csrf_token'])[0]==200
+        compose('stop','backend')
+        compose('up','--no-build','--pull','never','-d','backend')
+        wait_until(ready)
+        def reminder():
+            status,_,value=api(opener,'/api/v1/reminders')
+            assert status==200 and value['version']=='reminders-v1' and value['email_enabled']
+            return value['reminders'][0] if len(value['reminders'])==1 else None
+        notice=wait_until(reminder)
+        assert notice['kind']=='expiry' and notice['threshold']==3 and notice['route']=='cabinet'
+        assert notice['expires_at'] and notice['observed_at']
+        def reminder_mail():
+            _,_,raw=request(session(),'https://localhost:59446/api/v1/search?query='+quote('to:'+credentials['email'],safe=''))
+            for row in json.loads(raw)['messages']:
+                if any(recipient['Address']==credentials['email'] for recipient in row['To']):
+                    _,_,raw=request(session(),'https://localhost:59446/api/v1/message/'+row['ID'])
+                    text=json.loads(raw)['Text']
+                    if 'Your subscription expires soon:' in text and 'Observed at ' in text and ORIGIN+'/cabinet?lang=en' in text:return True
+            return False
+        wait_until(reminder_mail)
+        compose('stop','backend')
+        compose('up','--no-build','--pull','never','-d','backend')
+        wait_until(ready)
+        assert wait_until(reminder)==notice, 'reminder restart changed the dated fact'
+        assert sql("SELECT count(*) FROM reminders WHERE account_id=(SELECT account_id FROM trial_operations WHERE id=:'op');",operation=operation)=='1'
+        assert sql("SELECT count(*) FROM mail_deliveries WHERE reminder_id=(SELECT id FROM reminders WHERE account_id=(SELECT account_id FROM trial_operations WHERE id=:'op'));",operation=operation)=='1'
+        assert sql("SELECT count(*) FROM purchase_orders WHERE account_id=(SELECT account_id FROM trial_operations WHERE id=:'op');",operation=operation)=='0'
+        assert sql("SELECT count(*) FROM access_operations WHERE account_id=(SELECT account_id FROM trial_operations WHERE id=:'op');",operation=operation)=='0'
+        assert snapshot(operation)['grants']==1 and sql(identity_query,operation=operation)==identity
+        panel_readback(after['target'])
+        print('PASS: compiled reminder scheduler and TLS SMTP; same dated warning after restart, one event/mail enqueue, unchanged grant/keys/money/access; Telegram disabled',flush=True)
     finally:
         sql('DROP TRIGGER IF EXISTS native_hold_provision ON river_job; DROP FUNCTION IF EXISTS native_hold_provision();')
         write('native-operator-account','')

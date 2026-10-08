@@ -29,6 +29,7 @@ async function fixture(page:Page,options:Options={}){
    return r.fulfill({json:{...profile,session_token:token},headers:{'Cache-Control':'no-store'}});
   }
   if(path==='/api/v1/telegram/mini-app/account')return r.fulfill({json:profile});
+  if(path==='/api/v1/reminders')return r.fulfill({json:{version:'reminders-v1',email_enabled:false,email_available:false,reminders:[]}});
   if(path==='/api/v1/auth/session')return r.fulfill({json:{csrf_token:profile.csrf_token}});
   if(path==='/api/v1/telegram/mini-app/logout'||path==='/api/v1/support/read')return r.fulfill({status:204});
   if(path==='/api/v1/subscription')return r.fulfill({json:options.sub??none});
@@ -45,6 +46,24 @@ async function fixture(page:Page,options:Options={}){
  return {calls,sessions:()=>sessions,sdk:async(mode:Options['sdk'])=>{sdkMode=mode;await pendingSDK?.abort();pendingSDK=undefined;}};
 }
 const storage=async(page:Page)=>page.evaluate(()=>JSON.stringify(localStorage)+JSON.stringify(sessionStorage));
+
+for(const lang of ['ru','en'])test('Mini App reminder transport and renewal route '+lang,async({page})=>{
+ const id='22222222-2222-4222-8222-222222222222';let closed=false;
+ const reminder:Model<'Reminder'>={id,kind:'expiry',threshold:1,observed_at:'2030-01-01T10:00:00Z',expires_at:'2030-01-02T10:00:00Z',traffic_used_bytes:null,traffic_limit_bytes:null,paid_until:null,route:'renew'};
+ const f=await fixture(page,{extra:async(r,path)=>{
+  if(path==='/api/v1/reminders'){await r.fulfill({json:{version:'reminders-v1',email_enabled:false,email_available:false,reminders:closed?[]:[reminder]}});return true;}
+  if(path==='/api/v1/reminders/'+id+'/dismiss'){expect(r.request().headers()['x-csrf-token']).toBe(profile.csrf_token);expect(r.request().postData()).toBeNull();closed=true;await r.fulfill({status:204});return true;}return false;
+ }});
+ await page.setViewportSize({width:375,height:812});await page.goto('/mini-app'+(lang==='en'?'?lang=en':''));const section=page.getByRole('region',{name:lang==='ru'?'Предупреждения о подписке':'Subscription reminders'});
+ await expect(section.getByRole('listitem')).toHaveCount(1);await expect(section.getByRole('checkbox')).toBeDisabled();await expect(section.getByRole('link',{name:lang==='ru'?'Продлить подписку':'Renew subscription'})).toHaveAttribute('href','/mini-app/cabinet/renew'+(lang==='en'?'?lang=en':''));
+ await section.getByRole('button',{name:lang==='ru'?'Закрыть предупреждение: Срок подписки':'Dismiss reminder: Subscription expiry'}).click();await expect(section.getByRole('listitem')).toHaveCount(0);
+ const calls=f.calls.filter(c=>c.path.startsWith('/api/v1/reminders'));expect(calls.map(c=>c.method)).toEqual(['GET','POST']);expect(calls.every(c=>c.authorization&&!c.cookie)).toBe(true);expect(f.sessions()).toBe(1);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ expect(await storage(page)).not.toMatch(/22222222|mini_|csrf_token/);
+});
+test('Mini App reminder auth loss ends the session once',async({page})=>{
+ const f=await fixture(page,{extra:async(r,path)=>{if(path!=='/api/v1/reminders')return false;await r.fulfill({status:401,json:{error:{code:'INVALID_CREDENTIALS',message:'private reminder body',request_id:''}}});return true;}});
+ await page.goto('/mini-app?lang=en');await expect(page.getByRole('alert')).toContainText('Session ended');await expect(page.getByRole('region',{name:'Subscription reminders'})).toHaveCount(0);expect(f.sessions()).toBe(1);await expect(page.getByText('private reminder body')).toHaveCount(0);
+});
 
 test('Mini App signed login preserves independent cookie and memory-only transport',async({page})=>{
  const f=await fixture(page);await page.addInitScript(()=>sessionStorage.setItem('__telegram__initParams','stale-owned-launch'));await page.context().addCookies([{name:'browser-marker',value:'independent',url:'http://127.0.0.1:4173'}]);
@@ -173,7 +192,7 @@ for(const lang of ['ru','en'] as const)for(const path of ['/','/cabinet','/catal
 test('Mini App other payments setup link uses the existing first email screen',async({page})=>{
  const identity:Model<'IdentityContext'>={email:null,source_kind:'telegram',independent_login:false,telegram_linked:true,can_unlink:false,unlink_blocked_reason:'INDEPENDENT_LOGIN_REQUIRED',pending_initial_email:null};
  const f=await fixture(page,{extra:async(r,path)=>{if(path==='/api/v1/me/identity'){await r.fulfill({json:identity});return true}return false}});
- await page.goto('/mini-app/cabinet?lang=en');await page.getByRole('link',{name:'Set up email sign-in',exact:true}).click();
+ await page.goto('/mini-app/cabinet?lang=en');await page.getByRole('region',{name:'Other payment methods'}).getByRole('link',{name:'Set up email sign-in',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Sign-in methods',exact:true})).toBeVisible();await expect(page.getByLabel('Email',{exact:true})).toBeVisible();
  expect(new URL(page.url()).pathname).toBe('/mini-app/cabinet/identity');expect(f.sessions()).toBe(1);expect(await page.evaluate(()=>(window as any).__sdk.opened)).toEqual([]);
 });

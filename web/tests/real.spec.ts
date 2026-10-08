@@ -79,7 +79,7 @@ if(process.env.TEST_BROWSER_PAYMENTS_FILE){
    await web.route('https://telegram.org/**',async r=>{sdkLoads++;await r.abort()});
    await web.goto(opened[0]);await expect(web.getByLabel('Email',{exact:true})).toBeVisible();
    expect((await(await web.request.get(new URL('/api/v1/me',opened[0]).href)).json()).account.account_id).toBe(input.other_account_id);
-   await page.getByRole('link',{name:'Set up email sign-in',exact:true}).click();checkpoint='email';
+   await page.getByRole('region',{name:'Other payment methods'}).getByRole('link',{name:'Set up email sign-in',exact:true}).click();checkpoint='email';
    await expect(page.getByRole('heading',{name:'Sign-in methods',exact:true})).toBeVisible();await page.getByLabel('Email',{exact:true}).fill(input.email);
    const challenge=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/v1/telegram/initial-email'&&r.request().method()==='POST');
    await page.getByRole('button',{name:'Send confirmation code',exact:true}).click();const sent=await challenge;expect(sent.status()).toBe(202);

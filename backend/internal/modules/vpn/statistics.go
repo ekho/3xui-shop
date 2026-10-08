@@ -25,27 +25,7 @@ func (s *Service) StatisticsTx(ctx context.Context, tx pgx.Tx, ids []uuid.UUID) 
 	if err != nil {
 		return out, unavailable()
 	}
-	rows, err := tx.Query(ctx, `SELECT selected.account_id,access.id,access.target,trial.id,COALESCE(trial.status,''),trial.target,
- EXISTS(SELECT 1 FROM access_operations WHERE account_id=selected.account_id AND status IN ('pending','provisioning','needs_review'))
- OR EXISTS(SELECT 1 FROM trial_operations WHERE account_id=selected.account_id AND status IN ('pending','provisioning','needs_review'))
- FROM unnest($1::uuid[]) selected(account_id)
- LEFT JOIN LATERAL (SELECT id,target FROM access_operations WHERE account_id=selected.account_id AND status='applied' ORDER BY updated_at DESC,sequence DESC LIMIT 1) access ON true
- LEFT JOIN LATERAL (SELECT id,status,target FROM trial_operations WHERE account_id=selected.account_id ORDER BY created_at DESC,id DESC LIMIT 1) trial ON true`, ids)
-	if err != nil {
-		return out, unavailable()
-	}
-	baselines := map[uuid.UUID]statisticsBaseline{}
-	for rows.Next() {
-		var id uuid.UUID
-		var b statisticsBaseline
-		if rows.Scan(&id, &b.AccessID, &b.AccessTarget, &b.TrialID, &b.TrialStatus, &b.TrialTarget, &b.Unresolved) != nil {
-			rows.Close()
-			return out, unavailable()
-		}
-		baselines[id] = b
-	}
-	err = rows.Err()
-	rows.Close()
+	baselines, err := s.statisticsBaselinesTx(ctx, tx, ids)
 	if err != nil || len(accounts) != len(ids) {
 		return out, unavailable()
 	}
@@ -101,38 +81,9 @@ func (s *Service) StatisticsTx(ctx context.Context, tx pgx.Tx, ids []uuid.UUID) 
 }
 
 func statisticsAccountActivity(a accounts.Snapshot, b statisticsBaseline, snapshot panelStatisticsSnapshot, panelID string, now time.Time) (active, known bool) {
-	if b.Unresolved {
-		return false, false
-	}
-	var target ProvisionTarget
-	raw, expected := b.TrialTarget, b.TrialID
-	accessTarget := false
-	if b.AccessID != nil {
-		var t AccessTarget
-		if json.Unmarshal(b.AccessTarget, &t) != nil || t.OperationID != *b.AccessID {
-			return false, false
-		}
-		if !t.NoClientIntent {
-			raw, expected, accessTarget = b.AccessTarget, b.AccessID, true
-		}
-	}
-	if !accessTarget && (b.TrialID == nil || b.TrialStatus != "applied") {
-		if a.AssignedPanelID == nil && !a.HadSubscription {
-			return false, true
-		}
-		return false, false
-	}
-	if expected == nil || json.Unmarshal(raw, &target) != nil || target.OperationID != *expected {
-		return false, false
-	}
-	if !accessTarget && target.Profile == "" {
-		target.Profile = "regular"
-	}
-	if a.AssignedPanelID == nil || *a.AssignedPanelID != panelID || target.PanelID != panelID || target.PanelKey != a.PanelKey || target.VPNID != a.VpnID || target.SubID != a.SubID || target.VPNID == uuid.Nil || target.PanelKey == "" || target.SubID == "" || target.Banned != a.VpnBanned || target.DeviceCount < 0 || target.DeviceCount >= math.MaxInt64 || target.ExpiryTimeMS < 0 || target.TrafficLimitBytes < 0 || len(target.InboundIDs) == 0 {
-		return false, false
-	}
-	if target.Profile != "regular" && target.Profile != "unlimited" && target.Profile != "euru" || a.AccessProfile != nil && *a.AccessProfile != target.Profile {
-		return false, false
+	target, known, confirmed := statisticsTarget(a, b, panelID)
+	if !confirmed {
+		return false, known
 	}
 	v, exists := snapshot.clients[a.PanelKey]
 	limit := target.DeviceCount
@@ -175,4 +126,69 @@ func statisticsAccountActivity(a accounts.Snapshot, b statisticsBaseline, snapsh
 		return false, false
 	}
 	return enabled && v.Enabled && !a.VpnBanned && (v.ExpiryTimeMS == 0 || v.ExpiryTimeMS > now.UnixMilli()) && (v.TrafficLimitBytes == 0 || *v.UsedTraffic < v.TrafficLimitBytes), true
+}
+
+func (s *Service) statisticsBaselinesTx(ctx context.Context, tx pgx.Tx, ids []uuid.UUID) (map[uuid.UUID]statisticsBaseline, error) {
+	rows, err := tx.Query(ctx, `SELECT selected.account_id,access.id,access.target,trial.id,COALESCE(trial.status,''),trial.target,
+ EXISTS(SELECT 1 FROM access_operations WHERE account_id=selected.account_id AND status IN ('pending','provisioning','needs_review'))
+ OR EXISTS(SELECT 1 FROM trial_operations WHERE account_id=selected.account_id AND status IN ('pending','provisioning','needs_review'))
+ FROM unnest($1::uuid[]) selected(account_id)
+ LEFT JOIN LATERAL (SELECT id,target FROM access_operations WHERE account_id=selected.account_id AND status='applied' ORDER BY updated_at DESC,sequence DESC LIMIT 1) access ON true
+ LEFT JOIN LATERAL (SELECT id,status,target FROM trial_operations WHERE account_id=selected.account_id ORDER BY created_at DESC,id DESC LIMIT 1) trial ON true`, ids)
+	if err != nil {
+		return nil, unavailable()
+	}
+	baselines := map[uuid.UUID]statisticsBaseline{}
+	for rows.Next() {
+		var id uuid.UUID
+		var b statisticsBaseline
+		if rows.Scan(&id, &b.AccessID, &b.AccessTarget, &b.TrialID, &b.TrialStatus, &b.TrialTarget, &b.Unresolved) != nil {
+			rows.Close()
+			return nil, unavailable()
+		}
+		baselines[id] = b
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, unavailable()
+	}
+	return baselines, nil
+}
+
+func statisticsTarget(a accounts.Snapshot, b statisticsBaseline, panelID string) (ProvisionTarget, bool, bool) {
+	if b.Unresolved {
+		return ProvisionTarget{}, false, false
+	}
+	var target ProvisionTarget
+	raw, expected := b.TrialTarget, b.TrialID
+	accessTarget := false
+	if b.AccessID != nil {
+		var t AccessTarget
+		if json.Unmarshal(b.AccessTarget, &t) != nil || t.OperationID != *b.AccessID {
+			return ProvisionTarget{}, false, false
+		}
+		if !t.NoClientIntent {
+			raw, expected, accessTarget = b.AccessTarget, b.AccessID, true
+		}
+	}
+	if !accessTarget && (b.TrialID == nil || b.TrialStatus != "applied") {
+		if a.AssignedPanelID == nil && !a.HadSubscription {
+			return ProvisionTarget{}, true, false
+		}
+		return ProvisionTarget{}, false, false
+	}
+	if expected == nil || json.Unmarshal(raw, &target) != nil || target.OperationID != *expected {
+		return ProvisionTarget{}, false, false
+	}
+	if !accessTarget && target.Profile == "" {
+		target.Profile = "regular"
+	}
+	if a.AssignedPanelID == nil || *a.AssignedPanelID != panelID || target.PanelID != panelID || target.PanelKey != a.PanelKey || target.VPNID != a.VpnID || target.SubID != a.SubID || target.VPNID == uuid.Nil || target.PanelKey == "" || target.SubID == "" || target.Banned != a.VpnBanned || target.DeviceCount < 0 || target.DeviceCount >= math.MaxInt64 || target.ExpiryTimeMS < 0 || target.TrafficLimitBytes < 0 || len(target.InboundIDs) == 0 {
+		return ProvisionTarget{}, false, false
+	}
+	if target.Profile != "regular" && target.Profile != "unlimited" && target.Profile != "euru" || a.AccessProfile != nil && *a.AccessProfile != target.Profile {
+		return ProvisionTarget{}, false, false
+	}
+	return target, true, true
 }

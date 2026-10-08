@@ -40,6 +40,7 @@ type API struct {
 	payments       *payments.Service
 	supportOwner   *support.Service
 	notifications  *notifications.Service
+	reminders      *notifications.ReminderService
 	auditReports   *auditreports.Service
 	pool           *pgxpool.Pool
 	cfg            app.HTTPConfig
@@ -58,7 +59,7 @@ func failure(status int, code string) error {
 }
 func unavailable() error { return failure(503, "SERVICE_UNAVAILABLE") }
 func newAPI(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, contract *openapi3.T) *API {
-	return &API{miniApp: modules.MiniApp, accounts: modules.Accounts, catalogueOwner: modules.Catalogue, campaignsOwner: modules.Campaigns, subscriptions: modules.Subscriptions, payments: modules.Payments, supportOwner: modules.Support, notifications: modules.Notifications, auditReports: modules.AuditReports, pool: pool, cfg: cfg, contract: contract}
+	return &API{miniApp: modules.MiniApp, accounts: modules.Accounts, catalogueOwner: modules.Catalogue, campaignsOwner: modules.Campaigns, subscriptions: modules.Subscriptions, payments: modules.Payments, supportOwner: modules.Support, notifications: modules.Notifications, reminders: modules.Reminders, auditReports: modules.AuditReports, pool: pool, cfg: cfg, contract: contract}
 }
 
 func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig) *echo.Echo {
@@ -189,6 +190,9 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig) *echo.Ech
 	e.POST("/internal/v1/telegram/jobs/claim", a.ClaimTelegramJobs)
 	e.POST("/internal/v1/telegram/jobs/:id/result", a.CompleteTelegramJob)
 	e.GET("/api/v1/support", a.GetSupport)
+	e.GET("/api/v1/reminders", a.GetReminders)
+	e.POST("/api/v1/reminders/preferences", a.SetReminderEmailPreference)
+	e.POST("/api/v1/reminders/:id/dismiss", a.DismissReminder)
 	e.POST("/api/v1/support/history", a.GetSupportHistory)
 	e.POST("/api/v1/support/messages", a.CreateSupportMessage)
 	e.POST("/api/v1/support/read", a.AcknowledgeSupport)
