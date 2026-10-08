@@ -20,12 +20,21 @@ func (r *Runtime) StarsGateway() payments.StarsGateway {
 		if !ready() {
 			return "", &botapi.APIError{Code: "UNAVAILABLE"}
 		}
-		return r.api.CreateStarsInvoice(ctx, in.Title, in.Description, in.Payload, in.Amount)
+		return r.api.CreateStarsInvoice(ctx, in.Title, in.Description, in.Payload, in.Amount, in.SubscriptionPeriod)
 	}, Refund: func(ctx context.Context, payer int64, charge string) error {
 		if !ready() {
 			return &botapi.APIError{Code: "UNAVAILABLE"}
 		}
 		return r.api.RefundStars(ctx, payer, charge)
+	}, EditSubscription: func(ctx context.Context, payer int64, charge string, canceled bool) error {
+		if !ready() {
+			return &botapi.APIError{Code: "UNAVAILABLE"}
+		}
+		err := r.api.EditStarsSubscription(ctx, payer, charge, canceled)
+		if safeCode(err) == "BAD_REQUEST" {
+			return &payments.Error{Status: 409, Code: "STARS_CONTROL_REJECTED"}
+		}
+		return err
 	}}
 }
 func (r *Runtime) preCheckout(parent context.Context, raw json.RawMessage) error {
@@ -44,7 +53,7 @@ func (r *Runtime) preCheckout(parent context.Context, raw json.RawMessage) error
 	ok := false
 	if r.clients != nil && !q.From.IsBot && q.From.ID > 0 && q.From.ID <= 1<<52-1 {
 		var err error
-		ok, err = r.clients.payments.CheckStarsPreCheckout(ctx, payments.StarsPreCheckoutInput{BotID: r.clients.botID, PayerID: q.From.ID, Amount: q.Amount, Currency: q.Currency, Payload: q.Payload})
+		ok, err = r.clients.payments.CheckStarsPreCheckout(ctx, payments.StarsPreCheckoutInput{BotID: r.clients.botID, PayerID: q.From.ID, Amount: q.Amount, Currency: q.Currency, Payload: q.Payload, QueryID: q.ID})
 		if err != nil {
 			return err
 		}
@@ -93,6 +102,23 @@ func (r *Runtime) starsPayment(ctx context.Context, m *botapi.Message) error {
 	} else {
 		err = r.clients.payments.RecordStarsPayment(ctx, payment)
 	}
+	var domain *payments.Error
+	if errors.As(err, &domain) && domain.Code == "STARS_UNSUPPORTED_PAYMENT" {
+		return &ActionError{Code: "UNSUPPORTED_PAYMENT"}
+	}
+	return err
+}
+
+func (r *Runtime) starsSubscriptionUpdate(ctx context.Context, id int64, raw json.RawMessage) error {
+	var in struct {
+		User    botapi.User `json:"user"`
+		Payload string      `json:"invoice_payload"`
+		State   string      `json:"state"`
+	}
+	if r.clients == nil || json.Unmarshal(raw, &in) != nil || in.User.IsBot || in.User.ID <= 0 || in.User.ID > 1<<52-1 {
+		return &ActionError{Code: "UNSUPPORTED_PAYMENT"}
+	}
+	err := r.clients.payments.RecordStarsSubscriptionUpdate(ctx, payments.StarsSubscriptionUpdateInput{BotID: r.clients.botID, PayerID: in.User.ID, UpdateID: id, Payload: in.Payload, State: in.State, At: time.Now().UTC()})
 	var domain *payments.Error
 	if errors.As(err, &domain) && domain.Code == "STARS_UNSUPPORTED_PAYMENT" {
 		return &ActionError{Code: "UNSUPPORTED_PAYMENT"}

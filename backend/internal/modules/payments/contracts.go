@@ -15,6 +15,7 @@ type PurchaseOrderInput struct {
 	PlanId                  uuid.UUID  `json:"plan_id"`
 	Revision                int64      `json:"revision"`
 	SourceAccessOperationId *uuid.UUID `json:"source_access_operation_id,omitempty"`
+	StarsRecurring          bool       `json:"stars_recurring,omitempty"`
 }
 type PurchaseQuote struct {
 	AmountMinor             string     `json:"amount_minor"`
@@ -26,6 +27,7 @@ type PurchaseQuote struct {
 	Revision                int64      `json:"revision"`
 	SourceAccessOperationId *uuid.UUID `json:"source_access_operation_id,omitempty"`
 	TrafficGb               int64      `json:"traffic_gb"`
+	StarsRecurring          bool       `json:"stars_recurring,omitempty"`
 }
 type PlanChangeContext struct {
 	CurrentPlanId           uuid.UUID `json:"current_plan_id"`

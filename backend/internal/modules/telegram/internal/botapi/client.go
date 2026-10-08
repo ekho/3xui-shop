@@ -42,10 +42,11 @@ type Callback struct {
 	Data    string   `json:"data"`
 }
 type Update struct {
-	ID          int64           `json:"update_id"`
-	Message     *Message        `json:"message"`
-	Callback    *Callback       `json:"callback_query"`
-	PreCheckout json.RawMessage `json:"pre_checkout_query"`
+	ID           int64           `json:"update_id"`
+	Message      *Message        `json:"message"`
+	Callback     *Callback       `json:"callback_query"`
+	PreCheckout  json.RawMessage `json:"pre_checkout_query"`
+	Subscription json.RawMessage `json:"subscription"`
 }
 type Button struct {
 	Text   string      `json:"text"`
@@ -162,13 +163,13 @@ func (c *Client) call(ctx context.Context, method string, body, result any, time
 }
 func (c *Client) GetUpdates(ctx context.Context, offset int64) ([]Update, error) {
 	var out []Update
-	err := c.call(ctx, "getUpdates", map[string]any{"offset": offset, "limit": 1, "timeout": 30, "allowed_updates": []string{"message", "callback_query", "pre_checkout_query"}}, &out, 40*time.Second)
+	err := c.call(ctx, "getUpdates", map[string]any{"offset": offset, "limit": 1, "timeout": 30, "allowed_updates": []string{"message", "callback_query", "pre_checkout_query", "subscription"}}, &out, 40*time.Second)
 	if err == nil {
 		if len(out) > 1 {
 			return nil, invalid()
 		}
 		for _, u := range out {
-			if u.ID < offset || u.ID < 0 || u.ID == math.MaxInt64 {
+			if u.ID < 0 || u.ID == math.MaxInt64 {
 				return nil, invalid()
 			}
 		}
@@ -279,12 +280,16 @@ func (c *Client) SetChatMenuButton(ctx context.Context, raw string) error {
 	return e
 }
 
-func (c *Client) CreateStarsInvoice(ctx context.Context, title, description, payload string, amount int64) (string, error) {
+func (c *Client) CreateStarsInvoice(ctx context.Context, title, description, payload string, amount, period int64) (string, error) {
 	var out string
-	if amount <= 0 || !utf8.ValidString(payload) || len(payload) < 1 || len(payload) > 128 || len(title) < 1 || utf8.RuneCountInString(title) > 32 || len(description) < 1 || utf8.RuneCountInString(description) > 255 {
+	if amount <= 0 || period != 0 && (period != 2592000 || amount > 10000) || !utf8.ValidString(payload) || len(payload) < 1 || len(payload) > 128 || len(title) < 1 || utf8.RuneCountInString(title) > 32 || len(description) < 1 || utf8.RuneCountInString(description) > 255 {
 		return out, &APIError{Code: "INVALID_INPUT"}
 	}
-	err := c.call(ctx, "createInvoiceLink", map[string]any{"title": title, "description": description, "payload": payload, "provider_token": "", "currency": "XTR", "prices": []map[string]any{{"label": "Subscription", "amount": amount}}}, &out, 10*time.Second)
+	in := map[string]any{"title": title, "description": description, "payload": payload, "provider_token": "", "currency": "XTR", "prices": []map[string]any{{"label": "Subscription", "amount": amount}}}
+	if period != 0 {
+		in["subscription_period"] = period
+	}
+	err := c.call(ctx, "createInvoiceLink", in, &out, 10*time.Second)
 	return out, err
 }
 func (c *Client) RefundStars(ctx context.Context, payer int64, charge string) error {
@@ -309,6 +314,18 @@ func (c *Client) AnswerStarsPreCheckout(ctx context.Context, id string, ok bool,
 	var result bool
 	err := c.call(ctx, "answerPreCheckoutQuery", in, &result, 5*time.Second)
 	if err == nil && !result {
+		return invalid()
+	}
+	return err
+}
+
+func (c *Client) EditStarsSubscription(ctx context.Context, payer int64, charge string, canceled bool) error {
+	if payer <= 0 || payer > 1<<52-1 || len(charge) < 1 || len(charge) > 4096 || !utf8.ValidString(charge) || strings.ContainsRune(charge, '\x00') {
+		return &APIError{Code: "INVALID_INPUT"}
+	}
+	var ok bool
+	err := c.call(ctx, "editUserStarSubscription", map[string]any{"user_id": payer, "telegram_payment_charge_id": charge, "is_canceled": canceled}, &ok, 10*time.Second)
+	if err == nil && !ok {
 		return invalid()
 	}
 	return err

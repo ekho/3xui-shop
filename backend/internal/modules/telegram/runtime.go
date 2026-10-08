@@ -325,6 +325,9 @@ func (r *Runtime) deliver(ctx context.Context, d Delivery) error {
 }
 
 func (r *Runtime) handle(ctx context.Context, u botapi.Update) error {
+	if present(u.Subscription) {
+		return r.starsSubscriptionUpdate(ctx, u.ID, u.Subscription)
+	}
 	if present(u.PreCheckout) {
 		return r.preCheckout(ctx, u.PreCheckout)
 	}

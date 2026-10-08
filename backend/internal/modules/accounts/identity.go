@@ -23,9 +23,15 @@ func (s *Service) GetIdentity(ctx context.Context, id uuid.UUID) (IdentityContex
 		IndependentLogin: a.Kind == "web" && a.VerifiedAt.Valid && a.PasswordHash.Valid,
 		TelegramLinked:   a.TelegramID.Valid}
 	out.CanUnlink = out.IndependentLogin && out.TelegramLinked && !a.LegacyUserID.Valid
+	if out.CanUnlink && s.cfg.CanUnlinkTelegram != nil {
+		out.CanUnlink, err = s.cfg.CanUnlinkTelegram(ctx, nil, id)
+		if err != nil {
+			return IdentityContext{}, unavailable()
+		}
+	}
 	if out.TelegramLinked && !out.CanUnlink {
 		reason := "INDEPENDENT_LOGIN_REQUIRED"
-		if a.LegacyUserID.Valid {
+		if a.LegacyUserID.Valid || out.IndependentLogin {
 			reason = "UNLINK_UNAVAILABLE"
 		}
 		out.UnlinkBlockedReason = &reason

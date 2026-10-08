@@ -267,7 +267,7 @@ func TestPlanChangeEligibility(t *testing.T) {
 			case "restriction":
 				_, err = e.Pool.Exec(ctx, "UPDATE accounts SET restricted=true WHERE id=$1", account)
 			case "telegram":
-				_, err = e.Pool.Exec(ctx, "UPDATE accounts SET telegram_id=1234567 WHERE id=$1", account)
+				_, err = e.Pool.Exec(ctx, "UPDATE accounts SET telegram_id=1234567,legacy_user_id=1234567 WHERE id=$1", account)
 			case "legacy":
 				_, err = e.Pool.Exec(ctx, "UPDATE accounts SET legacy_user_id=1234567 WHERE id=$1", account)
 			case "unlimited":
@@ -423,7 +423,7 @@ func TestPlanChangeLateGuards(t *testing.T) {
 				case "restriction":
 					_, err = e.Pool.Exec(ctx, "UPDATE accounts SET restricted=true WHERE id=$1", account)
 				case "telegram":
-					_, err = e.Pool.Exec(ctx, "UPDATE accounts SET telegram_id=1234567 WHERE id=$1", account)
+					_, err = e.Pool.Exec(ctx, "UPDATE accounts SET telegram_id=1234567,legacy_user_id=1234567 WHERE id=$1", account)
 				case "legacy":
 					_, err = e.Pool.Exec(ctx, "UPDATE accounts SET legacy_user_id=1234567 WHERE id=$1", account)
 				case "unlimited":

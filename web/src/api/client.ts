@@ -177,5 +177,8 @@ export async function requestOperatorRecovery(clientId:string,input:OperatorReco
 export async function completeIdentityRecovery(input:components['schemas']['IdentityRecoveryCompleteInput'],signal?:AbortSignal){return request<VerifyResult>('auth/identity-recovery','POST',input,signal);}
 
 export type StarsRefundInput=components['schemas']['StarsRefundInput'];
+export type StarsSubscription=components['schemas']['StarsSubscription'];
+export const starsSubscription=(signal?:AbortSignal)=>request<StarsSubscription>('stars-subscription','GET',undefined,signal);
+export const controlStarsSubscription=(action:'cancel'|'resume',key:string,signal?:AbortSignal)=>request<StarsSubscription>('stars-subscription/control','POST',{action,confirmed:true},signal,true,key);
 export const createStarsInvoice=(id:string,signal?:AbortSignal)=>request<PurchaseOrder>('orders/'+encodeURIComponent(id)+'/stars-invoice','POST',{},signal,true);
 export const refundStarsPurchase=(clientId:string,orderId:string,input:StarsRefundInput,key:string,signal?:AbortSignal)=>request<components['schemas']['StarsRefund']>(operatorClientPath(clientId)+'/orders/'+encodeURIComponent(orderId)+'/stars-refund','POST',input,signal,true,key);

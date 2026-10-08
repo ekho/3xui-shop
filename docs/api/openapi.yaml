@@ -10809,9 +10809,6 @@
         "description": "Reuses the immutable order/payer/bot and payload. No browser cookie grant, external URL or SDK money proof.",
         "security": [
           {
-            "sessionCookie": []
-          },
-          {
             "miniAppBearer": []
           }
         ],
@@ -10945,7 +10942,7 @@
             }
           }
         },
-        "summary": "Prepare the saved one-time Stars invoice (signed Mini only)"
+        "summary": "Prepare the saved Stars invoice (signed Mini only)"
       }
     },
     "/api/v1/operator/clients/{id}/orders/{order_id}/stars-refund": {
@@ -11101,6 +11098,257 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/StarsRefundInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stars-subscription": {
+      "get": {
+        "operationId": "getStarsSubscription",
+        "description": "Own recurring billing facts. Provider status is separate from proof of bot cancellation and paid VPN access.",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "miniAppBearer": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                },
+                "description": "Seconds before retry"
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StarsSubscription"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stars-subscription/control": {
+      "post": {
+        "operationId": "controlStarsSubscription",
+        "description": "Confirmed own cancel/resume command. Native uncertainty is retained and returned as state; successful resume allows the user to re-enable in Telegram.",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "miniAppBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                },
+                "description": "Seconds before retry"
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StarsSubscription"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StarsSubscriptionControlInput"
               }
             }
           }
@@ -14034,6 +14282,10 @@
             "type": "string",
             "format": "uuid",
             "description": "Applied source operation, required only for change_plan and forbidden for other actions. Frozen in the immutable quote; a changed source stops automatic fulfillment."
+          },
+          "stars_recurring": {
+            "type": "boolean",
+            "description": "Explicit 30-day recurring Stars choice, only for the first signed Mini purchase. Omitted or false preserves one-time payment."
           }
         },
         "required": [
@@ -14101,6 +14353,10 @@
             "type": "string",
             "format": "uuid",
             "description": "Applied source operation, required only for change_plan and forbidden for other actions. Frozen in the immutable quote; a changed source stops automatic fulfillment."
+          },
+          "stars_recurring": {
+            "type": "boolean",
+            "description": "Explicit 30-day recurring Stars choice, only for the first signed Mini purchase. Omitted or false preserves one-time payment."
           }
         },
         "required": [
@@ -15935,6 +16191,118 @@
           "state",
           "refund"
         ]
+      },
+      "StarsSubscriptionControlInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "action",
+          "confirmed"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "cancel",
+              "resume"
+            ]
+          },
+          "confirmed": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        }
+      },
+      "StarsSubscription": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "order_id",
+          "provider_state",
+          "control_state",
+          "paid_until",
+          "period_phase",
+          "can_cancel",
+          "can_resume",
+          "external_billing_blocked",
+          "needs_review"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "none",
+              "unknown",
+              "legacy_unknown",
+              "active",
+              "canceled",
+              "failed",
+              "user_canceled",
+              "resume_allowed",
+              "cancel_pending",
+              "cancel_uncertain",
+              "cancel_rejected",
+              "resume_pending",
+              "resume_uncertain",
+              "resume_rejected"
+            ]
+          },
+          "order_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "provider_state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "canceled",
+              "failed",
+              "unknown"
+            ],
+            "nullable": true
+          },
+          "control_state": {
+            "type": "string",
+            "enum": [
+              "none",
+              "pending",
+              "uncertain",
+              "confirmed",
+              "rejected"
+            ],
+            "nullable": true
+          },
+          "paid_until": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "period_phase": {
+            "type": "string",
+            "enum": [
+              "none",
+              "current",
+              "grace",
+              "lapsed"
+            ]
+          },
+          "can_cancel": {
+            "type": "boolean"
+          },
+          "can_resume": {
+            "type": "boolean"
+          },
+          "external_billing_blocked": {
+            "type": "boolean"
+          },
+          "needs_review": {
+            "type": "boolean"
+          }
+        }
       }
     }
   }

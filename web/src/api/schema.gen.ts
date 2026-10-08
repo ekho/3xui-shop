@@ -1476,7 +1476,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Prepare the saved one-time Stars invoice (signed Mini only)
+         * Prepare the saved Stars invoice (signed Mini only)
          * @description Reuses the immutable order/payer/bot and payload. No browser cookie grant, external URL or SDK money proof.
          */
         post: operations["createStarsInvoice"];
@@ -1497,6 +1497,40 @@ export interface paths {
         put?: never;
         /** @description Request one full native Telegram Stars refund against the original payer and saved charge. Intent is durable before the provider call; ambiguous attempts are observed, never blindly repeated. Existing applied access is retained. Strict operator role, protected target, Origin/CSRF/idempotency. */
         post: operations["refundStarsPurchase"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stars-subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Own recurring billing facts. Provider status is separate from proof of bot cancellation and paid VPN access. */
+        get: operations["getStarsSubscription"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stars-subscription/control": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Confirmed own cancel/resume command. Native uncertainty is retained and returned as state; successful resume allows the user to re-enable in Telegram. */
+        post: operations["controlStarsSubscription"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2228,6 +2262,8 @@ export interface components {
              * @description Applied source operation, required only for change_plan and forbidden for other actions. Frozen in the immutable quote; a changed source stops automatic fulfillment.
              */
             source_access_operation_id?: string;
+            /** @description Explicit 30-day recurring Stars choice, only for the first signed Mini purchase. Omitted or false preserves one-time payment. */
+            stars_recurring?: boolean;
         };
         PurchaseQuote: {
             /** Format: uuid */
@@ -2251,6 +2287,8 @@ export interface components {
              * @description Applied source operation, required only for change_plan and forbidden for other actions. Frozen in the immutable quote; a changed source stops automatic fulfillment.
              */
             source_access_operation_id?: string;
+            /** @description Explicit 30-day recurring Stars choice, only for the first signed Mini purchase. Omitted or false preserves one-time payment. */
+            stars_recurring?: boolean;
         };
         YooMoneyCheckoutFields: {
             receiver: string;
@@ -2685,6 +2723,30 @@ export interface components {
             /** @enum {string} */
             state: "pending" | "uncertain" | "confirmed";
             refund: components["schemas"]["PaymentRefund"] | null;
+        };
+        StarsSubscriptionControlInput: {
+            /** @enum {string} */
+            action: "cancel" | "resume";
+            /** @enum {boolean} */
+            confirmed: true;
+        };
+        StarsSubscription: {
+            /** @enum {string} */
+            state: "none" | "unknown" | "legacy_unknown" | "active" | "canceled" | "failed" | "user_canceled" | "resume_allowed" | "cancel_pending" | "cancel_uncertain" | "cancel_rejected" | "resume_pending" | "resume_uncertain" | "resume_rejected";
+            /** Format: uuid */
+            order_id: string | null;
+            /** @enum {string|null} */
+            provider_state: "active" | "canceled" | "failed" | "unknown" | null;
+            /** @enum {string|null} */
+            control_state: "none" | "pending" | "uncertain" | "confirmed" | "rejected" | null;
+            /** Format: date-time */
+            paid_until: string | null;
+            /** @enum {string} */
+            period_phase: "none" | "current" | "grace" | "lapsed";
+            can_cancel: boolean;
+            can_resume: boolean;
+            external_billing_blocked: boolean;
+            needs_review: boolean;
         };
     };
     responses: never;
@@ -10544,6 +10606,184 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StarsRefund"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    /** @description Seconds before retry */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    getStarsSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StarsSubscription"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    /** @description Seconds before retry */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    controlStarsSubscription: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token": string;
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StarsSubscriptionControlInput"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StarsSubscription"];
                 };
             };
             /** @description Safe error */

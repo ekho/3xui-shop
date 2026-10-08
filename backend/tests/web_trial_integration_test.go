@@ -97,6 +97,18 @@ func (p *panel) serve(w http.ResponseWriter, r *http.Request) {
 		// This owned fixture always reports zero traffic. A confirmed reset
 		// acknowledges that same state without changing access or identity.
 		reply(c != nil && c["email"] == key && c["id"] != nil && c["subId"] != nil, nil)
+	case r.Method == "POST" && strings.HasPrefix(r.URL.Path, "/panel/api/clients/update/"):
+		key := strings.TrimPrefix(r.URL.Path, "/panel/api/clients/update/")
+		var body map[string]any
+		decoder := json.NewDecoder(r.Body)
+		decoder.UseNumber()
+		current := p.clients[key]
+		if decoder.Decode(&body) != nil || current == nil || body["email"] != key || body["id"] != current["id"] || body["subId"] != current["subId"] {
+			reply(false, nil)
+			return
+		}
+		p.clients[key] = body
+		reply(true, nil)
 	case r.Method == "POST" && r.URL.Path == "/panel/api/clients/add":
 		var b struct {
 			Client     map[string]any `json:"client"`
@@ -158,6 +170,47 @@ func TestPanelTrafficFixtureMatchesOwnedClient(t *testing.T) {
 	status, found, row = read("acct_foreign")
 	if status != http.StatusOK || found || row != nil || p.forbidden != 0 || p.adds != 0 {
 		t.Fatal("unknown client must not expose traffic or make writes")
+	}
+}
+
+func TestPanelAccessFixturePreservesOwnedClient(t *testing.T) {
+	id := uuid.New()
+	key, sub := "acct_owned", "abcdefghijklmnop"
+	p := &panel{clients: map[string]map[string]any{key: {"email": key, "id": id.String(), "subId": sub, "enable": true, "expiryTime": time.Now().Add(24 * time.Hour).UnixMilli(), "limitIp": 2, "totalGB": 1024, "flow": "owned-flow"}}}
+	server := httptest.NewTLSServer(http.HandlerFunc(p.serve))
+	t.Cleanup(server.Close)
+	roots := x509.NewCertPool()
+	roots.AddCert(server.Certificate())
+	client := vpn.NewPanelClient(vpn.Config{PanelURL: server.URL, PanelToken: "fixture-panel", PanelRootCAs: roots})
+	t.Cleanup(client.Close)
+	view, err := client.GetClient(context.Background(), key)
+	if err != nil || view == nil {
+		t.Fatal("owned update baseline unavailable", err)
+	}
+	target := vpn.AccessTarget{PanelKey: key, VPNID: id, SubID: sub, InboundIDs: []int64{1}, ExpiryTimeMS: view.ExpiryTimeMS + 2592000000, DeviceCount: 2, TrafficLimitBytes: 2048, Enable: true}
+	if err = client.UpdateAccess(context.Background(), view, target); err != nil {
+		t.Fatal("owned fixture does not implement current access update", err)
+	}
+	updated, err := client.GetClient(context.Background(), key)
+	if err != nil || updated == nil || updated.VPNID != id || updated.SubID != sub || updated.ExpiryTimeMS != target.ExpiryTimeMS || updated.LimitIP != 3 || updated.TrafficLimitBytes != 2048 || !updated.Enabled || p.clients[key]["flow"] != "owned-flow" || p.adds != 0 {
+		t.Fatal("owned update changed identity or failed readback", err)
+	}
+	before, _ := json.Marshal(p.clients[key])
+	for field, value := range map[string]string{"id": uuid.NewString(), "email": "acct_foreign", "subId": "foreignsubidvalue"} {
+		var bad map[string]any
+		json.Unmarshal(before, &bad)
+		bad[field] = value
+		body, _ := json.Marshal(bad)
+		response := httptest.NewRecorder()
+		p.serve(response, httptest.NewRequest(http.MethodPost, "/panel/api/clients/update/"+key, bytes.NewReader(body)))
+		var result struct{ Success bool }
+		if json.Unmarshal(response.Body.Bytes(), &result) != nil || result.Success {
+			t.Fatal("owned update fixture accepted foreign identity", field)
+		}
+		after, _ := json.Marshal(p.clients[key])
+		if !bytes.Equal(before, after) || len(p.clients) != 1 {
+			t.Fatal("refused update changed owned client")
+		}
 	}
 }
 

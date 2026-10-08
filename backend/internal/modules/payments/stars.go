@@ -25,12 +25,14 @@ import (
 type StarsInvoice struct {
 	Payload, Title, Description string
 	Amount                      int64
+	SubscriptionPeriod          int64
 }
 type StarsGateway struct {
-	BotID   int64
-	Invoice func(context.Context, StarsInvoice) (string, error)
-	Refund  func(context.Context, int64, string) error
-	Ready   func() bool
+	BotID            int64
+	Invoice          func(context.Context, StarsInvoice) (string, error)
+	Refund           func(context.Context, int64, string) error
+	Ready            func() bool
+	EditSubscription func(context.Context, int64, string, bool) error
 }
 type StarsCheckout struct {
 	State string  `json:"state"`
@@ -39,6 +41,7 @@ type StarsCheckout struct {
 type StarsPreCheckoutInput struct {
 	BotID, PayerID, Amount int64
 	Currency, Payload      string
+	QueryID                string
 }
 
 type StarsPaymentInput struct {
@@ -67,8 +70,11 @@ func starsReceiptKey(bot int64, charge string) string {
 	return "stars:" + hex.EncodeToString(hash[:])
 }
 func validStarsPayment(in StarsPaymentInput) bool {
+	return validStarsPaymentBase(in) && !in.Recurring && !in.FirstRecurring && in.SubscriptionExpiresAt == 0
+}
+func validStarsPaymentBase(in StarsPaymentInput) bool {
 	_, valid := starsOrderID(in.Payload)
-	return valid && in.BotID > 0 && in.PayerID > 0 && in.PayerID <= 1<<52-1 && in.Amount > 0 && validText(in.Currency, 1, 16) && len(in.ChargeID) > 0 && len(in.ChargeID) <= 4096 && utf8.ValidString(in.ChargeID) && !strings.ContainsRune(in.ChargeID, '\x00') && len(in.ProviderChargeID) <= 4096 && utf8.ValidString(in.ProviderChargeID) && !strings.ContainsRune(in.ProviderChargeID, '\x00') && in.At.Unix() > 0 && in.At.Year() <= 9999 && !in.Recurring && !in.FirstRecurring && in.SubscriptionExpiresAt == 0
+	return valid && in.BotID > 0 && in.PayerID > 0 && in.PayerID <= 1<<52-1 && in.Amount > 0 && validText(in.Currency, 1, 16) && len(in.ChargeID) > 0 && len(in.ChargeID) <= 4096 && utf8.ValidString(in.ChargeID) && !strings.ContainsRune(in.ChargeID, '\x00') && len(in.ProviderChargeID) <= 4096 && utf8.ValidString(in.ProviderChargeID) && !strings.ContainsRune(in.ProviderChargeID, '\x00') && in.At.Unix() > 0 && in.At.Year() <= 9999
 }
 func starsPaymentProof(in StarsPaymentInput) []byte {
 	raw, _ := json.Marshal(starsProof{Provider: "telegram_stars", BotID: in.BotID, PayerID: in.PayerID, Payload: in.Payload, ChargeID: in.ChargeID, ProviderChargeID: in.ProviderChargeID, Amount: strconv.FormatInt(in.Amount, 10), Currency: in.Currency, Recurring: in.Recurring, FirstRecurring: in.FirstRecurring, SubscriptionExpiresAt: in.SubscriptionExpiresAt})
@@ -109,7 +115,7 @@ func (s *Service) starsOrderTx(ctx context.Context, tx pgx.Tx, in StarsPaymentIn
 // RecordStarsPayment is reachable only through the trusted Telegram adapter.
 // Current sales/identity errors retain the charge and prevent automatic issue.
 func (s *Service) RecordStarsPayment(ctx context.Context, in StarsPaymentInput) error {
-	if !validStarsPayment(in) {
+	if !validStarsPaymentBase(in) {
 		return failure(409, "STARS_UNSUPPORTED_PAYMENT")
 	}
 	in.At = in.At.UTC().Truncate(time.Microsecond)
@@ -127,22 +133,40 @@ func (s *Service) RecordStarsPayment(ctx context.Context, in StarsPaymentInput) 
 	if err != nil {
 		return err
 	}
+	if !recurringQuote(p.quote) && !validStarsPayment(in) {
+		return failure(409, "STARS_UNSUPPORTED_PAYMENT")
+	}
 	var oldOrder uuid.UUID
+	var oldAccount uuid.UUID
 	var oldAt time.Time
 	var oldAmount int64
 	var oldCurrency string
 	var oldProof []byte
 	var oldReview *string
-	err = tx.QueryRow(ctx, `SELECT order_id,occurred_at,gross_minor,currency,provider_data,review_reason FROM purchase_receipts WHERE operation_id=$1 FOR UPDATE`, key).Scan(&oldOrder, &oldAt, &oldAmount, &oldCurrency, &oldProof, &oldReview)
+	err = tx.QueryRow(ctx, `SELECT r.order_id,p.account_id,r.occurred_at,r.gross_minor,r.currency,r.provider_data,r.review_reason FROM purchase_receipts r JOIN purchase_orders p ON p.id=r.order_id WHERE r.operation_id=$1 FOR UPDATE OF r`, key).Scan(&oldOrder, &oldAccount, &oldAt, &oldAmount, &oldCurrency, &oldProof, &oldReview)
 	if err == nil {
 		var saved, current starsProof
-		conflict := json.Unmarshal(oldProof, &saved) != nil || json.Unmarshal(proof, &current) != nil || saved != current || oldOrder != p.id || !oldAt.Equal(in.At) || oldAmount != in.Amount || oldCurrency != in.Currency
+		mapped := oldOrder == p.id
+		if !mapped {
+			if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM stars_subscription_cycles WHERE order_id=$1 AND root_order_id=$2 AND receipt_id=$3)`, oldOrder, p.id, key).Scan(&mapped); err != nil {
+				return unavailable()
+			}
+		}
+		conflict := json.Unmarshal(oldProof, &saved) != nil || json.Unmarshal(proof, &current) != nil || saved != current || !mapped || !oldAt.Equal(in.At) || oldAmount != in.Amount || oldCurrency != in.Currency
 		if conflict {
 			if _, err = tx.Exec(ctx, `UPDATE purchase_receipts SET review_reason='conflicting_operation_id' WHERE operation_id=$1`, key); err != nil {
 				return unavailable()
 			}
 			if _, err = tx.Exec(ctx, `UPDATE purchase_orders SET review_required=true,review_reason='conflicting_operation_id',active=false,fulfillment_status=CASE WHEN access_operation_id IS NULL THEN 'needs_review' ELSE fulfillment_status END WHERE id=$1 OR id=$2`, p.id, oldOrder); err != nil {
 				return unavailable()
+			}
+			if err = s.RequireStarsCancellationTx(ctx, tx, p.account, "Conflicting Stars payment requires review"); err != nil {
+				return err
+			}
+			if oldAccount != p.account {
+				if err = s.RequireStarsCancellationTx(ctx, tx, oldAccount, "Conflicting Stars payment requires review"); err != nil {
+					return err
+				}
 			}
 			if oldReview == nil || *oldReview != "conflicting_operation_id" {
 				if err = auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), AccountID: p.account, CreatedAt: s.now(), Action: "stars_payment_conflict", Reason: &key}); err != nil {
@@ -158,30 +182,41 @@ func (s *Service) RecordStarsPayment(ctx context.Context, in StarsPaymentInput) 
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return unavailable()
 	}
-	reason := ""
-	switch {
-	case bot != in.BotID || payer != in.PayerID:
-		reason = "payment_identity_mismatch"
-	case in.Amount != p.amount || in.Currency != "XTR" || in.At.Before(p.created.Add(-5*time.Minute)):
-		reason = "payment_mismatch"
-	case in.At.After(p.expires) || p.paymentStatus == "canceled":
-		reason = "late_or_canceled"
-	case p.review:
-		reason = "order_requires_review"
-	case p.paymentStatus == "paid":
-		reason = "another_first_payment"
-	case !s.config().StarsEnabled:
-		reason = "stars_disabled"
+	var refunded bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM stars_refunds WHERE receipt_operation_id=$1)`, key).Scan(&refunded); err != nil {
+		return unavailable()
 	}
-	if reason == "" {
+	root := p.id
+	var cycle *starsCycle
+	reason := ""
+	if recurringQuote(p.quote) && in.Recurring && !in.FirstRecurring {
+		p, cycle, reason, err = s.prepareStarsCycleTx(ctx, tx, p, bot, payer, in, key, refunded)
+		if err != nil {
+			return err
+		}
+	} else {
+		switch {
+		case bot != in.BotID || payer != in.PayerID:
+			reason = "payment_identity_mismatch"
+		case in.Amount != p.amount || in.Currency != "XTR" || in.At.Before(p.created.Add(-5*time.Minute)):
+			reason = "payment_mismatch"
+		case recurringQuote(p.quote) && (!in.FirstRecurring || !validStarsRecurringPeriod(in)):
+			reason = "invalid_recurring_payment"
+		case in.At.After(p.expires) || p.paymentStatus == "canceled":
+			reason = "late_or_canceled"
+		case p.review:
+			reason = "order_requires_review"
+		case p.paymentStatus == "paid":
+			reason = "another_first_payment"
+		case !s.config().StarsEnabled:
+			reason = "stars_disabled"
+		}
+	}
+	if reason == "" && cycle == nil {
 		reason, err = s.purchasePolicyTx(ctx, tx, p)
 		if err != nil {
 			return err
 		}
-	}
-	var refunded bool
-	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM stars_refunds WHERE receipt_operation_id=$1)`, key).Scan(&refunded); err != nil {
-		return unavailable()
 	}
 	if refunded {
 		reason = "funding_refunded"
@@ -190,7 +225,28 @@ func (s *Service) RecordStarsPayment(ctx context.Context, in StarsPaymentInput) 
 	if err != nil {
 		return unavailable()
 	}
+	if cycle != nil {
+		until := time.Unix(in.SubscriptionExpiresAt, 0).UTC()
+		if _, err = tx.Exec(ctx, `INSERT INTO stars_subscription_cycles(order_id,root_order_id,subscription_receipt_id,receipt_id,paid_until,previous_access_operation_id) VALUES($1,$2,$3,$4,$5,$6)`, p.id, root, cycle.subscription.key, key, until, cycle.previous); err != nil {
+			return unavailable()
+		}
+		if !refunded {
+			if _, err = tx.Exec(ctx, `UPDATE stars_subscriptions SET current_cycle_order_id=$2,paid_until=$3,provider_state='active' WHERE first_receipt_id=$1`, cycle.subscription.key, p.id, until); err != nil {
+				return unavailable()
+			}
+		}
+	}
+	if recurringQuote(p.quote) && p.action == "purchase" {
+		if err = s.recordStarsFirstSubscriptionTx(ctx, tx, p, in, key, reason); err != nil {
+			return err
+		}
+	}
 	if reason != "" {
+		if recurringQuote(p.quote) {
+			if err = s.RequireStarsCancellationTx(ctx, tx, p.account, "Recurring money requires review"); err != nil {
+				return err
+			}
+		}
 		_, err = tx.Exec(ctx, `UPDATE purchase_orders SET payment_status='paid',paid_at=COALESCE(paid_at,$2),active=false,review_required=true,review_reason=$3,fulfillment_status=CASE WHEN access_operation_id IS NULL THEN 'needs_review' ELSE fulfillment_status END WHERE id=$1`, p.id, in.At, reason)
 	} else {
 		if s.queue == nil || s.queue() == nil {
@@ -233,11 +289,18 @@ func purchaseSourceEligible(a accounts.Snapshot, method string) bool {
 	}
 	return accounts.SourceEligible(a) && a.TelegramID != nil && *a.TelegramID > 0 && !a.TelegramLoginDisabled && a.TermsVersion != nil && a.PrivacyVersion != nil
 }
-func purchaseBillingEligible(a accounts.Snapshot, method string) bool {
-	if method != "telegram_stars" {
-		return independentBilling(a)
+func (s *Service) purchaseBillingEligibleTx(ctx context.Context, tx pgx.Tx, a accounts.Snapshot, p purchaseRow) (bool, error) {
+	if p.method != "telegram_stars" {
+		return s.ExternalBillingEligibleTx(ctx, tx, a)
 	}
-	return a.LegacyUserID == nil && purchaseSourceEligible(a, method)
+	if a.LegacyUserID != nil || !purchaseSourceEligible(a, p.method) {
+		return false, nil
+	}
+	if p.action == "purchase" || p.action == "renew" && recurringQuote(p.quote) {
+		return true, nil // Native cycle provenance is checked by the shared live policy.
+	}
+	blocked, err := s.starsBillingBlockedTx(ctx, tx, a)
+	return !blocked, err
 }
 func (s *Service) StarsPaymentMethods(ctx context.Context, account uuid.UUID) (PaymentMethods, error) {
 	out := PaymentMethods{Methods: []PaymentMethod{}}
@@ -303,13 +366,14 @@ func (s *Service) CreateStarsInvoice(ctx context.Context, account, order uuid.UU
 	}
 	var payload string
 	var bot int64
-	if err = s.pool.QueryRow(ctx, `SELECT bot_id,payload FROM stars_checkouts WHERE order_id=$1`, order).Scan(&bot, &payload); err != nil {
+	var period int64
+	if err = s.pool.QueryRow(ctx, `SELECT bot_id,payload,subscription_period FROM stars_checkouts WHERE order_id=$1`, order).Scan(&bot, &payload, &period); err != nil {
 		return empty, unavailable()
 	}
 	if s.stars == nil || s.stars.BotID != bot {
 		return empty, failure(409, "PAYMENT_METHOD_UNAVAILABLE")
 	}
-	link, err := s.stars.Invoice(ctx, StarsInvoice{Payload: payload, Amount: p.amount, Title: "VPN subscription", Description: fmt.Sprintf("%d days, %d devices", out.Quote.PeriodDays, out.Quote.Devices)})
+	link, err := s.stars.Invoice(ctx, StarsInvoice{Payload: payload, Amount: p.amount, Title: "VPN subscription", Description: fmt.Sprintf("%d days, %d devices", out.Quote.PeriodDays, out.Quote.Devices), SubscriptionPeriod: period})
 	if err != nil || !validStarsURL(link) {
 		return empty, unavailable()
 	}
@@ -366,13 +430,15 @@ func (s *Service) CheckStarsPreCheckout(ctx context.Context, in StarsPreCheckout
 	}
 	var payer, bot int64
 	var refunded bool
-	if err = tx.QueryRow(ctx, `SELECT payer_id,bot_id,EXISTS(SELECT 1 FROM stars_refunds WHERE order_id=$1) FROM stars_checkouts WHERE order_id=$1`, id).Scan(&payer, &bot, &refunded); errors.Is(err, pgx.ErrNoRows) {
+	var period int64
+	var reserved *string
+	if err = tx.QueryRow(ctx, `SELECT payer_id,bot_id,EXISTS(SELECT 1 FROM stars_refunds WHERE order_id=$1),subscription_period,pre_checkout_id FROM stars_checkouts WHERE order_id=$1`, id).Scan(&payer, &bot, &refunded, &period, &reserved); errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
 		return false, unavailable()
 	}
-	if p.method != "telegram_stars" || p.action != "purchase" || payer != in.PayerID || bot != in.BotID || p.amount != in.Amount || !p.active || p.review || p.paymentStatus != "pending" || !s.now().Before(p.expires) || refunded {
+	if p.method != "telegram_stars" || payer != in.PayerID || bot != in.BotID || p.amount != in.Amount || !p.active || p.review || p.paymentStatus != "pending" || !s.now().Before(p.expires) || refunded {
 		return false, nil
 	}
 	reason, err := s.purchasePolicyTx(ctx, tx, p)
@@ -383,7 +449,23 @@ func (s *Service) CheckStarsPreCheckout(ctx context.Context, in StarsPreCheckout
 	if err != nil {
 		return false, unavailable()
 	}
-	return !unresolved, nil
+	if unresolved {
+		return false, nil
+	}
+	if period != 0 {
+		if len(in.QueryID) > 128 || !validText(in.QueryID, 1, 128) || reserved != nil && *reserved != in.QueryID {
+			return false, nil
+		}
+		if reserved == nil {
+			if _, err = tx.Exec(ctx, `UPDATE stars_checkouts SET pre_checkout_id=$2 WHERE order_id=$1 AND pre_checkout_id IS NULL`, id, in.QueryID); err != nil {
+				return false, unavailable()
+			}
+		}
+		if err = tx.Commit(ctx); err != nil {
+			return false, unavailable()
+		}
+	}
+	return true, nil
 }
 
 func (s *Service) CanPurchaseStars(ctx context.Context, account uuid.UUID) (bool, error) {

@@ -105,6 +105,11 @@ func (s *Service) AssignPanel(ctx context.Context, tx pgx.Tx, id uuid.UUID, pane
 	return nil
 }
 func (s *Service) SetAccessMetadata(ctx context.Context, tx pgx.Tx, id uuid.UUID, profile string, banned bool) error {
+	if (banned || profile == "unlimited") && s.cfg.RequireStarsCancellation != nil {
+		if err := s.cfg.RequireStarsCancellation(ctx, tx, id, "Account access restricted"); err != nil {
+			return unavailable()
+		}
+	}
 	if store.New(tx).SetAccessMetadata(ctx, store.SetAccessMetadataParams{ID: id, AccessProfile: pgtype.Text{String: profile, Valid: true}, VpnBanned: banned}) != nil {
 		return unavailable()
 	}

@@ -35,6 +35,7 @@ async function fixture(page:Page,options:Options={}){
   if(path==='/api/v1/subscription/key')return r.fulfill({json:{subscription_url:'https://subscriptions.example.test/sub/owned-private-link'}});
   if(path==='/api/v1/trial-requests/current')return r.fulfill({json:{request:null}});
   if(path==='/api/v1/orders/current')return r.fulfill({json:{order:null,can_purchase:false}});
+  if(path==='/api/v1/stars-subscription')return r.fulfill({json:{state:'none',order_id:null,provider_state:null,control_state:null,paid_until:null,period_phase:'none',can_cancel:false,can_resume:false,external_billing_blocked:false,needs_review:false}});
   if(path==='/api/v1/payment-methods')return r.fulfill({json:{methods:[]}});
   if(path==='/api/v1/catalogue')return r.fulfill({json:{plans:[]}});
   if(path==='/api/v1/support')return r.fulfill({json:emptySupport});

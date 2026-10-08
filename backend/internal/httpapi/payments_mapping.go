@@ -20,6 +20,10 @@ func paymentError(err error) error {
 func purchaseOrderResult(p payments.PurchaseOrder) wire.PurchaseOrder {
 	out := wire.PurchaseOrder{AccessOperationId: p.AccessOperationId, Action: wire.PurchaseOrderAction(p.Action), CanCancel: p.CanCancel, CanPay: p.CanPay, CreatedAt: p.CreatedAt, Expired: p.Expired, ExpiresAt: p.ExpiresAt, FulfillmentStatus: wire.PurchaseOrderFulfillmentStatus(p.FulfillmentStatus), OrderId: p.OrderId, PaymentMethod: wire.PurchaseOrderPaymentMethod(p.PaymentMethod), PaymentStatus: wire.PurchaseOrderPaymentStatus(p.PaymentStatus), PaymentType: wire.PurchaseOrderPaymentType(p.PaymentType), ReviewRequired: p.ReviewRequired,
 		Quote: wire.PurchaseQuote{AmountMinor: p.Quote.AmountMinor, Currency: wire.PurchaseQuoteCurrency(p.Quote.Currency), Devices: p.Quote.Devices, PeriodDays: p.Quote.PeriodDays, PlanId: p.Quote.PlanId, Profile: wire.PurchaseQuoteProfile(p.Quote.Profile), Revision: p.Quote.Revision, SourceAccessOperationId: p.Quote.SourceAccessOperationId, TrafficGb: p.Quote.TrafficGb}}
+	if p.Quote.StarsRecurring {
+		value := true
+		out.Quote.StarsRecurring = &value
+	}
 	if p.FullyRefunded {
 		value := true
 		out.FullyRefunded = &value
@@ -67,7 +71,7 @@ func paymentMethodsResult(p payments.PaymentMethods) wire.PaymentMethods {
 }
 
 func (a *API) createPurchaseOrder(ctx context.Context, account, key uuid.UUID, in wire.PurchaseOrderInput) (wire.PurchaseOrder, error) {
-	out, err := a.payments.CreatePurchaseOrder(ctx, account, key, payments.PurchaseOrderInput{Action: string(in.Action), PaymentMethod: string(in.PaymentMethod), PaymentType: string(in.PaymentType), PeriodDays: in.PeriodDays, PlanId: in.PlanId, Revision: in.Revision, SourceAccessOperationId: in.SourceAccessOperationId})
+	out, err := a.payments.CreatePurchaseOrder(ctx, account, key, payments.PurchaseOrderInput{Action: string(in.Action), PaymentMethod: string(in.PaymentMethod), PaymentType: string(in.PaymentType), PeriodDays: in.PeriodDays, PlanId: in.PlanId, Revision: in.Revision, SourceAccessOperationId: in.SourceAccessOperationId, StarsRecurring: in.StarsRecurring != nil && *in.StarsRecurring})
 	return purchaseOrderResult(out), paymentError(err)
 }
 

@@ -15,26 +15,18 @@ import (
 	"github.com/riverqueue/river"
 )
 
-// Until C35 owns authoritative recurrence states, only unlinked new web
-// accounts prove they cannot also be billed by the legacy Stars handler.
-func independentBilling(a accounts.Snapshot) bool {
-	return a.Kind == "web" && a.TelegramID == nil && a.LegacyUserID == nil
-}
-
 // All five funding paths retain valid money proof before checking live access.
 // An eligibility conflict needs review; it must not invalidate the receipt.
 func (s *Service) queueFundedPurchaseTx(ctx context.Context, tx pgx.Tx, p purchaseRow) (string, error) {
-	if p.action != "purchase" {
-		reason, err := s.purchasePolicyTx(ctx, tx, p)
-		if err != nil {
-			return "", err
-		}
-		if reason != "" {
-			_, err = tx.Exec(ctx, "UPDATE purchase_orders SET fulfillment_status='needs_review',review_required=true,review_reason=$2 WHERE id=$1", p.id, reason)
-			return reason, err
-		}
+	reason, err := s.purchasePolicyTx(ctx, tx, p)
+	if err != nil {
+		return "", err
 	}
-	_, err := s.queue().InsertTx(ctx, tx, PurchaseArgs{OrderID: p.id}, &river.InsertOpts{Queue: "provision", MaxAttempts: 1000000})
+	if reason != "" {
+		_, err = tx.Exec(ctx, "UPDATE purchase_orders SET fulfillment_status='needs_review',review_required=true,review_reason=$2 WHERE id=$1", p.id, reason)
+		return reason, err
+	}
+	_, err = s.queue().InsertTx(ctx, tx, PurchaseArgs{OrderID: p.id}, &river.InsertOpts{Queue: "provision", MaxAttempts: 1000000})
 	return "", err
 }
 
@@ -108,7 +100,11 @@ func (s *Service) purchasePolicyTx(ctx context.Context, tx pgx.Tx, p purchaseRow
 	if err != nil {
 		return "", unavailable()
 	}
-	if !purchaseBillingEligible(a, p.method) {
+	eligible, err := s.purchaseBillingEligibleTx(ctx, tx, a, p)
+	if err != nil {
+		return "", err
+	}
+	if !eligible {
 		return "external_billing_unverified", nil
 	}
 	if !purchaseSourceEligible(a, p.method) || a.Restricted || a.VpnBanned || stringValue(a.AccessProfile) == "unlimited" {
@@ -119,15 +115,27 @@ func (s *Service) purchasePolicyTx(ctx context.Context, tx pgx.Tx, p purchaseRow
 	}
 	if p.method == "telegram_stars" && p.id != uuid.Nil {
 		var payer, bot int64
+		var root uuid.UUID
+		var previous *uuid.UUID
 		var q store.DBTX = s.pool
 		if tx != nil {
 			q = tx
 		}
-		if err := q.QueryRow(ctx, `SELECT payer_id,bot_id FROM stars_checkouts WHERE order_id=$1`, p.id).Scan(&payer, &bot); err != nil {
+		if err := q.QueryRow(ctx, `SELECT c.payer_id,c.bot_id,c.order_id,cy.previous_access_operation_id FROM stars_checkouts c LEFT JOIN stars_subscription_cycles cy ON cy.order_id=$1 WHERE c.order_id=COALESCE(cy.root_order_id,$1)`, p.id).Scan(&payer, &bot, &root, &previous); err != nil {
 			return "", unavailable()
 		}
-		if p.action != "purchase" || a.TelegramID == nil || *a.TelegramID != payer {
+		if a.TelegramID == nil || *a.TelegramID != payer {
 			return "stars_identity_changed", nil
+		}
+		if root != p.id {
+			if previous == nil || p.action != "renew" || !recurringQuote(p.quote) {
+				return "stars_cycle_invalid", nil
+			}
+			if reason, err := s.starsCyclePolicyTx(ctx, tx, p, root, *previous); err != nil || reason != "" {
+				return reason, err
+			}
+		} else if p.action != "purchase" && recurringQuote(p.quote) {
+			return "stars_cycle_invalid", nil
 		}
 	}
 	if p.action == "purchase" {
@@ -159,13 +167,27 @@ func (s *Service) purchasePolicyTx(ctx context.Context, tx pgx.Tx, p purchaseRow
 	return "", nil
 }
 
+// Managing offers are read-only. Concrete external payments still require a
+// verified web source; native Stars checkout remains signed-Mini only.
+func (s *Service) managingBillingEligibleTx(ctx context.Context, tx pgx.Tx, a accounts.Snapshot) (bool, error) {
+	if !accounts.SourceEligible(a) || a.LegacyUserID != nil {
+		return false, nil
+	}
+	blocked, err := s.starsBillingBlockedTx(ctx, tx, a)
+	return !blocked, err
+}
+
 func (s *Service) RenewalOffer(ctx context.Context, account uuid.UUID) (catalogue.PlanSnapshot, error) {
 	var empty catalogue.PlanSnapshot
 	a, err := s.accountByID(ctx, account)
 	if err != nil {
 		return empty, unavailable()
 	}
-	if !independentBilling(a) {
+	eligible, err := s.managingBillingEligibleTx(ctx, nil, a)
+	if err != nil {
+		return empty, err
+	}
+	if !eligible {
 		return empty, failure(409, "EXTERNAL_BILLING_UNVERIFIED")
 	}
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
@@ -190,7 +212,7 @@ func (s *Service) RenewalOffer(ctx context.Context, account uuid.UUID) (catalogu
 	}
 	offered := false
 	for _, price := range terms.Prices {
-		if price.Currency == "RUB" || price.Currency == "USD" {
+		if a.Kind == "web" && (price.Currency == "RUB" || price.Currency == "USD") || purchaseSourceEligible(a, "telegram_stars") && price.Currency == "XTR" {
 			amount, e := strconv.ParseInt(price.AmountMinor, 10, 64)
 			if e == nil && amount > 0 {
 				offered = true
@@ -209,7 +231,11 @@ func (s *Service) PlanChangeContext(ctx context.Context, account uuid.UUID) (Pla
 	if err != nil {
 		return empty, unavailable()
 	}
-	if !independentBilling(a) {
+	eligible, err := s.managingBillingEligibleTx(ctx, nil, a)
+	if err != nil {
+		return empty, err
+	}
+	if !eligible {
 		return empty, failure(409, "EXTERNAL_BILLING_UNVERIFIED")
 	}
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})

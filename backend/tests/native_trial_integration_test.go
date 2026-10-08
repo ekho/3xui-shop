@@ -134,6 +134,11 @@ type nativeMessage struct {
 	Text     string
 	Markup   json.RawMessage
 }
+type nativeStarsEdit struct {
+	Payer    int64  `json:"user_id"`
+	Charge   string `json:"telegram_payment_charge_id"`
+	Canceled bool   `json:"is_canceled"`
+}
 type nativeBot struct {
 	mu                  sync.Mutex
 	updates             []map[string]any
@@ -145,6 +150,8 @@ type nativeBot struct {
 	menus               []string
 	starsInvoices       []string
 	starsPreChecks      []bool
+	starsPeriods        []int64
+	starsEdits          []nativeStarsEdit
 }
 
 func nativeReply(v any) *http.Response {
@@ -214,15 +221,28 @@ func (b *nativeBot) RoundTrip(r *http.Request) (*http.Response, error) {
 		}
 	case "createInvoiceLink":
 		var currency, payload string
+		var period int64
 		json.Unmarshal(body["currency"], &currency)
 		json.Unmarshal(body["payload"], &payload)
+		json.Unmarshal(body["subscription_period"], &period)
 		if currency != "XTR" || !strings.HasPrefix(payload, "stars:v1:") {
 			b.mu.Unlock()
 			return nil, errors.New("invalid owned native invoice")
 		}
 		b.starsInvoices = append(b.starsInvoices, payload)
+		b.starsPeriods = append(b.starsPeriods, period)
 		b.mu.Unlock()
 		return nativeReply("https://t.me/$Owned_native_invoice"), nil
+	case "editUserStarSubscription":
+		var edit nativeStarsEdit
+		raw, _ := json.Marshal(body)
+		if json.Unmarshal(raw, &edit) != nil || edit.Payer <= 0 || edit.Charge == "" {
+			b.mu.Unlock()
+			return nil, errors.New("invalid owned native Stars edit")
+		}
+		b.starsEdits = append(b.starsEdits, edit)
+		b.mu.Unlock()
+		return nativeReply(true), nil
 	case "answerPreCheckoutQuery":
 		var accepted bool
 		json.Unmarshal(body["ok"], &accepted)
@@ -322,11 +342,12 @@ func launchNative(t *testing.T, f *fixture, bot *nativeBot, enabled, provision b
 	if err != nil {
 		t.Fatal(err)
 	}
-	scheduler := make(chan error, 1)
+	scheduler := make(chan error, 2)
 	svc, server := f.svc, f.public.Config
 	var schedulerDone sync.WaitGroup
-	schedulerDone.Add(1)
+	schedulerDone.Add(2)
 	go func() { defer schedulerDone.Done(); scheduler <- svc.VPN.RunMonthlyResetScheduler(ctx) }()
+	go func() { defer schedulerDone.Done(); scheduler <- svc.Payments.RunStarsSubscriptionScheduler(ctx) }()
 	done := make(chan error, 1)
 	go func() { done <- app.Serve(ctx, server, make(chan error), scheduler, tg) }()
 	stop := sync.OnceFunc(func() {

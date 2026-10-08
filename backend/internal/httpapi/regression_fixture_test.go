@@ -16,8 +16,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/riverqueue/river"
+	"sync"
 	"time"
 )
+
+// These fixtures only read the compiled schema; mutation tests must load their own.
+var regressionContract = sync.OnceValues(wire.GetSwagger)
 
 type regressionFixture struct {
 	*API
@@ -34,7 +38,7 @@ func newRegressionFixture(pool *pgxpool.Pool, limiter *redis.Client, queue *rive
 	s := &regressionFixture{pool: pool, limiter: limiter, queue: queue, cfg: &cfg, now: time.Now}
 	cfg.Accounts.Now = func() time.Time { return s.now() }
 	modules := app.NewModules(pool, limiter, queue, &cfg)
-	contract, err := wire.GetSwagger()
+	contract, err := regressionContract()
 	if err != nil {
 		panic(err)
 	}

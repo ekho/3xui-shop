@@ -1,8 +1,11 @@
 package accounts
 
 import (
+	"context"
 	"errors"
 	"example.com/cabinet/backend/internal/modules/notifications"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"time"
@@ -13,6 +16,8 @@ type Config struct {
 	CodeKey                                     []byte
 	Operators                                   []int64
 	Now                                         func() time.Time
+	RequireStarsCancellation                    func(context.Context, pgx.Tx, uuid.UUID, string) error
+	CanUnlinkTelegram                           func(context.Context, pgx.Tx, uuid.UUID) (bool, error)
 }
 
 // Error carries safe domain failure data; transports translate the status hint.
