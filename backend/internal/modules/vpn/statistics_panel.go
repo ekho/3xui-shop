@@ -83,7 +83,19 @@ func (p *PanelClient) statisticsSnapshot(ctx context.Context) (panelStatisticsSn
 				return panelStatisticsSnapshot{}, ErrPanel
 			}
 		}
-		if up, down, err := parsePanelTraffic(row["traffic"], v.PanelKey, v.VPNID, v.SubID); err == nil {
+		var traffic map[string]json.RawMessage
+		if json.Unmarshal(row["traffic"], &traffic) == nil && traffic != nil {
+			// 3.7.0 joins list traffic by email; its nested UUID/subId are blank.
+			// Bind only absent/blank fields to this unique enclosing client. A
+			// conflicting identity, email or invalid counter still fails strictly.
+			for name, identity := range map[string]string{"uuid": v.VPNID.String(), "subId": v.SubID} {
+				if len(traffic[name]) == 0 || string(traffic[name]) == `""` {
+					traffic[name], _ = json.Marshal(identity)
+				}
+			}
+		}
+		raw, _ := json.Marshal(traffic)
+		if up, down, err := parsePanelTraffic(raw, v.PanelKey, v.VPNID, v.SubID); err == nil {
 			used := up + down
 			v.UsedTraffic = &used
 		}

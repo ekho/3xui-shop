@@ -3022,7 +3022,7 @@ export interface components {
         /** @description Read-only REPEATABLE READ account/cohort/owner facts plus a separately observed provider snapshot. Currency totals and original refund amounts remain separate; archived quotes are not cash receipts. Operator authority is rechecked after the snapshot/provider read before returning any payload. */
         StatisticsReport: {
             /** @enum {string} */
-            version: "2026-10-08-s26-statistics-v1";
+            version: "statistics-v1";
             /** Format: uuid */
             campaign_id: string | null;
             /** Format: date-time */

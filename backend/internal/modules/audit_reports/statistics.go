@@ -130,7 +130,7 @@ func percent(numerator, denominator int64) *string {
 }
 
 func (s *Service) Statistics(ctx context.Context, actor uuid.UUID, campaign *uuid.UUID) (StatisticsReport, error) {
-	out := StatisticsReport{Version: "2026-10-08-s26-statistics-v1", CampaignID: campaign, InfrastructureScope: "global"}
+	out := StatisticsReport{Version: "statistics-v1", CampaignID: campaign, InfrastructureScope: "global"}
 	if err := s.statistics.RequireOperator(ctx, actor); err != nil {
 		return out, err
 	}

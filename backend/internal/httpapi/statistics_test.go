@@ -245,7 +245,7 @@ func readStatisticsHTTP(t *testing.T, h http.Handler, actor supportSession, orig
 	if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), &report) != nil {
 		t.Fatalf("operator statistics want200 got%d", r.Code)
 	}
-	if report.Version != "2026-10-08-s26-statistics-v1" || report.DatabaseObservedAt.IsZero() || len(report.Groups) != 4 || len(report.Servers) != 1 {
+	if report.Version != "statistics-v1" || report.DatabaseObservedAt.IsZero() || len(report.Groups) != 4 || len(report.Servers) != 1 {
 		t.Fatal("statistics completeness/version/observation")
 	}
 	var value any

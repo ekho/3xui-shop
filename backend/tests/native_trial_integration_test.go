@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"example.com/cabinet/backend/internal/app"
 	"example.com/cabinet/backend/internal/httpapi"
 	"example.com/cabinet/backend/internal/modules/accounts"
+	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"example.com/cabinet/backend/internal/modules/campaigns"
 	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/payments"
@@ -24,6 +26,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -704,4 +707,108 @@ func TestNativeTrialRestart(t *testing.T) {
 	}
 	assertNativePanel(t, f, op)
 	assertNativeCampaign(t, f, actor, campaign, identity.Account.AccountId, "web", 1)
+}
+
+func TestNativeTrialReports(t *testing.T) {
+	f := openMode(t, true)
+	ctx := context.Background()
+	bot := &nativeBot{}
+	_, stop := launchNative(t, f, bot, true, true)
+	actor, campaign := nativeCampaign(t, f)
+	_, _, request := f.signup(t, nativeEmail("native-statistics"), *campaign.Code)
+	card := cardFor(t, bot, 101, request.RequestId)
+	bot.callback(101, card.ID, "a", request.RequestId, "")
+	wait(t, func() bool { return trialStatus(f, request.RequestId) == "approved" })
+	op := operationFor(t, f, request.RequestId)
+	wait(t, func() bool { return applied(f, op) })
+	assertNativePanel(t, f, op)
+	var account uuid.UUID
+	if f.env.Pool.QueryRow(ctx, `SELECT account_id FROM trial_operations WHERE id=$1`, op).Scan(&account) != nil {
+		t.Fatal("native report grant owner missing")
+	}
+	assertNativeCampaign(t, f, actor, campaign, account, "web", 1)
+	// Finish writers before proving report reads preserve the persisted state.
+	stop()
+	queue, err := river.NewClient(riverpgxv5.New(f.env.Pool), &river.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var handler http.Handler
+	f.public = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { handler.ServeHTTP(w, r) }))
+	t.Cleanup(f.public.Close)
+	f.cfg.HTTP.CabinetOrigin = f.public.URL
+	f.svc = app.NewModules(f.env.Pool, f.env.Redis, queue, &f.cfg)
+	handler = httpapi.New(f.svc, f.env.Pool, f.cfg.HTTP)
+	operator := f.public.Client()
+	operator.Jar, _ = cookiejar.New(nil)
+	identity, err := f.svc.Accounts.Lookup(ctx, actor)
+	if err != nil || identity.EmailKey == nil {
+		t.Fatal("owned report operator unavailable")
+	}
+	status, body, _ := f.send(t, operator, "POST", "/api/v1/auth/login", map[string]string{"email": *identity.EmailKey, "password": "fixture password with Unicode ✨"}, "", "", false)
+	var login wire.LoginResult
+	if status != 200 || json.Unmarshal(body, &login) != nil || login.Account.AccountId != actor {
+		t.Fatal("owned report login unavailable", status)
+	}
+	status, body, _ = f.send(t, operator, "POST", "/api/v1/operator/campaigns", wire.CampaignCreateInput{Name: "Owned empty " + uuid.NewString(), Reason: "Native empty report"}, login.CsrfToken, uuid.NewString(), false)
+	var empty campaigns.Campaign
+	if status != 201 || json.Unmarshal(body, &empty) != nil {
+		t.Fatal("owned empty report cohort unavailable", status)
+	}
+	snapshot := func() [32]byte {
+		t.Helper()
+		var state string
+		if err := f.env.Pool.QueryRow(ctx, `SELECT json_build_array(
+		 (SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM accounts a),
+		 (SELECT jsonb_agg(to_jsonb(a) ORDER BY account_id) FROM trial_grants a),
+		 (SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM trial_operations a),
+		 (SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM access_operations a),
+		 (SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM audit_events a),
+		 (SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM river_job a))::text`).Scan(&state); err != nil {
+			t.Fatal("native read-only report proof unavailable")
+		}
+		return sha256.Sum256([]byte(state))
+	}
+	before := snapshot()
+	read := func(id *uuid.UUID) auditreports.StatisticsReport {
+		t.Helper()
+		status, body, _ := f.send(t, operator, "POST", "/api/v1/operator/reports/statistics", wire.StatisticsInput{CampaignId: id}, login.CsrfToken, "", false)
+		var out auditreports.StatisticsReport
+		if status != 200 || json.Unmarshal(body, &out) != nil || out.Version != "statistics-v1" || out.DatabaseObservedAt.IsZero() || out.Activity.ObservedAt.IsZero() || out.InfrastructureScope != "global" {
+			t.Fatal("native report response invalid", status)
+		}
+		if (id == nil) != (out.CampaignID == nil) || (id != nil && *id != *out.CampaignID) {
+			t.Fatal("native report scope changed")
+		}
+		return out
+	}
+	global, cohort, zero := read(nil), read(&campaign.CampaignID), read(&empty.CampaignID)
+	if global.Users != 2 || cohort.Users != 1 || zero.Users != 0 || global.Trials.TrialUsers != 1 || cohort.Trials.TrialUsers != 1 || zero.Trials.TrialUsers != 0 || global.Payments.PaidOrders != 0 || cohort.Payments.PaidOrders != 0 || zero.Payments.PaidOrders != 0 || global.Conversions.TrialPercent == nil || *global.Conversions.TrialPercent != "50.00" || cohort.Conversions.TrialPercent == nil || *cohort.Conversions.TrialPercent != "100.00" || zero.Conversions.TrialPercent != nil || zero.Activity.ActiveUsers == nil || *zero.Activity.ActiveUsers != 0 {
+		t.Fatal("native report lost UUID, grant or empty cohort")
+	}
+	if os.Getenv("NATIVE_DOCKER_STATE") != "" {
+		for _, report := range []auditreports.StatisticsReport{global, cohort} {
+			if report.Activity.ActiveUsers == nil || *report.Activity.ActiveUsers != 1 || report.Activity.UnknownUsers != 0 || len(report.Servers) != 1 || report.Servers[0].Availability != "available" || report.Servers[0].Clients == nil || *report.Servers[0].Clients < 1 || report.Servers[0].ErrorCode != nil {
+				t.Fatal("actual 3X-UI3.7.0 bulk report did not confirm native access")
+			}
+		}
+		if global.Activity.KnownInactiveUsers != 1 || cohort.Activity.KnownInactiveUsers != 0 || zero.Servers[0].Clients == nil || *zero.Servers[0].Clients < 1 {
+			t.Fatal("native activity or global infrastructure scope lost")
+		}
+	} else if global.Activity.ActiveUsers != nil || cohort.Activity.UnknownUsers != 1 || global.Servers[0].Availability != "unavailable" {
+		t.Fatal("fixture without bulk API must retain unknown activity")
+	}
+	if before != snapshot() {
+		t.Fatal("native report changed persisted accounts, grants, access, audit or jobs")
+	}
+	if os.Getenv("NATIVE_DOCKER_STATE") != "" {
+		assertNativePanel(t, f, op)
+	} else {
+		f.panel.mu.Lock()
+		defer f.panel.mu.Unlock()
+		// Each of the three reads reaches the fake's unsupported bulk GET.
+		if f.panel.adds != 1 || f.panel.forbidden != 3 || len(f.panel.clients) != 1 {
+			t.Fatal("unavailable report changed the owned fake client")
+		}
+	}
 }

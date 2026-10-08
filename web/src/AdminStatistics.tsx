@@ -12,7 +12,7 @@ export function AdminStatistics({lang,campaignId,onForbidden}:{lang:Lang;campaig
   const controller=new AbortController();setResult(undefined);setBusy(true);
   void api.getOperatorStatistics(campaignId,controller.signal).then(value=>{
    if(controller.signal.aborted)return;
-   if(value.version!=='2026-10-08-s26-statistics-v1'||value.campaign_id!==scope)throw new api.ApiError(503,'SERVICE_UNAVAILABLE','');
+   if(value.version!=='statistics-v1'||value.campaign_id!==scope)throw new api.ApiError(503,'SERVICE_UNAVAILABLE','');
    setResult({scope,lang,report:value});
   }).catch(failure=>{
    if(controller.signal.aborted)return;

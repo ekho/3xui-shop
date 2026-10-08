@@ -17634,7 +17634,7 @@
           "version": {
             "type": "string",
             "enum": [
-              "2026-10-08-s26-statistics-v1"
+              "statistics-v1"
             ]
           },
           "campaign_id": {

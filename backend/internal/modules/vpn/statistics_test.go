@@ -77,6 +77,16 @@ func TestPanelStatisticsSnapshot(t *testing.T) {
 	if err != nil || calls.Load() != 2 || mutation.Load() || len(snapshot.inbounds) != 4 || len(snapshot.clients) != 1 || snapshot.clients["acct_fixture"].UsedTraffic == nil || *snapshot.clients["acct_fixture"].UsedTraffic != 42 {
 		t.Fatal("bounded bulk snapshot / flattened identity / exact traffic", err)
 	}
+	t.Run("joined-traffic-empty-identities", func(t *testing.T) {
+		v := statisticsPanelRecord(id)
+		traffic := v["traffic"].(map[string]any)
+		traffic["uuid"], traffic["subId"] = "", ""
+		clients = []map[string]any{v}
+		snap, e := p.statisticsSnapshot(context.Background())
+		if e != nil || snap.clients["acct_fixture"].UsedTraffic == nil || *snap.clients["acct_fixture"].UsedTraffic != 42 {
+			t.Fatal("3.7.0 email-joined traffic must use the enclosing client identity")
+		}
+	})
 	for _, tc := range []struct {
 		name           string
 		change         func(map[string]any)
@@ -87,6 +97,9 @@ func TestPanelStatisticsSnapshot(t *testing.T) {
 		{"missing-traffic", func(v map[string]any) { delete(v, "traffic") }, true},
 		{"missing-counter", func(v map[string]any) { delete(v["traffic"].(map[string]any), "up") }, true},
 		{"wrong-traffic-identity", func(v map[string]any) { v["traffic"].(map[string]any)["uuid"] = uuid.New() }, true},
+		{"wrong-traffic-email", func(v map[string]any) { v["traffic"].(map[string]any)["email"] = "foreign" }, true},
+		{"wrong-traffic-sub", func(v map[string]any) { v["traffic"].(map[string]any)["subId"] = "foreign" }, true},
+		{"null-traffic-identity", func(v map[string]any) { v["traffic"].(map[string]any)["uuid"] = nil }, true},
 		{"negative-quota", func(v map[string]any) { v["totalGB"] = -1 }, false},
 		{"missing-control", func(v map[string]any) { delete(v, "enable") }, false},
 		{"invalid-membership", func(v map[string]any) { v["inboundIds"] = []int{0} }, false},
