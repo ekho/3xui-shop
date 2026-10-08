@@ -12,6 +12,59 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const accountsByIDs = `-- name: AccountsByIDs :many
+SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id, access_profile, policy_accepted_at, telegram_start_param, original_kind, telegram_login_disabled, registration_source_code FROM accounts WHERE id=ANY($1::uuid[]) ORDER BY id
+`
+
+func (q *Queries) AccountsByIDs(ctx context.Context, ids []uuid.UUID) ([]Account, error) {
+	rows, err := q.db.Query(ctx, accountsByIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Account
+	for rows.Next() {
+		var i Account
+		if err := rows.Scan(
+			&i.ID,
+			&i.EmailKey,
+			&i.Locale,
+			&i.PasswordHash,
+			&i.VerifiedAt,
+			&i.Restricted,
+			&i.VpnID,
+			&i.SubID,
+			&i.PanelKey,
+			&i.TermsVersion,
+			&i.PrivacyVersion,
+			&i.TelegramID,
+			&i.LegacyUserID,
+			&i.AssignedPanelID,
+			&i.HadSubscription,
+			&i.CredentialVersion,
+			&i.VpnBanned,
+			&i.Kind,
+			&i.DisplayName,
+			&i.CreatedAt,
+			&i.RestrictionChangedAt,
+			&i.RestrictionOperatorAccountID,
+			&i.AccessProfile,
+			&i.PolicyAcceptedAt,
+			&i.TelegramStartParam,
+			&i.OriginalKind,
+			&i.TelegramLoginDisabled,
+			&i.RegistrationSourceCode,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const addIdempotency = `-- name: AddIdempotency :exec
 INSERT INTO idempotency_records(principal,operation,key,body_hash,result,created_at) VALUES($1,$2,$3,$4,$5,$6)
 `

@@ -2,6 +2,7 @@ package payments
 
 import (
 	"context"
+	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"math/big"
 	"sort"
 
@@ -9,35 +10,11 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-type StatisticsMoney struct {
-	Currency           string `json:"currency"`
-	GrossMinor         string `json:"gross_minor"`
-	KnownNetMinor      string `json:"known_net_minor"`
-	UnknownNetReceipts int64  `json:"unknown_net_receipts"`
-}
-type StatisticsRefund struct {
-	Currency       string `json:"currency"`
-	ReturnedAmount string `json:"returned_amount"`
-}
-type LegacyStatisticsMoney struct {
-	Currency    string `json:"currency"`
-	QuotedMinor string `json:"quoted_minor"`
-}
-type LegacyPaymentStatistics struct {
-	CompletedTransactions int64                   `json:"completed_transactions"`
-	PaidUsers             int64                   `json:"paid_users"`
-	RepeatUsers           int64                   `json:"repeat_users"`
-	UnknownQuoteCount     int64                   `json:"unknown_quote_count"`
-	Money                 []LegacyStatisticsMoney `json:"money"`
-}
-type Statistics struct {
-	PaidOrders  int64                   `json:"paid_orders"`
-	PaidUsers   int64                   `json:"paid_users"`
-	RepeatUsers int64                   `json:"repeat_users"`
-	Money       []StatisticsMoney       `json:"money"`
-	Refunds     []StatisticsRefund      `json:"refunds"`
-	Legacy      LegacyPaymentStatistics `json:"legacy"`
-}
+type StatisticsMoney = auditreports.StatisticsMoney
+type StatisticsRefund = auditreports.StatisticsRefund
+type LegacyStatisticsMoney = auditreports.LegacyStatisticsMoney
+type LegacyPaymentStatistics = auditreports.LegacyPaymentStatistics
+type Statistics = auditreports.PaymentStatistics
 
 // A later fulfillment review/refund does not erase the original money proof.
 // Extra/review receipts lacking this exact funding association are excluded.

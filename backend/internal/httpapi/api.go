@@ -153,6 +153,7 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig) *echo.Ech
 	e.POST("/api/v1/telegram/link", a.ConfirmTelegramLink)
 	e.POST("/api/v1/campaign-visits", a.RecordCampaignVisit)
 	e.POST("/api/v1/operator/campaigns/search", a.ListOperatorCampaigns)
+	e.POST("/api/v1/operator/reports/statistics", a.ReadOperatorStatistics)
 	e.POST("/api/v1/operator/campaigns", a.CreateCampaign)
 	e.GET("/api/v1/operator/campaigns/:id", a.GetOperatorCampaign)
 	e.POST("/api/v1/operator/campaigns/:id/state", a.SetCampaignState)

@@ -46,6 +46,18 @@ func (s *Service) CohortTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) ([]uuid
 	}
 	return ids, nil
 }
+
+func (s *Service) ReportCohortTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) ([]uuid.UUID, bool, error) {
+	var found bool
+	if tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM campaigns WHERE id=$1)`, id).Scan(&found) != nil {
+		return nil, false, unavailable()
+	}
+	if !found {
+		return nil, false, nil
+	}
+	ids, err := s.CohortTx(ctx, tx, id)
+	return ids, true, err
+}
 func (s *Service) Detail(ctx context.Context, actor, id uuid.UUID) (Detail, error) {
 	out := Detail{Events: []Event{}}
 	if err := s.authority.RequireOperator(ctx, actor); err != nil {

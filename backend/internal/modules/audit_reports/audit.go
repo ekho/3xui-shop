@@ -43,9 +43,14 @@ func RecordTx(ctx context.Context, tx pgx.Tx, event Event) error {
 	return store.New(tx).RecordAudit(ctx, row)
 }
 
-type Service struct{ pool *pgxpool.Pool }
+type Service struct {
+	pool       *pgxpool.Pool
+	statistics StatisticsPorts
+}
 
-func New(pool *pgxpool.Pool) *Service { return &Service{pool: pool} }
+func New(pool *pgxpool.Pool, statistics StatisticsPorts) *Service {
+	return &Service{pool: pool, statistics: statistics}
+}
 
 // Page is an internal read port; the operator consumer authorizes the request.
 func (s *Service) Page(ctx context.Context, account uuid.UUID, before *time.Time, beforeID uuid.UUID) ([]Event, bool, error) {

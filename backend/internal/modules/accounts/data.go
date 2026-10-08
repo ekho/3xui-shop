@@ -31,6 +31,18 @@ func (s *Service) LookupTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (Snapsh
 	return accountResult(a, err)
 }
 
+func (s *Service) LookupManyTx(ctx context.Context, tx pgx.Tx, ids []uuid.UUID) ([]Snapshot, error) {
+	rows, err := store.New(tx).AccountsByIDs(ctx, ids)
+	if err != nil {
+		return nil, unavailable()
+	}
+	out := make([]Snapshot, 0, len(rows))
+	for _, a := range rows {
+		out = append(out, snapshot(a))
+	}
+	return out, nil
+}
+
 // LegacyIdentitiesTx resolves and optionally locks a bounded import's identity
 // set in UUID order, without foreign SQL or one query per imported user.
 func (s *Service) LegacyIdentitiesTx(ctx context.Context, tx pgx.Tx, telegramIDs []int64, lock bool) ([]Snapshot, error) {

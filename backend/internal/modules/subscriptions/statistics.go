@@ -2,13 +2,12 @@ package subscriptions
 
 import (
 	"context"
+	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
-type TrialStatistics struct {
-	TrialUsers int64 `json:"trial_users"`
-}
+type TrialStatistics = auditreports.TrialStatistics
 
 // StatisticsTx reads delivered grants in the caller's consistent snapshot.
 func (s *Service) StatisticsTx(ctx context.Context, tx pgx.Tx, ids []uuid.UUID) (TrialStatistics, error) {
