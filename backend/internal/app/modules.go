@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/audit_reports"
+	"example.com/cabinet/backend/internal/modules/campaigns"
 	"example.com/cabinet/backend/internal/modules/catalogue"
 	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/payments"
@@ -25,6 +26,7 @@ type Modules struct {
 	MiniApp       *telegram.MiniApp
 	Accounts      *accounts.Service
 	Catalogue     *catalogue.Service
+	Campaigns     *campaigns.Service
 	Subscriptions *subscriptions.Service
 	VPN           *vpn.Service
 	Payments      *payments.Service
@@ -43,6 +45,7 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 	}
 	var owner *accounts.Service
 	var paymentsOwner *payments.Service
+	var campaignOwner *campaigns.Service
 	mailOwner := notifications.NewMail(pool, queue, func() notifications.MailConfig {
 		c := cfg.Mail
 		c.CabinetOrigin, c.Now = cfg.HTTP.CabinetOrigin, now
@@ -59,6 +62,9 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 	}
 	accountConfig.CanUnlinkTelegram = func(ctx context.Context, tx pgx.Tx, id uuid.UUID) (bool, error) {
 		return paymentsOwner.CanUnlinkTelegramTx(ctx, tx, id)
+	}
+	accountConfig.CaptureRegistration = func(ctx context.Context, tx pgx.Tx, id uuid.UUID, channel, code string) error {
+		return campaignOwner.CaptureRegistrationTx(ctx, tx, id, channel, code)
 	}
 	owner = accounts.New(pool, limiter, mailOwner, accountConfig)
 	catalogueOwner := catalogue.New(pool, owner, now)
@@ -92,6 +98,7 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 		c.CabinetOrigin, c.PanelID = cfg.HTTP.CabinetOrigin, cfg.Subscriptions.PanelID
 		return c
 	}, now, notificationsOwner)
+	campaignOwner = campaigns.New(pool, limiter, owner, subscriptionOwner, paymentsOwner, cfg.Accounts.RateNamespace, now)
 	supportOwner := support.New(pool, limiter, owner, cfg.Accounts.RateNamespace, now, notificationsOwner)
-	return &Modules{Accounts: owner, Catalogue: catalogueOwner, Subscriptions: subscriptionOwner, VPN: vpnOwner, Payments: paymentsOwner, Support: supportOwner, Notifications: notificationsOwner, MailDelivery: mailOwner, AuditReports: auditreports.New(pool)}
+	return &Modules{Accounts: owner, Catalogue: catalogueOwner, Campaigns: campaignOwner, Subscriptions: subscriptionOwner, VPN: vpnOwner, Payments: paymentsOwner, Support: supportOwner, Notifications: notificationsOwner, MailDelivery: mailOwner, AuditReports: auditreports.New(pool)}
 }

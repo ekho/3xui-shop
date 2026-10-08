@@ -20,7 +20,7 @@ func snapshot(a store.Account) Snapshot {
 		TermsVersion: textPointer(a.TermsVersion), PrivacyVersion: textPointer(a.PrivacyVersion), TelegramID: intPointer(a.TelegramID), LegacyUserID: intPointer(a.LegacyUserID),
 		AssignedPanelID: textPointer(a.AssignedPanelID), HadSubscription: a.HadSubscription, CredentialVersion: a.CredentialVersion, VpnBanned: a.VpnBanned,
 		Kind: a.Kind, SourceKind: source, TelegramLoginDisabled: a.TelegramLoginDisabled, DisplayName: textPointer(a.DisplayName), CreatedAt: timePointer(a.CreatedAt), RestrictionChangedAt: timePointer(a.RestrictionChangedAt),
-		RestrictionOperatorAccountID: a.RestrictionOperatorAccountID, AccessProfile: textPointer(a.AccessProfile), PolicyAcceptedAt: timePointer(a.PolicyAcceptedAt), TelegramStartParam: textPointer(a.TelegramStartParam)}
+		RestrictionOperatorAccountID: a.RestrictionOperatorAccountID, AccessProfile: textPointer(a.AccessProfile), PolicyAcceptedAt: timePointer(a.PolicyAcceptedAt), TelegramStartParam: textPointer(a.TelegramStartParam), RegistrationSourceCode: textPointer(a.RegistrationSourceCode)}
 }
 func (s *Service) Lookup(ctx context.Context, id uuid.UUID) (Snapshot, error) {
 	a, err := store.New(s.pool).AccountByID(ctx, id)
@@ -29,6 +29,35 @@ func (s *Service) Lookup(ctx context.Context, id uuid.UUID) (Snapshot, error) {
 func (s *Service) LookupTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (Snapshot, error) {
 	a, err := store.New(tx).AccountByID(ctx, id)
 	return accountResult(a, err)
+}
+
+// LegacyIdentitiesTx resolves and optionally locks a bounded import's identity
+// set in UUID order, without foreign SQL or one query per imported user.
+func (s *Service) LegacyIdentitiesTx(ctx context.Context, tx pgx.Tx, telegramIDs []int64, lock bool) ([]Snapshot, error) {
+	if len(telegramIDs) > 100000 {
+		return nil, failure(400, "INVALID_INPUT")
+	}
+	for _, id := range telegramIDs {
+		if id <= 0 {
+			return nil, failure(400, "INVALID_INPUT")
+		}
+	}
+	q := store.New(tx)
+	var rows []store.Account
+	var err error
+	if lock {
+		rows, err = q.LockLegacyIdentities(ctx, telegramIDs)
+	} else {
+		rows, err = q.LegacyIdentities(ctx, telegramIDs)
+	}
+	if err != nil {
+		return nil, unavailable()
+	}
+	out := make([]Snapshot, 0, len(rows))
+	for _, a := range rows {
+		out = append(out, snapshot(a))
+	}
+	return out, nil
 }
 
 // Lock participates in the caller's transaction; the caller commits or rolls back.

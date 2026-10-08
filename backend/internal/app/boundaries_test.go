@@ -283,12 +283,13 @@ func TestVPNSQLBoundary(t *testing.T) {
 }
 
 func TestPaymentsSQLBoundary(t *testing.T) {
-	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:purchase_orders|purchase_receipts|purchase_refunds)\b`)
+	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:purchase_orders|purchase_receipts|purchase_refunds|legacy_payment_transactions)\b`)
 	ownsSQL := func(text string) bool {
 		return pattern.MatchString(strings.ReplaceAll(text, `"`, ""))
 	}
 	for _, sql := range []string{
 		`SELECT * FROM purchase_orders`, `UPDATE purchase_receipts SET review_reason=$1`, `SELECT * FROM purchase_refunds`, `DELETE FROM public.purchase_refunds`,
+		`SELECT subscription FROM legacy_payment_transactions`,
 		`INSERT INTO purchase_orders VALUES ($1)`, `DELETE FROM public.purchase_receipts`,
 		`WITH p AS (SELECT * FROM "public"."purchase_orders") SELECT * FROM p`,
 	} {
@@ -378,6 +379,20 @@ func TestAuditReportsSQLBoundary(t *testing.T) {
 		t.Fatal("foreign owner rejected")
 	}
 	checkSQLBoundary(t, "audit_reports", ownsSQL)
+}
+
+func TestCampaignsSQLBoundary(t *testing.T) {
+	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:campaigns|campaign_acquisitions|campaign_events)\b`)
+	owns := func(text string) bool { return pattern.MatchString(strings.ReplaceAll(text, `"`, "")) }
+	for _, sql := range []string{"SELECT * FROM campaigns", "UPDATE campaign_acquisitions SET source_code=$1", "DELETE FROM public.campaign_events"} {
+		if !owns(sql) {
+			t.Fatal("campaign ownership negative fixture escaped", sql)
+		}
+	}
+	if owns("SELECT campaign_id FROM audit_events") {
+		t.Fatal("foreign owner rejected")
+	}
+	checkSQLBoundary(t, "campaigns", owns)
 }
 
 func TestSharedFacadeRemoved(t *testing.T) {

@@ -56,6 +56,9 @@ func (s *Service) StartTelegramSession(ctx context.Context, in TelegramSessionIn
 		if !consent {
 			return empty, "", failure(409, "CONSENT_REQUIRED")
 		}
+		if in.StartParam != "" {
+			in.TelegramInput.RegistrationSourceCode = &in.StartParam
+		}
 		created, e := s.CreateTelegram(ctx, tx, in.TelegramInput)
 		if e != nil {
 			return empty, "", e

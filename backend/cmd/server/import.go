@@ -7,6 +7,7 @@ import (
 	"errors"
 	"example.com/cabinet/backend/internal/app"
 	"example.com/cabinet/backend/internal/modules/accounts"
+	"example.com/cabinet/backend/internal/modules/campaigns"
 	"example.com/cabinet/backend/internal/modules/payments"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"io"
@@ -147,4 +148,34 @@ func runLegacyApprovalImport(flag string) error {
 func importError(code string) error {
 	_ = json.NewEncoder(os.Stdout).Encode(map[string]string{"error": code})
 	return errors.New(code)
+}
+
+func runLegacyCampaignImport(flag string) error {
+	if flag != "--dry-run" && flag != "--apply" {
+		return errors.New("invalid import command")
+	}
+	p, err := decodeLegacyJSON[campaigns.LegacyPackage](os.Stdin)
+	if err != nil || campaigns.ValidateLegacyPackage(p) != nil {
+		return importError("IMPORT_INVALID_PACKAGE")
+	}
+	databaseURL, err := app.SecretFile("DATABASE_URL")
+	if err != nil {
+		return importError("IMPORT_DATABASE_UNAVAILABLE")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		return importError("IMPORT_DATABASE_UNAVAILABLE")
+	}
+	defer pool.Close()
+	out, err := app.NewModules(pool, nil, nil, &app.Config{}).Campaigns.ImportLegacy(ctx, p, flag == "--apply")
+	if err != nil {
+		var e *campaigns.Error
+		if errors.As(err, &e) {
+			return importError(e.Code)
+		}
+		return importError("IMPORT_DATABASE_UNAVAILABLE")
+	}
+	return json.NewEncoder(os.Stdout).Encode(out)
 }

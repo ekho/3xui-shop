@@ -9,6 +9,7 @@ import (
 	"example.com/cabinet/backend/internal/app"
 	"example.com/cabinet/backend/internal/httpapi"
 	"example.com/cabinet/backend/internal/modules/accounts"
+	"example.com/cabinet/backend/internal/modules/campaigns"
 	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/payments"
 	"example.com/cabinet/backend/internal/modules/subscriptions"
@@ -17,6 +18,7 @@ import (
 	"example.com/cabinet/backend/internal/wire"
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"io"
@@ -101,6 +103,40 @@ func (f *fixture) letters(t *testing.T, email string) []string {
 }
 
 func nativeEmail(prefix string) string { return prefix + "-" + uuid.NewString() + "@example.test" }
+func nativeCampaign(t *testing.T, f *fixture) (uuid.UUID, campaigns.Campaign) {
+	t.Helper()
+	client, csrf, actor := f.signupAccount(t, nativeEmail("campaign-operator"))
+	if f.svc.Accounts.ChangeOperatorRole(context.Background(), actor, true) != nil {
+		t.Fatal("owned campaign operator unavailable")
+	}
+	status, body, _ := f.send(t, client, "POST", "/api/v1/operator/campaigns", wire.CampaignCreateInput{Name: "Owned native " + uuid.NewString(), Reason: "Native campaign acceptance"}, csrf, uuid.NewString(), false)
+	var campaign campaigns.Campaign
+	if status != 201 || json.Unmarshal(body, &campaign) != nil || campaign.Code == nil {
+		t.Fatal("owned campaign creation failed", status)
+	}
+	return actor, campaign
+}
+func assertNativeCampaign(t *testing.T, f *fixture, actor uuid.UUID, campaign campaigns.Campaign, account uuid.UUID, channel string, granted int64) {
+	t.Helper()
+	ctx := context.Background()
+	identity, err := f.svc.Accounts.Lookup(ctx, account)
+	if err != nil || identity.ID != account || identity.RegistrationSourceCode == nil || *identity.RegistrationSourceCode != *campaign.Code {
+		t.Fatal("native first campaign source missing or replaced")
+	}
+	tx, err := f.env.Pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	if err != nil {
+		t.Fatal("owned cohort read unavailable")
+	}
+	defer tx.Rollback(ctx)
+	cohort, err := f.svc.Campaigns.CohortTx(ctx, tx, campaign.CampaignID)
+	if err != nil || len(cohort) != 1 || cohort[0] != account {
+		t.Fatal("native campaign cohort changed account UUID")
+	}
+	card, err := f.svc.Campaigns.Detail(ctx, actor, campaign.CampaignID)
+	if err != nil || card.Statistics.Users != 1 || card.Statistics.Trials.TrialUsers != granted || card.Statistics.LegacyNameUsers != 0 || card.Statistics.LegacyTrialUsed != 0 || (channel == "web" && (card.Statistics.WebRegistrations != 1 || card.Statistics.TelegramRegistrations != 0)) || (channel == "telegram" && (card.Statistics.WebRegistrations != 0 || card.Statistics.TelegramRegistrations != 1)) {
+		t.Fatal("native campaign statistics lost source or grant proof")
+	}
+}
 func assertNativePanel(t *testing.T, f *fixture, operations ...uuid.UUID) {
 	t.Helper()
 	if os.Getenv("NATIVE_DOCKER_STATE") == "" {
@@ -627,7 +663,14 @@ func TestNativeTrialRestart(t *testing.T) {
 	f := openMode(t, true)
 	bot := &nativeBot{}
 	_, stop := launchNative(t, f, bot, true, false)
-	_, _, r := f.signup(t, nativeEmail("native-restart"))
+	actor, campaign := nativeCampaign(t, f)
+	owner, _, r := f.signup(t, nativeEmail("native-restart"), *campaign.Code)
+	status, body, _ := f.send(t, owner, "GET", "/api/v1/me", nil, "", "", false)
+	var identity wire.AccountResult
+	if status != 200 || json.Unmarshal(body, &identity) != nil {
+		t.Fatal("owned native identity read failed")
+	}
+	assertNativeCampaign(t, f, actor, campaign, identity.Account.AccountId, "web", 0)
 	card := cardFor(t, bot, 101, r.RequestId)
 	callbackID := uuid.NewString()
 	bot.callback(101, card.ID, "a", r.RequestId, callbackID)
@@ -660,4 +703,5 @@ func TestNativeTrialRestart(t *testing.T) {
 		t.Fatal("restart regenerated grant/keys")
 	}
 	assertNativePanel(t, f, op)
+	assertNativeCampaign(t, f, actor, campaign, identity.Account.AccountId, "web", 1)
 }

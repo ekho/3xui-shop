@@ -36,13 +36,15 @@ func TestNativeTrialTelegramActivation(t *testing.T) {
 	ctx := context.Background()
 	bot := &nativeBot{}
 	_, stop := launchNative(t, f, bot, false, false)
+	actor, campaign := nativeCampaign(t, f)
 	tg := int64(uuid.New().ID()) + 1000000000
-	raw := testkit.SignedMiniAppData(key, 123456789, time.Now(), fmt.Sprintf(`{"id":%d,"first_name":"Owned client","language_code":"en"}`, tg), "owned-campaign")
+	raw := testkit.SignedMiniAppData(key, 123456789, time.Now(), fmt.Sprintf(`{"id":%d,"first_name":"Owned client","language_code":"en"}`, tg), *campaign.Code)
 	status, body, _ := f.send(t, f.public.Client(), "POST", "/api/v1/telegram/mini-app/session", map[string]string{"init_data": raw, "accepted_terms_version": "1", "accepted_privacy_version": "1"}, "", "", false)
 	var auth wire.MiniAppSessionResult
 	if status != 200 || json.Unmarshal(body, &auth) != nil || auth.Capabilities.TrialMode == nil || *auth.Capabilities.TrialMode != "activate" {
 		t.Fatal("native signed trial policy", status)
 	}
+	assertNativeCampaign(t, f, actor, campaign, auth.Account.AccountId, "telegram", 0)
 	if _, err = f.env.Pool.Exec(ctx, `CREATE FUNCTION fail_auto_apply() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.status='applied' THEN RAISE EXCEPTION 'controlled fixture failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER fail_auto_apply BEFORE UPDATE ON trial_operations FOR EACH ROW EXECUTE FUNCTION fail_auto_apply();`); err != nil {
 		t.Fatal(err)
 	}
@@ -110,6 +112,7 @@ func TestNativeTrialTelegramActivation(t *testing.T) {
 	if status != 200 || response.Header.Get("Cache-Control") != "no-store" {
 		t.Fatal("confirmed native connection unavailable", status)
 	}
+	assertNativeCampaign(t, f, actor, campaign, auth.Account.AccountId, "telegram", 1)
 }
 
 // Catches a frontend/backend bearer or empty-body mismatch that separate mock

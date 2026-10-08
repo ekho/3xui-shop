@@ -13,7 +13,7 @@ import (
 )
 
 const accountByEmail = `-- name: AccountByEmail :one
-SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id, access_profile, policy_accepted_at, telegram_start_param, original_kind, telegram_login_disabled FROM accounts WHERE email_key = $1::text
+SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id, access_profile, policy_accepted_at, telegram_start_param, original_kind, telegram_login_disabled, registration_source_code FROM accounts WHERE email_key = $1::text
 `
 
 func (q *Queries) AccountByEmail(ctx context.Context, emailKey string) (Account, error) {
@@ -47,12 +47,13 @@ func (q *Queries) AccountByEmail(ctx context.Context, emailKey string) (Account,
 		&i.TelegramStartParam,
 		&i.OriginalKind,
 		&i.TelegramLoginDisabled,
+		&i.RegistrationSourceCode,
 	)
 	return i, err
 }
 
 const accountByID = `-- name: AccountByID :one
-SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id, access_profile, policy_accepted_at, telegram_start_param, original_kind, telegram_login_disabled FROM accounts WHERE id = $1
+SELECT id, email_key, locale, password_hash, verified_at, restricted, vpn_id, sub_id, panel_key, terms_version, privacy_version, telegram_id, legacy_user_id, assigned_panel_id, had_subscription, credential_version, vpn_banned, kind, display_name, created_at, restriction_changed_at, restriction_operator_account_id, access_profile, policy_accepted_at, telegram_start_param, original_kind, telegram_login_disabled, registration_source_code FROM accounts WHERE id = $1
 `
 
 func (q *Queries) AccountByID(ctx context.Context, id uuid.UUID) (Account, error) {
@@ -86,29 +87,31 @@ func (q *Queries) AccountByID(ctx context.Context, id uuid.UUID) (Account, error
 		&i.TelegramStartParam,
 		&i.OriginalKind,
 		&i.TelegramLoginDisabled,
+		&i.RegistrationSourceCode,
 	)
 	return i, err
 }
 
 const addAccount = `-- name: AddAccount :exec
-INSERT INTO accounts(id,email_key,locale,password_hash,verified_at,vpn_id,sub_id,panel_key,terms_version,privacy_version,access_profile)
+INSERT INTO accounts(id,email_key,locale,password_hash,verified_at,vpn_id,sub_id,panel_key,terms_version,privacy_version,access_profile,registration_source_code)
 VALUES($1::uuid,$2::text,$3::text,
  $4::text,$5::timestamptz,
  $6::uuid,$7::text,$8::text,
- $9::text,$10::text,'regular')
+ $9::text,$10::text,'regular',$11::text)
 `
 
 type AddAccountParams struct {
-	ID             uuid.UUID
-	EmailKey       string
-	Locale         string
-	PasswordHash   string
-	VerifiedAt     pgtype.Timestamptz
-	VpnID          uuid.UUID
-	SubID          string
-	PanelKey       string
-	TermsVersion   string
-	PrivacyVersion string
+	ID                     uuid.UUID
+	EmailKey               string
+	Locale                 string
+	PasswordHash           string
+	VerifiedAt             pgtype.Timestamptz
+	VpnID                  uuid.UUID
+	SubID                  string
+	PanelKey               string
+	TermsVersion           string
+	PrivacyVersion         string
+	RegistrationSourceCode pgtype.Text
 }
 
 func (q *Queries) AddAccount(ctx context.Context, arg AddAccountParams) error {
@@ -123,13 +126,14 @@ func (q *Queries) AddAccount(ctx context.Context, arg AddAccountParams) error {
 		arg.PanelKey,
 		arg.TermsVersion,
 		arg.PrivacyVersion,
+		arg.RegistrationSourceCode,
 	)
 	return err
 }
 
 const addChallenge = `-- name: AddChallenge :exec
-INSERT INTO registration_challenges(id,email_key,locale,terms_version,privacy_version,token_hash,code_hash,created_at,token_expires_at,code_expires_at)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+INSERT INTO registration_challenges(id,email_key,locale,terms_version,privacy_version,token_hash,code_hash,created_at,token_expires_at,code_expires_at,source_code)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 `
 
 type AddChallengeParams struct {
@@ -143,6 +147,7 @@ type AddChallengeParams struct {
 	CreatedAt      pgtype.Timestamptz
 	TokenExpiresAt pgtype.Timestamptz
 	CodeExpiresAt  pgtype.Timestamptz
+	SourceCode     pgtype.Text
 }
 
 func (q *Queries) AddChallenge(ctx context.Context, arg AddChallengeParams) error {
@@ -157,12 +162,13 @@ func (q *Queries) AddChallenge(ctx context.Context, arg AddChallengeParams) erro
 		arg.CreatedAt,
 		arg.TokenExpiresAt,
 		arg.CodeExpiresAt,
+		arg.SourceCode,
 	)
 	return err
 }
 
 const challengeByID = `-- name: ChallengeByID :one
-SELECT id, email_key, locale, terms_version, privacy_version, token_hash, code_hash, created_at, token_expires_at, code_expires_at, failed_guesses, revoked FROM registration_challenges WHERE id = $1 FOR UPDATE
+SELECT id, email_key, locale, terms_version, privacy_version, token_hash, code_hash, created_at, token_expires_at, code_expires_at, failed_guesses, revoked, source_code FROM registration_challenges WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) ChallengeByID(ctx context.Context, id uuid.UUID) (RegistrationChallenge, error) {
@@ -181,12 +187,13 @@ func (q *Queries) ChallengeByID(ctx context.Context, id uuid.UUID) (Registration
 		&i.CodeExpiresAt,
 		&i.FailedGuesses,
 		&i.Revoked,
+		&i.SourceCode,
 	)
 	return i, err
 }
 
 const challengeByToken = `-- name: ChallengeByToken :one
-SELECT id, email_key, locale, terms_version, privacy_version, token_hash, code_hash, created_at, token_expires_at, code_expires_at, failed_guesses, revoked FROM registration_challenges WHERE token_hash = $1 FOR UPDATE
+SELECT id, email_key, locale, terms_version, privacy_version, token_hash, code_hash, created_at, token_expires_at, code_expires_at, failed_guesses, revoked, source_code FROM registration_challenges WHERE token_hash = $1 FOR UPDATE
 `
 
 func (q *Queries) ChallengeByToken(ctx context.Context, tokenHash []byte) (RegistrationChallenge, error) {
@@ -205,6 +212,7 @@ func (q *Queries) ChallengeByToken(ctx context.Context, tokenHash []byte) (Regis
 		&i.CodeExpiresAt,
 		&i.FailedGuesses,
 		&i.Revoked,
+		&i.SourceCode,
 	)
 	return i, err
 }

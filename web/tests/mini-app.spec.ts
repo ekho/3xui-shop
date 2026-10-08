@@ -9,7 +9,7 @@ const emptyHistory:Model<'PaymentHistoryPage'>={kind:'orders',orders:[],receipts
 
 type Options={sdk?:'ready'|'empty'|'fail'|'timeout'|'broken-methods';readLaunch?:boolean;consent?:boolean;sub?:Model<'Subscription'>;extra?:(r:Route,path:string)=>Promise<boolean>};
 async function fixture(page:Page,options:Options={}){
- const calls:{path:string;authorization:boolean;cookie:boolean;body:any}[]=[];let sessions=0;let sdkMode=options.sdk;
+ const calls:{path:string;method:string;authorization:boolean;cookie:boolean;body:any}[]=[];let sessions=0;let sdkMode=options.sdk;
  let pendingSDK:Route|undefined;
  await page.route('https://telegram.org/js/telegram-web-app.js',async r=>{
   if(sdkMode==='fail')return r.abort();if(sdkMode==='timeout'){pendingSDK=r;return;}
@@ -22,7 +22,7 @@ async function fixture(page:Page,options:Options={}){
  await page.route('**/api/v1/**',async r=>{
   const req=r.request(),path=new URL(req.url()).pathname;
   let body:any;try{body=req.postDataJSON()}catch{}
-  calls.push({path,authorization:req.headers().authorization===('Bearer '+token),cookie:!!req.headers().cookie,body});
+  calls.push({path,method:req.method(),authorization:req.headers().authorization===('Bearer '+token),cookie:!!req.headers().cookie,body});
   if(options.extra&&await options.extra(r,path))return;
   if(path==='/api/v1/telegram/mini-app/session'){
    sessions++;if(options.consent&&!body?.accepted_terms_version)return r.fulfill({status:409,json:{error:{code:'CONSENT_REQUIRED',message:'CONSENT_REQUIRED',request_id:'00000000-0000-4000-8000-000000000001'}}});
@@ -161,11 +161,11 @@ for(const lang of ['ru','en'] as const)for(const path of ['/','/cabinet','/catal
   await page.goto('/mini-app'+path+'?lang='+lang+'&token=owned-query&account_id=11111111-1111-4111-8111-111111111111#tgWebAppData='+encodeURIComponent(launch));
   const action=page.getByRole('button',{name:lang==='ru'?'Другие способы оплаты':'Other payment methods',exact:true});
   await expect(action).toBeVisible();await expect(action).toHaveAccessibleDescription(/email/i);
-  const writes=f.calls.filter(c=>c.body!==undefined).length;
+  const writes=f.calls.filter(c=>!['GET','HEAD','OPTIONS'].includes(c.method)).length;
   await action.focus();await page.keyboard.press('Enter');await action.focus();await page.keyboard.press('Space');
   const url='http://127.0.0.1:4173/login'+(lang==='en'?'?lang=en':'');
   expect(await page.evaluate(()=>(window as any).__sdk.opened)).toEqual([url,url]);
-  expect(f.calls.filter(c=>c.body!==undefined)).toHaveLength(writes);expect(f.sessions()).toBe(1);
+  expect(f.calls.filter(c=>!['GET','HEAD','OPTIONS'].includes(c.method))).toHaveLength(writes);expect(f.sessions()).toBe(1);
   expect(await storage(page)).not.toMatch(/owned-signed|mini_|csrf_token|__telegram__initParams/);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  });

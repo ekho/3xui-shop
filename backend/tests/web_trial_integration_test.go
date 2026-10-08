@@ -361,14 +361,21 @@ func wait(t *testing.T, condition func() bool) {
 	}
 	t.Fatal("controlled fixture condition timed out")
 }
-func (f *fixture) signup(t *testing.T, email string) (*http.Client, string, wire.TrialRequest) {
+func (f *fixture) signupAccount(t *testing.T, email string, source ...string) (*http.Client, string, uuid.UUID) {
 	t.Helper()
+	var sourceCode *string
+	if len(source) > 0 {
+		if len(source) != 1 {
+			t.Fatal("owned source fixture invalid")
+		}
+		sourceCode = &source[0]
+	}
 	client := *f.public.Client()
 	c := &client
 	jar, _ := cookiejar.New(nil)
 	c.Jar = jar
 	c.Timeout = 15 * time.Second
-	status, b, _ := f.send(t, c, "POST", "/api/v1/auth/register", wire.RegisterInput{Email: types.Email(email), Locale: "en", AcceptedTermsVersion: "1", AcceptedPrivacyVersion: "1"}, "", "", false)
+	status, b, _ := f.send(t, c, "POST", "/api/v1/auth/register", wire.RegisterInput{Email: types.Email(email), Locale: "en", AcceptedTermsVersion: "1", AcceptedPrivacyVersion: "1", SourceCode: sourceCode}, "", "", false)
 	if status != 202 {
 		t.Fatal("register", status)
 	}
@@ -411,14 +418,21 @@ func (f *fixture) signup(t *testing.T, email string) (*http.Client, string, wire
 		t.Fatal("login", status)
 	}
 	var login wire.LoginResult
-	json.Unmarshal(b, &login)
-	status, b, _ = f.send(t, c, "POST", "/api/v1/trial-requests", map[string]string{"comment": "integration"}, login.CsrfToken, uuid.NewString(), false)
+	if json.Unmarshal(b, &login) != nil || login.Account.AccountId == uuid.Nil {
+		t.Fatal("owned account response invalid")
+	}
+	return c, login.CsrfToken, login.Account.AccountId
+}
+func (f *fixture) signup(t *testing.T, email string, source ...string) (*http.Client, string, wire.TrialRequest) {
+	t.Helper()
+	c, csrf, _ := f.signupAccount(t, email, source...)
+	status, b, _ := f.send(t, c, "POST", "/api/v1/trial-requests", map[string]string{"comment": "integration"}, csrf, uuid.NewString(), false)
 	if status != 201 {
 		t.Fatal("request", status)
 	}
 	var trial wire.TrialRequest
 	json.Unmarshal(b, &trial)
-	return c, login.CsrfToken, trial
+	return c, csrf, trial
 }
 func (f *fixture) python(t *testing.T, requestID uuid.UUID) {
 	t.Helper()
