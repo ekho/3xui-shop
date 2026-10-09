@@ -29,6 +29,33 @@ for(const lang of ['en','ru'] as const)test('operator toggle, unknown reply repl
  expect(attempts[0].key).toMatch(/^[0-9a-f-]{36}$/);expect(attempts[0]).toEqual(attempts[1]);expect(attempts[0].csrf).toBe('s'.repeat(43));expect(attempts[0].body).toEqual({enabled:true,expected_revision:0,reason:'Planned update',confirmed:true});
  await reason.fill('Back online');await check.check();await page.getByRole('button',{name:labels.off}).click();await expect.poll(()=>attempts.length).toBe(3);expect(attempts[2].key).not.toBe(attempts[0].key);expect(attempts[2].body.expected_revision).toBe(1);expect(state.enabled).toBe(false);
 });
+for(const target of [true,false])test('applied lost reply retains pending '+(target?'enable':'disable')+' command after language refresh',async({page})=>{
+ const attempts:{key:string;body:Model<'MaintenanceInput'>}[]=[];let reads=0;
+ const state=await operatorFixture(page,async(route,current)=>{
+  if(route.request().method()==='GET'){reads++;return false;}
+  const body=route.request().postDataJSON() as Model<'MaintenanceInput'>;
+  attempts.push({key:route.request().headers()['idempotency-key'],body});
+  if(attempts.length===1){current.enabled=target;current.revision=1;return route.fulfill(failure('SERVICE_UNAVAILABLE')).then(()=>true);}
+  return route.fulfill({json:maintenance(current.enabled,current.revision)}).then(()=>true);
+ },{enabled:!target,revision:0});
+ await page.goto('/admin/maintenance?lang=en');
+ await page.getByRole('textbox',{name:'Reason for change'}).fill('Planned update');
+ await page.getByRole('checkbox',{name:'I confirm this maintenance change'}).check();
+ await page.getByRole('button',{name:target?'Turn maintenance on':'Turn maintenance off'}).click();
+ await expect.poll(()=>attempts.length).toBe(1);await expect(page.getByRole('alert')).toBeVisible();
+ await page.getByRole('button',{name:'RU',exact:true}).click();
+ await expect.poll(()=>reads).toBeGreaterThanOrEqual(2);
+ await expect(page.getByText(target?'Обслуживание включено':'Обслуживание выключено',{exact:true})).toBeVisible();
+ const pending=target?'Включить обслуживание':'Выключить обслуживание';
+ await expect(page.getByRole('heading',{name:pending,exact:true})).toBeVisible();
+ await page.getByRole('button',{name:pending,exact:true}).click();
+ await expect.poll(()=>attempts.length).toBe(2);
+ expect(attempts[0].key).toMatch(/^[0-9a-f-]{36}$/);expect(attempts[1]).toEqual(attempts[0]);
+ expect(attempts[0].body).toEqual({enabled:target,expected_revision:0,reason:'Planned update',confirmed:true});
+ await expect(page.getByRole('status').filter({hasText:'Текущее состояние обновлено.'})).toBeVisible();
+ await expect(page.getByRole('heading',{name:target?'Выключить обслуживание':'Включить обслуживание',exact:true})).toBeVisible();
+ expect(state.enabled).toBe(target);expect(state.revision).toBe(1);
+});
 test('operator conflict refetches current state and revoked role removes resource',async({page})=>{
  let posts=0;let deny=false;const state=await operatorFixture(page,async(route,current)=>{
   if(route.request().method()!=='POST')return false;posts++;
