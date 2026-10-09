@@ -14,6 +14,8 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      DOCKER_CONFIG: ${{ runner.temp }}/ci-docker-config
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # existing repository v4 pin
       - name: Configure Docker Hub cache before containers
@@ -35,8 +37,6 @@ jobs:
           curl --fail --silent --show-error --head --max-time 30 \
             'https://mirror.gcr.io/v2/library/redis/manifests/sha256:6f81e8915c60b065a524e6967e0ad1c639ba6efa84d669f823683ea04d9150ee?ns=docker.io' \
             | awk 'tolower($0) ~ /^(http\/|docker-content-digest:)/'
-      - name: Compare default and anonymous Docker client authorization
-        run: python3 .github/scripts/diagnose_docker_cache_auth.py
       - name: Set up mirrored BuildKit for all Compose consumers
         id: buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f

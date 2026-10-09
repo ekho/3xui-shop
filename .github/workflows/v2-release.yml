@@ -25,6 +25,8 @@ jobs:
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/v2'
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    env:
+      DOCKER_CONFIG: ${{ runner.temp }}/ci-docker-config
     permissions:
       contents: read
       packages: write

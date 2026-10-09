@@ -4,7 +4,8 @@ Scope: [#98](https://github.com/ekho/3xui-shop/issues/98), branch
 `feature/ci-dockerhub-cache` from `origin/v2` at `5bdcdbb255733052e2320d4982ec4edf10451972`.
 
 Plan:
-1. Merge the HTTPS Google cache into the existing disposable runner's daemon config,
+1. Isolate client auth in a fresh job-scoped `DOCKER_CONFIG`; merge the HTTPS Google
+   cache into the existing disposable runner's daemon config,
    validate before replacement, restart before any job container, verify loaded mirrors.
 2. Configure the separate BuildKit daemon and explicitly select it for image jobs,
    Compose builds and inherited native-script subprocesses; verify mirror request URLs.
@@ -30,6 +31,18 @@ Debug logging is enabled through the builder's explicit CLI flags, preserving
 the setup action's existing default entitlements. The effective container config
 is read back before mirror request evidence is accepted.
 
+The hosted runner's default client config contained a Docker Hub auth key.
+On two runners, default canonical Redis pulls succeeded through fallback while
+their journal windows reported mirror manifest `unauthorized`; the same pulls
+with an empty client config produced no fallback. Anonymous mirror token and
+manifest requests returned 200. Docker reuses supplied Hub credentials for mirror
+authorization. The isolated job config removes that inherited auth and retains
+the later GHCR login in the same directory. Original client settings are untouched.
+A repeated digest pull can reuse its local manifest; the comparison alone does
+not prove recovery. Acceptance requires the full final HEAD on fresh job runners.
+Diagnostic evidence: [PR runner](https://github.com/ekho/3xui-shop/actions/runs/37997221147),
+[push runner](https://github.com/ekho/3xui-shop/actions/runs/37997215927).
+
 Public registry preflight returned the unchanged Python 3.13, Go, PostgreSQL and
 Redis pinned manifest digests on 2026-10-10; the handoff already verified pinned
 Node/Caddy. Preflight does not prove runner recovery.
@@ -43,4 +56,6 @@ GitHub-hosted job discards its daemon at job end. Do not change a shared daemon.
 Sources: [Google daemon configuration and fallback](https://docs.cloud.google.com/artifact-registry/docs/pull-cached-dockerhub-images),
 [Docker BuildKit mirror and debug evidence](https://docs.docker.com/build/buildkit/configure/#registry-mirror),
 [BuildKit 0.33 debug flag](https://github.com/moby/buildkit/blob/v0.33.1/cmd/buildkitd/main.go),
-[Compose builder selection](https://github.com/docker/compose/blob/main/cmd/compose/build.go).
+[Compose builder selection](https://github.com/docker/compose/blob/main/cmd/compose/build.go),
+[Docker client config isolation](https://docs.docker.com/reference/cli/docker/#change-the-docker-directory),
+[Docker mirror credential store](https://github.com/moby/moby/blob/6430e49a55babd9b8f4d08e70ecb2b68900770fe/registry/auth.go#L36-L51).
