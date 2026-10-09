@@ -19,6 +19,7 @@ async function fixture(page:Page,options:Options={}){
  await page.route('**/api/v1/**',async r=>{
   const req=r.request(),path=new URL(req.url()).pathname;
   if(options.extra&&await options.extra(r,path))return;
+  if(path==='/api/v1/maintenance'&&req.method()==='GET')return r.fulfill({json:{enabled:false,revision:0,changed_at:null}});
   if(path==='/api/v1/telegram/mini-app/session')return r.fulfill({json:{...miniProfile,session_token:'mini_'+'b'.repeat(43)}});
   if(path==='/api/v1/telegram/mini-app/account')return r.fulfill({json:miniProfile});
   if(path==='/api/v1/me')return r.fulfill({json:options.profile?.()??profile});
