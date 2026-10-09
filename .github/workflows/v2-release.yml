@@ -87,6 +87,7 @@ jobs:
           cache-from: type=gha,scope=v2-${{ matrix.component }}
           cache-to: type=gha,mode=max,scope=v2-${{ matrix.component }}
       - name: Verify BuildKit mirror requests
+        shell: bash
         env:
           BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
         run: |

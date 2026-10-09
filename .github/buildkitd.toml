@@ -1,3 +1,4 @@
-debug = true
+[log]
+  level = "debug"
 [registry."docker.io"]
   mirrors = ["mirror.gcr.io"]

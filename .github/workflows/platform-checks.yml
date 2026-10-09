@@ -20,6 +20,21 @@ jobs:
         run: |
           python3 -m unittest discover -s .github/scripts -v
           sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT python3 .github/scripts/configure_docker_cache.py
+      - name: Verify runner registry boundary
+        shell: bash
+        run: |
+          docker version --format 'Docker server={{.Server.Version}} API={{.Server.APIVersion}}'
+          docker info --format 'Image storage driver={{.Driver}}'
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          import tomllib
+          path = Path('/etc/docker/certs.d/docker.io/hosts.toml')
+          config = tomllib.loads(path.read_text()) if path.exists() else {}
+          print('docker.io hosts.toml exists:', path.exists(), 'configured host count:', len(config.get('host', {})))
+          PY
+          curl --fail --silent --show-error --head --max-time 30 \
+            'https://mirror.gcr.io/v2/library/redis/manifests/sha256:6f81e8915c60b065a524e6967e0ad1c639ba6efa84d669f823683ea04d9150ee?ns=docker.io' \
+            | awk 'tolower($0) ~ /^(http\/|docker-content-digest:)/'
       - name: Set up mirrored BuildKit for all Compose consumers
         id: buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
@@ -78,6 +93,7 @@ jobs:
           python deploy/acceptance/local.py up --reuse-images
           python deploy/acceptance/local.py check
       - name: Verify BuildKit mirror requests
+        shell: bash
         run: |
           docker logs "buildx_buildkit_${BUILDX_BUILDER}0" 2>&1 \
             | grep -oE 'url="https://mirror\.gcr\.io/v2/[^"? ]+' | sort -u

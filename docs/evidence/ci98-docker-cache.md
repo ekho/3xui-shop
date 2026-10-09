@@ -16,6 +16,8 @@ parser, `git diff --check`, and the existing pinned actionlint 1.7.12 command in
 `docs/releases-v2.md`, applied to both changed workflows. The daemon regression
 check covers preservation/idempotency, malformed settings, refusal on local or
 self-hosted runners, and refusal to restart with existing containers.
+The mirror-evidence pipeline also checks positive, missing-evidence and failed
+producer cases with GitHub's explicit Bash/pipefail invocation.
 
 Runtime evidence belongs to the PR's exact HEAD and Actions links. Require all
 existing Platform checks and all three PR image jobs to pass; no reduced gates.
@@ -37,4 +39,5 @@ GitHub-hosted job discards its daemon at job end. Do not change a shared daemon.
 
 Sources: [Google daemon configuration and fallback](https://docs.cloud.google.com/artifact-registry/docs/pull-cached-dockerhub-images),
 [Docker BuildKit mirror and debug evidence](https://docs.docker.com/build/buildkit/configure/#registry-mirror),
+[BuildKit 0.33 logging config](https://github.com/moby/buildkit/blob/v0.33.1/docs/buildkitd.toml.md),
 [Compose builder selection](https://github.com/docker/compose/blob/main/cmd/compose/build.go).
