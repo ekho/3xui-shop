@@ -89,7 +89,7 @@ func TestServerPoolRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = provider.Down(ctx); err != nil {
+	if _, err = provider.DownTo(ctx, 34); err != nil {
 		t.Fatalf("empty downgrade: %v", err)
 	}
 	if _, err = provider.Up(ctx); err != nil {

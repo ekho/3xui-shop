@@ -23,7 +23,11 @@
 - Новый тест блокирует SQL lookup trial/access на четыре интервала watchdog.
   Оба пути были RED с настоящей pgx race; lookup до запуска Ping watchdog дал GREEN.
 
-## Текущие полные проверки
+## Полные проверки перед финальным ревью
+
+Эти результаты относятся к `662bd87cd5d9f2a11ef180eb8326f5c2e0296512`.
+Повторная полная проверка исправлений ниже фиксируется отдельно в #41 и PR
+на точной исходной версии; результаты до ревью не подменяют её.
 
 | Проверка | Результат | SHA-256 полного private log |
 | --- | --- | --- |
@@ -62,3 +66,30 @@ SMTP проходит TLS, Bot API и платежи симулируются. P
 внешний SMTP, реальные переводы и переключение живого Happ не проверялись.
 С38 UI, С40 reconciliation и С45–С47 configuration/import/cutover здесь не закрываются.
 Whole-branch review, exact-source CI, merge и prerelease подтверждаются отдельно в #41/PR.
+
+## Один авторский проход после ревью
+
+Свежий Astra/high reviewer сообщил три Important замечания, без Critical/Minor.
+Все три воспроизведены новыми тестами до изменения реализации:
+
+- Stars recurring cycle, resume и billing reminders использовали основной ID.
+  Теперь они проверяют реальный назначенный сервер, оплаченный source и identity
+  immutable target. Неизвестное и чужое назначение не подтверждают оплату.
+- Регистрация второго сервера до первого sync могла скрыть или занять ID основной
+  панели. Прежний сервер сохраняется под общей lock в той же caller transaction
+  перед регистрацией; другой host с его ID вызывает conflict.
+- Ранее допустимые текстовые `PANEL_ID` перестали разрешаться. Read-only fallback
+  и bootstrap сохраняют их точно; дополнительная миграция36 снимает ограничения
+  только с прежних данных, а новые ID/имена валидируются при регистрации.
+  Применённая миграция35 не переписана; rollback с routing history блокируется.
+
+Связанный regression/Stars/pool/backup прогон: **181 tests/subtests, PASS**, полный
+`-race` JSON log без failed/skipped tests. Python112, generated contract, vet,
+новый backend image, HTTPS smoke, повторные migrations и native up также PASS.
+Полные Go/browser-consumer и native проверки повторяются на неизменных752
+runtime/test/build inputs. Web/bot исходники совпадают с проверенным baseline;
+541 browser tests и их прежние image/static proofs сохраняются.
+
+Текущие результаты полной повторной проверки, ответы на замечания, точный SHA,
+CI и доставка публикуются в [задаче #41](https://github.com/ekho/3xui-shop/issues/41)
+и соответствующем PR. После С39 работа по следующему сценарию остановлена.

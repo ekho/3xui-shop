@@ -128,7 +128,7 @@ func (s *Service) CanUnlinkTelegramTx(ctx context.Context, tx pgx.Tx, account uu
 	return !blocked, err
 }
 func (s *Service) starsResumeEligibleTx(ctx context.Context, tx pgx.Tx, a accounts.Snapshot, sub starsSubscriptionRow, pending bool) (bool, error) {
-	if !sub.canonical || sub.current == nil || a.LegacyUserID != nil || a.Restricted || a.VpnBanned || !purchaseSourceEligible(a, "telegram_stars") || a.TelegramID == nil || *a.TelegramID != sub.payer || a.AssignedPanelID == nil || *a.AssignedPanelID != s.config().PanelID || (stringValue(a.AccessProfile) != "regular" && stringValue(a.AccessProfile) != "euru") || !s.config().StarsEnabled || s.stars == nil || s.stars.BotID != sub.bot || s.stars.EditSubscription == nil || s.stars.Ready != nil && !s.stars.Ready() {
+	if !sub.canonical || sub.current == nil || a.LegacyUserID != nil || a.Restricted || a.VpnBanned || !purchaseSourceEligible(a, "telegram_stars") || a.TelegramID == nil || *a.TelegramID != sub.payer || a.AssignedPanelID == nil || (stringValue(a.AccessProfile) != "regular" && stringValue(a.AccessProfile) != "euru") || !s.config().StarsEnabled || s.stars == nil || s.stars.BotID != sub.bot || s.stars.EditSubscription == nil || s.stars.Ready != nil && !s.stars.Ready() {
 		return false, nil
 	}
 	if !pending {
@@ -186,7 +186,7 @@ func (s *Service) starsResumeEligibleTx(ctx context.Context, tx pgx.Tx, a accoun
 	if blocked {
 		return false, nil
 	}
-	source, err := s.vpn.CurrentPlanSourceTx(ctx, tx, a.ID)
+	source, err := s.starsAssignedSourceTx(ctx, tx, a)
 	if err != nil {
 		return false, unavailable()
 	}

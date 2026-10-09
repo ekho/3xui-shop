@@ -42,7 +42,7 @@ func (s *Service) ReminderPolicyTx(ctx context.Context, tx pgx.Tx, account uuid.
 	}
 	row := rows[0]
 	out := starsReminderPeriod(row, s.now())
-	if !out.Known || a.TelegramID == nil || *a.TelegramID != row.payer || a.AssignedPanelID == nil || *a.AssignedPanelID != s.config().PanelID {
+	if !out.Known || a.TelegramID == nil || *a.TelegramID != row.payer || a.AssignedPanelID == nil {
 		return unknown, nil
 	}
 	unresolved, err := s.vpn.UnresolvedTx(ctx, tx, account)
@@ -52,7 +52,7 @@ func (s *Service) ReminderPolicyTx(ctx context.Context, tx pgx.Tx, account uuid.
 	if unresolved {
 		return unknown, nil
 	}
-	source, err := s.vpn.CurrentPlanSourceTx(ctx, tx, account)
+	source, err := s.starsAssignedSourceTx(ctx, tx, a)
 	if err != nil {
 		return unknown, unavailable()
 	}

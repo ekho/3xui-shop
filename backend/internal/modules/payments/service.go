@@ -2,6 +2,7 @@ package payments
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
@@ -77,6 +78,31 @@ func (s *Service) accountByIDTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (a
 func (s *Service) lockAccount(ctx context.Context, tx pgx.Tx, id uuid.UUID) (accounts.Snapshot, error) {
 	return accountResult(s.authority.Lock(ctx, tx, id))
 }
+
+func (s *Service) starsAssignedSourceTx(ctx context.Context, tx pgx.Tx, a accounts.Snapshot) (*vpn.PlanAssignment, error) {
+	if a.AssignedPanelID == nil || *a.AssignedPanelID == "" {
+		return nil, nil
+	}
+	if _, err := s.vpn.ServerTx(ctx, tx, *a.AssignedPanelID); errors.Is(err, vpn.ErrPanel) {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+	source, err := s.vpn.CurrentPlanSourceTx(ctx, tx, a.ID)
+	if err != nil || source == nil {
+		return source, err
+	}
+	state, err := s.vpn.AccessStateForAccountTx(ctx, tx, source.OperationID, a.ID)
+	if err != nil {
+		return nil, err
+	}
+	var target vpn.AccessTarget
+	if json.Unmarshal(state.Target, &target) != nil || target.OperationID != source.OperationID || target.PanelID != *a.AssignedPanelID || target.PanelKey != a.PanelKey || target.VPNID != a.VpnID || target.SubID != a.SubID {
+		return nil, nil
+	}
+	return source, nil
+}
+
 func stringValue(value *string) string {
 	if value == nil {
 		return ""

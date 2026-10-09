@@ -34,13 +34,13 @@ var serverID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
 func (s *Service) RegisterServerTx(ctx context.Context, tx pgx.Tx, in ServerInput) (Server, error) {
 	host, err := httpsURL(in.Host, false)
-	if err != nil || !serverID.MatchString(in.ID) || !utf8.ValidString(in.Name) || strings.TrimSpace(in.Name) != in.Name || utf8.RuneCountInString(in.Name) < 1 || utf8.RuneCountInString(in.Name) > 100 || in.MaxClients < 0 {
+	if err != nil || (!serverID.MatchString(in.ID) && (in.ID == "" || in.ID != s.config().PanelID)) || !utf8.ValidString(in.Name) || strings.TrimSpace(in.Name) != in.Name || utf8.RuneCountInString(in.Name) < 1 || utf8.RuneCountInString(in.Name) > 100 || in.MaxClients < 0 {
 		return Server{}, failure(400, "INVALID_INPUT")
 	}
-	q := store.New(tx)
-	if q.LockServerPool(ctx) != nil {
-		return Server{}, unavailable()
+	if err = s.seedPrimaryTx(ctx, tx); err != nil {
+		return Server{}, err
 	}
+	q := store.New(tx)
 	_, err = q.RegisterPoolServer(ctx, store.RegisterPoolServerParams{ID: in.ID, Name: in.Name, Host: host, MaxClients: pgtype.Int8{Int64: in.MaxClients, Valid: true}})
 	if err != nil {
 		return Server{}, failure(409, "SERVER_CONFLICT")
@@ -73,7 +73,7 @@ func (s *Service) ServersTx(ctx context.Context, tx pgx.Tx) ([]Server, error) {
 	if len(out) == 0 {
 		cfg := s.config()
 		host, err := httpsURL(cfg.Panel.PanelURL, false)
-		if serverID.MatchString(cfg.PanelID) && err == nil {
+		if cfg.PanelID != "" && err == nil {
 			base, _ := httpsURL(cfg.SubscriptionBaseURL, true)
 			out = append(out, Server{ID: cfg.PanelID, Name: cfg.PanelID, Host: host, SubscriptionBaseURL: base, AssignedClients: loads[cfg.PanelID]})
 		}
@@ -156,9 +156,21 @@ func (s *Service) SubscriptionBase(ctx context.Context, id string) (string, erro
 }
 
 func (s *Service) seedPrimary(ctx context.Context, db serverDB) error {
+	tx, err := db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return unavailable()
+	}
+	defer tx.Rollback(ctx)
+	if err = s.seedPrimaryTx(ctx, tx); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *Service) seedPrimaryTx(ctx context.Context, tx pgx.Tx) error {
 	cfg := s.config()
 	host, err := httpsURL(cfg.Panel.PanelURL, false)
-	if err != nil || !serverID.MatchString(cfg.PanelID) {
+	if err != nil || cfg.PanelID == "" {
 		return ErrPanel
 	}
 	base := ""
@@ -168,16 +180,11 @@ func (s *Service) seedPrimary(ctx context.Context, db serverDB) error {
 			return err
 		}
 	}
-	tx, err := db.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return unavailable()
-	}
-	defer tx.Rollback(ctx)
 	q := store.New(tx)
 	if q.LockServerPool(ctx) != nil || q.SeedPrimaryServer(ctx, store.SeedPrimaryServerParams{ID: cfg.PanelID, Name: cfg.PanelID, Host: host, SubscriptionBaseUrl: base}) != nil {
 		return unavailable()
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 func (s *Service) SyncServers(ctx context.Context) error {
