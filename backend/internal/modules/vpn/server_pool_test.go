@@ -150,7 +150,7 @@ func TestServerPoolRegistry(t *testing.T) {
 	if err == nil {
 		t.Fatal("retired ID revived")
 	}
-	if _, err = provider.Down(ctx); err == nil || !strings.Contains(err.Error(), "server pool downgrade blocked") {
+	if _, err = provider.DownTo(ctx, 34); err == nil || !strings.Contains(err.Error(), "server pool downgrade blocked") {
 		t.Fatalf("history downgrade: %v", err)
 	}
 }
