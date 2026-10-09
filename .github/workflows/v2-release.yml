@@ -95,6 +95,19 @@ jobs:
         run: |
           docker exec "buildx_buildkit_${BUILDX_BUILDER}0" cat /etc/buildkit/buildkitd.toml \
             | python3 -c 'import sys,tomllib; config=tomllib.loads(sys.stdin.read()); assert "mirror.gcr.io" in config["registry"]["docker.io"]["mirrors"]; print("BuildKit container mirror config verified")'
+          python3 - <<'PY'
+          import os, re, subprocess
+          result = subprocess.run(['docker', 'logs', f'buildx_buildkit_{os.environ["BUILDX_BUILDER"]}0'], check=True, capture_output=True, text=True)
+          logs = result.stdout + result.stderr
+          print('BuildKit log metadata:', {
+              'lines': len(logs.splitlines()),
+              'debug': len(re.findall(r'level(?:=|":\s*")debug', logs)),
+              'resolving': logs.count('resolving'),
+              'requests': logs.count('do request'),
+              'mirror_urls': logs.count('https://mirror.gcr.io/v2/'),
+              'hub_urls': logs.count('https://registry-1.docker.io/v2/'),
+          })
+          PY
           docker logs "buildx_buildkit_${BUILDX_BUILDER}0" 2>&1 \
             | grep -oE 'https://mirror\.gcr\.io/v2/[^"?[:space:]]+' | sort -u
 
