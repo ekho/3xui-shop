@@ -15,21 +15,24 @@ import (
 type State struct {
 	Enabled, Degraded bool
 	Code              string
+	Status            string
 }
 type Runtime struct {
-	enabled                            bool
-	started                            bool
-	token                              string
-	api                                *botapi.Client
-	dispatcher                         *dispatcher
-	outbox                             Outbox
-	clients                            *Client
-	servers                            *serverBridge
-	support                            *supportBridge
-	now                                func() time.Time
-	startupCode                        string
-	mu                                 sync.RWMutex
-	pollCode, deliveryCode, clientCode string
+	enabled                                                                bool
+	started                                                                bool
+	token                                                                  string
+	api                                                                    *botapi.Client
+	dispatcher                                                             *dispatcher
+	outbox                                                                 Outbox
+	clients                                                                *Client
+	servers                                                                *serverBridge
+	support                                                                *supportBridge
+	now                                                                    func() time.Time
+	startupCode                                                            string
+	mu                                                                     sync.RWMutex
+	pollCode, deliveryCode, deliveryClaimCode, clientCode, clientClaimCode string
+	phase                                                                  string
+	observer                                                               func(State)
 }
 
 func New(cfg Config, client *http.Client, actions TrialActions, outbox Outbox, clients *Client) (*Runtime, error) {
@@ -52,17 +55,51 @@ func New(cfg Config, client *http.Client, actions TrialActions, outbox Outbox, c
 func (r *Runtime) State() State {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	return r.stateLocked()
+}
+func (r *Runtime) stateLocked() State {
 	if !r.enabled {
-		return State{Code: "DISABLED"}
+		return State{Code: "DISABLED", Status: "disabled"}
 	}
 	code := r.pollCode
 	if code == "" {
 		code = r.deliveryCode
 	}
 	if code == "" {
+		code = r.deliveryClaimCode
+	}
+	if code == "" {
 		code = r.clientCode
 	}
-	return State{Enabled: true, Degraded: code != "", Code: code}
+	if code == "" {
+		code = r.clientClaimCode
+	}
+	status := r.phase
+	if status == "" {
+		status = "stopped"
+	}
+	if code != "" && status != "stopped" {
+		status = "degraded"
+	}
+	return State{Enabled: true, Degraded: code != "", Code: code, Status: status}
+}
+func (r *Runtime) Observe(observer func(State)) {
+	r.mu.Lock()
+	r.observer = observer
+	state := r.stateLocked()
+	r.mu.Unlock()
+	if observer != nil {
+		observer(state)
+	}
+}
+func (r *Runtime) setPhase(phase string) {
+	r.mu.Lock()
+	r.phase = phase
+	state, observer := r.stateLocked(), r.observer
+	r.mu.Unlock()
+	if observer != nil {
+		observer(state)
+	}
 }
 func safeCode(err error) string {
 	var api *botapi.APIError
@@ -92,9 +129,13 @@ func (r *Runtime) setLoopCode(field *string, code string) {
 	r.mu.Lock()
 	changed := *field != code
 	*field = code
+	state, observer := r.stateLocked(), r.observer
 	r.mu.Unlock()
 	if changed && code != "" {
 		slog.Warn("Telegram channel degraded", "code", code)
+	}
+	if changed && observer != nil {
+		observer(state)
 	}
 }
 func fatal(err error) bool {
@@ -130,11 +171,13 @@ func nextDelay(d time.Duration) time.Duration {
 }
 
 func (r *Runtime) Run(parent context.Context) error {
-	defer func() { r.mu.Lock(); r.started = false; r.mu.Unlock() }()
 	if !r.enabled {
 		return nil
 	}
+	r.setPhase("starting")
+	defer func() { r.mu.Lock(); r.started = false; r.mu.Unlock(); r.setPhase("stopped") }()
 	if r.startupCode != "" {
+		r.setCode(true, r.startupCode)
 		return &ActionError{Code: r.startupCode}
 	}
 	ctx, cancel := context.WithCancel(parent)
@@ -159,6 +202,7 @@ func (r *Runtime) Run(parent context.Context) error {
 			r.started = true
 			r.mu.Unlock()
 			r.setCode(true, "")
+			r.setPhase("running")
 			break
 		}
 		r.setCode(true, safeCode(err))
@@ -249,7 +293,12 @@ func (r *Runtime) clientDeliveries(ctx context.Context) error {
 		claimCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		job, err := r.clients.notices.ClaimClient(claimCtx)
 		cancel()
+		claimFailed := err != nil
+		if err == nil {
+			r.setLoopCode(&r.clientClaimCode, "")
+		}
 		if err == nil && job == nil {
+			delay = time.Second
 			if !pause(ctx, 5*time.Second) {
 				return nil
 			}
@@ -266,7 +315,11 @@ func (r *Runtime) clientDeliveries(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil
 		}
-		r.setLoopCode(&r.clientCode, safeCode(err))
+		if claimFailed {
+			r.setLoopCode(&r.clientClaimCode, safeCode(err))
+		} else {
+			r.setLoopCode(&r.clientCode, safeCode(err))
+		}
 		if fatal(err) {
 			return err
 		}
@@ -298,7 +351,12 @@ func (r *Runtime) deliveries(ctx context.Context) error {
 			}
 		}
 		cancel()
+		claimFailed := err != nil
+		if err == nil {
+			r.setLoopCode(&r.deliveryClaimCode, "")
+		}
 		if err == nil && empty {
+			delay = time.Second
 			if !pause(ctx, 5*time.Second) {
 				return nil
 			}
@@ -315,7 +373,11 @@ func (r *Runtime) deliveries(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil
 		}
-		r.setCode(false, safeCode(err))
+		if claimFailed {
+			r.setLoopCode(&r.deliveryClaimCode, safeCode(err))
+		} else {
+			r.setCode(false, safeCode(err))
+		}
 		if fatal(err) {
 			return err
 		}

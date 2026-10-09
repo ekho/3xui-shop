@@ -101,6 +101,26 @@ RED→GREEN проверяют оба перехода can_delete и закры�
 Последнее форматирование CLI test — только gofmt. Все 607 прежних Go Test entrypoints
 сохранены (один расширенный CLI test переименован, существующие assertions сохранены).
 
+## Интеграция с текущей v2
+
+Ревизия `05f7f194ccfa4f413e72c369ef3131644ba16c66`: полный локальный Go race
+PASS (26 пакетов); exact-source CI static и полный behavior PASS, включая
+112 Python и 551 web-тест. Container readiness остановлен Docker Hub HTTP 429
+на pinned базовых образах. Один ограниченный retry отменён как устаревший после
+слияния PR97/S44 в `v2` = `5bdcdbb255733052e2320d4982ec4edf10451972`.
+
+Реальный content conflict затронул только структуру Telegram Runtime. Сохранены
+поле/обработчик infrastructure bridge С38 и весь код С44: отдельные claim/send
+errors, сохранение send failure при пустой очереди, phase/observer/readiness и
+lifecycle. Main/API объединены автоматически; trial-only guard без origin сохранён.
+Тот же reviewer проверил объединённые участки: Critical 0, Important 0.
+Полные race-тесты Telegram/app/operations/cmd и целевые HTTP lifecycle/readiness/
+server-management — PASS (5 пакетов). Native fixture и CI нового merge HEAD
+проверяются отдельно; окончательный результат записывается в финальной записи #42.
+Общий внешний Docker Hub 429 incident остаётся за родительским координатором;
+дополнительные повторы без changed input или подтверждённого transient budget
+не выполняются. Merge/Done остаются за родительским координатором.
+
 Production, внешний Telegram, реальные клиенты/VPN-трафик и выпуск исключены.
 Provider-only clients/offline/stale sync guards проверены core tests; отдельный
 реальный browser отказ из-за provider-only клиента не заявлен. Конфигурация

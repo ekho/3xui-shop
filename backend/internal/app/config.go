@@ -24,6 +24,7 @@ import (
 
 type Config struct {
 	DatabaseURL, RedisURL string
+	OperationsEmail       string
 	HTTP                  HTTPConfig
 	Accounts              accounts.Config
 	Subscriptions         subscriptions.Config
@@ -60,11 +61,16 @@ func LoadConfig() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	operationsEmail, err := readOperationsEmail()
+	if err != nil {
+		return Config{}, err
+	}
 	c := Config{
-		HTTP:     HTTPConfig{CabinetOrigin: os.Getenv("CABINET_ORIGIN")},
-		Accounts: accounts.Config{TermsVersion: os.Getenv("TERMS_VERSION"), PrivacyVersion: os.Getenv("PRIVACY_VERSION"), RateNamespace: "platform"},
-		Mail:     notifications.MailConfig{SMTPAddress: os.Getenv("SMTP_ADDRESS"), SMTPUser: os.Getenv("SMTP_USER"), SMTPFrom: os.Getenv("SMTP_FROM")},
-		Audit:    audit,
+		OperationsEmail: operationsEmail,
+		HTTP:            HTTPConfig{CabinetOrigin: os.Getenv("CABINET_ORIGIN")},
+		Accounts:        accounts.Config{TermsVersion: os.Getenv("TERMS_VERSION"), PrivacyVersion: os.Getenv("PRIVACY_VERSION"), RateNamespace: "platform"},
+		Mail:            notifications.MailConfig{SMTPAddress: os.Getenv("SMTP_ADDRESS"), SMTPUser: os.Getenv("SMTP_USER"), SMTPFrom: os.Getenv("SMTP_FROM")},
+		Audit:           audit,
 	}
 	if value := os.Getenv("TRUSTED_PROXY_CIDRS"); value != "" {
 		c.HTTP.TrustedProxyCIDRs = strings.Split(value, ",")
@@ -241,6 +247,24 @@ func LoadConfig() (Config, error) {
 		}
 	}
 	return c, c.Validate()
+}
+
+func readOperationsEmail() (string, error) {
+	if _, present := os.LookupEnv("OPERATIONS_EMAIL"); present {
+		return "", errors.New("OPERATIONS_EMAIL plaintext is forbidden")
+	}
+	if os.Getenv("OPERATIONS_EMAIL_FILE") == "" {
+		return "", nil
+	}
+	address, err := SecretFile("OPERATIONS_EMAIL")
+	if err != nil {
+		return "", err
+	}
+	parsed, err := mail.ParseAddress(address)
+	if err != nil || parsed.Address != address || parsed.Name != "" || len(address) > 254 || strings.ContainsAny(address, "\r\n\x00") {
+		return "", errors.New("invalid OPERATIONS_EMAIL_FILE")
+	}
+	return address, nil
 }
 
 func readAuditConfig() (auditreports.Config, error) {
