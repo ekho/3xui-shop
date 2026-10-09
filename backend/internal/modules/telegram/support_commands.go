@@ -47,11 +47,11 @@ func parseSupportCommand(text, username string) (support.TelegramCommandInput, u
 			}
 			n = 1
 		}
-	case "pending", "reset":
+	case "pending":
 		if len(args) != 0 {
 			return in, topic, false
 		}
-	case "reset_traffic":
+	case "reset", "reset_traffic":
 		in.Action = "reset"
 	case "open":
 		in.Action = "reopen"
@@ -76,9 +76,6 @@ func parseSupportCommand(text, username string) (support.TelegramCommandInput, u
 		n = 1
 		switch name {
 		case "retry":
-			if len(args) < 2 {
-				return in, topic, false
-			}
 			in.DeliveryID = id
 		case "bind":
 			if len(args) < 2 {

@@ -98,19 +98,20 @@ func run() error {
 			return e
 		}
 		supportConfig, e := telegram.LoadSupportConfig()
-		if e != nil {
-			return e
+		if e == nil {
+			e = telegram.ValidatePollingBots(tgConfig, supportConfig)
 		}
-		if e = telegram.ValidatePollingBots(tgConfig, supportConfig); e != nil {
-			return e
+		if e != nil {
+			slog.Warn("Telegram support channel unavailable", "code", "INVALID_CONFIGURATION")
+			supportTG = telegram.NewUnavailableSupport()
 		}
 		mirrorConfig, e := telegram.LoadAuditMirrorConfig()
-		if e != nil {
-			return e
+		if e == nil {
+			auditMirror, e = telegram.NewAuditMirror(mirrorConfig, nil)
 		}
-		auditMirror, e = telegram.NewAuditMirror(mirrorConfig, nil)
 		if e != nil {
-			return e
+			slog.Warn("Telegram audit mirror unavailable", "code", "INVALID_CONFIGURATION")
+			auditMirror = func(context.Context, string) error { return &telegram.ActionError{Code: "INVALID_CONFIGURATION"} }
 		}
 		if tgConfig.Enabled && cfg.HTTP.AdapterToken != "" {
 			return errors.New("disable legacy bot API before enabling native Telegram")
@@ -120,9 +121,11 @@ func run() error {
 		if e != nil {
 			return e
 		}
-		supportTG, e = app.NewSupportTelegram(supportConfig, svc, cfg.HTTP.CabinetOrigin, nil)
-		if e != nil {
-			return e
+		if supportTG == nil {
+			supportTG, e = app.NewSupportTelegram(supportConfig, svc, cfg.HTTP.CabinetOrigin, nil)
+			if e != nil {
+				return e
+			}
 		}
 	}
 	workers := river.NewWorkers()

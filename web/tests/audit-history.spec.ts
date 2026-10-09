@@ -5,6 +5,19 @@ const actor='10000000-0000-4000-8000-000000000001',account='20000000-0000-4000-8
 const session={account:{account_id:actor,email:'operator@example.test',email_verified:true,locale:'en',telegram_linked:false},csrf_token:'s'.repeat(43)};
 const when='2026-10-09T05:00:00.123456Z';
 
+for(const lang of ['en','ru'])test('global native support actor includes both identities '+lang,async({page})=>{
+ await routes(page,async(route,path)=>{
+  if(!path.endsWith('/operator/audit/history'))return false;
+  const value=report(route.request().postDataJSON());
+  if(value.kind==='native')value.native_events[0].event.operator_tg_id='732';
+  await route.fulfill({json:value});return true;
+ });
+ await page.goto('/admin/audit?lang='+lang);
+ const label=lang==='en'?'Telegram operator':'Telegram-оператор';
+ await expect(page.getByText(label+': 732 ('+actor+')',{exact:true})).toBeVisible();
+ await expect(page.getByText((lang==='en'?'Unknown actor':'Исполнитель неизвестен'),{exact:true})).toBeVisible();
+});
+
 test('support source shows exact legacy identifiers and an unknown actor',async({page})=>{
  await routes(page,async(route,path)=>{
   if(path.endsWith('/operator/audit/history')&&route.request().postDataJSON().kind==='system'){

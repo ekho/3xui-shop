@@ -65,6 +65,43 @@ func TestNativeTrialSupportOutage(t *testing.T) {
 	assertNativePanel(t, f, created.OperationID)
 }
 
+func TestNativeTrialSupportInvalidConfiguration(t *testing.T) {
+	for _, missing := range []bool{false, true} {
+		t.Run(map[bool]string{false: "invalid_group", true: "missing_token"}[missing], func(t *testing.T) {
+			f := openMode(t, true)
+			ctx := context.Background()
+			token := filepath.Join(t.TempDir(), "support-token")
+			if !missing && os.WriteFile(token, []byte("974:abcdefghijklmnopqrstuvwx"), 0600) != nil {
+				t.Fatal("owned support token fixture unavailable")
+			}
+			settings := map[string]string{"TRIAL_ENABLED": "true", "TELEGRAM_ENABLED": "false", "SUPPORT_TELEGRAM_ENABLED": "true", "SUPPORT_BOT_TOKEN_FILE": token, "SUPPORT_GROUP_ID": "-10074002", "AUDIT_MIRROR_ENABLED": "true"}
+			if !missing {
+				settings["SUPPORT_GROUP_ID"] = "not-a-group"
+			}
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				t.Error("invalid optional channel reached provider")
+				w.WriteHeader(http.StatusBadRequest)
+			})
+			start, stop := nativeNoticeBinary(t, f, handler, settings)
+			start()
+			defer stop()
+			operator, csrf, actor := f.signupAccount(t, nativeEmail("support-invalid-operator"))
+			if err := f.svc.Accounts.ChangeOperatorRole(ctx, actor, true); err != nil {
+				t.Fatal(err)
+			}
+			status, raw, _ := f.send(t, operator, "POST", "/api/v1/operator/clients/trial", map[string]string{"telegram_id": "779", "display_name": "Owned configuration trial", "locale": "en"}, csrf, uuid.NewString(), false)
+			var created struct {
+				OperationID uuid.UUID `json:"operation_id"`
+			}
+			if status != 201 || json.Unmarshal(raw, &created) != nil || created.OperationID == uuid.Nil {
+				t.Fatal("HTTP unavailable after invalid support configuration", status)
+			}
+			wait(t, func() bool { return applied(f, created.OperationID) })
+			assertNativePanel(t, f, created.OperationID)
+		})
+	}
+}
+
 // The compiled server owns HTTP, SMTP, workers and support polling. Only the
 // Telegram provider is simulated; the owned Docker panel remains 3X-UI 3.7.0.
 func TestNativeTrialSupportText(t *testing.T) {
@@ -155,7 +192,9 @@ func TestNativeTrialSupportText(t *testing.T) {
 			}
 			result = map[string]any{"user": map[string]any{"id": int64(973), "is_bot": true}, "status": "administrator", "can_manage_topics": true}
 		case "getUpdates":
-			acknowledged = in.Offset
+			if in.Offset > acknowledged {
+				acknowledged = in.Offset
+			}
 			result = []map[string]any{}
 			for len(updates) > 0 && updates[0]["update_id"].(int64) < in.Offset {
 				updates = updates[1:]
@@ -496,6 +535,17 @@ func TestNativeTrialSupportText(t *testing.T) {
 	}
 
 	// The existing subscription owner applies commands against the real panel.
+	accessReleased := func() {
+		t.Helper()
+		wait(t, func() bool {
+			owner, err := f.svc.VPN.OpenAccessOwner(ctx, account)
+			if err != nil {
+				return false
+			}
+			defer owner.Release()
+			return owner.TryLock(ctx) == nil
+		})
+	}
 	status, raw, _ = f.send(t, client, "POST", "/api/v1/trial-requests", map[string]string{"comment": "Owned current manual trial"}, csrf, uuid.NewString(), false)
 	var trial subscriptions.TrialRequest
 	if status != 201 || json.Unmarshal(raw, &trial) != nil {
@@ -507,13 +557,25 @@ func TestNativeTrialSupportText(t *testing.T) {
 		return f.env.Pool.QueryRow(ctx, `SELECT id FROM trial_operations WHERE account_id=$1 AND status='applied'`, account).Scan(&trialOperation) == nil
 	})
 	assertNativePanel(t, f, trialOperation)
+	accessReleased()
 	push(5, 41, group, operatorTG, 888, "/comp 1 Native command reason", "operator")
 	var comp uuid.UUID
 	wait(t, func() bool {
 		return f.env.Pool.QueryRow(ctx, `SELECT id FROM access_operations WHERE account_id=$1 AND kind='compensate' AND status='applied'`, account).Scan(&comp) == nil
 	})
 	settle()
-	push(6, 42, group, operatorTG, 888, "/reset_traffic Native command reason", "operator")
+	accessReleased()
+	push(6, 42, group, operatorTG, 888, "/reset Native command reason", "operator")
+	var resetReceipt support.TelegramCommandReceipt
+	// Applied is committed before the worker releases its session lock. Wait
+	// for that release before the next command and inspect its actual outcome.
+	wait(t, func() bool {
+		var result []byte
+		return f.env.Pool.QueryRow(ctx, `SELECT result FROM support_telegram_receipts WHERE bot_id=973 AND chat_id=$1 AND message_id=42 AND action='command'`, group).Scan(&result) == nil && json.Unmarshal(result, &resetReceipt) == nil && resetReceipt.Result != nil
+	})
+	if resetReceipt.Result.Status == "failed" || resetReceipt.Result.OperationID == uuid.Nil {
+		t.Fatal("native reset command rejected", resetReceipt.Result.Code)
+	}
 	wait(t, func() bool {
 		return f.env.Pool.QueryRow(ctx, `SELECT count(*) FROM access_operations WHERE account_id=$1 AND kind='reset_traffic' AND status='applied'`, account).Scan(&n) == nil && n == 1
 	})
@@ -615,8 +677,11 @@ func TestNativeTrialSupportText(t *testing.T) {
 		command.Stdin = bytes.NewReader(raw)
 		out, err := command.Output()
 		var result support.LegacySupportResult
-		if err != nil || json.Unmarshal(out, &result) != nil || result != expected {
-			t.Fatal("compiled support CLI failed", flag)
+		decoded := json.Unmarshal(out, &result) == nil
+		if err != nil || !decoded || result != expected {
+			var failure struct{ Error string }
+			_ = json.Unmarshal(out, &failure)
+			t.Fatalf("compiled support CLI failed %s: exit=%T decoded=%t result=%+v code=%s", flag, err, decoded, result, failure.Error)
 		}
 	}
 	cli("--dry-run", pkg, support.LegacySupportResult{Inserted: 2, Orphans: 1})

@@ -14,8 +14,10 @@ INSERT INTO support_telegram_topics(id,bot_id,group_id,kind,account_id,guest_tg_
 UPDATE support_telegram_topics SET status=$2,thread_id=$3 WHERE id=$1;
 -- name: RetireTelegramTopic :exec
 WITH retired AS(UPDATE support_telegram_topics t SET status='retired' WHERE t.id=$1 RETURNING t.id)
-UPDATE support_telegram_deliveries d SET status='skipped',code='TOPIC_RETIRED',lease=NULL,lease_expires_at=NULL,
-parts=(SELECT jsonb_agg(CASE WHEN p->>'status' IN ('queued','sending') THEN jsonb_set(p,'{status}','"skipped"') ELSE p END ORDER BY n)
+UPDATE support_telegram_deliveries d SET status=CASE WHEN d.kind='message' THEN CASE WHEN d.status='sending' THEN 'unknown' ELSE 'failed' END ELSE 'skipped' END,
+code='TOPIC_RETIRED',lease=NULL,lease_expires_at=NULL,
+parts=(SELECT jsonb_agg(CASE WHEN p->>'status'='sending' THEN jsonb_set(p,'{status}',CASE WHEN d.kind='message' THEN '"unknown"'::jsonb ELSE '"skipped"'::jsonb END)
+ WHEN p->>'status'='queued' AND d.kind<>'message' THEN jsonb_set(p,'{status}','"skipped"') ELSE p END ORDER BY n)
  FROM jsonb_array_elements(d.parts) WITH ORDINALITY AS a(p,n))
 WHERE d.topic_id IN(SELECT r.id FROM retired r) AND d.status IN('queued','sending');
 -- name: AddReplacementTelegramTopic :one

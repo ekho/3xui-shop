@@ -7,6 +7,7 @@ import (
 	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/support"
 	"example.com/cabinet/backend/internal/modules/telegram/internal/botapi"
+	"example.com/cabinet/backend/internal/modules/vpn"
 	"example.com/cabinet/backend/internal/testkit"
 	"github.com/google/uuid"
 	"net/http"
@@ -147,6 +148,54 @@ func supportRuntimeFixture(t *testing.T) (*supportBridge, *testkit.Env, uuid.UUI
 		t.Fatal("support startup", err)
 	}
 	return r.support, e, c.Account.ID
+}
+
+func TestUnavailableSupportRuntime(t *testing.T) {
+	r := NewUnavailableSupport()
+	state := r.State()
+	if !state.Enabled || !state.Degraded || state.Code != "INVALID_CONFIGURATION" || r.api != nil {
+		t.Fatal("invalid configuration was hidden or allowed provider access")
+	}
+	if safeCode(r.Run(context.Background())) != "INVALID_CONFIGURATION" || r.State() != state {
+		t.Fatal("degraded startup state was lost")
+	}
+}
+
+func TestSupportRuntimeDocumentedCommandForms(t *testing.T) {
+	b, e, customer := supportRuntimeFixture(t)
+	vpnOwner := vpn.New(e.Pool, b.authority, nil, func() vpn.Settings { return vpn.Settings{PanelID: "owned-test"} }, e.Clock, nil, vpn.PurchaseHooks{})
+	b.access = subscriptions.New(e.Pool, b.authority, nil, vpnOwner, nil, func() subscriptions.Config { return subscriptions.Config{} }, e.Clock)
+	ctx := context.Background()
+	if _, _, err := b.owner.CreateSupportMessage(ctx, customer, customer, false, uuid.New(), "owned runtime command", "", nil); err != nil {
+		t.Fatal(err)
+	}
+	create, err := b.owner.ClaimTelegramDelivery(ctx)
+	if err != nil || create == nil || b.owner.DeliverTelegram(ctx, *create, b.send) != nil {
+		t.Fatal("owned topic", err)
+	}
+	job, err := b.owner.ClaimTelegramDelivery(ctx)
+	if err != nil || job == nil || b.owner.DeliverTelegram(ctx, *job, func(context.Context, support.TelegramPart) (support.TelegramOutcome, error) {
+		return support.TelegramOutcome{Status: "failed", Code: "FORBIDDEN"}, nil
+	}) != nil {
+		t.Fatal("owned failed delivery", err)
+	}
+	for i, form := range []struct{ text, action, reason string }{
+		{"/reset Owned runtime reason", "reset", "Owned runtime reason"},
+		{"/retry " + job.ID.String(), "retry", "Telegram /retry (generated)"},
+	} {
+		m := &botapi.Message{ID: int64(40 + i), Date: 1, From: &botapi.User{ID: 732}, Chat: botapi.Chat{ID: b.cfg.GroupID, Type: "supergroup"}, ThreadID: 888, Text: form.text}
+		if err := b.handle(ctx, botapi.Update{ID: int64(20 + i), Message: m}); err != nil {
+			t.Fatal("documented command runtime", err)
+		}
+		var raw []byte
+		if e.Pool.QueryRow(ctx, `SELECT result FROM support_telegram_receipts WHERE message_id=$1 AND action='command'`, m.ID).Scan(&raw) != nil {
+			t.Fatal("documented command never reached owner", form.action)
+		}
+		var receipt support.TelegramCommandReceipt
+		if json.Unmarshal(raw, &receipt) != nil || receipt.Input.Action != form.action || receipt.Input.Reason != form.reason || form.action == "retry" && (!receipt.AwaitingConfirmation || !receipt.Input.GeneratedReason) {
+			t.Fatal("command argument/confirmation lost", form.action)
+		}
+	}
 }
 
 func TestSupportRuntimeRouting(t *testing.T) {

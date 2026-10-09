@@ -28,6 +28,12 @@ type supportBridge struct {
 	api       *botapi.Client
 }
 
+// NewUnavailableSupport retains the requested channel's degraded state while
+// preventing polling or delivery with an invalid local configuration.
+func NewUnavailableSupport() *Runtime {
+	return &Runtime{enabled: true, pollCode: "INVALID_CONFIGURATION", startupCode: "INVALID_CONFIGURATION"}
+}
+
 func NewSupport(cfg SupportConfig, client *http.Client, origin string, authority *accounts.Service, owner *support.Service, access *subscriptions.Service) (*Runtime, error) {
 	if err := cfg.validate(); err != nil {
 		return nil, err

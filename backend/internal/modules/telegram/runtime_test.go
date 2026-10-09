@@ -66,6 +66,58 @@ func TestPollingAcknowledgesAfterHandling(t *testing.T) {
 	}
 }
 
+func TestPollingReceivesLowerIDAfterIdle(t *testing.T) {
+	for _, outage := range []bool{false, true} {
+		t.Run(map[bool]string{false: "empty_queue", true: "provider_outage"}[outage], func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			a := &actionRecorder{}
+			old, next := callback(uuid.New(), 101, 7, "a"), callback(uuid.New(), 202, 8, "a")
+			old.ID, next.ID = 900, 27
+			now := time.Date(2026, 10, 9, 1, 0, 0, 0, time.UTC)
+			var offsets []int64
+			h := &http.Client{Transport: testTransport(func(req *http.Request) (*http.Response, error) {
+				if strings.HasSuffix(req.URL.Path, "answerCallbackQuery") {
+					return jsonReply(true), nil
+				}
+				var in struct{ Offset int64 }
+				if json.NewDecoder(req.Body).Decode(&in) != nil {
+					t.Fatal("invalid owned polling input")
+				}
+				offsets = append(offsets, in.Offset)
+				switch len(offsets) {
+				case 1:
+					return jsonReply([]botapi.Update{old}), nil
+				case 2:
+					// The next provider ID is random after a week without updates.
+					now = now.Add(8 * 24 * time.Hour)
+					if outage {
+						return nil, errors.New("owned provider outage")
+					}
+					return jsonReply([]botapi.Update{}), nil
+				case 3:
+					// getUpdates confirms lower IDs before returning the response.
+					if in.Offset > next.ID {
+						return jsonReply([]botapi.Update{}), nil
+					}
+					return jsonReply([]botapi.Update{next}), nil
+				default:
+					cancel()
+					return nil, context.Canceled
+				}
+			})}
+			r := runtimeFixture(t, h, a, &outboxRecorder{})
+			r.now = func() time.Time { return now }
+			if err := r.poll(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if len(offsets) != 4 || offsets[0] != 0 || offsets[1] != 901 || offsets[2] != 0 || offsets[3] != 28 || len(a.decisions) != 2 {
+				t.Fatal("new lower update was acknowledged without handling", offsets, len(a.decisions))
+			}
+		})
+	}
+}
+
 func TestPollingPermanentPromptFailure(t *testing.T) {
 	for _, stage := range []string{"prompt", "confirmation"} {
 		for _, code := range []int{400, 403} {

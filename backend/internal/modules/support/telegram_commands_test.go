@@ -388,8 +388,14 @@ func TestSupportTelegramConfirmation(t *testing.T) {
 			}
 			thread := int64(888)
 			failedDelivery := uuid.Nil
+			queuedMessage := uuid.Nil
 			if known {
 				thread = 999
+				pending, _, createErr := s.CreateSupportMessage(ctx, customer, customer, false, uuid.New(), "queued behind missing topic", "owned.bin", []byte{7, 8})
+				if createErr != nil {
+					t.Fatal(createErr)
+				}
+				queuedMessage = pending.Id
 				message, e := s.ClaimTelegramDelivery(ctx)
 				if e != nil || message == nil {
 					t.Fatal(e)
@@ -470,6 +476,19 @@ func TestSupportTelegramConfirmation(t *testing.T) {
 				if e.Pool.QueryRow(ctx, `SELECT count(*) FROM support_telegram_topics`).Scan(&topics) != nil || topics != 2 {
 					t.Fatal("replacement mapping or replay", topics)
 				}
+				page, pageErr := s.Support(ctx, actor.ID, customer, true)
+				var stranded *TelegramDeliveryStatus
+				for _, m := range page.Messages {
+					if m.Id == queuedMessage {
+						stranded = m.TelegramDelivery
+					}
+				}
+				if pageErr != nil || stranded == nil || stranded.Status != "failed" || stranded.Code != "TOPIC_RETIRED" || !stranded.RetryCapability {
+					t.Fatal("queued message stranded after replacement", pageErr, stranded)
+				}
+				if recovered, created, retryErr := s.RetryTelegramDelivery(op, actor.ID, customer, stranded.Id, uuid.New(), true, "recover queued message"); retryErr != nil || !created || recovered.Status != "queued" {
+					t.Fatal("replacement lost queued message recovery", retryErr)
+				}
 				key := uuid.New()
 				retry, replayed, retryErr := s.RetryTelegramDelivery(op, actor.ID, customer, failedDelivery, key, true, "retry after attested replacement")
 				if retryErr != nil || !replayed || retry.Id == uuid.Nil {
@@ -491,7 +510,7 @@ func TestSupportTelegramConfirmation(t *testing.T) {
 					t.Fatal(err)
 				}
 				calls := 0
-				for i := 0; i < 2; i++ {
+				for i := 0; i < 3; i++ {
 					job, claimErr := s.ClaimTelegramDelivery(ctx)
 					if claimErr != nil || job == nil {
 						t.Fatal("queued replacement ACK/retry", claimErr)

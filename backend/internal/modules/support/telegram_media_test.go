@@ -16,6 +16,142 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+func TestSupportTelegramRetiredRemainderRecovery(t *testing.T) {
+	for _, sending := range []bool{false, true} {
+		t.Run(map[bool]string{false: "deferred_429", true: "sending_marker"}[sending], func(t *testing.T) {
+			s, _, e, customer, operator := supportTelegramFixture(t)
+			ctx := context.Background()
+			m, _, err := s.CreateSupportMessage(ctx, customer, customer, false, uuid.New(), strings.Repeat("я", 4000), "owned.bin", []byte{7, 8})
+			if err != nil {
+				t.Fatal(err)
+			}
+			create, err := s.ClaimTelegramDelivery(ctx)
+			if err != nil || create == nil || s.DeliverTelegram(ctx, *create, func(context.Context, TelegramPart) (TelegramOutcome, error) {
+				return TelegramOutcome{Status: "sent", ThreadID: 888}, nil
+			}) != nil {
+				t.Fatal("topic", err)
+			}
+			job, err := s.ClaimTelegramDelivery(ctx)
+			calls := 0
+			if err != nil || job == nil || s.DeliverTelegram(ctx, *job, func(context.Context, TelegramPart) (TelegramOutcome, error) {
+				calls++
+				if calls == 1 {
+					return TelegramOutcome{Status: "sent", MessageID: 61}, nil
+				}
+				return TelegramOutcome{Status: "retry", Code: "RATE_LIMITED", RetryAfter: time.Hour}, errors.New("owned429")
+			}) != nil || calls != 2 {
+				t.Fatal("partial deferral", err)
+			}
+			if sending {
+				// A stopped process leaves its committed marker, without an ACK.
+				if _, err = e.Pool.Exec(ctx, `UPDATE support_telegram_deliveries SET status='sending',lease=$2,lease_expires_at=clock_timestamp()+interval '60 seconds',parts=jsonb_set(parts,'{1,status}','"sending"') WHERE id=$1`, job.ID, uuid.New()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			q := store.New(e.Pool)
+			row, err := q.TelegramDeliveryByID(ctx, job.ID)
+			if err != nil || row.TopicID == nil || q.RetireTelegramTopic(ctx, *row.TopicID) != nil {
+				t.Fatal("retire fixture", err)
+			}
+			row, err = q.TelegramDeliveryByID(ctx, job.ID)
+			var parts []TelegramPart
+			expected := "failed"
+			if sending {
+				expected = "unknown"
+			}
+			if err != nil || row.Status != expected || row.Code != "TOPIC_RETIRED" || json.Unmarshal(row.Parts, &parts) != nil || parts[0].Status != "sent" || parts[0].ConfirmedMessageID != 61 || sending && parts[1].Status != "unknown" {
+				t.Fatal("retirement lost recoverable remainder or ACK", err, row.Status)
+			}
+			if _, err = q.AddReplacementTelegramTopic(ctx, store.AddReplacementTelegramTopicParams{NewID: uuid.New(), NewThread: 999, OldID: *row.TopicID}); err != nil {
+				t.Fatal(err)
+			}
+			if next, claimErr := s.ClaimTelegramDelivery(ctx); claimErr != nil || next != nil {
+				t.Fatal("retired remainder automatically resent", claimErr)
+			}
+			page, err := s.Support(ctx, operator, customer, true)
+			if err != nil || len(page.Messages) != 1 || page.Messages[0].Id != m.Id || !page.Messages[0].TelegramDelivery.RetryCapability {
+				t.Fatal("recovery capability missing", err)
+			}
+			retry, _, err := s.RetryTelegramDelivery(ctx, operator, customer, job.ID, uuid.New(), true, "explicit replacement recovery")
+			if err != nil {
+				t.Fatal(err)
+			}
+			claim, err := s.ClaimTelegramDelivery(ctx)
+			if err != nil || claim == nil || claim.ID != retry.Id || s.DeliverTelegram(ctx, *claim, func(_ context.Context, p TelegramPart) (TelegramOutcome, error) {
+				calls++
+				if p.ThreadID != 999 || p.Kind != "document" || !bytes.Equal(p.Bytes, []byte{7, 8}) {
+					t.Fatal("old destination or confirmed text reused")
+				}
+				return TelegramOutcome{Status: "sent", MessageID: 62}, nil
+			}) != nil || calls != 3 {
+				t.Fatal("remaining file not recovered", err, calls)
+			}
+		})
+	}
+}
+
+func TestSupportTelegramRetryChain(t *testing.T) {
+	s, _, e, customer, operator := supportTelegramFixture(t)
+	ctx := context.Background()
+	if _, _, err := s.CreateSupportMessage(ctx, customer, customer, false, uuid.New(), strings.Repeat("я", 4000), "owned.bin", []byte{7, 8}); err != nil {
+		t.Fatal(err)
+	}
+	create, err := s.ClaimTelegramDelivery(ctx)
+	if err != nil || create == nil || s.DeliverTelegram(ctx, *create, func(context.Context, TelegramPart) (TelegramOutcome, error) {
+		return TelegramOutcome{Status: "sent", ThreadID: 888}, nil
+	}) != nil {
+		t.Fatal("topic", err)
+	}
+	first, err := s.ClaimTelegramDelivery(ctx)
+	if err != nil || first == nil || s.DeliverTelegram(ctx, *first, func(context.Context, TelegramPart) (TelegramOutcome, error) {
+		return TelegramOutcome{Status: "failed", Code: "FORBIDDEN"}, nil
+	}) != nil {
+		t.Fatal("initial failed delivery", err)
+	}
+	child, _, err := s.RetryTelegramDelivery(ctx, operator, customer, first.ID, uuid.New(), true, "first explicit retry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := s.ClaimTelegramDelivery(ctx)
+	calls := 0
+	if err != nil || claimed == nil || claimed.ID != child.Id || s.DeliverTelegram(ctx, *claimed, func(_ context.Context, p TelegramPart) (TelegramOutcome, error) {
+		calls++
+		if calls == 1 {
+			return TelegramOutcome{Status: "sent", MessageID: 61}, nil
+		}
+		return TelegramOutcome{Status: "unknown"}, errors.New("owned second ACK loss")
+	}) != nil || calls != 2 {
+		t.Fatal("partial child delivery", err, calls)
+	}
+	if _, _, err = s.RetryTelegramDelivery(ctx, operator, customer, first.ID, uuid.New(), true, "stale partial ancestor"); err == nil || err.Error() != "REQUEST_STATE_CONFLICT" {
+		t.Fatal("stale ancestor ignored confirmed child parts", err)
+	}
+	last, _, err := s.RetryTelegramDelivery(ctx, operator, customer, child.Id, uuid.New(), true, "latest explicit retry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	claimed, err = s.ClaimTelegramDelivery(ctx)
+	if err != nil || claimed == nil || claimed.ID != last.Id || s.DeliverTelegram(ctx, *claimed, func(_ context.Context, p TelegramPart) (TelegramOutcome, error) {
+		calls++
+		if p.Kind != "document" || !bytes.Equal(p.Bytes, []byte{7, 8}) {
+			t.Fatal("confirmed child text duplicated")
+		}
+		return TelegramOutcome{Status: "sent", MessageID: 62}, nil
+	}) != nil || calls != 3 {
+		t.Fatal("latest remaining part", err, calls)
+	}
+	row, err := store.New(e.Pool).TelegramDeliveryByID(ctx, last.Id)
+	var parts []TelegramPart
+	if err != nil || json.Unmarshal(row.Parts, &parts) != nil || len(parts) != 2 || parts[0].ConfirmedMessageID != 61 || parts[1].ConfirmedMessageID != 62 {
+		t.Fatal("chain ACKs not retained", err)
+	}
+	for _, ancestor := range []uuid.UUID{first.ID, child.Id} {
+		if _, _, err = s.RetryTelegramDelivery(ctx, operator, customer, ancestor, uuid.New(), true, "stale after success"); err == nil || err.Error() != "REQUEST_STATE_CONFLICT" {
+			t.Fatal("successful chain was repeated", err)
+		}
+	}
+}
+
 func TestSupportTelegramMediaParts(t *testing.T) {
 	t.Run("caption", func(t *testing.T) {
 		for _, text := range []string{"", strings.Repeat("я", 1024), strings.Repeat("я", 4000)} {
@@ -159,6 +295,9 @@ func TestSupportTelegramMediaParts(t *testing.T) {
 		var messages, audits int
 		if e.Pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM support_messages),(SELECT count(*) FROM audit_events WHERE action='support_message')`).Scan(&messages, &audits) != nil || messages != 1 || audits != 1 {
 			t.Fatal("retry duplicated domain message")
+		}
+		if _, _, err = s.RetryTelegramDelivery(ctx, operator, customer, job.ID, uuid.New(), true, "stale successful retry"); err == nil || err.Error() != "REQUEST_STATE_CONFLICT" {
+			t.Fatal("successful descendant allowed stale retry", err)
 		}
 	})
 	t.Run("429-bound", func(t *testing.T) {

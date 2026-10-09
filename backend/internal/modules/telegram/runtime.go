@@ -25,6 +25,8 @@ type Runtime struct {
 	outbox                             Outbox
 	clients                            *Client
 	support                            *supportBridge
+	now                                func() time.Time
+	startupCode                        string
 	mu                                 sync.RWMutex
 	pollCode, deliveryCode, clientCode string
 }
@@ -72,7 +74,7 @@ func safeCode(err error) string {
 	var action *ActionError
 	if errors.As(err, &action) {
 		switch action.Code {
-		case "REQUEST_STATE_CONFLICT", "UNSUPPORTED_PAYMENT", "WEBHOOK_CONFIGURED", "MINI_APP_NOT_CONFIGURED", "INVALID_INPUT", "SUPPORT_BOT_MISMATCH", "SUPPORT_GROUP_NOT_FORUM", "SUPPORT_ADMIN_REQUIRED":
+		case "REQUEST_STATE_CONFLICT", "UNSUPPORTED_PAYMENT", "WEBHOOK_CONFIGURED", "MINI_APP_NOT_CONFIGURED", "INVALID_INPUT", "SUPPORT_BOT_MISMATCH", "SUPPORT_GROUP_NOT_FORUM", "SUPPORT_ADMIN_REQUIRED", "INVALID_CONFIGURATION":
 			return action.Code
 		}
 	}
@@ -131,6 +133,9 @@ func (r *Runtime) Run(parent context.Context) error {
 	if !r.enabled {
 		return nil
 	}
+	if r.startupCode != "" {
+		return &ActionError{Code: r.startupCode}
+	}
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	delay := time.Second
@@ -186,19 +191,35 @@ func (r *Runtime) Run(parent context.Context) error {
 }
 func (r *Runtime) poll(ctx context.Context) error {
 	offset := int64(0)
+	now := r.now
+	if now == nil {
+		now = time.Now
+	}
+	lastHandled := now()
 	delay := time.Second
 	for ctx.Err() == nil {
+		// Telegram may choose a lower ID after a week. An old cursor must
+		// never acknowledge a new update before we have received it.
+		if offset > 0 && now().Sub(lastHandled) >= 24*time.Hour {
+			offset = 0
+		}
 		updates, err := r.api.GetUpdates(ctx, offset)
 		if ctx.Err() != nil {
 			return nil
 		}
 		if err == nil {
+			if len(updates) == 0 {
+				// The completed updates were acknowledged by this request.
+				// Zero now asks for the earliest unconfirmed update.
+				offset = 0
+			}
 			for _, u := range updates {
 				err = r.handle(ctx, u)
 				if err != nil {
 					break
 				}
 				offset = u.ID + 1 // The next request acknowledges only completed/refused handling.
+				lastHandled = now()
 			}
 		}
 		if err == nil {

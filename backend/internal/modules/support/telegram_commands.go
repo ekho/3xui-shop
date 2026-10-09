@@ -920,6 +920,15 @@ func (s *Service) RetryTelegramDelivery(ctx context.Context, actor, target, deli
 	if row.Status != "failed" && row.Status != "unknown" {
 		return out, false, failure(409, "REQUEST_STATE_CONFLICT")
 	}
+	// The conversation lock serializes new attempts. Only its latest intent
+	// contains every confirmed part from the entire retry chain.
+	latest, err := q.LatestMessageTelegramDelivery(ctx, row.MessageID)
+	if err != nil {
+		return out, false, unavailable()
+	}
+	if latest.ID != row.ID {
+		return out, false, failure(409, "REQUEST_STATE_CONFLICT")
+	}
 	active, err := q.ActiveMessageTelegramDelivery(ctx, row.MessageID)
 	if err != nil {
 		return out, false, unavailable()
