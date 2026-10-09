@@ -15,16 +15,16 @@ func TestMaintenanceDefaultAndSharedAdmission(t *testing.T) {
 	if err != nil || status.Enabled || status.Revision != 0 || status.ChangedAt != nil {
 		t.Fatalf("default state: %+v, %v", status, err)
 	}
-	if err := second.AllowNew(ctx); err != nil {
+	if err := second.AllowNew(ctx, nil); err != nil {
 		t.Fatalf("default admission: %v", err)
 	}
 	if _, err := env.Pool.Exec(ctx, `UPDATE maintenance_state SET enabled=true,revision=1,changed_at=now() WHERE singleton=true`); err != nil {
 		t.Fatal(err)
 	}
-	if err := first.AllowNew(ctx); err == nil || err.Error() != "MAINTENANCE" {
+	if err := first.AllowNew(ctx, nil); err == nil || err.Error() != "MAINTENANCE" {
 		t.Fatalf("first instance admitted new work: %v", err)
 	}
-	if err := second.AllowNew(ctx); err == nil || err.Error() != "MAINTENANCE" {
+	if err := second.AllowNew(ctx, nil); err == nil || err.Error() != "MAINTENANCE" {
 		t.Fatalf("second instance admitted new work: %v", err)
 	}
 }

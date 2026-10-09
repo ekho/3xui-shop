@@ -15,7 +15,7 @@ import (
 )
 
 type Config struct {
-	Admission                                     func(context.Context) error
+	Admission                                     func(context.Context, pgx.Tx) error
 	Operators                                     []int64
 	PanelID, SubscriptionBaseURL                  string
 	TrialEnabled                                  bool
@@ -23,9 +23,9 @@ type Config struct {
 	RequireStarsCancellation                      func(context.Context, pgx.Tx, uuid.UUID, string) error
 }
 
-func (s *Service) allowNew(ctx context.Context) error {
+func (s *Service) allowNew(ctx context.Context, tx pgx.Tx) error {
 	if check := s.config().Admission; check != nil {
-		if err := check(ctx); err != nil {
+		if err := check(ctx, tx); err != nil {
 			if err.Error() == "MAINTENANCE" {
 				return failure(503, "MAINTENANCE")
 			}

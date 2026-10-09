@@ -282,7 +282,7 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return empty, unavailable()
 	}
-	if err = s.allowNew(ctx); err != nil {
+	if err = s.allowNew(ctx, preTx); err != nil {
 		return empty, err
 	}
 	if !s.methodEnabled(in.PaymentMethod) {
@@ -369,7 +369,7 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return empty, unavailable()
 	}
-	if err = s.allowNew(ctx); err != nil {
+	if err = s.allowNew(ctx, tx); err != nil {
 		return empty, err
 	}
 	if !s.methodEnabled(in.PaymentMethod) {

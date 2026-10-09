@@ -62,16 +62,24 @@ func publicStatus(row store.MaintenanceStatusRow) Status {
 }
 
 func (m *Maintenance) Status(ctx context.Context) (Status, error) {
-	row, err := store.New(m.pool).MaintenanceStatus(ctx)
+	return m.status(ctx, nil)
+}
+
+func (m *Maintenance) status(ctx context.Context, tx pgx.Tx) (Status, error) {
+	var db store.DBTX = m.pool
+	if tx != nil {
+		db = tx
+	}
+	row, err := store.New(db).MaintenanceStatus(ctx)
 	if err != nil {
 		return Status{}, unavailable()
 	}
 	return publicStatus(row), nil
 }
 
-// AllowNew reads shared state for each new admission; existing work and money callbacks never call it.
-func (m *Maintenance) AllowNew(ctx context.Context) error {
-	status, err := m.Status(ctx)
+// AllowNew reads shared state on the caller's connection; existing work and money callbacks never call it.
+func (m *Maintenance) AllowNew(ctx context.Context, tx pgx.Tx) error {
+	status, err := m.status(ctx, tx)
 	if err != nil {
 		return err
 	}

@@ -3,11 +3,84 @@ package httpapi
 import (
 	"context"
 	"testing"
+	"time"
 
+	"example.com/cabinet/backend/internal/app"
 	"example.com/cabinet/backend/internal/modules/payments"
+	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+func TestMaintenanceTrialAdmissionSingleConnection(t *testing.T) {
+	h, env, cfg := httpFixture(t)
+	client := supportLogin(t, h, env, cfg, "maintenance-one-connection@example.test")
+	poolConfig := env.Pool.Config().Copy()
+	poolConfig.MaxConns = 1
+	one, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(one.Close)
+	owner := app.NewModules(one, env.Redis, nil, &cfg).Subscriptions
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	trial, created, err := owner.CreateTrialRequest(ctx, client.id, uuid.New(), subscriptions.TrialRequestInput{})
+	if err != nil || !created || trial.RequestId == uuid.Nil {
+		t.Fatalf("single-connection default-off trial: %+v created=%t err=%v", trial, created, err)
+	}
+}
+
+func TestMaintenancePurchaseAdmissionSingleConnection(t *testing.T) {
+	s, env, account, plan := purchaseFixture(t)
+	if _, err := env.Pool.Exec(context.Background(), `UPDATE maintenance_state SET enabled=true,revision=1,changed_at=now() WHERE singleton=true`); err != nil {
+		t.Fatal(err)
+	}
+	poolConfig := env.Pool.Config().Copy()
+	poolConfig.MaxConns = 1
+	one, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(one.Close)
+	owner := app.NewModules(one, env.Redis, s.queue, s.cfg).Payments
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_, err = owner.CreatePurchaseOrder(ctx, account, uuid.New(), payments.PurchaseOrderInput{Action: "purchase", PlanId: plan, Revision: 1, PeriodDays: 30, PaymentMethod: "yoomoney", PaymentType: "AC"})
+	if err == nil || err.Error() != "MAINTENANCE" {
+		t.Fatalf("single-connection purchase admission: %v", err)
+	}
+}
+
+func TestMaintenanceStarsResumeSingleConnection(t *testing.T) {
+	_, s, env, auth, _, _ := starsSubscriptionFixture(t)
+	ctx := context.Background()
+	gateway := payments.StarsGateway{BotID: 123, Invoice: func(context.Context, payments.StarsInvoice) (string, error) {
+		return "https://t.me/$maintenance_invoice", nil
+	}, Refund: func(context.Context, int64, string) error { return nil }, EditSubscription: func(context.Context, int64, string, bool) error { return nil }}
+	s.payments.ConfigureStars(gateway)
+	if _, err := s.payments.ControlStarsSubscription(ctx, auth.Account.AccountId, uuid.New(), payments.StarsSubscriptionControlInput{Action: "cancel", Confirmed: true}); err != nil {
+		t.Fatalf("cancel fixture: %v", err)
+	}
+	if _, err := env.Pool.Exec(ctx, `UPDATE maintenance_state SET enabled=true,revision=1,changed_at=now() WHERE singleton=true`); err != nil {
+		t.Fatal(err)
+	}
+	poolConfig := env.Pool.Config().Copy()
+	poolConfig.MaxConns = 1
+	one, err := pgxpool.NewWithConfig(ctx, poolConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(one.Close)
+	owner := app.NewModules(one, env.Redis, s.queue, s.cfg).Payments
+	owner.ConfigureStars(gateway)
+	bounded, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if _, err = owner.ControlStarsSubscription(bounded, auth.Account.AccountId, uuid.New(), payments.StarsSubscriptionControlInput{Action: "resume", Confirmed: true}); err == nil || err.Error() != "MAINTENANCE" {
+		t.Fatalf("single-connection resume admission: %v", err)
+	}
+}
 
 func TestMaintenancePurchaseDirectReplayAndNewAdmission(t *testing.T) {
 	s, env, account, plan := purchaseFixture(t)
