@@ -25,7 +25,7 @@ for(const lang of ['en','ru'] as const)test('operator toggle, unknown reply repl
  await page.goto('/admin/maintenance?lang='+lang);await expect(page.getByRole('heading',{name:labels.heading,exact:true})).toBeVisible();
  const reason=page.getByRole('textbox',{name:labels.reason});await reason.fill('Planned update');const check=page.getByRole('checkbox',{name:labels.confirm});await check.check();
  const button=page.getByRole('button',{name:labels.on});await button.focus();await page.keyboard.press('Enter');await expect.poll(()=>attempts.length).toBe(1);await expect(page.getByRole('alert')).toBeVisible();await expect(reason).toBeDisabled();await expect(check).toBeDisabled();
- await button.click();await expect.poll(()=>attempts.length).toBe(2);await expect(page.getByRole('status').filter({hasText:labels.saved})).toBeVisible();expect(state.enabled).toBe(true);
+ await button.click();await expect.poll(()=>attempts.length).toBe(2);await expect(page.getByRole('status').filter({hasText:labels.saved})).toBeVisible();await expect(page.getByText(lang==='en'?'Maintenance is on':'Обслуживание включено',{exact:true})).toBeFocused();expect(state.enabled).toBe(true);
  expect(attempts[0].key).toMatch(/^[0-9a-f-]{36}$/);expect(attempts[0]).toEqual(attempts[1]);expect(attempts[0].csrf).toBe('s'.repeat(43));expect(attempts[0].body).toEqual({enabled:true,expected_revision:0,reason:'Planned update',confirmed:true});
  await reason.fill('Back online');await check.check();await page.getByRole('button',{name:labels.off}).click();await expect.poll(()=>attempts.length).toBe(3);expect(attempts[2].key).not.toBe(attempts[0].key);expect(attempts[2].body.expected_revision).toBe(1);expect(state.enabled).toBe(false);
 });
@@ -35,7 +35,7 @@ test('operator conflict refetches current state and revoked role removes resourc
   if(deny)return route.fulfill(failure('ACCOUNT_RESTRICTED',403)).then(()=>true);
   current.enabled=true;current.revision=1;return route.fulfill(failure('MAINTENANCE_CONFLICT',409)).then(()=>true);
  });
- await page.goto('/admin/maintenance?lang=en');await page.getByRole('textbox',{name:'Reason for change'}).fill('Concurrent update');await page.getByRole('checkbox',{name:'I confirm this maintenance change'}).check();await page.getByRole('button',{name:'Turn maintenance on'}).click();await expect(page.getByRole('alert')).toContainText('Maintenance changed');await expect(page.getByText('Maintenance is on',{exact:true})).toBeVisible();expect(posts).toBe(1);expect(state.revision).toBe(1);
+ await page.goto('/admin/maintenance?lang=en');await page.getByRole('textbox',{name:'Reason for change'}).fill('Concurrent update');await page.getByRole('checkbox',{name:'I confirm this maintenance change'}).check();await page.getByRole('button',{name:'Turn maintenance on'}).click();await expect(page.getByRole('alert')).toContainText('Maintenance changed');await expect(page.getByText('Maintenance is on',{exact:true})).toBeFocused();expect(posts).toBe(1);expect(state.revision).toBe(1);
  deny=true;await page.getByRole('textbox',{name:'Reason for change'}).fill('Return online');await page.getByRole('checkbox',{name:'I confirm this maintenance change'}).check();await page.getByRole('button',{name:'Turn maintenance off'}).click();await expect(page.getByRole('heading',{name:'Operator access required'})).toBeVisible();
 });
 async function clientFixture(page:Page,status:Model<'MaintenanceStatus'>|null,mini=false){

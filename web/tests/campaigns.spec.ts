@@ -30,7 +30,7 @@ test('campaign card escapes names and shows exact native money, archive uncertai
  await expect(card.getByText('A legacy name does not prove the original invitation link.')).toBeVisible();
  await expect(card.getByText('Only the latest 20 changes are shown.')).toBeVisible();
  await card.getByRole('button',{name:'Copy registration link'}).click();
- expect(await page.evaluate(()=>(window as unknown as {copied:string}).copied)).toBe('http://127.0.0.1:4173/register?invite=c_owned&lang=en');
+ expect(await page.evaluate(()=>(window as unknown as {copied:string}).copied)).toBe('http://127.0.0.1:'+(process.env.E2E_PORT||'4173')+'/register?invite=c_owned&lang=en');
  expect(await page.locator('script').evaluateAll(nodes=>nodes.some(node=>node.textContent?.includes('<Campaign>')))).toBe(false);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.getByRole('button',{name:'RU',exact:true}).click();await expect(page.getByRole('heading',{name:'Кампании',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Приостановить кампанию'})).toBeVisible();
