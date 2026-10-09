@@ -96,11 +96,7 @@ jobs:
           python deploy/acceptance/local.py check
       - name: Verify BuildKit mirror requests
         shell: bash
-        run: |
-          docker exec "buildx_buildkit_${BUILDX_BUILDER}0" cat /etc/buildkit/buildkitd.toml \
-            | python3 -c 'import sys,tomllib; config=tomllib.loads(sys.stdin.read()); assert "mirror.gcr.io" in config["registry"]["docker.io"]["mirrors"]; print("BuildKit container mirror config verified")'
-          docker logs "buildx_buildkit_${BUILDX_BUILDER}0" 2>&1 \
-            | grep -oE 'https://mirror\.gcr\.io/v2/[^"?[:space:]]+' | sort -u
+        run: python3 .github/scripts/verify_buildkit_cache.py
       - name: Diagnose daemon fallback without raw logs
         if: always()
         run: |
