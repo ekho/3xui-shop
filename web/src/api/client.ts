@@ -183,6 +183,9 @@ export const archiveCataloguePlan=(id:string,input:components['schemas']['Catalo
 
 export type Campaign=components['schemas']['Campaign'];
 export type StatisticsReport=components['schemas']['StatisticsReport'];
+export type AuditHistoryInput=components['schemas']['AuditHistoryInput'];
+export type AuditHistory=components['schemas']['AuditHistory'];
+export const getOperatorAuditHistory=(input:AuditHistoryInput,signal?:AbortSignal)=>request<AuditHistory>('operator/audit/history','POST',input,signal,true);
 export const getOperatorStatistics=(campaignId?:string,signal?:AbortSignal)=>request<StatisticsReport>('operator/reports/statistics','POST',{campaign_id:campaignId??null},signal,true);
 export type CampaignListResult=components['schemas']['CampaignListResult'];
 export type CampaignDetail=components['schemas']['CampaignDetail'];
