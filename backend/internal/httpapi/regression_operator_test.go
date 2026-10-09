@@ -225,7 +225,7 @@ func TestRegressionOperatorSearchHistoryAndKeyDenial(t *testing.T) {
 		t.Fatal("client searched operator list", err)
 	}
 	card, err := s.operatorClient(ctx, operator, customer)
-	if err != nil || card.Client.AccountId != customer || card.Client.Email == nil || card.Server == nil || card.Support != nil {
+	if err != nil || card.Client.AccountId != customer || card.Client.Email == nil || card.Server != nil || card.Support != nil {
 		t.Fatal("card", err)
 	}
 	if _, _, err = s.createTrialRequest(ctx, customer, uuid.New(), wire.TrialRequestInput{}); err != nil {

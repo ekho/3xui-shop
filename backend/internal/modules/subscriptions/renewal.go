@@ -43,7 +43,10 @@ func (s *Service) CurrentPlanSourceTx(ctx context.Context, tx pgx.Tx, account uu
 	if a.Restricted {
 		return empty, failure(403, "ACCOUNT_RESTRICTED")
 	}
-	if a.VpnBanned || !a.HadSubscription || a.AssignedPanelID == nil || *a.AssignedPanelID != s.config().PanelID || s.config().PanelID == "" || (stringValue(a.AccessProfile) != "regular" && stringValue(a.AccessProfile) != "euru") {
+	if a.VpnBanned || !a.HadSubscription || a.AssignedPanelID == nil || (stringValue(a.AccessProfile) != "regular" && stringValue(a.AccessProfile) != "euru") {
+		return empty, failure(409, "RENEWAL_NOT_ELIGIBLE")
+	}
+	if _, err := s.vpn.ServerTx(ctx, tx, *a.AssignedPanelID); err != nil {
 		return empty, failure(409, "RENEWAL_NOT_ELIGIBLE")
 	}
 	source, err := s.vpn.CurrentPlanSourceTx(ctx, tx, account)

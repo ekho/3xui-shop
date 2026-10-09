@@ -611,18 +611,24 @@ func TestRenewalActionMigration(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if _, err = provider.ApplyVersion(ctx, 21, false); err != nil {
+				t.Fatal(err)
+			}
 			if mode == "purchase default" {
 				var before, after string
 				if err = e.Pool.QueryRow(ctx, "SELECT (to_jsonb(p)-'action')::text FROM purchase_orders p WHERE account_id=$1", account).Scan(&before); err != nil {
 					t.Fatal(err)
 				}
-				if _, err = provider.DownTo(ctx, 19); err != nil {
+				if _, err = provider.ApplyVersion(ctx, 20, false); err != nil {
 					t.Fatal(err)
 				}
 				if err = e.Pool.QueryRow(ctx, "SELECT to_jsonb(p)::text FROM purchase_orders p WHERE account_id=$1", account).Scan(&after); err != nil || after != before {
 					t.Fatal("downgrade changed original money/proof", err)
 				}
-				if _, err = provider.Up(ctx); err != nil {
+				if _, err = provider.ApplyVersion(ctx, 20, true); err != nil {
+					t.Fatal(err)
+				}
+				if _, err = provider.ApplyVersion(ctx, 21, true); err != nil {
 					t.Fatal(err)
 				}
 				var action string
@@ -644,14 +650,14 @@ func TestRenewalActionMigration(t *testing.T) {
 			if err = e.Pool.QueryRow(ctx, "SELECT to_jsonb(p)::text FROM purchase_orders p WHERE id=$1", order.OrderId).Scan(&before); err != nil {
 				t.Fatal(err)
 			}
-			if _, err = provider.DownTo(ctx, 19); err == nil || !strings.Contains(err.Error(), "renewal history requires compatible application") {
+			if _, err = provider.ApplyVersion(ctx, 20, false); err == nil || !strings.Contains(err.Error(), "renewal history requires compatible application") {
 				t.Fatal("down erased retained renewal", err)
 			}
 			if err = e.Pool.QueryRow(ctx, "SELECT to_jsonb(p)::text FROM purchase_orders p WHERE id=$1", order.OrderId).Scan(&after); err != nil || after != before {
 				t.Fatal("failed down changed stored order", err)
 			}
-			// Earlier Down steps commit separately; restore the current schema before current application reads.
-			if _, err = provider.Up(ctx); err != nil {
+			// Restore the separately reverted plan-change constraint.
+			if _, err = provider.ApplyVersion(ctx, 21, true); err != nil {
 				t.Fatal(err)
 			}
 			current, err := s.purchaseOrder(ctx, account, order.OrderId)

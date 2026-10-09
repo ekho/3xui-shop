@@ -3,6 +3,7 @@ package vpn
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/notifications"
 	"github.com/google/uuid"
@@ -72,8 +73,16 @@ func (s *Service) ReminderPeriodTx(ctx context.Context, tx pgx.Tx, id uuid.UUID)
 	if err != nil {
 		return notifications.ReminderAccess{}, err
 	}
+	if a.AssignedPanelID == nil {
+		return notifications.ReminderAccess{}, nil
+	}
+	if _, err = s.ServerTx(ctx, tx, *a.AssignedPanelID); errors.Is(err, ErrPanel) {
+		return notifications.ReminderAccess{}, nil
+	} else if err != nil {
+		return notifications.ReminderAccess{}, err
+	}
 	r := rs[id]
-	return reminderPeriod(a, bs[id], s.config().PanelID, r.id, r.raw), nil
+	return reminderPeriod(a, bs[id], *a.AssignedPanelID, r.id, r.raw), nil
 }
 func (s *Service) ReminderAccessTx(ctx context.Context, tx pgx.Tx, ids []uuid.UUID) (map[uuid.UUID]notifications.ReminderAccess, error) {
 	if tx == nil {
@@ -95,22 +104,37 @@ func (s *Service) ReminderAccessTx(ctx context.Context, tx pgx.Tx, ids []uuid.UU
 	if err != nil {
 		return nil, err
 	}
-	cfg := s.config()
-	p := NewPanelClient(cfg.Panel)
-	defer p.Close()
-	snapshot, err := p.statisticsSnapshot(ctx)
+	servers, err := s.ServersTx(ctx, tx)
 	if err != nil {
+		return nil, err
+	}
+	assigned := map[string]bool{}
+	for _, a := range as {
+		if a.AssignedPanelID != nil {
+			assigned[*a.AssignedPanelID] = true
+		}
+	}
+	selected := make([]Server, 0, len(servers))
+	for _, server := range servers {
+		if assigned[server.ID] {
+			selected = append(selected, server)
+		}
+	}
+	snapshots, _ := s.statisticsSnapshots(ctx, selected)
+	if len(selected) > 0 && len(snapshots) == 0 {
 		return nil, unavailable()
 	}
 	observed := s.now().UTC()
 	for _, a := range as {
-		_, known := statisticsAccountActivity(a, bs[a.ID], snapshot, cfg.PanelID, observed)
+		panelID := stringValue(a.AssignedPanelID)
+		snapshot := snapshots[panelID]
+		_, known := statisticsAccountActivity(a, bs[a.ID], snapshot, panelID, observed)
 		v, exists := snapshot.clients[a.PanelKey]
 		if !known || !exists || v.UsedTraffic == nil {
 			continue
 		}
 		r := rs[a.ID]
-		facts := reminderPeriod(a, bs[a.ID], cfg.PanelID, r.id, r.raw)
+		facts := reminderPeriod(a, bs[a.ID], panelID, r.id, r.raw)
 		if facts.Known {
 			facts.UsedBytes = *v.UsedTraffic
 			facts.ObservedAt = observed

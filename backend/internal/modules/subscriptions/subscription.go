@@ -320,7 +320,11 @@ func (s *Service) SubscriptionKey(ctx context.Context, account uuid.UUID) (Subsc
 	if view.Status != "active" && view.Status != "expired" {
 		return out, failure(409, "OPERATION_NOT_READY")
 	}
-	base, e := url.Parse(s.config().SubscriptionBaseURL)
+	baseURL, e := s.vpn.SubscriptionBase(ctx, op.PanelID)
+	if e != nil {
+		return out, unavailable()
+	}
+	base, e := url.Parse(baseURL)
 	if e != nil || base.Scheme != "https" || base.Host == "" || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
 		return out, unavailable()
 	}

@@ -215,6 +215,15 @@ func (s *Service) QueueAccessTx(ctx context.Context, tx pgx.Tx, in AccessWrite) 
 		if e := s.queries(tx).InsertAccessOperation(ctx, store.InsertAccessOperationParams{ID: in.ID, AccountID: in.AccountID, OperatorAccountID: in.OperatorAccountID, PurchaseOrderID: in.PurchaseOrderID, Kind: in.Kind, Reason: in.Reason, PlanID: in.PlanID, PlanRevision: nullableInt(in.Revision), PeriodDays: nullableInt(in.PeriodDays), Desired: in.Desired, Target: in.Target, CreatedAt: stamp(in.CreatedAt)}); e != nil {
 			return AccessState{}, accessConflict(e)
 		}
+		var target AccessTarget
+		if json.Unmarshal(in.Target, &target) != nil {
+			return AccessState{}, ErrIdentity
+		}
+		if target.Missing && !target.NoClientIntent {
+			if err := s.ReserveInitialAccessTx(ctx, tx, in.AccountID, in.ID, target.PanelID); err != nil {
+				return AccessState{}, err
+			}
+		}
 		if _, e := s.queue().InsertTx(ctx, tx, AccessArgs{OperationID: in.ID}, &river.InsertOpts{Queue: "provision", MaxAttempts: 5}); e != nil {
 			return AccessState{}, unavailable()
 		}

@@ -2,6 +2,7 @@ package vpn
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 var ErrBusy = errors.New("account access busy")
 
 type AccessOwner struct {
+	service *Service
 	conn    *pgxpool.Conn
 	account uuid.UUID
 	locked  bool
@@ -23,9 +25,17 @@ func (s *Service) OpenAccessOwner(ctx context.Context, account uuid.UUID) (*Acce
 	if e != nil {
 		return nil, e
 	}
-	return &AccessOwner{conn: c, account: account}, nil
+	return &AccessOwner{service: s, conn: c, account: account}, nil
 }
 func (o *AccessOwner) Begin(ctx context.Context) (pgx.Tx, error) { return o.conn.Begin(ctx) }
+
+// Reuse the owned session; a one-connection pool cannot lend a second one.
+func (o *AccessOwner) PanelFor(ctx context.Context, id string) (*PanelClient, error) {
+	return o.service.panelFor(ctx, id, o.conn)
+}
+func (o *AccessOwner) AvailableServer(ctx context.Context) (Server, error) {
+	return o.service.availableServer(ctx, o.conn)
+}
 func (o *AccessOwner) TryLock(ctx context.Context) error {
 	if o.locked {
 		return nil
@@ -55,12 +65,21 @@ func (s *Service) RetirePurchaseAccessTx(ctx context.Context, tx pgx.Tx, owner *
 		return ErrIdentity
 	}
 	var status string
-	if err := tx.QueryRow(ctx, `SELECT status FROM access_operations WHERE id=$1 AND account_id=$2 AND kind='purchase' AND purchase_order_id=$3 FOR UPDATE`, operation, account, order).Scan(&status); err != nil {
+	var write, reset bool
+	var raw []byte
+	if err := tx.QueryRow(ctx, `SELECT status,write_started,reset_started,target FROM access_operations WHERE id=$1 AND account_id=$2 AND kind='purchase' AND purchase_order_id=$3 FOR UPDATE`, operation, account, order).Scan(&status, &write, &reset, &raw); err != nil {
 		return err
 	}
 	if status == "applied" || status == "skipped" {
 		return nil
 	}
 	_, err := tx.Exec(ctx, `UPDATE access_operations SET status='skipped',lease_hash=NULL,lease_expires_at=NULL,review_reason='funding_refunded',updated_at=$2 WHERE id=$1`, operation, s.now())
+	if err == nil && !write && !reset {
+		var target AccessTarget
+		if json.Unmarshal(raw, &target) != nil || target.OperationID != operation {
+			return ErrIdentity
+		}
+		err = s.ReleaseServerReservationTx(ctx, tx, account, target.PanelID)
+	}
 	return err
 }

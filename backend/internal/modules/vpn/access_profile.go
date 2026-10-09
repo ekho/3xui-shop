@@ -15,7 +15,7 @@ import (
 func (s *Service) ConfirmedAccessProfile(ctx context.Context, baseline AccessBaseline, a accounts.Snapshot, v *PanelClientView, p *PanelClient, strict bool) (string, error) {
 	if baseline.AccessID != nil {
 		var target AccessTarget
-		if json.Unmarshal(baseline.AccessTarget, &target) != nil || target.PanelKey != a.PanelKey || target.VPNID != a.VpnID || target.SubID != a.SubID {
+		if json.Unmarshal(baseline.AccessTarget, &target) != nil || !target.NoClientIntent && (a.AssignedPanelID == nil || target.PanelID != *a.AssignedPanelID) || target.PanelKey != a.PanelKey || target.VPNID != a.VpnID || target.SubID != a.SubID {
 			return "", ErrIdentity
 		}
 		if !target.NoClientIntent {
@@ -35,7 +35,7 @@ func (s *Service) ConfirmedAccessProfile(ctx context.Context, baseline AccessBas
 	}
 	if baseline.TrialID != nil && baseline.TrialStatus == "applied" {
 		var target ProvisionTarget
-		if json.Unmarshal(baseline.TrialTarget, &target) != nil {
+		if json.Unmarshal(baseline.TrialTarget, &target) != nil || a.AssignedPanelID == nil || target.PanelID != *a.AssignedPanelID || target.PanelKey != a.PanelKey || target.VPNID != a.VpnID || target.SubID != a.SubID {
 			return "", ErrIdentity
 		}
 		limit := target.DeviceCount

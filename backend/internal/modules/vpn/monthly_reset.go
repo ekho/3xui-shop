@@ -220,14 +220,17 @@ func (s *Service) ApplyMonthlyReset(ctx context.Context, account uuid.UUID, peri
 	if a.AccessProfile == nil || *a.AccessProfile != "unlimited" || a.VpnBanned {
 		return finishClaim("skipped", "monthly_reset_skipped")
 	}
-	if a.AssignedPanelID == nil || *a.AssignedPanelID != s.config().PanelID {
+	if a.AssignedPanelID == nil {
 		return deferClaim()
 	}
 	savedZone := timezone
 	if tx.Commit(ctx) != nil {
 		return unavailable()
 	}
-	p := s.PanelClient()
+	p, err := owner.PanelFor(ctx, *a.AssignedPanelID)
+	if err != nil {
+		return river.JobSnooze(30 * time.Second)
+	}
 	defer p.Close()
 	v, readErr := p.GetClient(ctx, a.PanelKey)
 	valid := readErr == nil && v != nil && v.VPNID == a.VpnID && v.SubID == a.SubID
@@ -280,7 +283,7 @@ func (s *Service) ApplyMonthlyReset(ctx context.Context, account uuid.UUID, peri
 		return deferClaim()
 	}
 	id := uuid.New()
-	target := AccessTarget{OperationID: id, PanelID: s.config().PanelID, PanelKey: a.PanelKey, VPNID: a.VpnID, SubID: a.SubID, ExpiryTimeMS: 0, DeviceCount: max(0, v.LimitIP-1), TrafficLimitBytes: v.TrafficLimitBytes, Profile: "unlimited", InboundIDs: ids, Reset: true, PreviousExpiryMS: v.ExpiryTimeMS, PreviousLimitIP: v.LimitIP, PreviousTrafficLimitBytes: v.TrafficLimitBytes, PreviousInboundIDs: v.InboundIDs}
+	target := AccessTarget{OperationID: id, PanelID: *a.AssignedPanelID, PanelKey: a.PanelKey, VPNID: a.VpnID, SubID: a.SubID, ExpiryTimeMS: 0, DeviceCount: max(0, v.LimitIP-1), TrafficLimitBytes: v.TrafficLimitBytes, Profile: "unlimited", InboundIDs: ids, Reset: true, PreviousExpiryMS: v.ExpiryTimeMS, PreviousLimitIP: v.LimitIP, PreviousTrafficLimitBytes: v.TrafficLimitBytes, PreviousInboundIDs: v.InboundIDs}
 	desired := AccessDesired{Devices: target.DeviceCount, TrafficLimitBytes: target.TrafficLimitBytes, Profile: "unlimited", ResetTraffic: true, VpnBanned: false}
 	desiredRaw, _ := json.Marshal(desired)
 	targetRaw, _ := json.Marshal(target)

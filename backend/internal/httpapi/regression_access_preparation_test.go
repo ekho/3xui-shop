@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"crypto/x509"
 	"errors"
 	"example.com/cabinet/backend/internal/app"
 	"example.com/cabinet/backend/internal/modules/subscriptions"
@@ -10,9 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
-	"net/http"
-	"net/http/httptest"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -23,16 +19,13 @@ import (
 func preparationPanel(t *testing.T, s *regressionFixture, p *fakePanel, hook func(context.Context)) {
 	t.Helper()
 	var once sync.Once
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/panel/api/clients/get/") {
-			once.Do(func() { ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second); defer cancel(); hook(ctx) })
-		}
-		p.serve(w, r)
-	}))
-	t.Cleanup(server.Close)
-	s.cfg.VPN.Panel.PanelURL = server.URL
-	s.cfg.VPN.Panel.PanelRootCAs = x509.NewCertPool()
-	s.cfg.VPN.Panel.PanelRootCAs.AddCert(server.Certificate())
+	p.beforeRead = func() {
+		once.Do(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			hook(ctx)
+		})
+	}
 }
 func preparationNoTransaction(t *testing.T, ctx context.Context, s *regressionFixture) {
 	t.Helper()

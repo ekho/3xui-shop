@@ -22,6 +22,11 @@ import (
 )
 
 type fakePanel struct {
+	override                                                                         http.Handler
+	offline                                                                          bool
+	bulkUnavailable                                                                  bool
+	subscriptionBase                                                                 string
+	beforeRead                                                                       func()
 	blockRead                                                                        bool
 	afterAdd                                                                         func()
 	afterRead                                                                        func()
@@ -43,6 +48,9 @@ type fakePanel struct {
 
 func panelFixture(t *testing.T, s *regressionFixture) *fakePanel {
 	t.Helper()
+	if s.panelFixture != nil {
+		return s.panelFixture
+	}
 	p := &fakePanel{up: 1234}
 	p.server = httptest.NewTLSServer(http.HandlerFunc(p.serve))
 	t.Cleanup(p.server.Close)
@@ -51,19 +59,49 @@ func panelFixture(t *testing.T, s *regressionFixture) *fakePanel {
 	s.cfg.Subscriptions.SubscriptionBaseURL = "https://subscriptions.example.test/sub/"
 	s.cfg.VPN.Panel.PanelRootCAs = x509.NewCertPool()
 	s.cfg.VPN.Panel.PanelRootCAs.AddCert(p.server.Certificate())
+	s.panelFixture = p
 	return p
 }
 func (p *fakePanel) serve(w http.ResponseWriter, r *http.Request) {
+	if p.beforeRead != nil && r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/panel/api/clients/get/") {
+		p.beforeRead()
+	}
+	if p.override != nil {
+		p.override.ServeHTTP(w, r)
+		return
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
 	reply := func(v any) { json.NewEncoder(w).Encode(v) }
+	if p.offline {
+		w.WriteHeader(503)
+		return
+	}
 	if r.Header.Get("Authorization") != "Bearer fixture-panel-token" {
 		w.WriteHeader(401)
 		reply(map[string]any{"success": false, "msg": "unauthorized", "obj": nil})
 		return
 	}
 	switch {
+	case r.Method == "GET" && r.URL.Path == "/panel/api/clients/list":
+		if p.bulkUnavailable {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		rows := []map[string]any{}
+		if p.client != nil {
+			row := make(map[string]any, len(p.client)+3)
+			for key, value := range p.client {
+				row[key] = value
+			}
+			row["uuid"], row["id"], row["inboundIds"] = p.client["id"], 1, p.ids
+			row["traffic"] = map[string]any{"email": p.client["email"], "up": p.up, "down": p.down}
+			rows = append(rows, row)
+		}
+		reply(map[string]any{"success": true, "obj": rows})
+	case r.Method == "POST" && r.URL.Path == "/panel/api/setting/all":
+		reply(map[string]any{"success": true, "obj": map[string]any{"subEnable": p.subscriptionBase != "", "subURI": p.subscriptionBase}})
 	case r.Method == "GET" && r.URL.Path == "/panel/api/inbounds/list":
 		rows := []map[string]any{{"id": 1, "enable": true, "tag": "node-regular-tcp"}, {"id": 2, "enable": true, "tag": "regular-second"}, {"id": 3, "enable": true, "tag": "euru-only"}, {"id": 9, "enable": true, "tag": "unlimited-only"}, {"id": 99, "enable": true, "tag": "unknown"}}
 		if p.noRegular {

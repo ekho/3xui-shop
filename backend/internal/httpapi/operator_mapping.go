@@ -205,7 +205,11 @@ func (a *API) operatorClient(ctx context.Context, actor, target uuid.UUID) (wire
 	out.Client = operatorClient(client)
 	out.TrialRequests, out.TrialHasMore = wireTrialHistory(trials), more
 	out.AuditEvents, out.AuditHasMore = operatorAuditRows(audit), auditMore
-	if panelID, enabled := a.subscriptions.TrialServer(); panelID != "" {
+	panelID, enabled, serverErr := a.subscriptions.AssignedServer(ctx, target)
+	if serverErr != nil {
+		return out, subscriptionError(serverErr)
+	}
+	if panelID != "" {
 		out.Server = &wire.OperatorServer{PanelId: panelID, Enabled: enabled}
 	}
 	conversation, supportErr := a.supportOwner.Conversation(ctx, actor, target, true)

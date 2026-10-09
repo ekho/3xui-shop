@@ -300,13 +300,24 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if pre.Restricted {
 		return empty, failure(403, "ACCOUNT_RESTRICTED")
 	}
-	if pre.VpnBanned || stringValue(pre.AccessProfile) == "unlimited" || (pre.HadSubscription && pre.AssignedPanelID == nil) || (pre.AssignedPanelID != nil && stringValue(pre.AssignedPanelID) != s.config().PanelID) || s.config().PanelID == "" {
+	if pre.VpnBanned || stringValue(pre.AccessProfile) == "unlimited" || (pre.HadSubscription && pre.AssignedPanelID == nil) {
 		return empty, failure(409, "PURCHASE_NOT_ELIGIBLE")
 	}
 	if err = preTx.Rollback(ctx); err != nil {
 		return empty, unavailable()
 	}
-	panel := s.vpn.PanelClient()
+	panelID := stringValue(pre.AssignedPanelID)
+	if panelID == "" {
+		server, err := owner.AvailableServer(ctx)
+		if err != nil {
+			return empty, unavailable()
+		}
+		panelID = server.ID
+	}
+	panel, err := owner.PanelFor(ctx, panelID)
+	if err != nil {
+		return empty, unavailable()
+	}
 	defer panel.Close()
 	v, err := panel.GetClient(ctx, pre.PanelKey)
 	if err != nil {
@@ -373,7 +384,7 @@ func (s *Service) CreatePurchaseOrder(ctx context.Context, account, key uuid.UUI
 	if a.Restricted {
 		return empty, failure(403, "ACCOUNT_RESTRICTED")
 	}
-	if a.VpnBanned || stringValue(a.AccessProfile) == "unlimited" || (a.HadSubscription && a.AssignedPanelID == nil) || (a.AssignedPanelID != nil && stringValue(a.AssignedPanelID) != s.config().PanelID) {
+	if a.VpnBanned || stringValue(a.AccessProfile) == "unlimited" || (a.HadSubscription && a.AssignedPanelID == nil) {
 		return empty, failure(409, "PURCHASE_NOT_ELIGIBLE")
 	}
 	blocked, err := s.purchaseHistoryBlockedTx(ctx, tx, account, uuid.Nil, in.Action, in.PaymentMethod)

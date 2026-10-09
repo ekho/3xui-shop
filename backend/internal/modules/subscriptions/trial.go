@@ -345,7 +345,7 @@ func (s *Service) decideTrialLocked(ctx context.Context, tx pgx.Tx, q *store.Que
 		}
 		op := uuid.New()
 		operation = &op
-		if err := s.vpn.ReserveTrialTx(ctx, tx, vpn.TrialReservation{ID: op, AccountID: a.ID, RequestID: r.ID, PeriodDays: c.TrialPeriodDays, TrafficGb: c.TrialTrafficGB, Devices: c.TrialDevices, PanelID: c.PanelID, CreatedAt: s.now()}); err != nil {
+		if err := s.vpn.ReserveTrialTx(ctx, tx, vpn.TrialReservation{ID: op, AccountID: a.ID, RequestID: r.ID, PeriodDays: c.TrialPeriodDays, TrafficGb: c.TrialTrafficGB, Devices: c.TrialDevices, CreatedAt: s.now()}); err != nil {
 			return r, unavailable()
 		}
 		if err := q.ReserveGrant(ctx, store.ReserveGrantParams{AccountID: a.ID, RequestID: r.ID, OperationID: op, CreatedAt: stamp(s.now())}); err != nil {

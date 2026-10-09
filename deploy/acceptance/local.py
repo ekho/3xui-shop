@@ -77,6 +77,8 @@ def compose(*args, stdin=None):
 def prepare():
     STATE.mkdir(parents=True, exist_ok=True)
     STATE.chmod(0o700)
+    if PROFILE == 'native':
+        (STATE / 'panel-second-db').mkdir(mode=0o700, exist_ok=True)
     if not (STATE / 'runtime.json').exists():
         write('runtime.json', json.dumps({'project': PROJECT, 'postgres_user': PG_USER,
               'base_database': BASE_DATABASE, 'fixture_prefixes': {}}))
@@ -135,24 +137,26 @@ def request(opener, url, body=None, headers=None):
     with opener.open(req,timeout=15) as response:
         return response.status, response.headers, response.read()
 
-def panel_call(opener, path, body=None, csrf=None):
-    status, _, raw=request(opener,'https://localhost:59444/'+path,body,{'X-CSRF-Token':csrf} if csrf else {})
+def panel_call(opener, path, body=None, csrf=None, *, port=59444):
+    assert port in (59444, 59449), 'invalid owned panel port'
+    status, _, raw=request(opener,'https://localhost:'+str(port)+'/'+path,body,{'X-CSRF-Token':csrf} if csrf else {})
     result=json.loads(raw)
     if status!=200 or result.get('success') is not True:
         raise RuntimeError('panel rejected '+path.split('/')[0])
     return result.get('obj')
 
-def login_panel():
+def login_panel(port=59444):
     opener=session()
-    csrf=panel_call(opener,'csrf-token')
+    csrf=panel_call(opener,'csrf-token',port=port)
     password=(STATE/'panel-password').read_text().strip()
-    initialized=STATE/'panel-initialized'
+    marker='panel-initialized' if port == 59444 else 'panel-second-initialized'
+    initialized=STATE/marker
     if not initialized.exists():
         # Only the newly created, isolated panel DB uses upstream's initial credentials.
-        panel_call(opener,'login',{'username':'admin','password':'admin'},csrf)
-        panel_call(opener,'panel/api/setting/updateUser',{'oldUsername':'admin','oldPassword':'admin','newUsername':'local-operator','newPassword':password},csrf)
-        write('panel-initialized','yes')
-    panel_call(opener,'login',{'username':'local-operator','password':password},csrf)
+        panel_call(opener,'login',{'username':'admin','password':'admin'},csrf,port=port)
+        panel_call(opener,'panel/api/setting/updateUser',{'oldUsername':'admin','oldPassword':'admin','newUsername':'local-operator','newPassword':password},csrf,port=port)
+        write(marker,'yes')
+    panel_call(opener,'login',{'username':'local-operator','password':password},csrf,port=port)
     return opener, csrf
 
 def allow_test_origin(opener, csrf):
@@ -204,6 +208,17 @@ def up(reuse_images=False):
     write('panel-absence.json',json.dumps(absent))
     assert absent.get('success') is False and absent.get('msg') == 'Obtain (record not found)' and absent.get('obj') is None, 'unsupported absence response'
     preflight()
+    if PROFILE == 'native':
+        second, second_csrf=login_panel(59449)
+        if not any(row.get('tag')=='local-regular-vless' for row in panel_call(second,'panel/api/inbounds/list',port=59449)):
+            panel_call(second,'panel/api/inbounds/add',{
+                'enable':True,'remark':'Local second panel','listen':'0.0.0.0','port':24443,'protocol':'vless','tag':'local-regular-vless',
+                'settings':{'clients':[],'decryption':'none','fallbacks':[]},
+                'streamSettings':{'network':'tcp','security':'none'},'sniffing':{'enabled':False}},second_csrf,port=59449)
+        settings=panel_call(second,'panel/api/setting/all',{},second_csrf,port=59449)
+        if not settings.get('subEnable') or settings.get('subURI') != 'https://localhost:59449/sub/':
+            settings.update(subEnable=True,subURI='https://localhost:59449/sub/')
+            panel_call(second,'panel/api/setting/update',settings,second_csrf,port=59449)
     data=ENV.read_text().replace('TRIAL_ENABLED=false','TRIAL_ENABLED=true')
     write('public.env',data)
     compose('up','--no-build','-d','backend')

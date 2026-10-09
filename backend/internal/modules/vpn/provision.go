@@ -121,10 +121,23 @@ func (s *Service) Provision(parent context.Context, id uuid.UUID) error {
 	if op.Status == "applied" || op.Status == "needs_review" {
 		return nil
 	}
+	if op.PanelID == "" {
+		if e = s.bindTrialServer(ctx, c, op); e != nil {
+			if errors.Is(e, ErrPanel) || errors.Is(e, ErrBusy) {
+				return river.JobSnooze(10 * time.Second)
+			}
+			return e
+		}
+	}
 	lease := digest(uuid.NewString())
 	op, e = q.LeaseOperation(ctx, store.LeaseOperationParams{ID: id, FirstStartedAt: stamp(s.now()), LeaseHash: lease})
 	if e != nil {
 		return unavailable()
+	}
+	// Concrete lookup uses this session; finish SQL before its Ping watchdog.
+	p, panelErr := s.panelFor(ctx, op.PanelID, c)
+	if p != nil {
+		defer p.Close()
 	}
 	stop, lost := watchOwner(ctx, c, cancel)
 	defer stop()
@@ -147,11 +160,12 @@ func (s *Service) Provision(parent context.Context, id uuid.UUID) error {
 	if e != nil {
 		return fail(false)
 	}
-	if a.Restricted || !accounts.SourceEligible(a) || !validSnapshot(op) || op.PanelID != s.config().PanelID {
+	if a.Restricted || !accounts.SourceEligible(a) || !validSnapshot(op) || a.AssignedPanelID != nil && *a.AssignedPanelID != op.PanelID {
 		return fail(true)
 	}
-	p := s.PanelClient()
-	defer p.Close()
+	if panelErr != nil {
+		return fail(true)
+	}
 	var target ProvisionTarget
 	hadTarget := len(op.Target) > 0
 	if hadTarget {
@@ -202,7 +216,7 @@ func (s *Service) Provision(parent context.Context, id uuid.UUID) error {
 		}
 		// Recheck account restrictions immediately before each external write.
 		current, err := s.accountByID(ctx, a.ID)
-		if err != nil || current.Restricted || current.VpnBanned != target.Banned || target.Profile != "" && (!(current.AccessProfile != nil) || stringValue(current.AccessProfile) != target.Profile) {
+		if err != nil || current.Restricted || !accounts.SourceEligible(current) || current.PanelKey != target.PanelKey || current.VpnID != target.VPNID || current.SubID != target.SubID || current.AssignedPanelID != nil && *current.AssignedPanelID != target.PanelID || current.VpnBanned != target.Banned || target.Profile != "" && (!(current.AccessProfile != nil) || stringValue(current.AccessProfile) != target.Profile) {
 			return false
 		}
 		n, err := store.New(s.pool).MarkPanelWrite(ctx, store.MarkPanelWriteParams{ID: id, LeaseHash: lease})
@@ -282,7 +296,7 @@ func (s *Service) Provision(parent context.Context, id uuid.UUID) error {
 	finalFailure := func() error { tx.Rollback(context.Background()); return fail(true) }
 	q = store.New(tx)
 	a, e = s.lockAccount(ctx, tx, a.ID)
-	if e != nil || a.Restricted {
+	if e != nil || a.Restricted || !accounts.SourceEligible(a) || a.PanelKey != target.PanelKey || a.VpnID != target.VPNID || a.SubID != target.SubID || a.AssignedPanelID != nil && *a.AssignedPanelID != target.PanelID {
 		return finalFailure()
 	}
 	n, e := q.ApplyOperation(ctx, store.ApplyOperationParams{ID: id, LeaseHash: lease})
@@ -290,6 +304,9 @@ func (s *Service) Provision(parent context.Context, id uuid.UUID) error {
 		return finalFailure()
 	}
 	if s.accounts.AssignPanel(ctx, tx, a.ID, op.PanelID) != nil {
+		return finalFailure()
+	}
+	if s.ReleaseServerReservationTx(ctx, tx, a.ID, op.PanelID) != nil {
 		return finalFailure()
 	}
 	if v.UsedTraffic != nil && q.ObserveTraffic(ctx, store.ObserveTrafficParams{ID: id, TrafficUsedBytes: pgtype.Int8{Int64: *v.UsedTraffic, Valid: true}, ObservedAt: stamp(s.now())}) != nil {

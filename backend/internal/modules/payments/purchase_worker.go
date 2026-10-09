@@ -92,14 +92,28 @@ func (s *Service) FulfillPurchase(parent context.Context, id uuid.UUID) error {
 	if reason != "" {
 		return s.purchaseReview(ctx, id, reason)
 	}
-	if a.Restricted || a.VpnBanned || stringValue(a.AccessProfile) == "unlimited" || a.PanelKey == "" || a.VpnID == uuid.Nil || a.SubID == "" || (a.AssignedPanelID != nil && stringValue(a.AssignedPanelID) != s.config().PanelID) || s.config().PanelID == "" {
+	if a.Restricted || a.VpnBanned || stringValue(a.AccessProfile) == "unlimited" || a.PanelKey == "" || a.VpnID == uuid.Nil || a.SubID == "" {
 		return s.purchaseReview(ctx, id, "account_not_eligible")
 	}
 	var quote PurchaseQuote
 	if json.Unmarshal(p.quote, &quote) != nil || quote.Devices < 1 || quote.Devices >= math.MaxInt64 || quote.TrafficGb < 0 || quote.TrafficGb > math.MaxInt64/(1024*1024*1024) || quote.PeriodDays < 1 || quote.PeriodDays > 106751 || (quote.Profile != "regular" && quote.Profile != "euru") {
 		return s.purchaseReview(ctx, id, "invalid_quote")
 	}
-	panel := s.vpn.PanelClient()
+	panelID := stringValue(a.AssignedPanelID)
+	if panelID == "" {
+		server, err := owner.AvailableServer(ctx)
+		if errors.Is(err, vpn.ErrPanel) {
+			return river.JobSnooze(10 * time.Second)
+		}
+		if err != nil {
+			return unavailable()
+		}
+		panelID = server.ID
+	}
+	panel, err := owner.PanelFor(ctx, panelID)
+	if err != nil {
+		return unavailable()
+	}
 	defer panel.Close()
 	view, err := panel.GetClient(ctx, a.PanelKey)
 	if err != nil {
@@ -107,7 +121,7 @@ func (s *Service) FulfillPurchase(parent context.Context, id uuid.UUID) error {
 	}
 	now := s.now().UTC().Truncate(time.Microsecond)
 	opID := uuid.New()
-	t := vpn.AccessTarget{OperationID: opID, PanelID: s.config().PanelID, PanelKey: a.PanelKey, VPNID: a.VpnID, SubID: a.SubID, DeviceCount: quote.Devices, TrafficLimitBytes: quote.TrafficGb * 1024 * 1024 * 1024, Profile: string(quote.Profile), Reset: true}
+	t := vpn.AccessTarget{OperationID: opID, PanelID: panelID, PanelKey: a.PanelKey, VPNID: a.VpnID, SubID: a.SubID, DeviceCount: quote.Devices, TrafficLimitBytes: quote.TrafficGb * 1024 * 1024 * 1024, Profile: string(quote.Profile), Reset: true}
 	if view == nil {
 		if a.HadSubscription || a.AssignedPanelID != nil {
 			return s.purchaseReview(ctx, id, "missing_client")
@@ -206,6 +220,9 @@ func (s *Service) FulfillPurchase(parent context.Context, id uuid.UUID) error {
 		return reviewTx("access_conflict")
 	}
 	_, err = s.vpn.QueueAccessTx(ctx, tx, vpn.AccessWrite{ID: opID, AccountID: p.account, Kind: "purchase", Reason: "paid_order", PlanID: &quote.PlanId, Revision: &quote.Revision, PeriodDays: &quote.PeriodDays, Desired: desiredRaw, Target: targetRaw, PurchaseOrderID: &id, CreatedAt: now})
+	if errors.Is(err, vpn.ErrBusy) || errors.Is(err, vpn.ErrPanel) {
+		return river.JobSnooze(10 * time.Second)
+	}
 	if err != nil {
 		return unavailable()
 	}

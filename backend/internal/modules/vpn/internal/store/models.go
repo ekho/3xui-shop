@@ -61,3 +61,22 @@ type TrialOperation struct {
 	TrafficDownBytes pgtype.Int8
 	ProfileSnapshot  []byte
 }
+
+type VpnServer struct {
+	ID                  string
+	Name                string
+	Host                string
+	MaxClients          pgtype.Int8
+	SubscriptionBaseUrl string
+	Online              bool
+	ObservedAt          pgtype.Timestamptz
+	Revision            int64
+	Retired             bool
+}
+
+type VpnServerReservation struct {
+	AccountID         uuid.UUID
+	ServerID          string
+	TrialOperationID  *uuid.UUID
+	AccessOperationID *uuid.UUID
+}
