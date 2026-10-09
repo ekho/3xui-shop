@@ -14,7 +14,7 @@ import (
 // Keep bearer grants explicit: new API routes never inherit Telegram privileges.
 func miniAppRouteAllowed(path, method string) bool {
 	if method == "GET" {
-		if path == "/api/v1/reminders" {
+		if path == "/api/v1/reminders" || path == "/api/v1/notices" {
 			return true
 		}
 		switch path {
@@ -23,7 +23,7 @@ func miniAppRouteAllowed(path, method string) bool {
 		}
 	}
 	if method == "POST" {
-		if path == "/api/v1/reminders/preferences" || path == "/api/v1/reminders/:id/dismiss" {
+		if path == "/api/v1/reminders/preferences" || path == "/api/v1/reminders/:id/dismiss" || path == "/api/v1/notices/preferences" || path == "/api/v1/notices/:id/dismiss" {
 			return true
 		}
 		switch path {

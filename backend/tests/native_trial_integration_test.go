@@ -301,6 +301,17 @@ func (b *nativeBot) RoundTrip(r *http.Request) (*http.Response, error) {
 		}
 		b.mu.Unlock()
 		return nativeReply(true), nil
+	case "deleteMessage":
+		found := false
+		for i, message := range b.messages {
+			if message.ID == in.Message && message.Chat == in.Chat {
+				b.messages = append(b.messages[:i], b.messages[i+1:]...)
+				found = true
+				break
+			}
+		}
+		b.mu.Unlock()
+		return nativeReply(found), nil
 	case "sendMessage", "editMessageText", "editMessageReplyMarkup":
 		if method == "sendMessage" && in.Chat == b.clientBlockedChat {
 			b.mu.Unlock()
@@ -325,7 +336,7 @@ func (b *nativeBot) RoundTrip(r *http.Request) (*http.Response, error) {
 			b.messages = append(b.messages, nativeMessage{ID: id, Chat: in.Chat, Text: in.Text, Markup: body["reply_markup"]})
 		}
 		b.mu.Unlock()
-		return nativeReply(map[string]any{"message_id": id, "date": 1, "chat": map[string]any{"id": in.Chat, "type": "private"}}), nil
+		return nativeReply(map[string]any{"message_id": id, "date": time.Now().Unix(), "chat": map[string]any{"id": in.Chat, "type": "private"}}), nil
 	default:
 		b.mu.Unlock()
 		return nil, errors.New("unsupported fake Telegram method")

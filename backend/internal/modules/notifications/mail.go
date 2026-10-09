@@ -22,6 +22,7 @@ import (
 type MailPayload struct {
 	Type, Locale, Token, Code string
 	ReminderID                *uuid.UUID `json:"reminder_id,omitempty"`
+	NoticeActionID            *uuid.UUID `json:"notice_action_id,omitempty"`
 }
 type MailArgs struct {
 	DeliveryID uuid.UUID `json:"delivery_id"`
@@ -43,6 +44,7 @@ type MailService struct {
 	valid     func(context.Context, pgx.Tx, *uuid.UUID, *uuid.UUID) (bool, error)
 	sender    func(context.Context, string, string, string) error
 	reminders *ReminderService
+	notices   *NoticeService
 }
 
 func NewMail(pool *pgxpool.Pool, queue *river.Client[pgx.Tx], cfg func() MailConfig, guard func(context.Context, string, func(*pgxpool.Conn) error) error, valid func(context.Context, pgx.Tx, *uuid.UUID, *uuid.UUID) (bool, error), sender func(context.Context, string, string, string) error) *MailService {
@@ -57,6 +59,9 @@ func (s *MailService) now() time.Time {
 func mailStamp(t time.Time) pgtype.Timestamptz { return pgtype.Timestamptz{Time: t, Valid: true} }
 func (s *MailService) EnqueueMailTx(ctx context.Context, tx pgx.Tx, email string, registrationID, credentialID *uuid.UUID, kind string, payload MailPayload, createdAt time.Time) error {
 	if kind == "reminder" && (payload.ReminderID == nil || *payload.ReminderID == uuid.Nil || payload.Type != "reminder" || registrationID != nil || credentialID != nil) {
+		return failure(400, "INVALID_INPUT")
+	}
+	if kind == "operator_notice" && (payload.NoticeActionID == nil || *payload.NoticeActionID == uuid.Nil || payload.Type != "operator_notice" || payload.ReminderID != nil || registrationID != nil || credentialID != nil) || kind != "operator_notice" && payload.NoticeActionID != nil {
 		return failure(400, "INVALID_INPUT")
 	}
 	id := uuid.New()
@@ -80,6 +85,8 @@ func (s *MailService) EnqueueMailTx(ctx context.Context, tx pgx.Tx, email string
 		err = q.AddMail(ctx, store.AddMailParams{ID: id, ChallengeID: registrationID, EmailKey: email, Ciphertext: encrypted, CreatedAt: mailStamp(createdAt)})
 	} else if kind == "reminder" {
 		err = q.AddReminderMail(ctx, store.AddReminderMailParams{ID: id, ReminderID: payload.ReminderID, EmailKey: email, Ciphertext: encrypted, CreatedAt: mailStamp(createdAt)})
+	} else if kind == "operator_notice" {
+		err = q.AddNoticeMail(ctx, store.AddNoticeMailParams{ID: id, NoticeActionID: payload.NoticeActionID, EmailKey: email, Ciphertext: encrypted, CreatedAt: mailStamp(createdAt)})
 	} else {
 		err = q.AddCredentialMail(ctx, store.AddCredentialMailParams{ID: id, CredentialChallengeID: credentialID, EmailKey: email, Ciphertext: encrypted, CreatedAt: mailStamp(createdAt), Kind: kind})
 	}
@@ -121,6 +128,17 @@ func (s *MailService) SendMail(ctx context.Context, id uuid.UUID) error {
 		}
 		defer tx.Rollback(ctx)
 		q := store.New(tx)
+		var notice noticeDeliveryProof
+		noticeValid := true
+		if ref.Kind == "operator_notice" {
+			if s.notices == nil || ref.NoticeActionID == nil {
+				return unavailable()
+			}
+			notice, noticeValid, err = s.notices.mailProofTx(ctx, tx, *ref.NoticeActionID, ref.EmailKey)
+			if err != nil {
+				return err
+			}
+		}
 		credentialValid := true
 		if ref.CredentialChallengeID != nil {
 			credentialValid, err = s.valid(ctx, tx, nil, ref.CredentialChallengeID)
@@ -133,6 +151,9 @@ func (s *MailService) SendMail(ctx context.Context, id uuid.UUID) error {
 			return unavailable()
 		}
 		if len(delivery.Ciphertext) == 0 || delivery.DeliveredAt.Valid {
+			if ref.Kind == "operator_notice" && !delivery.DeliveredAt.Valid {
+				return s.notices.suppressMailTx(ctx, tx, id, *ref.NoticeActionID, notice.EmailStartedAt)
+			}
 			return nil
 		}
 		complete := func() error {
@@ -140,6 +161,9 @@ func (s *MailService) SendMail(ctx context.Context, id uuid.UUID) error {
 				return unavailable()
 			}
 			return nil
+		}
+		if ref.Kind == "operator_notice" && !noticeValid {
+			return s.notices.suppressMailTx(ctx, tx, id, *ref.NoticeActionID, notice.EmailStartedAt)
 		}
 		if !credentialValid {
 			return complete()
@@ -168,6 +192,9 @@ func (s *MailService) SendMail(ctx context.Context, id uuid.UUID) error {
 		}
 		var payload MailPayload
 		if json.Unmarshal(plain, &payload) != nil {
+			return unavailable()
+		}
+		if ref.Kind == "operator_notice" && (payload.Type != "operator_notice" || payload.NoticeActionID == nil || *payload.NoticeActionID != *ref.NoticeActionID || payload.ReminderID != nil || payload.Locale != notice.Locale) {
 			return unavailable()
 		}
 		subject := "Sign in to your account"
@@ -256,6 +283,16 @@ func (s *MailService) SendMail(ctx context.Context, id uuid.UUID) error {
 			body = reminderMessage(r, payload.Locale) + "\n" + cfg.CabinetOrigin + "/cabinet?lang=" + payload.Locale
 		}
 
+		if ref.Kind == "operator_notice" {
+			subject = "Message in your cabinet"
+			if payload.Locale == "ru" {
+				subject = "Сообщение в кабинете"
+			}
+			body = notice.Text + "\n" + cfg.CabinetOrigin + "/cabinet?lang=" + payload.Locale
+			if _, err = tx.Exec(ctx, `UPDATE notice_actions SET email_state='unknown',email_started_at=COALESCE(email_started_at,clock_timestamp()) WHERE id=$1`, *ref.NoticeActionID); err != nil {
+				return unavailable()
+			}
+		}
 		// Keep the email session guard, but release all SQL row locks before SMTP.
 		if tx.Commit(ctx) != nil {
 			return unavailable()
@@ -273,6 +310,11 @@ func (s *MailService) SendMail(ctx context.Context, id uuid.UUID) error {
 			return unavailable()
 		}
 		defer tx.Rollback(ctx)
+		if ref.Kind == "operator_notice" {
+			if _, err = tx.Exec(ctx, `UPDATE notice_actions SET email_state='succeeded' WHERE id=$1`, *ref.NoticeActionID); err != nil {
+				return unavailable()
+			}
+		}
 		if store.New(tx).CompleteMail(ctx, store.CompleteMailParams{ID: id, DeliveredAt: mailStamp(s.now())}) != nil || tx.Commit(ctx) != nil {
 			return unavailable()
 		}

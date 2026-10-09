@@ -122,18 +122,44 @@ func (c *Client) deliver(parent context.Context, j notifications.ClientJob) erro
 		if j.Route == "renew" {
 			label = clientText(j.Locale, "Продлить подписку", "Renew subscription")
 		}
+		closeData := "cn1:" + j.ID.String()
+		if j.NoticeActionID != uuid.Nil {
+			closeData = "on1:" + j.ID.String()
+		}
 		k := &botapi.InlineKeyboard{Rows: [][]botapi.Button{{{
 			Text: label, WebApp: &botapi.WebAppInfo{URL: c.route(path, j.Locale)},
-		}}, {{Text: clientText(j.Locale, "Закрыть", "Close"), Data: "cn1:" + j.ID.String()}}}}
+		}}, {{Text: clientText(j.Locale, "Закрыть", "Close"), Data: closeData}}}}
 		text := j.ReminderText
 		if text == "" {
 			text = clientText(j.Locale, "В кабинете есть обновление.", "There is an update in your cabinet.")
 		}
-		msg, err := c.api.SendMessage(ctx, j.TelegramID, text, k)
+		if j.NoticeActionID != uuid.Nil {
+			text = j.NoticeHTML
+		}
+		var msg botapi.Message
+		var err error
+		if j.NoticeActionID != uuid.Nil && j.NoticeMode == "delete" {
+			err = c.api.DeleteMessage(ctx, j.TelegramID, j.NoticeMessageID)
+			msg.ID = j.NoticeMessageID
+		} else if j.NoticeActionID != uuid.Nil && j.PriorDeliveryID != uuid.Nil {
+			msg, err = c.api.EditMessage(ctx, j.TelegramID, j.NoticeMessageID, text, k)
+		} else {
+			msg, err = c.api.SendMessage(ctx, j.TelegramID, text, k)
+		}
 		if err == nil {
+			if j.NoticeActionID != uuid.Nil && j.PriorDeliveryID == uuid.Nil {
+				if msg.Date <= 0 || j.NoticeResult == nil {
+					return notifications.ClientOutcome{}, &botapi.APIError{Code: "INVALID_RESPONSE"}
+				}
+				j.NoticeResult.MessageAt = time.Unix(msg.Date, 0)
+			}
 			return notifications.ClientOutcome{State: "sent", MessageID: msg.ID}, nil
 		}
 		switch safeCode(err) {
+		case "NOT_MODIFIED":
+			if j.NoticeActionID != uuid.Nil && j.NoticeMode == "edit" && j.PriorDeliveryID != uuid.Nil {
+				return notifications.ClientOutcome{State: "sent", MessageID: j.NoticeMessageID}, nil
+			}
 		case "FORBIDDEN":
 			return notifications.ClientOutcome{State: "failed", Code: "forbidden"}, nil
 		case "BAD_REQUEST":
@@ -192,7 +218,8 @@ func (c *Client) callback(parent context.Context, q *botapi.Callback) (bool, err
 	path, state := "", q.Data
 	legacySubscription := strings.HasPrefix(state, "subscription:")
 	closeNotice := strings.HasPrefix(state, "cn1:")
-	if !legacySubscription && !closeNotice {
+	closeOperatorNotice := strings.HasPrefix(state, "on1:")
+	if !legacySubscription && !closeNotice && !closeOperatorNotice {
 		switch state {
 		case "start", "main_menu", "profile", "show_key", "download", "platform", "platform_ios", "platform_android", "platform_macos", "platform_windows", "download_show_qr", "support", "how_to_connect", "vpn_not_working", "subscription", "close_notification", "redirect_to_download":
 		default:
@@ -232,6 +259,24 @@ func (c *Client) callback(parent context.Context, q *botapi.Callback) (bool, err
 		}
 		if !valid {
 			return refuse()
+		}
+		return true, cosmetic(c.api.AnswerCallback(ctx, q.ID, "", false))
+	}
+	if closeOperatorNotice {
+		raw := strings.TrimPrefix(q.Data, "on1:")
+		id, err := uuid.Parse(raw)
+		if err != nil || id == uuid.Nil || id.String() != raw {
+			return refuse()
+		}
+		valid, err := c.notices.CloseNotice(ctx, id, q.From.ID, m.ID, func() error { return c.api.DeleteMessage(ctx, q.From.ID, m.ID) })
+		if !valid {
+			if err != nil {
+				return true, err
+			}
+			return refuse()
+		}
+		if err != nil {
+			return true, cosmetic(c.api.AnswerCallback(ctx, q.ID, clientText(lang, "Сообщение закрыто в кабинете. Удаление в Telegram не подтверждено.", "The notice is closed in your cabinet. Removal in Telegram is unconfirmed."), true))
 		}
 		return true, cosmetic(c.api.AnswerCallback(ctx, q.ID, "", false))
 	}

@@ -256,6 +256,18 @@ func (c *Client) ClearKeyboard(ctx context.Context, chatID, messageID int64) err
 	return err
 }
 
+func (c *Client) DeleteMessage(ctx context.Context, chatID, messageID int64) error {
+	if chatID <= 0 || chatID > 1<<52-1 || messageID <= 0 {
+		return &APIError{Code: "INVALID_INPUT"}
+	}
+	var ok bool
+	err := c.call(ctx, "deleteMessage", map[string]any{"chat_id": chatID, "message_id": messageID}, &ok, 10*time.Second)
+	if err == nil && !ok {
+		return invalid()
+	}
+	return err
+}
+
 func validURL(raw string) bool {
 	u, e := url.Parse(raw)
 	return e == nil && u.Scheme == "https" && u.Hostname() != "" && u.User == nil && utf8.ValidString(raw) && !strings.ContainsRune(raw, '\x00')

@@ -49,6 +49,7 @@ type TelegramFailed struct {
 type Service struct {
 	pool        *pgxpool.Pool
 	reminders   *ReminderService
+	notices     *NoticeService
 	clientGuard ClientGuard
 	operators   func() []int64
 	allowed     func(int64) bool

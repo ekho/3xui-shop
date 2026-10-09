@@ -54,6 +54,17 @@ export const getReminders=(signal?:AbortSignal)=>request<ReminderResult>('remind
 export const setReminderEmailPreference=(enabled:boolean,signal?:AbortSignal)=>request<ReminderResult>('reminders/preferences','POST',{email_enabled:enabled},signal,true);
 export const dismissReminder=(id:string,signal?:AbortSignal)=>request<void>('reminders/'+encodeURIComponent(id)+'/dismiss','POST',undefined,signal,true);
 
+export type NoticePreviewInput=components['schemas']['NoticePreviewInput'];
+export type NoticePreview=components['schemas']['NoticePreview'];
+export type NoticeBatchResult=components['schemas']['NoticeBatchResult'];
+export type NoticeResult=components['schemas']['NoticeResult'];
+export const previewNotice=(input:NoticePreviewInput,signal?:AbortSignal)=>request<NoticePreview>('operator/notices/previews','POST',input,signal,true);
+export const confirmNotice=(id:string,signal?:AbortSignal)=>request<NoticeBatchResult>('operator/notices/previews/'+encodeURIComponent(id)+'/confirm','POST',{confirmed:true},signal,true);
+export const getLastNotice=(signal?:AbortSignal)=>request<NoticeBatchResult>('operator/notices/last','GET',undefined,signal);
+export const getNotices=(page:number,signal?:AbortSignal)=>request<NoticeResult>('notices?page='+page,'GET',undefined,signal);
+export const setNoticeEmailPreference=(enabled:boolean,signal?:AbortSignal)=>request<NoticeResult>('notices/preferences','POST',{email_enabled:enabled},signal,true);
+export const dismissNotice=(id:string,signal?:AbortSignal)=>request<void>('notices/'+encodeURIComponent(id)+'/dismiss','POST',undefined,signal,true);
+
 export type PasswordResetInput=components['schemas']['PasswordResetInput'];
 export type PasswordResetAccepted=components['schemas']['PasswordResetAccepted'];
 export type PasswordResetCompleteInput=components['schemas']['PasswordResetCompleteInput'];

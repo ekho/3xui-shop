@@ -60,6 +60,29 @@ func (q *Queries) AddMail(ctx context.Context, arg AddMailParams) error {
 	return err
 }
 
+const addNoticeMail = `-- name: AddNoticeMail :exec
+INSERT INTO mail_deliveries(id,notice_action_id,email_key,ciphertext,created_at,kind) VALUES($1,$2,$3,$4,$5,'operator_notice')
+`
+
+type AddNoticeMailParams struct {
+	ID             uuid.UUID
+	NoticeActionID *uuid.UUID
+	EmailKey       string
+	Ciphertext     []byte
+	CreatedAt      pgtype.Timestamptz
+}
+
+func (q *Queries) AddNoticeMail(ctx context.Context, arg AddNoticeMailParams) error {
+	_, err := q.db.Exec(ctx, addNoticeMail,
+		arg.ID,
+		arg.NoticeActionID,
+		arg.EmailKey,
+		arg.Ciphertext,
+		arg.CreatedAt,
+	)
+	return err
+}
+
 const addReminderMail = `-- name: AddReminderMail :exec
 INSERT INTO mail_deliveries(id,reminder_id,email_key,ciphertext,created_at,kind) VALUES($1,$2,$3,$4,$5,'reminder')
 `
@@ -107,7 +130,7 @@ func (q *Queries) CompleteMail(ctx context.Context, arg CompleteMailParams) erro
 }
 
 const lookupMail = `-- name: LookupMail :one
-SELECT id, challenge_id, email_key, ciphertext, created_at, delivered_at, kind, credential_challenge_id, reminder_id FROM mail_deliveries WHERE id=$1
+SELECT id, challenge_id, email_key, ciphertext, created_at, delivered_at, kind, credential_challenge_id, reminder_id, notice_action_id FROM mail_deliveries WHERE id=$1
 `
 
 func (q *Queries) LookupMail(ctx context.Context, id uuid.UUID) (MailDelivery, error) {
@@ -123,12 +146,13 @@ func (q *Queries) LookupMail(ctx context.Context, id uuid.UUID) (MailDelivery, e
 		&i.Kind,
 		&i.CredentialChallengeID,
 		&i.ReminderID,
+		&i.NoticeActionID,
 	)
 	return i, err
 }
 
 const mailByID = `-- name: MailByID :one
-SELECT id, challenge_id, email_key, ciphertext, created_at, delivered_at, kind, credential_challenge_id, reminder_id FROM mail_deliveries WHERE id=$1 FOR UPDATE
+SELECT id, challenge_id, email_key, ciphertext, created_at, delivered_at, kind, credential_challenge_id, reminder_id, notice_action_id FROM mail_deliveries WHERE id=$1 FOR UPDATE
 `
 
 func (q *Queries) MailByID(ctx context.Context, id uuid.UUID) (MailDelivery, error) {
@@ -144,6 +168,7 @@ func (q *Queries) MailByID(ctx context.Context, id uuid.UUID) (MailDelivery, err
 		&i.Kind,
 		&i.CredentialChallengeID,
 		&i.ReminderID,
+		&i.NoticeActionID,
 	)
 	return i, err
 }
