@@ -36,7 +36,7 @@ import (
 
 // Only the provider transport is simulated. HTTP, authentication, module wiring,
 // jobs, SMTP and restarts run through the freshly built cmd/server executable.
-func nativeNoticeBinary(t *testing.T, f *fixture, handler http.Handler) (func() int, func()) {
+func nativeNoticeBinary(t *testing.T, f *fixture, handler http.Handler, childSettings ...map[string]string) (func() int, func()) {
 	t.Helper()
 	dir := t.TempDir()
 	write := func(name string, value []byte) string {
@@ -119,7 +119,14 @@ func nativeNoticeBinary(t *testing.T, f *fixture, handler http.Handler) (func() 
 		r.Header.Set("X-Forwarded-Proto", "https")
 		r.Header.Set("X-Forwarded-For", sourceIP.String())
 	}
-	f.public.Config.Handler = ingress
+	frontend := f.public.Config.Handler
+	f.public.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/webhooks/") || r.URL.Path == "/healthz" {
+			ingress.ServeHTTP(w, r)
+			return
+		}
+		frontend.ServeHTTP(w, r)
+	})
 	panel, err := url.Parse(f.cfg.VPN.Panel.PanelURL)
 	if err != nil {
 		t.Fatal("owned panel URL unavailable")
@@ -193,6 +200,9 @@ func nativeNoticeBinary(t *testing.T, f *fixture, handler http.Handler) (func() 
 		if t.Failed() {
 			if data, err := os.ReadFile(filepath.Join(dir, "server.log")); err == nil {
 				path := filepath.Join(f.root, ".superpowers", "acceptance", "c28-notices")
+				if strings.HasPrefix(t.Name(), "TestNativeTrialAudit") {
+					path = filepath.Join(f.root, ".superpowers", "acceptance", "c29-audit-history")
+				}
 				if os.MkdirAll(path, 0700) == nil {
 					os.WriteFile(filepath.Join(path, "native-server-failure-"+uuid.NewString()+".log"), data, 0600)
 				}
@@ -209,6 +219,11 @@ func nativeNoticeBinary(t *testing.T, f *fixture, handler http.Handler) (func() 
 		}
 		process = exec.Command(binary, "serve")
 		process.Env = []string{"PATH=" + os.Getenv("PATH")}
+		for _, overrides := range childSettings {
+			for name, value := range overrides {
+				settings[name] = value
+			}
+		}
 		for name, value := range settings {
 			process.Env = append(process.Env, name+"="+value)
 		}
