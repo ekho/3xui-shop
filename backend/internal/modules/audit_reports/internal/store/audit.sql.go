@@ -13,7 +13,7 @@ import (
 )
 
 const auditPage = `-- name: AuditPage :many
-SELECT id, created_at, action, account_id, request_id, operation_id, operator_tg_id, reason, operator_account_id, support_message_id, access_operation_id, system_actor, monthly_period FROM audit_events
+SELECT id, created_at, action, account_id, request_id, operation_id, operator_tg_id, reason, operator_account_id, support_message_id, access_operation_id, system_actor, monthly_period, mirror_attempted_at FROM audit_events
 WHERE account_id=$1
  AND ($2::timestamptz IS NULL OR
       (created_at,id)<($2::timestamptz,$3::uuid))
@@ -49,6 +49,7 @@ func (q *Queries) AuditPage(ctx context.Context, arg AuditPageParams) ([]AuditEv
 			&i.AccessOperationID,
 			&i.SystemActor,
 			&i.MonthlyPeriod,
+			&i.MirrorAttemptedAt,
 		); err != nil {
 			return nil, err
 		}

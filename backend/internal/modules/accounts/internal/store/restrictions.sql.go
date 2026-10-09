@@ -180,6 +180,35 @@ func (q *Queries) LegacyApprovalPage(ctx context.Context, arg LegacyApprovalPage
 	return items, nil
 }
 
+const legacyAuditLinks = `-- name: LegacyAuditLinks :many
+SELECT account_id,source_tg_id FROM legacy_approval_snapshots WHERE source_tg_id=ANY($1::bigint[])
+`
+
+type LegacyAuditLinksRow struct {
+	AccountID  uuid.UUID
+	SourceTgID int64
+}
+
+func (q *Queries) LegacyAuditLinks(ctx context.Context, dollar_1 []int64) ([]LegacyAuditLinksRow, error) {
+	rows, err := q.db.Query(ctx, legacyAuditLinks, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LegacyAuditLinksRow
+	for rows.Next() {
+		var i LegacyAuditLinksRow
+		if err := rows.Scan(&i.AccountID, &i.SourceTgID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const operatorRoleExists = `-- name: OperatorRoleExists :one
 SELECT EXISTS(SELECT 1 FROM operator_accounts WHERE account_id=$1)
 `

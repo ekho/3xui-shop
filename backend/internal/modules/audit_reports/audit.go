@@ -46,10 +46,18 @@ func RecordTx(ctx context.Context, tx pgx.Tx, event Event) error {
 type Service struct {
 	pool       *pgxpool.Pool
 	statistics StatisticsPorts
+	history    HistoryPorts
+	config     Config
 }
 
-func New(pool *pgxpool.Pool, statistics StatisticsPorts) *Service {
-	return &Service{pool: pool, statistics: statistics}
+func New(pool *pgxpool.Pool, statistics StatisticsPorts, history HistoryPorts, config Config) *Service {
+	if config.RetentionDays == 0 {
+		config.RetentionDays = 365
+	}
+	if config.Timezone == nil {
+		config.Timezone = time.UTC
+	}
+	return &Service{pool: pool, statistics: statistics, history: history, config: config}
 }
 
 // Page is an internal read port; the operator consumer authorizes the request.
@@ -68,22 +76,26 @@ func (s *Service) Page(ctx context.Context, account uuid.UUID, before *time.Time
 	}
 	out := make([]Event, 0, len(rows))
 	for _, row := range rows {
-		event := Event{ID: row.ID, AccountID: row.AccountID, CreatedAt: row.CreatedAt.Time, Action: row.Action,
-			RequestID: row.RequestID, OperationID: row.OperationID, OperatorAccountID: row.OperatorAccountID,
-			SupportMessageID: row.SupportMessageID, AccessOperationID: row.AccessOperationID}
-		if row.OperatorTgID.Valid {
-			event.OperatorTgID = &row.OperatorTgID.Int64
-		}
-		if row.Reason.Valid {
-			event.Reason = &row.Reason.String
-		}
-		if row.SystemActor.Valid {
-			event.SystemActor = &row.SystemActor.Bool
-		}
-		if row.MonthlyPeriod.Valid {
-			event.MonthlyPeriod = &row.MonthlyPeriod.String
-		}
-		out = append(out, event)
+		out = append(out, auditEvent(row))
 	}
 	return out, more, nil
+}
+
+func auditEvent(row store.AuditEvent) Event {
+	event := Event{ID: row.ID, AccountID: row.AccountID, CreatedAt: row.CreatedAt.Time, Action: row.Action,
+		RequestID: row.RequestID, OperationID: row.OperationID, OperatorAccountID: row.OperatorAccountID,
+		SupportMessageID: row.SupportMessageID, AccessOperationID: row.AccessOperationID}
+	if row.OperatorTgID.Valid {
+		event.OperatorTgID = &row.OperatorTgID.Int64
+	}
+	if row.Reason.Valid {
+		event.Reason = &row.Reason.String
+	}
+	if row.SystemActor.Valid {
+		event.SystemActor = &row.SystemActor.Bool
+	}
+	if row.MonthlyPeriod.Valid {
+		event.MonthlyPeriod = &row.MonthlyPeriod.String
+	}
+	return event
 }

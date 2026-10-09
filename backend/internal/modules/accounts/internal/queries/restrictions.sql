@@ -29,3 +29,6 @@ SELECT * FROM legacy_approval_events
 WHERE account_id=$1 AND (sqlc.arg(before_created_at)::timestamptz IS NULL OR
  (created_at,source_id)<(sqlc.arg(before_created_at)::timestamptz,sqlc.arg(before_source_id)::bigint))
 ORDER BY created_at DESC,source_id DESC LIMIT 51;
+
+-- name: LegacyAuditLinks :many
+SELECT account_id,source_tg_id FROM legacy_approval_snapshots WHERE source_tg_id=ANY($1::bigint[]);

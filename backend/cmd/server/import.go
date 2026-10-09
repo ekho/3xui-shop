@@ -7,6 +7,7 @@ import (
 	"errors"
 	"example.com/cabinet/backend/internal/app"
 	"example.com/cabinet/backend/internal/modules/accounts"
+	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"example.com/cabinet/backend/internal/modules/campaigns"
 	"example.com/cabinet/backend/internal/modules/payments"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -148,6 +149,49 @@ func runLegacyApprovalImport(flag string) error {
 func importError(code string) error {
 	_ = json.NewEncoder(os.Stdout).Encode(map[string]string{"error": code})
 	return errors.New(code)
+}
+
+func decodeLegacyAuditPackage(reader io.Reader) (auditreports.LegacyAuditPackage, error) {
+	p, err := decodeLegacyJSON[auditreports.LegacyAuditPackage](reader)
+	if err != nil || auditreports.ValidateLegacyAuditPackage(p) != nil {
+		return p, errors.New("IMPORT_INVALID_PACKAGE")
+	}
+	for _, event := range p.Events {
+		if event.PayloadJSON != nil && !validJSONUnicode([]byte(*event.PayloadJSON)) {
+			return p, errors.New("IMPORT_INVALID_PACKAGE")
+		}
+	}
+	return p, nil
+}
+
+func runLegacyAuditImport(flag string) error {
+	if flag != "--dry-run" && flag != "--apply" {
+		return errors.New("invalid import command")
+	}
+	p, err := decodeLegacyAuditPackage(os.Stdin)
+	if err != nil {
+		return importError("IMPORT_INVALID_PACKAGE")
+	}
+	databaseURL, err := app.SecretFile("DATABASE_URL")
+	if err != nil {
+		return importError("IMPORT_DATABASE_UNAVAILABLE")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		return importError("IMPORT_DATABASE_UNAVAILABLE")
+	}
+	defer pool.Close()
+	out, err := app.NewModules(pool, nil, nil, &app.Config{}).AuditReports.ImportLegacy(ctx, p, flag == "--dry-run")
+	if err != nil {
+		var domain *auditreports.Error
+		if errors.As(err, &domain) {
+			return importError(domain.Code)
+		}
+		return importError("IMPORT_DATABASE_UNAVAILABLE")
+	}
+	return json.NewEncoder(os.Stdout).Encode(out)
 }
 
 func runLegacyCampaignImport(flag string) error {

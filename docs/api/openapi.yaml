@@ -13146,6 +13146,89 @@
           }
         }
       }
+    },
+    "/api/v1/operator/audit/history": {
+      "post": {
+        "operationId": "readOperatorAuditHistory",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "description": "Operator cookie, same-Origin and CSRF required. Read-only journal; legacy payload and message bodies never returned. Page size50 plus has_more, descending created_at/ID. No bearer, query, actor override or write/job/provider action.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuditHistoryInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Selected audit metadata source and exact source filter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditHistory"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -19326,6 +19409,258 @@
           "per_page",
           "total",
           "notices"
+        ]
+      },
+      "AuditHistoryInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "native",
+              "legacy",
+              "system"
+            ]
+          },
+          "account_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "legacy_target_tg_id": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "maxLength": 19
+          },
+          "before_created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "before_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "before_source_id": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "maxLength": 19
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "description": "Web operator metadata only; actor comes from cookie. account_id excludes legacy_target_tg_id; system excludes both. Paired before_created_at plus before_id for native/system or before_source_id for legacy. Positive signed int64 text is range-checked; UUIDs are canonical lowercase and nonzero."
+      },
+      "NativeAuditHistoryEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "event": {
+            "$ref": "#/components/schemas/OperatorAuditEvent"
+          }
+        },
+        "required": [
+          "account_id",
+          "event"
+        ]
+      },
+      "LegacyAuditHistoryEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "maxLength": 19
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "action": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "target_tg_id": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "maxLength": 19,
+            "nullable": true
+          },
+          "actor_id": {
+            "type": "string",
+            "pattern": "^-?(0|[1-9][0-9]*)$",
+            "maxLength": 20,
+            "nullable": true
+          },
+          "actor_type": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 256
+          },
+          "actor_name": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 256
+          },
+          "source": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 256
+          },
+          "account_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "nullable": true
+          }
+        },
+        "required": [
+          "source_id",
+          "created_at",
+          "action",
+          "target_tg_id",
+          "actor_id",
+          "actor_type",
+          "actor_name",
+          "source",
+          "account_id"
+        ]
+      },
+      "SystemAuditHistoryEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "audit.pruned",
+              "audit.legacy_imported"
+            ]
+          },
+          "period_day": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+            "nullable": true
+          },
+          "cutoff": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "retention_days": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 1,
+            "maximum": 3650,
+            "nullable": true
+          },
+          "native_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "legacy_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "system_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "action",
+          "period_day",
+          "cutoff",
+          "retention_days",
+          "native_count",
+          "legacy_count",
+          "system_count"
+        ]
+      },
+      "AuditHistory": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "string",
+            "enum": [
+              "audit-history-v1"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "native",
+              "legacy",
+              "system"
+            ]
+          },
+          "account_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "nullable": true
+          },
+          "legacy_target_tg_id": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "maxLength": 19,
+            "nullable": true
+          },
+          "native_events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NativeAuditHistoryEvent"
+            }
+          },
+          "legacy_events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LegacyAuditHistoryEvent"
+            }
+          },
+          "system_events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SystemAuditHistoryEvent"
+            }
+          },
+          "has_more": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "version",
+          "kind",
+          "account_id",
+          "legacy_target_tg_id",
+          "native_events",
+          "legacy_events",
+          "system_events",
+          "has_more"
         ]
       }
     }

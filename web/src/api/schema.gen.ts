@@ -1787,6 +1787,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/operator/audit/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Operator cookie, same-Origin and CSRF required. Read-only journal; legacy payload and message bodies never returned. Page size50 plus has_more, descending created_at/ID. No bearer, query, actor override or write/job/provider action. */
+        post: operations["readOperatorAuditHistory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3312,6 +3329,69 @@ export interface components {
             /** Format: int64 */
             total: number;
             notices: components["schemas"]["Notice"][];
+        };
+        /** @description Web operator metadata only; actor comes from cookie. account_id excludes legacy_target_tg_id; system excludes both. Paired before_created_at plus before_id for native/system or before_source_id for legacy. Positive signed int64 text is range-checked; UUIDs are canonical lowercase and nonzero. */
+        AuditHistoryInput: {
+            /** @enum {string} */
+            kind: "native" | "legacy" | "system";
+            /** Format: uuid */
+            account_id?: string;
+            legacy_target_tg_id?: string;
+            /** Format: date-time */
+            before_created_at?: string;
+            /** Format: uuid */
+            before_id?: string;
+            before_source_id?: string;
+        };
+        NativeAuditHistoryEvent: {
+            /** Format: uuid */
+            account_id: string;
+            event: components["schemas"]["OperatorAuditEvent"];
+        };
+        LegacyAuditHistoryEvent: {
+            source_id: string;
+            /** Format: date-time */
+            created_at: string;
+            action: string;
+            target_tg_id: string | null;
+            actor_id: string | null;
+            actor_type: string | null;
+            actor_name: string | null;
+            source: string | null;
+            /** Format: uuid */
+            account_id: string | null;
+        };
+        SystemAuditHistoryEvent: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** @enum {string} */
+            action: "audit.pruned" | "audit.legacy_imported";
+            period_day: string | null;
+            /** Format: date-time */
+            cutoff: string | null;
+            /** Format: int32 */
+            retention_days: number | null;
+            /** Format: int64 */
+            native_count: number;
+            /** Format: int64 */
+            legacy_count: number;
+            /** Format: int64 */
+            system_count: number;
+        };
+        AuditHistory: {
+            /** @enum {string} */
+            version: "audit-history-v1";
+            /** @enum {string} */
+            kind: "native" | "legacy" | "system";
+            /** Format: uuid */
+            account_id: string | null;
+            legacy_target_tg_id: string | null;
+            native_events: components["schemas"]["NativeAuditHistoryEvent"][];
+            legacy_events: components["schemas"]["LegacyAuditHistoryEvent"][];
+            system_events: components["schemas"]["SystemAuditHistoryEvent"][];
+            has_more: boolean;
         };
     };
     responses: never;
@@ -12720,6 +12800,75 @@ export interface operations {
                 headers: {
                     /** @description Seconds before retry */
                     "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    readOperatorAuditHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuditHistoryInput"];
+            };
+        };
+        responses: {
+            /** @description Selected audit metadata source and exact source filter */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditHistory"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content: {

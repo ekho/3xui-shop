@@ -392,12 +392,13 @@ func TestNotificationsNoticesSQLBoundary(t *testing.T) {
 }
 
 func TestAuditReportsSQLBoundary(t *testing.T) {
-	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?audit_events\b`)
+	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:audit_events|legacy_audit_events|legacy_audit_imports|audit_system_events)\b`)
 	ownsSQL := func(text string) bool { return pattern.MatchString(strings.ReplaceAll(text, `"`, "")) }
 	for _, sql := range []string{
 		`SELECT * FROM audit_events`, `SELECT * FROM accounts JOIN audit_events USING (account_id)`,
 		`UPDATE audit_events SET reason=NULL`, `INSERT INTO audit_events VALUES ($1)`,
 		`DELETE FROM public.audit_events`, `SELECT * FROM "public"."audit_events"`,
+		`SELECT payload_json FROM legacy_audit_events`, `INSERT INTO legacy_audit_imports VALUES($1)`, `DELETE FROM public.audit_system_events`,
 	} {
 		if !ownsSQL(sql) {
 			t.Fatal("negative fixture bypassed audit ownership", sql)

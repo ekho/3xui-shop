@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"example.com/cabinet/backend/internal/modules/campaigns"
@@ -102,7 +103,13 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 	}, now, notificationsOwner)
 	campaignOwner = campaigns.New(pool, limiter, owner, subscriptionOwner, paymentsOwner, cfg.Accounts.RateNamespace, now)
 	supportOwner := support.New(pool, limiter, owner, cfg.Accounts.RateNamespace, now, notificationsOwner)
-	reportsOwner := auditreports.New(pool, auditreports.StatisticsPorts{RequireOperator: owner.RequireOperator, AccountsTx: owner.StatisticsTx, ReportCohortTx: campaignOwner.ReportCohortTx, PaymentsTx: paymentsOwner.StatisticsTx, TrialsTx: subscriptionOwner.StatisticsTx, PlansTx: catalogueOwner.StatisticsTx, VPNTx: vpnOwner.StatisticsTx})
+	reportsOwner := auditreports.New(pool, auditreports.StatisticsPorts{RequireOperator: owner.RequireOperator, AccountsTx: owner.StatisticsTx, ReportCohortTx: campaignOwner.ReportCohortTx, PaymentsTx: paymentsOwner.StatisticsTx, TrialsTx: subscriptionOwner.StatisticsTx, PlansTx: catalogueOwner.StatisticsTx, VPNTx: vpnOwner.StatisticsTx}, auditreports.HistoryPorts{LockOperatorTx: owner.LockNoticeOperatorTx, AccountExistsTx: func(ctx context.Context, tx pgx.Tx, id uuid.UUID) (bool, error) {
+		_, err := owner.LookupTx(ctx, tx, id)
+		if errors.Is(err, accounts.ErrNotFound) {
+			return false, nil
+		}
+		return err == nil, err
+	}, LegacyTargetTx: owner.LegacyAuditTargetTx, LegacyLinksTx: owner.LegacyAuditLinksTx}, cfg.Audit)
 	remindersOwner := notifications.NewReminders(pool, notifications.ReminderPorts{AudienceTx: owner.ReminderAudienceTx, RecipientTx: owner.ReminderRecipientTx, AccessTx: vpnOwner.ReminderAccessTx, PeriodTx: vpnOwner.ReminderPeriodTx, StarsTx: paymentsOwner.ReminderPolicyTx, MailGuard: owner.WithMailGuard}, mailOwner, notificationsOwner, now)
 	noticesOwner := notifications.NewNotices(pool, notifications.NoticePorts{AudienceTx: owner.ReminderAudienceTx, RecipientTx: owner.NoticeRecipientTx, LockOperatorTx: owner.LockNoticeOperatorTx, LockPairTx: owner.LockNoticePairTx, DeliveryGuard: owner.WithNoticeDelivery, RequireOperator: owner.RequireOperator}, mailOwner, notificationsOwner, now)
 	return &Modules{Accounts: owner, Catalogue: catalogueOwner, Campaigns: campaignOwner, Subscriptions: subscriptionOwner, VPN: vpnOwner, Payments: paymentsOwner, Support: supportOwner, Notifications: notificationsOwner, MailDelivery: mailOwner, Reminders: remindersOwner, Notices: noticesOwner, AuditReports: reportsOwner}

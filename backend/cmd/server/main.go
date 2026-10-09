@@ -44,6 +44,9 @@ func run() error {
 	if len(os.Args) == 3 && os.Args[1] == "import-legacy-campaigns" {
 		return runLegacyCampaignImport(os.Args[2])
 	}
+	if len(os.Args) == 3 && os.Args[1] == "import-legacy-audit" {
+		return runLegacyAuditImport(os.Args[2])
+	}
 	if len(os.Args) == 5 && os.Args[1] == "operator" {
 		return runOperatorCommand(os.Args[2], os.Args[3], os.Args[4])
 	}
@@ -84,8 +87,17 @@ func run() error {
 	}
 	svc := app.NewModules(pool, limiter, queue, &cfg)
 	var tg *telegram.Runtime
+	var auditMirror func(context.Context, string) error
 	if os.Args[1] == "serve" {
 		tgConfig, e := telegram.LoadConfig(cfg.Accounts.Operators)
+		if e != nil {
+			return e
+		}
+		mirrorConfig, e := telegram.LoadAuditMirrorConfig()
+		if e != nil {
+			return e
+		}
+		auditMirror, e = telegram.NewAuditMirror(mirrorConfig, nil)
 		if e != nil {
 			return e
 		}
@@ -127,10 +139,11 @@ func run() error {
 		<-ctx.Done()
 		return nil
 	}
-	schedulerResult := make(chan error, 3)
+	schedulerResult := make(chan error, 4)
 	go func() { schedulerResult <- svc.VPN.RunMonthlyResetScheduler(ctx) }()
 	go func() { schedulerResult <- svc.Payments.RunStarsSubscriptionScheduler(ctx) }()
 	go func() { schedulerResult <- svc.Reminders.RunScheduler(ctx) }()
+	go func() { schedulerResult <- svc.AuditReports.RunScheduler(ctx, auditMirror) }()
 	address := os.Getenv("LISTEN_ADDRESS")
 	if address == "" {
 		address = "127.0.0.1:8080"
