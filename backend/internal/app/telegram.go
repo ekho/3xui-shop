@@ -16,7 +16,7 @@ func NewTelegram(cfg telegram.Config, modules *Modules, origin string, client *h
 	var channel *telegram.Client
 	if cfg.Enabled && origin != "" {
 		var err error
-		channel, err = telegram.NewClient(origin, modules.Accounts, modules.Payments, modules.Notifications)
+		channel, err = telegram.NewClient(origin, modules.Accounts, modules.Payments, modules.Notifications, modules.Maintenance)
 		if err != nil {
 			return nil, err
 		}

@@ -364,6 +364,9 @@ func (s *Service) CreateStarsInvoice(ctx context.Context, account, order uuid.UU
 	if out.StarsCheckout.URL != nil {
 		return out, nil
 	}
+	if err = s.allowNew(ctx); err != nil {
+		return empty, err
+	}
 	var payload string
 	var bot int64
 	var period int64

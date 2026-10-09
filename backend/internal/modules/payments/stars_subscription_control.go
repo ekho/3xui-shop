@@ -65,6 +65,11 @@ func (s *Service) ControlStarsSubscription(ctx context.Context, account, key uui
 		return empty, err
 	}
 	if !found {
+		if in.Action == "resume" {
+			if err = s.allowNew(ctx); err != nil {
+				return empty, err
+			}
+		}
 		subs, err := s.starsSubscriptionsTx(ctx, tx, account)
 		if err != nil {
 			return empty, err

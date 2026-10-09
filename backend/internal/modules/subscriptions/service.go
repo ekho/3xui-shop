@@ -15,12 +15,26 @@ import (
 )
 
 type Config struct {
+	Admission                                     func(context.Context) error
 	Operators                                     []int64
 	PanelID, SubscriptionBaseURL                  string
 	TrialEnabled                                  bool
 	TrialPeriodDays, TrialTrafficGB, TrialDevices int64
 	RequireStarsCancellation                      func(context.Context, pgx.Tx, uuid.UUID, string) error
 }
+
+func (s *Service) allowNew(ctx context.Context) error {
+	if check := s.config().Admission; check != nil {
+		if err := check(ctx); err != nil {
+			if err.Error() == "MAINTENANCE" {
+				return failure(503, "MAINTENANCE")
+			}
+			return unavailable()
+		}
+	}
+	return nil
+}
+
 type Error struct {
 	Status        int
 	Code, Message string

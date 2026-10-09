@@ -76,6 +76,9 @@ func (s *Service) ActivateTelegramTrial(ctx context.Context, accountID, key uuid
 	if prior, found, e := replay[TrialRequest](ctx, q, principal, operation, key, hash); found || e != nil {
 		return prior, false, e
 	}
+	if err = s.allowNew(ctx); err != nil {
+		return out, false, err
+	}
 	if err = s.trialEligibility(ctx, q, a); err != nil {
 		return out, false, err
 	}
@@ -235,6 +238,9 @@ func (s *Service) CreateTrialRequest(ctx context.Context, accountID, key uuid.UU
 	}
 	if prior, found, e := replay[TrialRequest](ctx, q, principal, "createTrialRequest", key, hash); found || e != nil {
 		return prior, false, e
+	}
+	if err = s.allowNew(ctx); err != nil {
+		return out, false, err
 	}
 	if err = s.trialEligibility(ctx, q, a); err != nil {
 		return out, false, err
