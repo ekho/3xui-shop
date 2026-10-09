@@ -1,6 +1,6 @@
 # С28 — сообщения оператора и рассылки
 
-Дата: 2026-10-09. Owner: notifications/#38. Решение [2026-10-09-s28-notices-v1](https://github.com/ekho/3xui-shop/issues/38#issuecomment-6070090199), выбранное агентом по принятому автономному Native-мандату. Статус: backend/API и интерфейсы web/Mini/React-admin реализованы и проверены локально; полная локальная приёмка, review и доставка ещё не выполнены. [Роадмап](../../roadmaps/2026-10-01-platform-roadmap.md), [модульный монолит](2026-10-05-modular-monolith-design.md), [С27](2026-10-08-s27-reminders-design.md).
+Дата: 2026-10-09. Owner: notifications/#38. Решение [2026-10-09-s28-notices-v1](https://github.com/ekho/3xui-shop/issues/38#issuecomment-6070090199), выбранное агентом по принятому автономному Native-мандату. Статус: реализация и [локальная приёмка](../evidence/2026-10-09-s28-notices.md) завершены; одно финальное review, CI и доставка ещё ожидаются. [Роадмап](../../roadmaps/2026-10-01-platform-roadmap.md), [модульный монолит](2026-10-05-modular-monolith-design.md), [С27](2026-10-08-s27-reminders-design.md).
 
 ## Цель и выбор
 

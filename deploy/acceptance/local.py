@@ -582,7 +582,7 @@ def native_check():
     log=STATE/'native-go.log'
     with log.open('w') as output:
         log.chmod(0o600)
-        result=subprocess.run(['go','test','-race','./tests','-run','TestNativeTrial','-count=1'],
+        result=subprocess.run(['go','test','-race','./tests','-run','TestNativeTrial|TestNativeNotices','-count=1'],
                               cwd=ROOT/'backend',env=environment,stdout=output,stderr=subprocess.STDOUT,timeout=180)
     assert result.returncode==0, 'native Go integration failed; see private native-go.log'
     print('PASS: native Go HTTP/jobs/Telegram integration with real TLS SMTP and 3X-UI3.7.0; Bot API simulated',flush=True)

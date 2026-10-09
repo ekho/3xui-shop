@@ -9,6 +9,7 @@ async function mock(page:Page,getSub:()=>Model<'Subscription'>=()=>base){
  await page.route('**/api/v1/**',route=>{
   const path=new URL(route.request().url()).pathname;
   if(path.endsWith('/me'))return route.fulfill({json:account});
+  if(path==='/api/v1/notices')return route.fulfill({json:{version:'operator-notices-v1',email_enabled:false,email_available:true,page:1,per_page:20,total:0,notices:[]}});
   if(path==='/api/v1/reminders')return route.fulfill({json:{version:'reminders-v1',email_enabled:false,email_available:true,reminders:[]}});
   if(path.endsWith('/trial-requests/current'))return route.fulfill({json:{request:null}});
   if(path.endsWith('/subscription/key'))return route.fulfill({json:{subscription_url:'https://subscriptions.example.test/sub/private-fixture'}});

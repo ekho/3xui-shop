@@ -17,6 +17,7 @@ async function fixture(page:Page,options:Options={}){
   const req=r.request(),path=new URL(req.url()).pathname;
   if(options.extra&&await options.extra(r,path))return;
   if(path==='/api/v1/me')return r.fulfill({json:options.profile?.()??account});
+  if(path==='/api/v1/notices')return r.fulfill({json:{version:'operator-notices-v1',email_enabled:false,email_available:options.profile?.().account.email_verified??account.account.email_verified,page:1,per_page:20,total:0,notices:[]}});
   if(path==='/api/v1/subscription')return r.fulfill({json:options.subscription??none});
   if(path==='/api/v1/trial-requests/current')return r.fulfill({json:{request:null}});
   if(path==='/api/v1/orders/current')return r.fulfill({json:{order:null,can_purchase:false}});
