@@ -29,42 +29,37 @@ func (s *Service) StatisticsTx(ctx context.Context, tx pgx.Tx, ids []uuid.UUID) 
 	if err != nil || len(accounts) != len(ids) {
 		return out, unavailable()
 	}
-	config := s.config()
-	p := NewPanelClient(config.Panel)
-	defer p.Close()
-	snapshot, panelErr := p.statisticsSnapshot(ctx)
+	servers, err := s.ServersTx(ctx, tx)
+	if err != nil {
+		return out, err
+	}
+	if len(servers) == 0 {
+		return out, unavailable()
+	}
+	snapshots, reports := s.statisticsSnapshots(ctx, servers)
+	out.Servers = reports
 	observed := s.now().UTC()
-	server := auditreports.StatisticsServer{PanelID: config.PanelID, Availability: "unavailable", ObservedAt: observed}
-	if panelErr == nil {
-		server.Availability = "available"
-		clients, inbounds, enabled := int64(len(snapshot.clients)), int64(len(snapshot.inbounds)), int64(0)
+	if len(snapshots) == len(servers) {
 		out.InboundReferences = map[string]auditreports.InboundStatistics{}
-		for _, row := range snapshot.inbounds {
-			if row.enabled {
-				enabled++
-			}
-			for _, group := range []string{"banned", "regular", "unlimited", "euru"} {
-				if !hasSegment(row.tags, group) {
-					continue
+		for _, snapshot := range snapshots {
+			for _, row := range snapshot.inbounds {
+				for _, group := range []string{"banned", "regular", "unlimited", "euru"} {
+					if !hasSegment(row.tags, group) {
+						continue
+					}
+					count := out.InboundReferences[group]
+					count.References++
+					if row.enabled {
+						count.Enabled++
+					}
+					out.InboundReferences[group] = count
 				}
-				count := out.InboundReferences[group]
-				count.References++
-				if row.enabled {
-					count.Enabled++
-				}
-				out.InboundReferences[group] = count
 			}
 		}
-		server.Clients, server.Inbounds, server.EnabledInbounds = &clients, &inbounds, &enabled
-	} else {
-		code := "PANEL_UNAVAILABLE"
-		server.ErrorCode = &code
-		snapshot = panelStatisticsSnapshot{}
 	}
-	out.Servers = []auditreports.StatisticsServer{server}
 	out.Activity.ObservedAt = observed
 	for _, a := range accounts {
-		active, known := statisticsAccountActivity(a, baselines[a.ID], snapshot, config.PanelID, observed)
+		active, known := statisticsAccountActivity(a, baselines[a.ID], snapshots[stringValue(a.AssignedPanelID)], stringValue(a.AssignedPanelID), observed)
 		switch {
 		case !known:
 			out.Activity.UnknownUsers++
@@ -78,6 +73,40 @@ func (s *Service) StatisticsTx(ctx context.Context, tx pgx.Tx, ids []uuid.UUID) 
 		out.Activity.ActiveUsers = &out.Activity.KnownActiveUsers
 	}
 	return out, nil
+}
+
+// Failed/retired providers leave no confirmed snapshot for their own accounts.
+func (s *Service) statisticsSnapshots(ctx context.Context, servers []Server) (map[string]panelStatisticsSnapshot, []auditreports.StatisticsServer) {
+	snapshots := map[string]panelStatisticsSnapshot{}
+	reports := make([]auditreports.StatisticsServer, 0, len(servers))
+	for _, v := range servers {
+		var snapshot panelStatisticsSnapshot
+		err := ErrPanel
+		if !v.Retired {
+			cfg := s.config().Panel
+			cfg.PanelURL = v.Host
+			panel := NewPanelClient(cfg)
+			snapshot, err = panel.statisticsSnapshot(ctx)
+			panel.Close()
+		}
+		report := auditreports.StatisticsServer{PanelID: v.ID, Availability: "unavailable", ObservedAt: s.now().UTC()}
+		if err == nil {
+			snapshots[v.ID] = snapshot
+			report.Availability = "available"
+			clients, inbounds, enabled := int64(len(snapshot.clients)), int64(len(snapshot.inbounds)), int64(0)
+			for _, row := range snapshot.inbounds {
+				if row.enabled {
+					enabled++
+				}
+			}
+			report.Clients, report.Inbounds, report.EnabledInbounds = &clients, &inbounds, &enabled
+		} else {
+			code := "PANEL_UNAVAILABLE"
+			report.ErrorCode = &code
+		}
+		reports = append(reports, report)
+	}
+	return snapshots, reports
 }
 
 func statisticsAccountActivity(a accounts.Snapshot, b statisticsBaseline, snapshot panelStatisticsSnapshot, panelID string, now time.Time) (active, known bool) {

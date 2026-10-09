@@ -749,18 +749,22 @@ func TestWebTrialBackupRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(restored.Close)
-	// Reapply the latest additive layer on the restored database while retaining its running job.
+	// Retained pool history blocks downgrade; migration replay must preserve it.
 	metadataDB := stdlib.OpenDBFromPool(restored)
 	defer metadataDB.Close()
 	provider, err := goose.NewProvider(goose.DialectPostgres, metadataDB, os.DirFS(filepath.Join(f.root, "backend/db/migrations")))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = provider.Down(ctx); err != nil {
-		t.Fatal("restored latest migration downgrade", err)
+	if _, err = provider.Down(ctx); err == nil || !strings.Contains(err.Error(), "server pool downgrade blocked") {
+		t.Fatal("restored server history allowed downgrade", err)
 	}
 	if err = db.Migrate(ctx, restored); err != nil {
 		t.Fatal("restored additive migration")
+	}
+	var reservedPanel string
+	if err = restored.QueryRow(ctx, `SELECT server_id FROM vpn_server_reservations WHERE trial_operation_id=$1`, op).Scan(&reservedPanel); err != nil || reservedPanel != f.cfg.Subscriptions.PanelID {
+		t.Fatal("restored migration changed the durable reservation", err)
 	}
 	maintenance, err := os.ReadFile(filepath.Join(f.root, "backend/db/maintenance/post_restore_auth.sql"))
 	if err != nil {

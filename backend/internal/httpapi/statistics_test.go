@@ -245,7 +245,7 @@ func readStatisticsHTTP(t *testing.T, h http.Handler, actor supportSession, orig
 	if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), &report) != nil {
 		t.Fatalf("operator statistics want200 got%d", r.Code)
 	}
-	if report.Version != "statistics-v1" || report.DatabaseObservedAt.IsZero() || len(report.Groups) != 4 || len(report.Servers) != 1 {
+	if report.Version != "statistics-v1" || report.DatabaseObservedAt.IsZero() || len(report.Groups) != 4 {
 		t.Fatal("statistics completeness/version/observation")
 	}
 	var value any
@@ -266,13 +266,13 @@ func readStatisticsHTTP(t *testing.T, h http.Handler, actor supportSession, orig
 // A global fallback for an empty cohort, role/CSRF bypass or a report write
 // breaks real HTTP/DB behavior; no report service is replaced by a test double.
 func TestOperatorStatisticsScopeAndAuthority(t *testing.T) {
-	h, e, cfg, _ := miniAppHTTPFixture(t)
+	h, e, cfg := statisticsHTTPPanel(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(503) }))
 	ctx := context.Background()
 	actor := campaignOperator(t, h, e, cfg)
 	client := supportLogin(t, h, e, cfg, "reports-client@example.test")
 	campaign := campaignCreate(t, h, actor, cfg, "Reports empty cohort")
 	global := readStatisticsHTTP(t, h, actor, cfg.HTTP.CabinetOrigin, nil)
-	if global.Users != 2 || global.CampaignID != nil || global.Trials.TrialUsers != 0 || global.Payments.PaidOrders != 0 || global.Activity.ActiveUsers == nil || *global.Activity.ActiveUsers != 0 || global.Activity.KnownInactiveUsers != 2 || global.Activity.UnknownUsers != 0 || global.Servers[0].Clients != nil {
+	if global.Users != 2 || global.CampaignID != nil || global.Trials.TrialUsers != 0 || global.Payments.PaidOrders != 0 || global.Activity.ActiveUsers == nil || *global.Activity.ActiveUsers != 0 || global.Activity.KnownInactiveUsers != 2 || global.Activity.UnknownUsers != 0 || len(global.Servers) != 1 || global.Servers[0].Clients != nil {
 		t.Fatal("global identity scope and known absence of access")
 	}
 	if global.Conversions.TrialPercent == nil || *global.Conversions.TrialPercent != "0.00" || global.Conversions.PaidPercent == nil || *global.Conversions.PaidPercent != "0.00" || global.Conversions.RepeatPercent != nil {
@@ -328,5 +328,14 @@ func TestOperatorStatisticsScopeAndAuthority(t *testing.T) {
 				t.Fatal("denied report exposed protected data")
 			}
 		})
+	}
+}
+
+func TestOperatorStatisticsUnconfigured(t *testing.T) {
+	h, e, cfg := httpFixture(t)
+	actor := campaignOperator(t, h, e, cfg)
+	r := supportRequest(h, &actor, "POST", "/api/v1/operator/reports/statistics", "application/json", []byte(`{"campaign_id":null}`), cfg.HTTP.CabinetOrigin, uuid.Nil)
+	if r.Code != http.StatusServiceUnavailable || strings.Contains(r.Body.String(), `"servers"`) {
+		t.Fatal("unconfigured provider exposed a report outside the public schema", r.Code)
 	}
 }

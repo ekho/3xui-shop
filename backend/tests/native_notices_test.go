@@ -219,6 +219,8 @@ func nativeNoticeBinary(t *testing.T, f *fixture, handler http.Handler, childSet
 					path = filepath.Join(f.root, ".superpowers", "acceptance", "c29-audit-history")
 				} else if strings.HasPrefix(t.Name(), "TestNativeTrialSupport") {
 					path = filepath.Join(f.root, ".superpowers", "acceptance", "c37-support-proxy")
+				} else if strings.HasPrefix(t.Name(), "TestNativeTrialServerPool") {
+					path = filepath.Join(f.root, ".superpowers", "acceptance", "c39-server-pool")
 				}
 				if os.MkdirAll(path, 0700) == nil {
 					os.WriteFile(filepath.Join(path, "native-server-failure-"+uuid.NewString()+".log"), data, 0600)

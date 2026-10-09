@@ -13,7 +13,7 @@ concurrency:
 jobs:
   checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # existing repository v4 pin
       - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
@@ -52,7 +52,7 @@ jobs:
           (cd web && node scripts/runtime-config.test.mjs)
       - name: Behavior and connected consumers
         run: |
-          RUN_BROWSER_TESTS=1 make -C backend test-integration
+          RUN_BROWSER_TESTS=1 make -C backend test-integration TEST_TIMEOUT=60m
           poetry run python -m unittest discover -s tests -v
           npm --prefix web run test:e2e
       - name: Container readiness (local images only)

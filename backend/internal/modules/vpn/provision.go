@@ -134,6 +134,11 @@ func (s *Service) Provision(parent context.Context, id uuid.UUID) error {
 	if e != nil {
 		return unavailable()
 	}
+	// Concrete lookup uses this session; finish SQL before its Ping watchdog.
+	p, panelErr := s.panelFor(ctx, op.PanelID, c)
+	if p != nil {
+		defer p.Close()
+	}
 	stop, lost := watchOwner(ctx, c, cancel)
 	defer stop()
 	fail := func(ambiguous bool) error {
@@ -158,11 +163,9 @@ func (s *Service) Provision(parent context.Context, id uuid.UUID) error {
 	if a.Restricted || !accounts.SourceEligible(a) || !validSnapshot(op) || a.AssignedPanelID != nil && *a.AssignedPanelID != op.PanelID {
 		return fail(true)
 	}
-	p, e := s.panelFor(ctx, op.PanelID, c)
-	if e != nil {
+	if panelErr != nil {
 		return fail(true)
 	}
-	defer p.Close()
 	var target ProvisionTarget
 	hadTarget := len(op.Target) > 0
 	if hadTarget {

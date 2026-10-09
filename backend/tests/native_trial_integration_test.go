@@ -836,35 +836,7 @@ func TestNativeTrialReminders(t *testing.T) {
 	}
 	f := openMode(t, true, pub)
 	ctx := context.Background()
-	bot := &nativeBot{}
-	_, stop := launchNative(t, f, bot, true, true, true)
-	email := nativeEmail("native-reminder")
-	owner, csrf, trial := f.signup(t, email)
-	status, raw, _ := f.send(t, owner, "POST", "/api/v1/me/telegram/link", wire.CurrentPasswordInput{CurrentPassword: "fixture password with Unicode ✨"}, csrf, "", false)
-	var challenge wire.TelegramLinkChallenge
-	if status != 200 || json.Unmarshal(raw, &challenge) != nil {
-		t.Fatal("owned reminder link challenge unavailable", status)
-	}
-	tg := int64(uuid.New().ID()) + 1000000000
-	status, _, _ = f.send(t, f.public.Client(), "POST", "/api/v1/telegram/link", map[string]string{"init_data": testkit.SignedMiniAppData(key, 123456789, time.Now(), fmt.Sprintf(`{"id":%d,"first_name":"Owned reminder","language_code":"en"}`, tg), ""), "link_token": challenge.LinkToken, "accepted_terms_version": "1", "accepted_privacy_version": "1"}, "", "", false)
-	if status != 200 {
-		t.Fatal("owned signed reminder link unavailable", status)
-	}
-	status, raw, _ = f.send(t, owner, "POST", "/api/v1/auth/login", map[string]string{"email": email, "password": "fixture password with Unicode ✨"}, "", "", false)
-	var login wire.LoginResult
-	if status != 200 || json.Unmarshal(raw, &login) != nil {
-		t.Fatal("owned reminder login unavailable", status)
-	}
-	csrf, account := login.CsrfToken, login.Account.AccountId
-	card := cardFor(t, bot, 101, trial.RequestId)
-	bot.callback(101, card.ID, "a", trial.RequestId, "")
-	wait(t, func() bool { return trialStatus(f, trial.RequestId) == "approved" })
-	op := operationFor(t, f, trial.RequestId)
-	wait(t, func() bool { return applied(f, op) })
-	assertNativePanel(t, f, op)
-	stop()
-	// Observe actual provider requests after the grant; login is authentication,
-	// while every subsequent data request must be read-only.
+	// Register the observation proxy before the first durable server binding.
 	upstream, err := url.Parse(f.cfg.VPN.Panel.PanelURL)
 	if err != nil {
 		t.Fatal("owned panel URL invalid")
@@ -909,8 +881,40 @@ func TestNativeTrialReminders(t *testing.T) {
 		t.Cleanup(f.public.Close)
 		f.cfg.HTTP.CabinetOrigin = f.public.URL
 		f.svc = app.NewModules(f.env.Pool, f.env.Redis, queue, &f.cfg)
+		f.svc.MiniApp = telegram.NewMiniApp(123456789, pub, f.svc.Accounts, time.Now)
 		handler = httpapi.New(f.svc, f.env.Pool, f.cfg.HTTP)
 	}
+	rebuild()
+	bot := &nativeBot{}
+	_, stop := launchNative(t, f, bot, true, true, true)
+	email := nativeEmail("native-reminder")
+	owner, csrf, trial := f.signup(t, email)
+	status, raw, _ := f.send(t, owner, "POST", "/api/v1/me/telegram/link", wire.CurrentPasswordInput{CurrentPassword: "fixture password with Unicode ✨"}, csrf, "", false)
+	var challenge wire.TelegramLinkChallenge
+	if status != 200 || json.Unmarshal(raw, &challenge) != nil {
+		t.Fatal("owned reminder link challenge unavailable", status)
+	}
+	tg := int64(uuid.New().ID()) + 1000000000
+	status, _, _ = f.send(t, f.public.Client(), "POST", "/api/v1/telegram/link", map[string]string{"init_data": testkit.SignedMiniAppData(key, 123456789, time.Now(), fmt.Sprintf(`{"id":%d,"first_name":"Owned reminder","language_code":"en"}`, tg), ""), "link_token": challenge.LinkToken, "accepted_terms_version": "1", "accepted_privacy_version": "1"}, "", "", false)
+	if status != 200 {
+		t.Fatal("owned signed reminder link unavailable", status)
+	}
+	status, raw, _ = f.send(t, owner, "POST", "/api/v1/auth/login", map[string]string{"email": email, "password": "fixture password with Unicode ✨"}, "", "", false)
+	var login wire.LoginResult
+	if status != 200 || json.Unmarshal(raw, &login) != nil {
+		t.Fatal("owned reminder login unavailable", status)
+	}
+	csrf, account := login.CsrfToken, login.Account.AccountId
+	card := cardFor(t, bot, 101, trial.RequestId)
+	bot.callback(101, card.ID, "a", trial.RequestId, "")
+	wait(t, func() bool { return trialStatus(f, trial.RequestId) == "approved" })
+	op := operationFor(t, f, trial.RequestId)
+	wait(t, func() bool { return applied(f, op) })
+	assertNativePanel(t, f, op)
+	stop()
+	mu.Lock()
+	writes, reads, responses = 0, 0, nil
+	mu.Unlock()
 	rebuild()
 	snapshot := func() [32]byte {
 		t.Helper()

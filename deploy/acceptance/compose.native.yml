@@ -19,6 +19,12 @@ services:
     secrets: [local_yoomoney_notification]
   mailpit:
     ports: ['127.0.0.1:59447:1025']
+  panel-second:
+    extends: {file: compose.local.yml, service: panel}
+    volumes: ['${LOCAL_STATE_DIR:?required}/panel-second-db:/etc/x-ui']
+  gateway:
+    ports: ['127.0.0.1:59449:9449']
+    depends_on: [panel-second]
 secrets:
   native_operator_account: {file: '${LOCAL_STATE_DIR:?required}/native-operator-account'}
   local_yoomoney_notification: {file: '${LOCAL_STATE_DIR:?required}/yoomoney-notification-secret'}

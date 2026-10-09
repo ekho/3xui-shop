@@ -78,6 +78,13 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	if err != nil {
 		return unavailable()
 	}
+	var t AccessTarget
+	targetErr := json.Unmarshal(op.Target, &t)
+	// Concrete lookup uses this session; finish SQL before its Ping watchdog.
+	p, panelErr := s.panelFor(ctx, t.PanelID, c)
+	if p != nil {
+		defer p.Close()
+	}
 	stop, lost := watchOwner(ctx, c, cancel)
 	defer stop()
 	cleanup := func(code string, ambiguous bool) error {
@@ -117,8 +124,7 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		}
 		return unavailable()
 	}
-	var t AccessTarget
-	if json.Unmarshal(op.Target, &t) != nil || t.OperationID != id || t.PanelID == "" || t.PanelKey == "" || t.VPNID == uuid.Nil || t.SubID == "" || t.DeviceCount < 0 || t.DeviceCount >= math.MaxInt64 || t.TrafficLimitBytes < 0 || t.ExpiryTimeMS < 0 || len(t.InboundIDs) == 0 {
+	if targetErr != nil || t.OperationID != id || t.PanelID == "" || t.PanelKey == "" || t.VPNID == uuid.Nil || t.SubID == "" || t.DeviceCount < 0 || t.DeviceCount >= math.MaxInt64 || t.TrafficLimitBytes < 0 || t.ExpiryTimeMS < 0 || len(t.InboundIDs) == 0 {
 		return cleanup("invalid_target", true)
 	}
 	if op.Kind == "monthly_reset" && !op.WriteStarted && !op.ResetStarted {
@@ -164,11 +170,9 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	if executor != nil && s.accounts.RequireOperator(ctx, *executor) != nil {
 		return cleanup("actor_revoked", true)
 	}
-	p, err := s.panelFor(ctx, t.PanelID, c)
-	if err != nil {
+	if panelErr != nil {
 		return cleanup("panel_unavailable", true)
 	}
-	defer p.Close()
 	if t.Profile == "regular" || t.Profile == "euru" || t.Profile == "unlimited" {
 		selected, e := p.ProfileInboundIDs(ctx, t.Profile)
 		if e != nil {

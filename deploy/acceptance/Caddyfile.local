@@ -15,3 +15,12 @@ https://localhost:9446 {
  tls /run/secrets/public_cert /run/secrets/public_key
  reverse_proxy mailpit:8025
 }
+https://localhost:9449, https://gateway:9449 {
+ tls /run/secrets/public_cert /run/secrets/public_key
+ handle /sub/* {
+  reverse_proxy panel-second:2096
+ }
+ handle {
+  reverse_proxy panel-second:2053
+ }
+}

@@ -24,6 +24,7 @@ import (
 type fakePanel struct {
 	override                                                                         http.Handler
 	offline                                                                          bool
+	bulkUnavailable                                                                  bool
 	subscriptionBase                                                                 string
 	beforeRead                                                                       func()
 	blockRead                                                                        bool
@@ -83,6 +84,22 @@ func (p *fakePanel) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case r.Method == "GET" && r.URL.Path == "/panel/api/clients/list":
+		if p.bulkUnavailable {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		rows := []map[string]any{}
+		if p.client != nil {
+			row := make(map[string]any, len(p.client)+3)
+			for key, value := range p.client {
+				row[key] = value
+			}
+			row["uuid"], row["id"], row["inboundIds"] = p.client["id"], 1, p.ids
+			row["traffic"] = map[string]any{"email": p.client["email"], "up": p.up, "down": p.down}
+			rows = append(rows, row)
+		}
+		reply(map[string]any{"success": true, "obj": rows})
 	case r.Method == "POST" && r.URL.Path == "/panel/api/setting/all":
 		reply(map[string]any{"success": true, "obj": map[string]any{"subEnable": p.subscriptionBase != "", "subURI": p.subscriptionBase}})
 	case r.Method == "GET" && r.URL.Path == "/panel/api/inbounds/list":
