@@ -23,4 +23,18 @@ type AuditEvent struct {
 	AccessOperationID *uuid.UUID
 	SystemActor       pgtype.Bool
 	MonthlyPeriod     pgtype.Text
+	MirrorAttemptedAt pgtype.Timestamptz
+}
+
+type AuditSystemEvent struct {
+	ID                uuid.UUID
+	CreatedAt         pgtype.Timestamptz
+	Action            string
+	PeriodDay         pgtype.Date
+	Cutoff            pgtype.Timestamptz
+	RetentionDays     pgtype.Int4
+	NativeCount       int64
+	LegacyCount       int64
+	SystemCount       int64
+	MirrorAttemptedAt pgtype.Timestamptz
 }

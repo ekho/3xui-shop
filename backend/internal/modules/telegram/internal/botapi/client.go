@@ -231,6 +231,23 @@ func (c *Client) message(ctx context.Context, method string, chatID, messageID i
 func (c *Client) SendMessage(ctx context.Context, chatID int64, text string, k *InlineKeyboard) (Message, error) {
 	return c.message(ctx, "sendMessage", chatID, 0, text, k)
 }
+
+// General is a separate negative-group transport; private chat guards stay intact.
+func (c *Client) SendGeneral(ctx context.Context, groupID int64, text string) error {
+	if groupID >= 0 || groupID < -(1<<52-1) || !utf8.ValidString(text) || strings.ContainsRune(text, '\x00') || strings.TrimSpace(text) == "" || utf8.RuneCountInString(text) > 4096 {
+		return &APIError{Code: "INVALID_INPUT"}
+	}
+	var out struct {
+		ID       int64  `json:"message_id"`
+		Chat     Chat   `json:"chat"`
+		ThreadID *int64 `json:"message_thread_id"`
+	}
+	err := c.call(ctx, "sendMessage", map[string]any{"chat_id": groupID, "text": text, "link_preview_options": map[string]bool{"is_disabled": true}}, &out, 10*time.Second)
+	if err == nil && (out.ID <= 0 || out.Chat.ID != groupID || out.Chat.Type != "supergroup" || out.ThreadID != nil && *out.ThreadID != 1) {
+		return invalid()
+	}
+	return err
+}
 func (c *Client) EditMessage(ctx context.Context, chatID, messageID int64, text string, k *InlineKeyboard) (Message, error) {
 	if messageID <= 0 {
 		return Message{}, &APIError{Code: "INVALID_INPUT"}

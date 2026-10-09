@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"example.com/cabinet/backend/internal/modules/accounts"
+	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/payments"
 	"example.com/cabinet/backend/internal/modules/subscriptions"
@@ -29,6 +30,7 @@ type Config struct {
 	VPN                   vpn.Settings
 	Payments              payments.Config
 	Mail                  notifications.MailConfig
+	Audit                 auditreports.Config
 }
 type HTTPConfig struct {
 	CabinetOrigin, AdapterToken string
@@ -54,12 +56,16 @@ func SecretFile(name string) (string, error) {
 	return v, nil
 }
 func LoadConfig() (Config, error) {
+	audit, err := readAuditConfig()
+	if err != nil {
+		return Config{}, err
+	}
 	c := Config{
 		HTTP:     HTTPConfig{CabinetOrigin: os.Getenv("CABINET_ORIGIN")},
 		Accounts: accounts.Config{TermsVersion: os.Getenv("TERMS_VERSION"), PrivacyVersion: os.Getenv("PRIVACY_VERSION"), RateNamespace: "platform"},
 		Mail:     notifications.MailConfig{SMTPAddress: os.Getenv("SMTP_ADDRESS"), SMTPUser: os.Getenv("SMTP_USER"), SMTPFrom: os.Getenv("SMTP_FROM")},
+		Audit:    audit,
 	}
-	var err error
 	if value := os.Getenv("TRUSTED_PROXY_CIDRS"); value != "" {
 		c.HTTP.TrustedProxyCIDRs = strings.Split(value, ",")
 	}
@@ -235,6 +241,30 @@ func LoadConfig() (Config, error) {
 		}
 	}
 	return c, c.Validate()
+}
+
+func readAuditConfig() (auditreports.Config, error) {
+	c := auditreports.Config{RetentionDays: 365, Timezone: time.UTC}
+	if raw := os.Getenv("AUDIT_RETENTION_DAYS"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > 3650 {
+			return c, errors.New("invalid AUDIT_RETENTION_DAYS")
+		}
+		c.RetentionDays = value
+	}
+	zone := os.Getenv("AUDIT_RETENTION_TIMEZONE")
+	if zone == "" {
+		zone = os.Getenv("BOT_TIMEZONE")
+	}
+	if zone == "" {
+		zone = "UTC"
+	}
+	var err error
+	c.Timezone, err = time.LoadLocation(zone)
+	if err != nil || zone == "Local" {
+		return c, errors.New("invalid AUDIT_RETENTION_TIMEZONE")
+	}
+	return c, nil
 }
 func (c Config) Validate() error {
 	if c.Payments.CryptomusEnabled || c.Payments.CryptomusMerchantID != "" || c.Payments.CryptomusAPIKey != "" {

@@ -42,14 +42,26 @@ func LoadConfig(operators []int64) (Config, error) {
 	if !c.Enabled {
 		return c, nil
 	}
-	p := os.Getenv("BOT_TOKEN_FILE")
-	if p == "" || os.Getenv("BOT_TOKEN") != "" {
-		return Config{}, errors.New("BOT_TOKEN_FILE required without plaintext input")
+	var err error
+	c.Token, err = loadTokenFile("BOT_TOKEN")
+	if err != nil {
+		return Config{}, err
+	}
+	return c, c.validate()
+}
+
+func loadTokenFile(name string) (string, error) {
+	p := os.Getenv(name + "_FILE")
+	if p == "" || os.Getenv(name) != "" {
+		return "", errors.New(name + "_FILE required without plaintext input")
 	}
 	b, err := os.ReadFile(p)
 	if err != nil {
-		return Config{}, errors.New("unreadable BOT_TOKEN_FILE")
+		return "", errors.New("unreadable " + name + "_FILE")
 	}
-	c.Token = strings.TrimSpace(string(b))
-	return c, c.validate()
+	token := strings.TrimSpace(string(b))
+	if !tokenPattern.MatchString(token) {
+		return "", errors.New("invalid " + name + "_FILE")
+	}
+	return token, nil
 }
