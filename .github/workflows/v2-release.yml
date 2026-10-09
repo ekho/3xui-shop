@@ -45,10 +45,19 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           persist-credentials: false
+      - name: Configure Docker Hub cache before containers
+        run: |
+          printf 'DOCKER_CONFIG=%s\n' "$(mktemp -d "$RUNNER_TEMP/ci-docker-config.XXXXXX")" >> "$GITHUB_ENV"
+          python3 -m unittest discover -s .github/scripts -v
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT python3 .github/scripts/configure_docker_cache.py
       - name: Set up QEMU
         if: github.ref == 'refs/heads/v2'
         uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+        id: buildx
+        with:
+          buildkitd-config: .github/buildkitd.toml
+          buildkitd-flags: --log-level=debug --allow-insecure-entitlement security.insecure --allow-insecure-entitlement network.host
       - name: Log in to GHCR
         if: github.ref == 'refs/heads/v2'
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
@@ -71,6 +80,7 @@ jobs:
       - name: Build images; publish only from v2
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
+          builder: ${{ steps.buildx.outputs.name }}
           context: ${{ matrix.context }}
           platforms: ${{ github.ref == 'refs/heads/v2' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
           push: ${{ github.ref == 'refs/heads/v2' }}
@@ -78,6 +88,11 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=v2-${{ matrix.component }}
           cache-to: type=gha,mode=max,scope=v2-${{ matrix.component }}
+      - name: Verify BuildKit mirror requests
+        shell: bash
+        env:
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+        run: python3 .github/scripts/verify_buildkit_cache.py
 
   release:
     name: GitHub prerelease

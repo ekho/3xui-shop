@@ -90,7 +90,7 @@ Redis56344 и browser41744; отдельные UUID базы и Redis namespaces
 `cabinet-native`, чужие worktrees и данные не менялись. Python3.13, Node24,
 Go1.27; новые зависимости не добавлялись.
 
-На момент локальной приёмки доставка заблокирована внешней задачей [#98](https://github.com/ekho/3xui-shop/issues/98): Docker Hub429, owning cache-fix [PR99](https://github.com/ekho/3xui-shop/pull/99) ещё не подтвердил recovery. Известный неуспешный full CI не повторяется, CI этой задачей не менялся. После проверенного fix и выбранного parent integration step требуются push и готовый PR в v2 с всеми checks на окончательном HEAD. Пока delivery/acceptance pending, этот документ не заявляет готовый PR или завершённую #44.
+На первом checkpoint локальной приёмки доставка была заблокирована внешней задачей [#98](https://github.com/ekho/3xui-shop/issues/98): Docker Hub429; owning cache-fix [PR99](https://github.com/ekho/3xui-shop/pull/99) ещё не подтвердил recovery. Этот неуспешный CI не повторяли. Следующий этап интеграции и его результаты записаны ниже. Готовность PR требует всех обязательных checks на его окончательном HEAD; merge и закрытие #44 остаются у родительского координатора.
 Миграция `00038_maintenance.sql` сохраняет номер; родительский координатор
 интегрирует/применяет `00037_server_management.sql` из PR96/#42 перед38.
 Проверка чистой базы в этой ветке не подтверждает upgrade с38 до позднее
@@ -118,3 +118,41 @@ re-entry при удерживаемом AccessOwner. Эта независим�
 После проверок собственный Compose остановлен, его test volumes удалены.
 Приватные логи и recipe/Poetry окружение сохраняются для продолжения после #98;
 рабочая ветка и чужие ресурсы не архивируются и не удаляются.
+
+## Интеграция проверенного CI source
+
+По указанию координатора в существующую ветку объединён owning fix
+`b320f8eef415bb48e4c1cebdb12409b143eb9501` из PR99. SHA проверен после SSH fetch.
+Его полный [push Platform run 38001638382](https://github.com/ekho/3xui-shop/actions/runs/38001638382)
+и все три [Image jobs 38001644520](https://github.com/ekho/3xui-shop/actions/runs/38001644520)
+имеют SUCCESS на этом source. Это основание возобновить CI нашей ветки,
+а не подтверждение её собственного окончательного CI или merge PR99.
+
+Объединение с прежним local HEAD `b741dcb7107f84b0b6a74571d4c5d4162ff85a03`
+прошло без content conflicts. `.github` совпадает с b320f8e без дополнительных
+правок. Incoming source содержит уже слитую #46: readiness, bounded shutdown,
+River и operational SMTP reporting сохранены вместе с maintenance admission.
+Миграция37 не копировалась; порядок37→38 и integration с #42 остаются у координатора.
+
+| Свежая проверка объединённого source | Результат |
+| --- | --- |
+| Focused Go с race: cmd/server, app, telegram, operations, httpapi; healthcheck, shutdown/River, readiness/reporting и maintenance cases | PASS во всех пяти пакетах; wrapper80.534s, HTTP72.523s |
+| Native maintenance flow/browser с race, `RUN_BROWSER_TESTS=1 go test ./tests -run '^TestNativeMaintenance' -count=1 -race -timeout=5m` | PASS21.164s, wrapper24.169s; реальное TLS API/River/Go Telegram, synthetic transports |
+| `go vet ./...` | PASS2.080s |
+| CI script unit tests, Python syntax, BuildKit TOML, diff whitespace | 10/10 PASS; parser и whitespace PASS; Docker cache configurator не применялся на Mac |
+| Пинованный actionlint1.7.12 + shellcheck | Исходный запуск RED только на уже существующем `concurrency.queue`. Проверено, что поле неизменно от merged5bdcdbb; с точным исключением этого неподдерживаемого diagnostic остальные checks PASS. Workflow и CI gates не изменялись. |
+
+Эти команды выполнены на том же объединённом product tree; после них изменён
+только этот отчёт. Web/Python, canonical API/generated code, maintenance owner,
+его composition ports и native test sources совпадают с прежним проверенным
+деревом. Для изменённых process/runtime/HTTP границ выполнены свежие focused
+и connected/native checks. Старый полный Go RED и пять адресных PASS сохраняются
+как отдельные исторические результаты; причина scheduler0/0 по-прежнему неизвестна.
+Неизменённый дорогой local suite повторно не запускался. Собственный полный
+GitHub CI окончательного HEAD и независимое ревью интеграции обязательны;
+точные итоговые SHA и результаты фиксируются в PR.
+
+Restore-test overlap с #45 (`web_trial_integration_test.go` и его отдельный
+`postgres_fixture_test.go`) передан координатору. Source #45 не копировался,
+дополнительный adapter interface не добавлялся; endpoint/ownership/history guards
+и `DownTo(ctx,34)` сохраняются.
