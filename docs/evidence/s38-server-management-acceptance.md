@@ -34,9 +34,15 @@ Python с тестовыми URL-файлами: 112/112 PASS; полный web:
 (db/accounts/vpn/telegram/httpapi/cmd) с race: **6/6 PASS**, включая новые primary,
 concurrent delete и slow-panel regressions. Vet, naming, runtime config и
 штатная generation с SHA256 drift check повторно PASS. Полный Go-прогон первой
-реализации на момент фиксации этого протокола ещё выполняется; exact-source CI
-остаётся обязательным финальным gate. Его итог, полный текущий HEAD и статус PR
-фиксируются в финальной записи задачи #42, без изменения проверяемого исходника.
+реализации завершился FAIL: новый Telegram bridge отвергал существующий trial-only
+режим без web-origin; backup/restore тест выбирал защиту отката пула через последнюю
+миграцию, которой теперь стала 37. Настройка bridge ограничена существующим полным
+режимом, HTTPS-проверки сохранены. Restore-тест явно выбирает версию 36, сохраняя
+проверки резерва, запрета отката и всех восстановленных данных. Целевые lifecycle,
+native trial и backup/restore race-тесты после исправлений PASS. Новый полный
+Go-прогон и exact-source CI остаются обязательными финальными gates. Их итог,
+полный текущий HEAD и статус PR фиксируются в финальной записи задачи #42,
+без изменения проверяемого исходника.
 
 Собственный fixture `deploy/server-management` использует pinned 3X-UI 3.7.0,
 две панели localhost 61444/61449 и TLS CA, отдельные private DB directories,
