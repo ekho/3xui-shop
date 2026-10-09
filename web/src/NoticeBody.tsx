@@ -7,8 +7,8 @@ export const noticeInteger=(v:unknown,min=0):v is number=>Number.isSafeInteger(v
 export const invalidNotice=():never=>{throw new ApiError(503,'SERVICE_UNAVAILABLE','');};
 function safeLink(value:string){
  if(/[\s\u0000-\u001f\u007f-\u009f]/u.test(value))return false;
- try{const u=new URL(value);if(u.username||u.password)return false;
-  if(u.protocol==='https:')return !!u.hostname&&!/[\u0000-\u001f\u007f-\u009f]/u.test(decodeURIComponent(u.pathname)+decodeURIComponent(u.hash));
+ try{if(/[\u0000-\u001f\u007f-\u009f\ufffe\uffff]/u.test(decodeURIComponent(value)))return false;const u=new URL(value);if(u.username||u.password)return false;
+  if(u.protocol==='https:')return !!u.hostname;
   return /^tg:\/\/user\?id=[1-9][0-9]*$/.test(value)&&BigInt(value.split('=')[1])<=4503599627370495n;
  }catch{return false;}
 }

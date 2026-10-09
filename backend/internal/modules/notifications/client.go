@@ -33,6 +33,7 @@ type ClientJob struct {
 	NoticeMessageID        int64
 	NoticeMessageAt        *time.Time
 	NoticeResult           *NoticeWireResult
+	noticeUncertain        bool
 }
 type ClientOutcome struct {
 	State      string
@@ -88,7 +89,7 @@ func (s *Service) ClaimClient(ctx context.Context) (*ClientJob, error) {
 	j := ClientJob{LeaseToken: token}
 	err := s.pool.QueryRow(ctx, `WITH candidate AS(
  SELECT id FROM client_telegram_deliveries WHERE state='pending' AND available_at<=clock_timestamp()
- AND (notice_action_id IS NULL OR attempts<5)
+ AND (notice_action_id IS NULL OR attempts<5 OR EXISTS(SELECT 1 FROM notice_actions a WHERE a.id=notice_action_id AND a.telegram_state='unknown'))
  AND (lease_expires_at IS NULL OR lease_expires_at<=clock_timestamp()) ORDER BY sequence LIMIT 1 FOR UPDATE SKIP LOCKED)
  UPDATE client_telegram_deliveries SET lease_hash=$1,lease_expires_at=clock_timestamp()+interval '60 seconds',attempts=attempts+1
  WHERE id=(SELECT id FROM candidate) RETURNING id,account_id,telegram_id,credential_version,locale,event_key,route,lease_expires_at,COALESCE(reminder_id,'00000000-0000-0000-0000-000000000000'::uuid),COALESCE(notice_action_id,'00000000-0000-0000-0000-000000000000'::uuid),COALESCE(prior_delivery_id,'00000000-0000-0000-0000-000000000000'::uuid)`, digest(token)).

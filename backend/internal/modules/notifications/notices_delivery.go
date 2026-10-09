@@ -70,6 +70,9 @@ func (s *NoticeService) deliver(parent context.Context, j ClientJob, send func()
 		if state != "pending" {
 			return nil
 		}
+		if j.noticeUncertain {
+			return s.skipTelegramTx(ctx, tx, j, r.TelegramState)
+		}
 		if !r.Current || r.Mode != "delete" && (!r.Visible || r.DismissedAt != nil) {
 			return s.skipTelegramTx(ctx, tx, j, r.TelegramState)
 		}
@@ -307,9 +310,12 @@ func (s *NoticeService) enqueueChannelsTx(ctx context.Context, tx pgx.Tx, p noti
 type NoticeWireResult struct{ MessageAt time.Time }
 
 func (s *NoticeService) claim(ctx context.Context, j *ClientJob) error {
-	if s.pool.QueryRow(ctx, `SELECT p.operator_account_id,p.mode,p.html,COALESCE(d.message_id,0),prior.telegram_message_at FROM notice_actions a JOIN notice_previews p ON p.id=a.preview_id LEFT JOIN client_telegram_deliveries d ON d.id=$2 LEFT JOIN notice_actions prior ON prior.id=d.notice_action_id WHERE a.id=$1`, j.NoticeActionID, nullableUUID(j.PriorDeliveryID)).Scan(&j.NoticeActorID, &j.NoticeMode, &j.NoticeHTML, &j.NoticeMessageID, &j.NoticeMessageAt) != nil {
+	var state string
+	if s.pool.QueryRow(ctx, `SELECT p.operator_account_id,p.mode,p.html,COALESCE(d.message_id,0),prior.telegram_message_at,a.telegram_state FROM notice_actions a JOIN notice_previews p ON p.id=a.preview_id LEFT JOIN client_telegram_deliveries d ON d.id=$2 LEFT JOIN notice_actions prior ON prior.id=d.notice_action_id WHERE a.id=$1`, j.NoticeActionID, nullableUUID(j.PriorDeliveryID)).Scan(&j.NoticeActorID, &j.NoticeMode, &j.NoticeHTML, &j.NoticeMessageID, &j.NoticeMessageAt, &state) != nil {
 		return unavailable()
 	}
+	// Only an acknowledged 429 restores pending; a recovered unknown never repeats the wire call.
+	j.noticeUncertain = state == "unknown"
 	j.NoticeResult = &NoticeWireResult{}
 	// A crash/ACK loss after this durable claim must remain unknown, never an unattempted send.
 	if _, err := s.pool.Exec(ctx, `UPDATE notice_actions SET telegram_state='unknown',telegram_started_at=COALESCE(telegram_started_at,clock_timestamp()) WHERE id=$1 AND telegram_state IN ('pending','unknown')`, j.NoticeActionID); err != nil {

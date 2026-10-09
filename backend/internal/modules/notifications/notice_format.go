@@ -20,7 +20,7 @@ var noticeDecimal = regexp.MustCompile(`^[1-9][0-9]{0,19}$`)
 
 func noticeControls(s string) bool {
 	for _, r := range s {
-		if unicode.IsControl(r) && r != '\n' && r != '\t' {
+		if unicode.IsControl(r) && r != '\n' && r != '\t' || r == '\ufffe' || r == '\uffff' {
 			return true
 		}
 	}
@@ -32,8 +32,12 @@ func noticeLink(s string) bool {
 			return false
 		}
 	}
+	decoded, err := url.PathUnescape(s)
+	if err != nil || !utf8.ValidString(decoded) || noticeControls(decoded) || strings.ContainsAny(decoded, "\n\t") {
+		return false
+	}
 	u, err := url.Parse(s)
-	if err != nil || u.User != nil || noticeControls(u.Path) || noticeControls(u.RawQuery) || noticeControls(u.Fragment) {
+	if err != nil || u.User != nil {
 		return false
 	}
 	if u.Scheme == "https" {
@@ -85,7 +89,7 @@ func normalizeNoticeBody(raw string) (string, string, error) {
 	for {
 		kind := z.Next()
 		if kind == xhtml.ErrorToken {
-			if z.Err() != io.EOF || len(stack) != 0 || strings.TrimSpace(plain.String()) == "" {
+			if z.Err() != io.EOF || len(z.Raw()) != 0 || len(stack) != 0 || strings.TrimSpace(plain.String()) == "" {
 				return invalid()
 			}
 			return formatted.String(), plain.String(), nil

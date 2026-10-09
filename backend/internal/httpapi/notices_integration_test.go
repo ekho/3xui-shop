@@ -201,6 +201,74 @@ func TestNoticeChannelOutcomes(t *testing.T) {
 	}
 }
 
+func TestNoticeRecoveryBeforeOutcomeCommit(t *testing.T) {
+	for _, retries := range []int{0, 4} {
+		t.Run(string(rune('1'+retries)), func(t *testing.T) {
+			_, s, e, cfg, _, client, operator := noticeFixture(t, 1)
+			ctx := context.Background()
+			if _, err := e.Pool.Exec(ctx, `UPDATE accounts SET telegram_id=733 WHERE id=$1`, client.id); err != nil {
+				t.Fatal(err)
+			}
+			p := sendNotice(t, s, client, operator, "Provider copy without committed outcome")
+			for range retries {
+				job, err := s.Notifications.ClaimClient(ctx)
+				if err != nil || job == nil {
+					t.Fatal("confirmed429 claim", err)
+				}
+				if err = s.Notifications.DeliverClient(ctx, *job, func() (notifications.ClientOutcome, error) {
+					return notifications.ClientOutcome{State: "retry", RetryAfter: time.Hour}, nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+				if _, err = e.Pool.Exec(ctx, `UPDATE client_telegram_deliveries SET available_at=clock_timestamp()-interval '1 second' WHERE id=$1`, job.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			job, err := s.Notifications.ClaimClient(ctx)
+			if err != nil || job == nil {
+				t.Fatal("effect claim", err)
+			}
+			effects := 0
+			wireCtx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			if err = s.Notifications.DeliverClient(wireCtx, *job, func() (notifications.ClientOutcome, error) {
+				effects++
+				job.NoticeResult.MessageAt = time.Now()
+				cancel() // Provider accepted the message, then the finish transaction cannot commit.
+				return notifications.ClientOutcome{State: "sent", MessageID: 42}, nil
+			}); err == nil {
+				t.Fatal("canceled finish unexpectedly committed")
+			}
+			var state string
+			if e.Pool.QueryRow(ctx, `SELECT state FROM client_telegram_deliveries WHERE id=$1`, job.ID).Scan(&state) != nil || state != "pending" {
+				t.Fatal("fixture did not retain pending recovery window", state)
+			}
+			if _, err = e.Pool.Exec(ctx, `UPDATE client_telegram_deliveries SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1`, job.ID); err != nil {
+				t.Fatal(err)
+			}
+			restarted := app.NewModules(s.pool, e.Redis, nil, &cfg)
+			recovered, err := restarted.Notifications.ClaimClient(ctx)
+			if err != nil || recovered == nil {
+				t.Fatal("uncertain job could not settle after lease expiry", err)
+			}
+			if err = restarted.Notifications.DeliverClient(ctx, *recovered, func() (notifications.ClientOutcome, error) {
+				effects++
+				recovered.NoticeResult.MessageAt = time.Now()
+				return notifications.ClientOutcome{State: "sent", MessageID: 43}, nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			result, err := restarted.Notices.Confirm(ctx, operator.id, p.ID)
+			if err != nil || effects != 1 || result.Telegram.Unknown != 1 {
+				t.Fatal("uncertain provider effect repeated or hidden", effects, result.Telegram, err)
+			}
+			if next, err := restarted.Notifications.ClaimClient(ctx); err != nil || next != nil {
+				t.Fatal("uncertain recovery did not settle", err)
+			}
+		})
+	}
+}
+
 func TestNoticeCloseProofAndAge(t *testing.T) {
 	for _, mode := range []string{"success", "foreign", "message", "credential", "age", "failure"} {
 		t.Run(mode, func(t *testing.T) {

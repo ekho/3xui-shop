@@ -579,13 +579,18 @@ def native_check():
         environment['TEST_DATABASE_URL_FILE']=write('test-database-url','postgres://platform_test@127.0.0.1:55491/platform_test?sslmode=disable')
         environment['TEST_REDIS_URL_FILE']=write('test-redis-url','redis://127.0.0.1:56391/0')
     environment['NATIVE_DOCKER_STATE']=str(STATE)
+    environment['RUN_BROWSER_TESTS']='1'
     log=STATE/'native-go.log'
     with log.open('w') as output:
         log.chmod(0o600)
-        result=subprocess.run(['go','test','-race','./tests','-run','TestNativeTrial|TestNativeNotices','-count=1'],
+        result=subprocess.run(['go','test','-json','-race','./tests','-run','TestNativeTrial|TestNativeNotices','-count=1'],
                               cwd=ROOT/'backend',env=environment,stdout=output,stderr=subprocess.STDOUT,timeout=180)
     assert result.returncode==0, 'native Go integration failed; see private native-go.log'
-    print('PASS: native Go HTTP/jobs/Telegram integration with real TLS SMTP and 3X-UI3.7.0; Bot API simulated',flush=True)
+    events=[json.loads(line) for line in log.read_text().splitlines() if line.startswith('{')]
+    assert not any(e.get('Action')=='fail' or e.get('Action')=='skip' and e.get('Test') for e in events), 'native Go test failed or skipped; see private native-go.log'
+    passed=sum(e.get('Action')=='pass' and bool(e.get('Test')) for e in events)
+    assert passed>0, 'native Go selection ran no tests'
+    print(f'PASS: native Go HTTP/jobs/Telegram integration ({passed} tests/subtests,0 failures/skips) with real TLS SMTP and 3X-UI3.7.0; Bot API simulated',flush=True)
     native_restart()
 
 def yoomoney_signature(fields, secret):

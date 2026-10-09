@@ -266,7 +266,7 @@ func TestNativeNotices(t *testing.T) {
 	}
 	var mu sync.Mutex
 	var calls []call
-	var lostChat int64
+	var lostChat, crashChat int64
 	var answers atomic.Int32
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" || !strings.HasPrefix(r.URL.Path, "/bot123456789:abcdefghijklmnopqrstuvwxyz012345678/") {
@@ -292,12 +292,18 @@ func TestNativeNotices(t *testing.T) {
 			calls = append(calls, call{method, body})
 		}
 		lose := method == "sendMessage" && chat == lostChat
+		crash := method == "sendMessage" && chat == crashChat
 		if lose {
 			lostChat = 0
 		}
 		mu.Unlock()
 		r.Body = io.NopCloser(bytes.NewReader(raw))
 		response, err := bot.RoundTrip(r)
+		if crash && err == nil {
+			defer response.Body.Close()
+			<-r.Context().Done() // Copy exists; stop the real process before it receives an ACK.
+			return
+		}
 		if err != nil || lose {
 			connection, _, e := w.(http.Hijacker).Hijack()
 			if e == nil {
@@ -518,6 +524,33 @@ func TestNativeNotices(t *testing.T) {
 	if len(trace()) != unknownCalls || bot.message(chat, unknown.HTML).ID == 0 || len(inbox(client).Notices) != 0 {
 		t.Fatal("unknown Telegram copy falsely deleted or cabinet not withdrawn")
 	}
+	mu.Lock()
+	crashChat = chat
+	mu.Unlock()
+	crashed := preview(map[string]any{"mode": "send", "audience": "personal", "account_id": account, "body": "Native crash before notice outcome commit", "reason": "Native uncertain recovery"})
+	confirm(crashed)
+	wait(t, func() bool { return bot.message(chat, crashed.HTML).ID > 0 })
+	crashCalls := len(trace())
+	stop()
+	if count(`SELECT count(*) FROM client_telegram_deliveries d JOIN notice_actions a ON a.id=d.notice_action_id WHERE a.preview_id=$1 AND d.state='pending' AND a.telegram_state='unknown'`, crashed.ID) != 1 {
+		t.Fatal("real process did not stop in uncertain pending window")
+	}
+	if _, err := f.env.Pool.Exec(ctx, `UPDATE client_telegram_deliveries d SET lease_expires_at=clock_timestamp()-interval '1 second' FROM notice_actions a WHERE a.id=d.notice_action_id AND a.preview_id=$1`, crashed.ID); err != nil {
+		t.Fatal("owned recovery lease expiry failed")
+	}
+	mu.Lock()
+	crashChat = 0
+	mu.Unlock()
+	if start() == thirdPID {
+		t.Fatal("compiled notice crash process did not restart")
+	}
+	wait(t, func() bool {
+		return count(`SELECT count(*) FROM client_telegram_deliveries d JOIN notice_actions a ON a.id=d.notice_action_id WHERE a.preview_id=$1 AND d.state<>'pending'`, crashed.ID) == 1
+	})
+	if confirm(crashed).Telegram.Unknown != 1 || len(trace()) != crashCalls || bot.message(chat, crashed.HTML).ID == 0 {
+		t.Fatal("real-process uncertain copy repeated or hidden after lease recovery")
+	}
+	unknownCalls = crashCalls
 	var oldFacts string
 	if f.env.Pool.QueryRow(ctx, `SELECT jsonb_agg(to_jsonb(a) ORDER BY id)::text FROM notice_actions a WHERE preview_id=$1`, p.ID).Scan(&oldFacts) != nil {
 		t.Fatal("old delivered facts unavailable")
@@ -549,5 +582,5 @@ func TestNativeNotices(t *testing.T) {
 	if panelWrites.Load() != 0 {
 		t.Fatal("notice flow attempted a panel data write")
 	}
-	t.Log("PASS: fresh compiled HTTP/jobs/Telegram/TLS SMTP; frozen all audience, replay across two process restarts, same message edit/delete/own close, lost ACK without guessed delete, current role/binding/consent and preserved business/delivery facts")
+	t.Log("PASS: fresh compiled HTTP/jobs/Telegram/TLS SMTP; frozen all audience, replay and uncertain recovery across three process restarts, same message edit/delete/own close, lost ACK without guessed delete, current role/binding/consent and preserved business/delivery facts")
 }
