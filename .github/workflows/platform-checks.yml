@@ -14,12 +14,11 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    env:
-      DOCKER_CONFIG: ${{ runner.temp }}/ci-docker-config
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # existing repository v4 pin
       - name: Configure Docker Hub cache before containers
         run: |
+          printf 'DOCKER_CONFIG=%s\n' "$(mktemp -d "$RUNNER_TEMP/ci-docker-config.XXXXXX")" >> "$GITHUB_ENV"
           python3 -m unittest discover -s .github/scripts -v
           sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT python3 .github/scripts/configure_docker_cache.py
       - name: Verify runner registry boundary

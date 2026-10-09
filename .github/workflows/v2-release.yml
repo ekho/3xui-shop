@@ -25,8 +25,6 @@ jobs:
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/v2'
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    env:
-      DOCKER_CONFIG: ${{ runner.temp }}/ci-docker-config
     permissions:
       contents: read
       packages: write
@@ -49,6 +47,7 @@ jobs:
           persist-credentials: false
       - name: Configure Docker Hub cache before containers
         run: |
+          printf 'DOCKER_CONFIG=%s\n' "$(mktemp -d "$RUNNER_TEMP/ci-docker-config.XXXXXX")" >> "$GITHUB_ENV"
           python3 -m unittest discover -s .github/scripts -v
           sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT python3 .github/scripts/configure_docker_cache.py
       - name: Set up QEMU
