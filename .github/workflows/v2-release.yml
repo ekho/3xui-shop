@@ -96,9 +96,17 @@ jobs:
           docker exec "buildx_buildkit_${BUILDX_BUILDER}0" cat /etc/buildkit/buildkitd.toml \
             | python3 -c 'import sys,tomllib; config=tomllib.loads(sys.stdin.read()); assert "mirror.gcr.io" in config["registry"]["docker.io"]["mirrors"]; print("BuildKit container mirror config verified")'
           python3 - <<'PY'
-          import os, re, subprocess
+          import json, os, re, subprocess
+          command = json.loads(subprocess.run(['docker', 'inspect', '--format', '{{json .Config.Cmd}}', f'buildx_buildkit_{os.environ["BUILDX_BUILDER"]}0'], check=True, capture_output=True, text=True).stdout)
+          print('BuildKit command flags:', {
+              'log_level_debug': '--log-level=debug' in command,
+              'unsafe_debug_flag': '--debug' in command,
+              'explicit_config': any(value.startswith('--config') for value in command),
+              'standard_config': '/etc/buildkit/buildkitd.toml' in command or '--config=/etc/buildkit/buildkitd.toml' in command,
+          })
           result = subprocess.run(['docker', 'logs', f'buildx_buildkit_{os.environ["BUILDX_BUILDER"]}0'], check=True, capture_output=True, text=True)
           logs = result.stdout + result.stderr
+          requests = [line for line in logs.splitlines() if 'msg="do request"' in line or '"msg":"do request"' in line]
           print('BuildKit log metadata:', {
               'lines': len(logs.splitlines()),
               'debug': len(re.findall(r'level(?:=|":\s*")debug', logs)),
@@ -106,6 +114,24 @@ jobs:
               'requests': logs.count('do request'),
               'mirror_urls': logs.count('https://mirror.gcr.io/v2/'),
               'hub_urls': logs.count('https://registry-1.docker.io/v2/'),
+          })
+          print('BuildKit request shape:', {
+              'records': len(requests),
+              'url_fields': sum('url=' in line or '"url":' in line for line in requests),
+              'https': sum('https://' in line for line in requests),
+              'v2_paths': sum('/v2/' in line for line in requests),
+              'mirror_host': sum('mirror.gcr.io' in line for line in requests),
+              'mirror_tls_port': sum('https://mirror.gcr.io:443/v2/' in line for line in requests),
+              'hub_host': sum('registry-1.docker.io' in line for line in requests),
+              'cache_host': sum('actions.githubusercontent.com' in line or 'blob.core.windows.net' in line for line in requests),
+          })
+          print('BuildKit known fields:', {
+              field: sum(field in line for line in requests)
+              for field in ('url=', 'host=', 'request.method=', 'response.status=', 'request.header.', 'spanID=')
+          })
+          print('BuildKit host markers:', {
+              host: logs.count(host)
+              for host in ('mirror.gcr.io', 'registry-1.docker.io', 'docker.io', 'actions.githubusercontent.com', 'blob.core.windows.net')
           })
           PY
           docker logs "buildx_buildkit_${BUILDX_BUILDER}0" 2>&1 \
