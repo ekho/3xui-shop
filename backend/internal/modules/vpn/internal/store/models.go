@@ -73,3 +73,10 @@ type VpnServer struct {
 	Revision            int64
 	Retired             bool
 }
+
+type VpnServerReservation struct {
+	AccountID         uuid.UUID
+	ServerID          string
+	TrialOperationID  *uuid.UUID
+	AccessOperationID *uuid.UUID
+}

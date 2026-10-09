@@ -92,6 +92,23 @@ func (q *Queries) ApplyOperation(ctx context.Context, arg ApplyOperationParams) 
 	return result.RowsAffected(), nil
 }
 
+const bindTrialServer = `-- name: BindTrialServer :execrows
+UPDATE trial_operations SET panel_id=$2 WHERE id=$1 AND panel_id='' AND target IS NULL AND first_started_at IS NULL AND status='pending'
+`
+
+type BindTrialServerParams struct {
+	ID      uuid.UUID
+	PanelID string
+}
+
+func (q *Queries) BindTrialServer(ctx context.Context, arg BindTrialServerParams) (int64, error) {
+	result, err := q.db.Exec(ctx, bindTrialServer, arg.ID, arg.PanelID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const leaseOperation = `-- name: LeaseOperation :one
 UPDATE trial_operations SET status='provisioning',first_started_at=coalesce(first_started_at,$2),attempts=attempts+1,lease_hash=$3,lease_expires_at=clock_timestamp()+interval '3 minutes',worker_pid=pg_backend_pid() WHERE id=$1 AND status IN ('pending','provisioning') RETURNING id, account_id, request_id, status, trial_enabled, period_days, traffic_gb, devices, panel_id, created_at, first_started_at, target, write_started, attempts, lease_hash, lease_expires_at, worker_pid, traffic_used_bytes, observed_at, traffic_up_bytes, traffic_down_bytes, profile_snapshot
 `

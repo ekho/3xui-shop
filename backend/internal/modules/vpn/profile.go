@@ -25,7 +25,7 @@ type ProfileRead struct {
 
 func (s *Service) ReadTrialProfile(ctx context.Context, op TrialState) (ProfileRead, error) {
 	var out ProfileRead
-	if json.Unmarshal(op.Target, &out.Target) != nil || out.Target.OperationID != op.ID || out.Target.PanelID != op.PanelID || op.PanelID != s.config().PanelID {
+	if json.Unmarshal(op.Target, &out.Target) != nil || out.Target.OperationID != op.ID || out.Target.PanelID != op.PanelID {
 		return out, ErrIdentity
 	}
 	a, e := s.accountByID(ctx, op.AccountID)
@@ -38,7 +38,10 @@ func (s *Service) ReadTrialProfile(ctx context.Context, op TrialState) (ProfileR
 	if a.Restricted || !(a.AssignedPanelID != nil) || stringValue(a.AssignedPanelID) != op.PanelID || a.PanelKey != out.Target.PanelKey || a.VpnID != out.Target.VPNID || a.SubID != out.Target.SubID {
 		return out, ErrIdentity
 	}
-	p := s.PanelClient()
+	p, e := s.PanelFor(ctx, op.PanelID)
+	if e != nil {
+		return out, e
+	}
 	defer p.Close()
 	out.Client, e = p.GetClient(ctx, out.Target.PanelKey)
 	if e != nil {

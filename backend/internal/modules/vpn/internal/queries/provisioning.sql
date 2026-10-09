@@ -1,5 +1,7 @@
 -- name: OperationByID :one
 SELECT * FROM trial_operations WHERE id=$1;
+-- name: BindTrialServer :execrows
+UPDATE trial_operations SET panel_id=$2 WHERE id=$1 AND panel_id='' AND target IS NULL AND first_started_at IS NULL AND status='pending';
 -- name: AccountOperation :one
 SELECT * FROM trial_operations WHERE account_id=$1 ORDER BY created_at DESC LIMIT 1;
 -- name: LeaseOperation :one

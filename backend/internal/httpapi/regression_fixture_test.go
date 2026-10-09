@@ -49,6 +49,7 @@ func newRegressionFixture(pool *pgxpool.Pool, limiter *redis.Client, queue *rive
 func regressionVPNSettings(cfg *app.Config) vpn.Settings {
 	out := cfg.VPN
 	out.PanelID = cfg.Subscriptions.PanelID
+	out.SubscriptionBaseURL = cfg.Subscriptions.SubscriptionBaseURL
 	return out
 }
 func (s *regressionFixture) provision(ctx context.Context, id uuid.UUID) error {

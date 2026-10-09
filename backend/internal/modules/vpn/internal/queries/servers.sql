@@ -21,3 +21,15 @@ UPDATE vpn_servers SET online=sqlc.arg(online),observed_at=sqlc.arg(observed_at)
  subscription_base_url=CASE WHEN subscription_base_url='' THEN sqlc.arg(base)::text ELSE subscription_base_url END
 WHERE id=sqlc.arg(id) AND revision=sqlc.arg(revision) AND NOT retired
  AND (observed_at IS NULL OR observed_at<sqlc.arg(observed_at));
+
+-- name: ServerReservation :one
+SELECT * FROM vpn_server_reservations WHERE account_id=$1;
+
+-- name: ReserveTrialServer :exec
+INSERT INTO vpn_server_reservations(account_id,server_id,trial_operation_id) VALUES($1,$2,$3);
+
+-- name: ReserveAccessServer :exec
+INSERT INTO vpn_server_reservations(account_id,server_id,access_operation_id) VALUES($1,$2,$3);
+
+-- name: ReleaseServerReservation :exec
+DELETE FROM vpn_server_reservations WHERE account_id=$1 AND server_id=$2;

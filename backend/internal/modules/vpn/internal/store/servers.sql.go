@@ -8,6 +8,7 @@ package store
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -132,6 +133,50 @@ func (q *Queries) RegisterPoolServer(ctx context.Context, arg RegisterPoolServer
 	return i, err
 }
 
+const releaseServerReservation = `-- name: ReleaseServerReservation :exec
+DELETE FROM vpn_server_reservations WHERE account_id=$1 AND server_id=$2
+`
+
+type ReleaseServerReservationParams struct {
+	AccountID uuid.UUID
+	ServerID  string
+}
+
+func (q *Queries) ReleaseServerReservation(ctx context.Context, arg ReleaseServerReservationParams) error {
+	_, err := q.db.Exec(ctx, releaseServerReservation, arg.AccountID, arg.ServerID)
+	return err
+}
+
+const reserveAccessServer = `-- name: ReserveAccessServer :exec
+INSERT INTO vpn_server_reservations(account_id,server_id,access_operation_id) VALUES($1,$2,$3)
+`
+
+type ReserveAccessServerParams struct {
+	AccountID         uuid.UUID
+	ServerID          string
+	AccessOperationID *uuid.UUID
+}
+
+func (q *Queries) ReserveAccessServer(ctx context.Context, arg ReserveAccessServerParams) error {
+	_, err := q.db.Exec(ctx, reserveAccessServer, arg.AccountID, arg.ServerID, arg.AccessOperationID)
+	return err
+}
+
+const reserveTrialServer = `-- name: ReserveTrialServer :exec
+INSERT INTO vpn_server_reservations(account_id,server_id,trial_operation_id) VALUES($1,$2,$3)
+`
+
+type ReserveTrialServerParams struct {
+	AccountID        uuid.UUID
+	ServerID         string
+	TrialOperationID *uuid.UUID
+}
+
+func (q *Queries) ReserveTrialServer(ctx context.Context, arg ReserveTrialServerParams) error {
+	_, err := q.db.Exec(ctx, reserveTrialServer, arg.AccountID, arg.ServerID, arg.TrialOperationID)
+	return err
+}
+
 const seedPrimaryServer = `-- name: SeedPrimaryServer :exec
 INSERT INTO vpn_servers(id,name,host,subscription_base_url) VALUES($1,$2,$3,$4)
 ON CONFLICT DO NOTHING
@@ -152,4 +197,20 @@ func (q *Queries) SeedPrimaryServer(ctx context.Context, arg SeedPrimaryServerPa
 		arg.SubscriptionBaseUrl,
 	)
 	return err
+}
+
+const serverReservation = `-- name: ServerReservation :one
+SELECT account_id, server_id, trial_operation_id, access_operation_id FROM vpn_server_reservations WHERE account_id=$1
+`
+
+func (q *Queries) ServerReservation(ctx context.Context, accountID uuid.UUID) (VpnServerReservation, error) {
+	row := q.db.QueryRow(ctx, serverReservation, accountID)
+	var i VpnServerReservation
+	err := row.Scan(
+		&i.AccountID,
+		&i.ServerID,
+		&i.TrialOperationID,
+		&i.AccessOperationID,
+	)
+	return i, err
 }

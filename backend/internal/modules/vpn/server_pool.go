@@ -2,14 +2,18 @@ package vpn
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"example.com/cabinet/backend/internal/modules/vpn/internal/store"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Server struct {
@@ -227,4 +231,128 @@ func (s *Service) AvailableServer(ctx context.Context) (Server, error) {
 		return Server{}, err
 	}
 	return chooseServer(rows)
+}
+
+func (s *Service) bindTrialServer(ctx context.Context, c *pgxpool.Conn, op store.TrialOperation) error {
+	if err := s.SyncServers(ctx); err != nil {
+		return err
+	}
+	tx, err := c.Begin(ctx)
+	if err != nil {
+		return unavailable()
+	}
+	defer tx.Rollback(ctx)
+	a, err := s.lockAccount(ctx, tx, op.AccountID)
+	if err != nil {
+		return err
+	}
+	if a.AssignedPanelID != nil {
+		return ErrIdentity
+	}
+	q := store.New(tx)
+	if q.LockServerPool(ctx) != nil {
+		return unavailable()
+	}
+	current, err := q.OperationByID(ctx, op.ID)
+	if err != nil {
+		return err
+	}
+	if current.PanelID != "" {
+		return tx.Commit(ctx)
+	}
+	if _, err = q.ServerReservation(ctx, op.AccountID); !errors.Is(err, pgx.ErrNoRows) {
+		if err == nil {
+			return ErrBusy
+		}
+		return unavailable()
+	}
+	rows, err := s.ServersTx(ctx, tx)
+	if err != nil {
+		return err
+	}
+	server, err := chooseServer(rows)
+	if err != nil {
+		return err
+	}
+	n, err := q.BindTrialServer(ctx, store.BindTrialServerParams{ID: op.ID, PanelID: server.ID})
+	if err != nil || n != 1 {
+		return ErrBusy
+	}
+	if q.ReserveTrialServer(ctx, store.ReserveTrialServerParams{AccountID: op.AccountID, ServerID: server.ID, TrialOperationID: &op.ID}) != nil {
+		return unavailable()
+	}
+	return tx.Commit(ctx)
+}
+
+// The caller saves the access operation and validates its source in this same Tx.
+func (s *Service) ReserveInitialAccessTx(ctx context.Context, tx pgx.Tx, account, operation uuid.UUID, panelID string) error {
+	q := store.New(tx)
+	if q.LockServerPool(ctx) != nil {
+		return unavailable()
+	}
+	a, err := s.accounts.LookupTx(ctx, tx, account)
+	if err != nil {
+		return err
+	}
+	op, err := q.AccessOperationForAccount(ctx, store.AccessOperationForAccountParams{ID: operation, AccountID: account})
+	if err != nil {
+		return err
+	}
+	var target AccessTarget
+	if json.Unmarshal(op.Target, &target) != nil || target.OperationID != operation || target.PanelID != panelID {
+		return ErrIdentity
+	}
+	if a.AssignedPanelID != nil {
+		if *a.AssignedPanelID != panelID {
+			return ErrIdentity
+		}
+		_, err = s.ServerTx(ctx, tx, panelID)
+		return err
+	}
+	if target.NoClientIntent {
+		return nil
+	}
+	if !target.Missing || op.Status != "pending" {
+		return ErrIdentity
+	}
+	reservation, err := q.ServerReservation(ctx, account)
+	if err == nil {
+		if reservation.ServerID == panelID && reservation.AccessOperationID != nil && *reservation.AccessOperationID == operation {
+			return nil
+		}
+		return ErrBusy
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return unavailable()
+	}
+	rows, err := s.ServersTx(ctx, tx)
+	if err != nil {
+		return err
+	}
+	server, err := chooseServer(rows)
+	if err != nil {
+		return err
+	}
+	if server.ID != panelID {
+		return ErrBusy
+	}
+	return q.ReserveAccessServer(ctx, store.ReserveAccessServerParams{AccountID: account, ServerID: panelID, AccessOperationID: &operation})
+}
+
+func (s *Service) ReleaseServerReservationTx(ctx context.Context, tx pgx.Tx, account uuid.UUID, panelID string) error {
+	q := store.New(tx)
+	if q.LockServerPool(ctx) != nil {
+		return unavailable()
+	}
+	reservation, err := q.ServerReservation(ctx, account)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return unavailable()
+	}
+	if reservation.ServerID != panelID {
+		return ErrIdentity
+	}
+	return q.ReleaseServerReservation(ctx, store.ReleaseServerReservationParams{AccountID: account, ServerID: panelID})
 }

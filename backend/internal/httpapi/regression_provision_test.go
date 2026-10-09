@@ -22,6 +22,9 @@ import (
 )
 
 type fakePanel struct {
+	offline                                                                          bool
+	subscriptionBase                                                                 string
+	beforeRead                                                                       func()
 	blockRead                                                                        bool
 	afterAdd                                                                         func()
 	afterRead                                                                        func()
@@ -54,16 +57,25 @@ func panelFixture(t *testing.T, s *regressionFixture) *fakePanel {
 	return p
 }
 func (p *fakePanel) serve(w http.ResponseWriter, r *http.Request) {
+	if p.beforeRead != nil && r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/panel/api/clients/get/") {
+		p.beforeRead()
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
 	reply := func(v any) { json.NewEncoder(w).Encode(v) }
+	if p.offline {
+		w.WriteHeader(503)
+		return
+	}
 	if r.Header.Get("Authorization") != "Bearer fixture-panel-token" {
 		w.WriteHeader(401)
 		reply(map[string]any{"success": false, "msg": "unauthorized", "obj": nil})
 		return
 	}
 	switch {
+	case r.Method == "POST" && r.URL.Path == "/panel/api/setting/all":
+		reply(map[string]any{"success": true, "obj": map[string]any{"subEnable": p.subscriptionBase != "", "subURI": p.subscriptionBase}})
 	case r.Method == "GET" && r.URL.Path == "/panel/api/inbounds/list":
 		rows := []map[string]any{{"id": 1, "enable": true, "tag": "node-regular-tcp"}, {"id": 2, "enable": true, "tag": "regular-second"}, {"id": 3, "enable": true, "tag": "euru-only"}, {"id": 9, "enable": true, "tag": "unlimited-only"}, {"id": 99, "enable": true, "tag": "unknown"}}
 		if p.noRegular {
