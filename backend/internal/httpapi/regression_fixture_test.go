@@ -32,6 +32,7 @@ type regressionFixture struct {
 	now          func() time.Time
 	vpn          *vpn.Service
 	mailDelivery *notifications.MailService
+	panelFixture *fakePanel
 }
 
 func newRegressionFixture(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[pgx.Tx], cfg app.Config) *regressionFixture {

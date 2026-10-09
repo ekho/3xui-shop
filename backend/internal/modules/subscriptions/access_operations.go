@@ -156,7 +156,12 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 	if active || trial {
 		return out, failure(409, "ACCESS_OPERATION_CONFLICT")
 	}
-	if s.config().PanelID == "" || ((a.AssignedPanelID != nil) && stringValue(a.AssignedPanelID) != s.config().PanelID) {
+	if a.AssignedPanelID != nil {
+		if _, err := s.vpn.ServerTx(ctx, tx, *a.AssignedPanelID); err != nil {
+			return out, failure(409, "ACCESS_NOT_ELIGIBLE")
+		}
+	}
+	if a.AssignedPanelID == nil && s.config().PanelID == "" {
 		return out, failure(409, "ACCESS_NOT_ELIGIBLE")
 	}
 	baseline, err := s.vpn.AccessBaselineTx(ctx, tx, target)
@@ -179,7 +184,18 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 	if tx.Commit(ctx) != nil {
 		return out, unavailable()
 	}
-	panel := s.PanelClient()
+	panelID := stringValue(a.AssignedPanelID)
+	if panelID == "" {
+		server, err := owner.AvailableServer(ctx)
+		if err != nil {
+			return out, failure(409, "ACCESS_NOT_ELIGIBLE")
+		}
+		panelID = server.ID
+	}
+	panel, err := owner.PanelFor(ctx, panelID)
+	if err != nil {
+		return out, failure(409, "ACCESS_NOT_ELIGIBLE")
+	}
 	defer panel.Close()
 	v, err := panel.GetClient(ctx, a.PanelKey)
 	if err != nil {
@@ -193,7 +209,7 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 	}
 	now := s.now().UTC().Truncate(time.Microsecond)
 	id := uuid.New()
-	t := vpn.AccessTarget{OperationID: id, PanelID: s.config().PanelID, PanelKey: a.PanelKey, VPNID: a.VpnID, SubID: a.SubID, Banned: a.VpnBanned, PreviousBanned: a.VpnBanned}
+	t := vpn.AccessTarget{OperationID: id, PanelID: panelID, PanelKey: a.PanelKey, VPNID: a.VpnID, SubID: a.SubID, Banned: a.VpnBanned, PreviousBanned: a.VpnBanned}
 	var planID *uuid.UUID
 	var planTerms *catalogue.Terms
 	var planRev, period pgtype.Int8
@@ -493,6 +509,9 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 		return out, nil
 	}
 	if _, err = s.vpn.QueueAccessTx(ctx, tx, vpn.AccessWrite{ID: id, AccountID: target, OperatorAccountID: &actor, Kind: string(in.Kind), Reason: strings.TrimSpace(in.Reason), PlanID: planID, Revision: desired.Revision, PeriodDays: desired.PeriodDays, Desired: desiredRaw, Target: targetRaw, CreatedAt: now}); err != nil {
+		if errors.Is(err, vpn.ErrBusy) || errors.Is(err, vpn.ErrPanel) {
+			return out, failure(409, "ACCESS_OPERATION_CONFLICT")
+		}
 		return out, vpnError(err)
 	}
 	if err = auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), CreatedAt: now, Action: "access_requested", AccountID: target, OperatorAccountID: &actor, Reason: &auditReason, AccessOperationID: &id}); err != nil {

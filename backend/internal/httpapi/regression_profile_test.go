@@ -28,7 +28,7 @@ type profilePanel struct {
 func profileFixture(t *testing.T, s *regressionFixture, client map[string]any, ids []int64) *profilePanel {
 	t.Helper()
 	p := &profilePanel{client: client, ids: ids, traffic: map[string]any{"email": client["email"], "uuid": client["id"], "subId": client["subId"], "up": int64(100), "down": int64(200)}}
-	h := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var heldTraffic map[string]any
 		p.mu.Lock()
 		if r.URL.Path == "/panel/api/clients/traffic/"+client["email"].(string) && p.blockTraffic {
@@ -79,7 +79,12 @@ func profileFixture(t *testing.T, s *regressionFixture, client map[string]any, i
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "obj": obj})
-	}))
+	})
+	if s.panelFixture != nil {
+		s.panelFixture.override = handler
+		return p
+	}
+	h := httptest.NewTLSServer(handler)
 	t.Cleanup(h.Close)
 	s.cfg.VPN.Panel.PanelURL = h.URL
 	s.cfg.VPN.Panel.PanelRootCAs = x509.NewCertPool()

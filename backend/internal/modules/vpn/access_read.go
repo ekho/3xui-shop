@@ -7,14 +7,17 @@ import (
 
 func (s *Service) ReadAccess(ctx context.Context, op AccessState) (AccessTarget, *PanelClientView, int64, int64, error) {
 	var target AccessTarget
-	if json.Unmarshal(op.Target, &target) != nil || target.OperationID != op.ID || target.PanelID != s.config().PanelID {
+	if json.Unmarshal(op.Target, &target) != nil || target.OperationID != op.ID || target.PanelID == "" {
 		return target, nil, 0, 0, ErrIdentity
 	}
 	a, err := s.accountByID(ctx, op.AccountID)
 	if err != nil || !(a.AssignedPanelID != nil) || stringValue(a.AssignedPanelID) != target.PanelID || a.PanelKey != target.PanelKey || a.VpnID != target.VPNID || a.SubID != target.SubID {
 		return target, nil, 0, 0, ErrIdentity
 	}
-	p := s.PanelClient()
+	p, err := s.PanelFor(ctx, target.PanelID)
+	if err != nil {
+		return target, nil, 0, 0, err
+	}
 	defer p.Close()
 	v, err := p.GetClient(ctx, target.PanelKey)
 	if err != nil {

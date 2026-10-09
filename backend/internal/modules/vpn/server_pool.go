@@ -82,6 +82,14 @@ func (s *Service) ServersTx(ctx context.Context, tx pgx.Tx) ([]Server, error) {
 }
 
 func (s *Service) ServerTx(ctx context.Context, tx pgx.Tx, id string) (Server, error) {
+	if tx == nil {
+		var err error
+		tx, err = s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+		if err != nil {
+			return Server{}, unavailable()
+		}
+		defer tx.Rollback(ctx)
+	}
 	rows, err := s.ServersTx(ctx, tx)
 	if err != nil {
 		return Server{}, err
@@ -94,8 +102,13 @@ func (s *Service) ServerTx(ctx context.Context, tx pgx.Tx, id string) (Server, e
 	return Server{}, ErrPanel
 }
 
-func (s *Service) servers(ctx context.Context) ([]Server, error) {
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+type serverDB interface {
+	store.DBTX
+	BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
+}
+
+func (s *Service) servers(ctx context.Context, db serverDB) ([]Server, error) {
+	tx, err := db.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, unavailable()
 	}
@@ -111,7 +124,11 @@ func (s *Service) servers(ctx context.Context) ([]Server, error) {
 }
 
 func (s *Service) PanelFor(ctx context.Context, id string) (*PanelClient, error) {
-	rows, err := s.servers(ctx)
+	return s.panelFor(ctx, id, s.pool)
+}
+
+func (s *Service) panelFor(ctx context.Context, id string, db serverDB) (*PanelClient, error) {
+	rows, err := s.servers(ctx, db)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +143,7 @@ func (s *Service) PanelFor(ctx context.Context, id string) (*PanelClient, error)
 }
 
 func (s *Service) SubscriptionBase(ctx context.Context, id string) (string, error) {
-	rows, err := s.servers(ctx)
+	rows, err := s.servers(ctx, s.pool)
 	if err != nil {
 		return "", err
 	}
@@ -138,7 +155,7 @@ func (s *Service) SubscriptionBase(ctx context.Context, id string) (string, erro
 	return "", ErrPanel
 }
 
-func (s *Service) seedPrimary(ctx context.Context) error {
+func (s *Service) seedPrimary(ctx context.Context, db serverDB) error {
 	cfg := s.config()
 	host, err := httpsURL(cfg.Panel.PanelURL, false)
 	if err != nil || !serverID.MatchString(cfg.PanelID) {
@@ -151,7 +168,7 @@ func (s *Service) seedPrimary(ctx context.Context) error {
 			return err
 		}
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return unavailable()
 	}
@@ -164,10 +181,14 @@ func (s *Service) seedPrimary(ctx context.Context) error {
 }
 
 func (s *Service) SyncServers(ctx context.Context) error {
-	if err := s.seedPrimary(ctx); err != nil {
+	return s.syncServers(ctx, s.pool)
+}
+
+func (s *Service) syncServers(ctx context.Context, db serverDB) error {
+	if err := s.seedPrimary(ctx, db); err != nil {
 		return err
 	}
-	rows, err := s.servers(ctx)
+	rows, err := s.servers(ctx, db)
 	if err != nil {
 		return err
 	}
@@ -186,7 +207,7 @@ func (s *Service) SyncServers(ctx context.Context) error {
 			base, _ = panel.subscriptionBase(ctx)
 		}
 		panel.Close()
-		if err = store.New(s.pool).ObservePoolServer(ctx, store.ObservePoolServerParams{ID: v.ID, Revision: v.Revision, ObservedAt: pgtype.Timestamptz{Time: started, Valid: true}, Online: probeErr == nil, Base: base}); err != nil {
+		if err = store.New(db).ObservePoolServer(ctx, store.ObservePoolServerParams{ID: v.ID, Revision: v.Revision, ObservedAt: pgtype.Timestamptz{Time: started, Valid: true}, Online: probeErr == nil, Base: base}); err != nil {
 			return unavailable()
 		}
 	}
@@ -223,10 +244,14 @@ func chooseServer(rows []Server) (Server, error) {
 }
 
 func (s *Service) AvailableServer(ctx context.Context) (Server, error) {
-	if err := s.SyncServers(ctx); err != nil {
+	return s.availableServer(ctx, s.pool)
+}
+
+func (s *Service) availableServer(ctx context.Context, db serverDB) (Server, error) {
+	if err := s.syncServers(ctx, db); err != nil {
 		return Server{}, err
 	}
-	rows, err := s.servers(ctx)
+	rows, err := s.servers(ctx, db)
 	if err != nil {
 		return Server{}, err
 	}
@@ -234,7 +259,7 @@ func (s *Service) AvailableServer(ctx context.Context) (Server, error) {
 }
 
 func (s *Service) bindTrialServer(ctx context.Context, c *pgxpool.Conn, op store.TrialOperation) error {
-	if err := s.SyncServers(ctx); err != nil {
+	if err := s.syncServers(ctx, c); err != nil {
 		return err
 	}
 	tx, err := c.Begin(ctx)

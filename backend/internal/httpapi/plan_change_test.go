@@ -580,13 +580,13 @@ func TestPlanChangeActionMigration(t *testing.T) {
 				if err = e.Pool.QueryRow(ctx, "SELECT to_jsonb(p)::text FROM purchase_orders p WHERE account_id=$1", account).Scan(&before); err != nil {
 					t.Fatal(err)
 				}
-				if _, err = provider.DownTo(ctx, 20); err != nil {
+				if _, err = provider.ApplyVersion(ctx, 21, false); err != nil {
 					t.Fatal(err)
 				}
 				if err = e.Pool.QueryRow(ctx, "SELECT to_jsonb(p)::text FROM purchase_orders p WHERE account_id=$1", account).Scan(&after); err != nil || after != before {
 					t.Fatal("down21 changed old bytes", err)
 				}
-				if _, err = provider.Up(ctx); err != nil {
+				if _, err = provider.ApplyVersion(ctx, 21, true); err != nil {
 					t.Fatal(err)
 				}
 				return
@@ -606,15 +606,11 @@ func TestPlanChangeActionMigration(t *testing.T) {
 			if err = e.Pool.QueryRow(ctx, "SELECT to_jsonb(p)::text FROM purchase_orders p WHERE id=$1", order.OrderId).Scan(&before); err != nil {
 				t.Fatal(err)
 			}
-			if _, err = provider.DownTo(ctx, 20); err == nil || !strings.Contains(err.Error(), "plan change history requires compatible application") {
+			if _, err = provider.ApplyVersion(ctx, 21, false); err == nil || !strings.Contains(err.Error(), "plan change history requires compatible application") {
 				t.Fatal("down erased cancelled change history", err)
 			}
 			if err = e.Pool.QueryRow(ctx, "SELECT to_jsonb(p)::text FROM purchase_orders p WHERE id=$1", order.OrderId).Scan(&after); err != nil || after != before {
 				t.Fatal("failed down changed stored order", err)
-			}
-			// Earlier Down steps commit separately; restore the current schema before current application reads.
-			if _, err = provider.Up(ctx); err != nil {
-				t.Fatal(err)
 			}
 			got, err := s.purchaseOrder(ctx, account, order.OrderId)
 			if err != nil || got.Action != "change_plan" || got.PaymentStatus != "canceled" || got.Quote.SourceAccessOperationId == nil || *got.Quote.SourceAccessOperationId != *order.Quote.SourceAccessOperationId || count(t, e, "purchase_receipts") != 1 {

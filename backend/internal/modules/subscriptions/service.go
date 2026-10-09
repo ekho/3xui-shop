@@ -87,8 +87,20 @@ func stringValue(v *string) string {
 	return *v
 }
 
-// TrialServer exposes the existing server presentation without credentials or I/O.
-func (s *Service) TrialServer() (panelID string, enabled bool) {
-	c := s.config()
-	return c.PanelID, c.TrialEnabled
+func (s *Service) AssignedServer(ctx context.Context, account uuid.UUID) (panelID string, online bool, err error) {
+	a, err := s.accountByID(ctx, account)
+	if err != nil {
+		return "", false, err
+	}
+	if a.AssignedPanelID == nil {
+		return "", false, nil
+	}
+	v, err := s.vpn.ServerTx(ctx, nil, *a.AssignedPanelID)
+	if errors.Is(err, vpn.ErrPanel) {
+		return *a.AssignedPanelID, false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return v.ID, v.Online, nil
 }

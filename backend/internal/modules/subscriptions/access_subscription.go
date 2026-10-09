@@ -99,7 +99,11 @@ func (s *Service) accessKey(ctx context.Context, op vpn.AccessState) (Subscripti
 	if view.Status != "active" && view.Status != "expired" {
 		return out, failure(409, "OPERATION_NOT_READY")
 	}
-	base, err := url.Parse(s.config().SubscriptionBaseURL)
+	baseURL, err := s.vpn.SubscriptionBase(ctx, t.PanelID)
+	if err != nil {
+		return out, unavailable()
+	}
+	base, err := url.Parse(baseURL)
 	if err != nil || base.Scheme != "https" || base.Host == "" || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
 		return out, unavailable()
 	}

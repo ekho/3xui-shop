@@ -22,6 +22,7 @@ import (
 )
 
 type fakePanel struct {
+	override                                                                         http.Handler
 	offline                                                                          bool
 	subscriptionBase                                                                 string
 	beforeRead                                                                       func()
@@ -46,6 +47,9 @@ type fakePanel struct {
 
 func panelFixture(t *testing.T, s *regressionFixture) *fakePanel {
 	t.Helper()
+	if s.panelFixture != nil {
+		return s.panelFixture
+	}
 	p := &fakePanel{up: 1234}
 	p.server = httptest.NewTLSServer(http.HandlerFunc(p.serve))
 	t.Cleanup(p.server.Close)
@@ -54,11 +58,16 @@ func panelFixture(t *testing.T, s *regressionFixture) *fakePanel {
 	s.cfg.Subscriptions.SubscriptionBaseURL = "https://subscriptions.example.test/sub/"
 	s.cfg.VPN.Panel.PanelRootCAs = x509.NewCertPool()
 	s.cfg.VPN.Panel.PanelRootCAs.AddCert(p.server.Certificate())
+	s.panelFixture = p
 	return p
 }
 func (p *fakePanel) serve(w http.ResponseWriter, r *http.Request) {
 	if p.beforeRead != nil && r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/panel/api/clients/get/") {
 		p.beforeRead()
+	}
+	if p.override != nil {
+		p.override.ServeHTTP(w, r)
+		return
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()

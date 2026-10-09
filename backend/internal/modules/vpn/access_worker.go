@@ -118,7 +118,7 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		return unavailable()
 	}
 	var t AccessTarget
-	if json.Unmarshal(op.Target, &t) != nil || t.OperationID != id || t.PanelID != s.config().PanelID || t.PanelKey == "" || t.VPNID == uuid.Nil || t.SubID == "" || t.DeviceCount < 0 || t.DeviceCount >= math.MaxInt64 || t.TrafficLimitBytes < 0 || t.ExpiryTimeMS < 0 || len(t.InboundIDs) == 0 {
+	if json.Unmarshal(op.Target, &t) != nil || t.OperationID != id || t.PanelID == "" || t.PanelKey == "" || t.VPNID == uuid.Nil || t.SubID == "" || t.DeviceCount < 0 || t.DeviceCount >= math.MaxInt64 || t.TrafficLimitBytes < 0 || t.ExpiryTimeMS < 0 || len(t.InboundIDs) == 0 {
 		return cleanup("invalid_target", true)
 	}
 	if op.Kind == "monthly_reset" && !op.WriteStarted && !op.ResetStarted {
@@ -140,7 +140,7 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		stop()
 		return s.finishMonthlyWithoutWrite(ctx, op, lease, "eligibility_changed")
 	}
-	if err != nil || a.PanelKey != t.PanelKey || a.VpnID != t.VPNID || a.SubID != t.SubID || a.VpnBanned != expectedBan || ((a.AssignedPanelID != nil) && stringValue(a.AssignedPanelID) != t.PanelID) {
+	if err != nil || a.PanelKey != t.PanelKey || a.VpnID != t.VPNID || a.SubID != t.SubID || a.VpnBanned != expectedBan || stringValue(a.AssignedPanelID) != t.PanelID && (!t.Missing || a.AssignedPanelID != nil) {
 		return cleanup("identity_changed", true)
 	}
 	if op.Kind == "purchase" {
@@ -164,7 +164,10 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	if executor != nil && s.accounts.RequireOperator(ctx, *executor) != nil {
 		return cleanup("actor_revoked", true)
 	}
-	p := s.PanelClient()
+	p, err := s.panelFor(ctx, t.PanelID, c)
+	if err != nil {
+		return cleanup("panel_unavailable", true)
+	}
 	defer p.Close()
 	if t.Profile == "regular" || t.Profile == "euru" || t.Profile == "unlimited" {
 		selected, e := p.ProfileInboundIDs(ctx, t.Profile)
@@ -200,7 +203,7 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 			return false
 		}
 		current, e := s.accountByID(ctx, op.AccountID)
-		if e != nil || current.PanelKey != t.PanelKey || current.VpnID != t.VPNID || current.SubID != t.SubID || current.VpnBanned != expectedBan || op.Kind == "purchase" && current.Restricted || op.Kind == "monthly_reset" && (!(current.AccessProfile != nil) || stringValue(current.AccessProfile) != "unlimited") {
+		if e != nil || current.PanelKey != t.PanelKey || current.VpnID != t.VPNID || current.SubID != t.SubID || current.VpnBanned != expectedBan || stringValue(current.AssignedPanelID) != t.PanelID && (!t.Missing || current.AssignedPanelID != nil) || op.Kind == "purchase" && current.Restricted || op.Kind == "monthly_reset" && (!(current.AccessProfile != nil) || stringValue(current.AccessProfile) != "unlimited") {
 			return false
 		}
 		n, e := store.New(s.pool).MarkAccessWrite(ctx, store.MarkAccessWriteParams{ID: id, LeaseHash: lease, UpdatedAt: stamp(s.now())})
@@ -364,7 +367,7 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	defer tx.Rollback(ctx)
 	final := store.New(tx)
 	a, err = s.lockAccount(ctx, tx, op.AccountID)
-	if err != nil || a.PanelKey != t.PanelKey || a.VpnID != t.VPNID || a.SubID != t.SubID || a.VpnBanned != expectedBan {
+	if err != nil || a.PanelKey != t.PanelKey || a.VpnID != t.VPNID || a.SubID != t.SubID || a.VpnBanned != expectedBan || stringValue(a.AssignedPanelID) != t.PanelID && (!t.Missing || a.AssignedPanelID != nil) {
 		tx.Rollback(ctx)
 		return cleanup("identity_changed", true)
 	}
@@ -388,6 +391,10 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 			tx.Rollback(ctx)
 			return cleanup("assign_failed", true)
 		}
+	}
+	if err = s.ReleaseServerReservationTx(ctx, tx, a.ID, t.PanelID); err != nil {
+		tx.Rollback(ctx)
+		return cleanup("reservation_release_failed", true)
 	}
 	if err = s.accounts.SetAccessMetadata(ctx, tx, a.ID, t.Profile, t.Banned); err != nil {
 		tx.Rollback(ctx)

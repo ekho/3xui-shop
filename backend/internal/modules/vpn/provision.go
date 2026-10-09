@@ -158,7 +158,7 @@ func (s *Service) Provision(parent context.Context, id uuid.UUID) error {
 	if a.Restricted || !accounts.SourceEligible(a) || !validSnapshot(op) || a.AssignedPanelID != nil && *a.AssignedPanelID != op.PanelID {
 		return fail(true)
 	}
-	p, e := s.PanelFor(ctx, op.PanelID)
+	p, e := s.panelFor(ctx, op.PanelID, c)
 	if e != nil {
 		return fail(true)
 	}
