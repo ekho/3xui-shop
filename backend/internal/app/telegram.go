@@ -25,6 +25,11 @@ func NewTelegram(cfg telegram.Config, modules *Modules, origin string, client *h
 	if err != nil {
 		return nil, err
 	}
+	if cfg.Enabled {
+		if err = runtime.ConfigureServerManagement(modules.Accounts, modules.VPN, origin); err != nil {
+			return nil, err
+		}
+	}
 	if cfg.Enabled && channel != nil {
 		modules.Payments.ConfigureStars(runtime.StarsGateway())
 	}

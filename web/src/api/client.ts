@@ -198,6 +198,18 @@ export const getOperatorCampaign=(id:string,signal?:AbortSignal)=>request<Campai
 export const createCampaign=(input:CampaignCreateInput,key:string,signal?:AbortSignal)=>request<Campaign>('operator/campaigns','POST',input,signal,true,key);
 export const setCampaignState=(id:string,input:CampaignStateInput,key:string,signal?:AbortSignal)=>request<Campaign>('operator/campaigns/'+encodeURIComponent(id)+'/state','POST',input,signal,true,key);
 
+export type OperatorServerSummary=components['schemas']['OperatorServerSummary'];
+export type OperatorServerDetail=components['schemas']['OperatorServerDetail'];
+export type OperatorServers=components['schemas']['OperatorServers'];
+export type OperatorServerCreateInput=components['schemas']['OperatorServerCreateInput'];
+const operatorServerPath=(id:string)=>'operator/servers/'+encodeURIComponent(id);
+export const getOperatorServers=(signal?:AbortSignal)=>request<OperatorServers>('operator/servers','GET',undefined,signal);
+export const getOperatorServer=(id:string,signal?:AbortSignal)=>request<OperatorServerDetail>(operatorServerPath(id),'GET',undefined,signal);
+export const createOperatorServer=(input:OperatorServerCreateInput,key:string,signal?:AbortSignal)=>request<OperatorServerDetail>('operator/servers','POST',input,signal,true,key);
+export const syncOperatorServers=(key:string,signal?:AbortSignal)=>request<OperatorServers>('operator/servers/sync','POST',{},signal,true,key);
+export const pingOperatorServer=(id:string,key:string,signal?:AbortSignal)=>request<OperatorServerDetail>(operatorServerPath(id)+'/ping','POST',{},signal,true,key);
+export const deleteOperatorServer=(id:string,key:string,signal?:AbortSignal)=>request<OperatorServerDetail>(operatorServerPath(id)+'/delete','POST',{confirmation:true},signal,true,key);
+
 export type AccessOperationInput=components['schemas']['AccessOperationInput'];
 export type AccessOperation=components['schemas']['AccessOperation'];
 export type AccessReconcileInput=components['schemas']['AccessReconcileInput'];

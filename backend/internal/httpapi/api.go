@@ -16,6 +16,7 @@ import (
 	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/support"
 	"example.com/cabinet/backend/internal/modules/telegram"
+	"example.com/cabinet/backend/internal/modules/vpn"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/google/uuid"
@@ -34,6 +35,7 @@ import (
 type API struct {
 	miniApp        *telegram.MiniApp
 	accounts       *accounts.Service
+	vpn            *vpn.Service
 	catalogueOwner *catalogue.Service
 	campaignsOwner *campaigns.Service
 	subscriptions  *subscriptions.Service
@@ -60,7 +62,7 @@ func failure(status int, code string) error {
 }
 func unavailable() error { return failure(503, "SERVICE_UNAVAILABLE") }
 func newAPI(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, contract *openapi3.T) *API {
-	return &API{miniApp: modules.MiniApp, accounts: modules.Accounts, catalogueOwner: modules.Catalogue, campaignsOwner: modules.Campaigns, subscriptions: modules.Subscriptions, payments: modules.Payments, supportOwner: modules.Support, notifications: modules.Notifications, reminders: modules.Reminders, notices: modules.Notices, auditReports: modules.AuditReports, pool: pool, cfg: cfg, contract: contract}
+	return &API{miniApp: modules.MiniApp, accounts: modules.Accounts, vpn: modules.VPN, catalogueOwner: modules.Catalogue, campaignsOwner: modules.Campaigns, subscriptions: modules.Subscriptions, payments: modules.Payments, supportOwner: modules.Support, notifications: modules.Notifications, reminders: modules.Reminders, notices: modules.Notices, auditReports: modules.AuditReports, pool: pool, cfg: cfg, contract: contract}
 }
 
 func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig) *echo.Echo {
@@ -214,6 +216,12 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig) *echo.Ech
 	e.POST("/api/v1/operator/clients/:id/support/ban", a.SetOperatorSupportBan)
 	e.POST("/api/v1/operator/clients/:id/support/telegram-deliveries/:deliveryId/retry", a.RetrySupportTelegramDelivery)
 	e.GET("/api/v1/operator/session", a.GetOperatorSession)
+	e.GET("/api/v1/operator/servers", a.ListManagedServers)
+	e.POST("/api/v1/operator/servers", a.CreateManagedServer)
+	e.POST("/api/v1/operator/servers/sync", a.SyncManagedServers)
+	e.GET("/api/v1/operator/servers/:server_id", a.GetManagedServer)
+	e.POST("/api/v1/operator/servers/:server_id/ping", a.PingManagedServer)
+	e.POST("/api/v1/operator/servers/:server_id/delete", a.DeleteManagedServer)
 	e.GET("/api/v1/catalogue", a.GetCatalogue)
 	e.GET("/api/v1/stars-subscription", a.GetStarsSubscription)
 	e.POST("/api/v1/stars-subscription/control", a.ControlStarsSubscription)
