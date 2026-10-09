@@ -12,6 +12,7 @@ import (
 	"example.com/cabinet/backend/internal/modules/campaigns"
 	"example.com/cabinet/backend/internal/modules/catalogue"
 	"example.com/cabinet/backend/internal/modules/notifications"
+	"example.com/cabinet/backend/internal/modules/operations"
 	"example.com/cabinet/backend/internal/modules/payments"
 	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/support"
@@ -63,7 +64,7 @@ func newAPI(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, contra
 	return &API{miniApp: modules.MiniApp, accounts: modules.Accounts, catalogueOwner: modules.Catalogue, campaignsOwner: modules.Campaigns, subscriptions: modules.Subscriptions, payments: modules.Payments, supportOwner: modules.Support, notifications: modules.Notifications, reminders: modules.Reminders, notices: modules.Notices, auditReports: modules.AuditReports, pool: pool, cfg: cfg, contract: contract}
 }
 
-func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig) *echo.Echo {
+func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, readiness ...*operations.Readiness) *echo.Echo {
 	e := echo.New()
 	e.IPExtractor = echo.ExtractIPDirect()
 	if len(cfg.TrustedProxyCIDRs) > 0 {
@@ -144,6 +145,12 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig) *echo.Ech
 		defer cancel()
 		if pool.Ping(ctx) != nil {
 			return &apiError{Status: 503, Code: "SERVICE_UNAVAILABLE"}
+		}
+		return c.JSON(200, map[string]bool{"ok": true})
+	})
+	e.GET("/readyz", func(c *echo.Context) error {
+		if len(readiness) == 0 || !readiness[0].Ready(c.Request().Context()) {
+			return unavailable()
 		}
 		return c.JSON(200, map[string]bool{"ok": true})
 	})

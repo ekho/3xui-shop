@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/telegram/internal/botapi"
+	"example.com/cabinet/backend/internal/testkit"
 	"github.com/google/uuid"
 	"io"
 	"net/http"
@@ -17,9 +19,160 @@ import (
 
 const testToken = "123456789:abcdefghijklmnopqrstuvwxyz012345678"
 
+func TestRuntimeStateTransitionsAreSafe(t *testing.T) {
+	r := runtimeFixture(t, &http.Client{Transport: testTransport(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("provider token secret")
+	})}, &actionRecorder{}, &outboxRecorder{})
+	if got := r.State(); got.Status != "stopped" || got.Degraded {
+		t.Fatal(got)
+	}
+	var states []State
+	r.Observe(func(s State) { states = append(states, s) })
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- r.Run(ctx) }()
+	deadline := time.Now().Add(2 * time.Second)
+	for !r.State().Degraded && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if got := r.State(); got.Status != "degraded" || got.Code != "UNAVAILABLE" {
+		t.Fatal(got)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if got := r.State(); got.Status != "stopped" || !got.Degraded {
+		t.Fatal(got)
+	}
+	for _, s := range states {
+		if strings.Contains(s.Code, "secret") {
+			t.Fatal("raw error observed")
+		}
+	}
+}
+
+func TestRuntimeRecoversAfterStartupOutage(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	calls := 0
+	h := &http.Client{Transport: testTransport(func(req *http.Request) (*http.Response, error) {
+		if strings.HasSuffix(req.URL.Path, "getWebhookInfo") {
+			calls++
+			if calls == 1 {
+				return nil, errors.New("provider secret")
+			}
+			return jsonReply(botapi.WebhookInfo{}), nil
+		}
+		return jsonReply([]botapi.Update{}), nil
+	})}
+	r := runtimeFixture(t, h, &actionRecorder{}, &outboxRecorder{})
+	var states []State
+	r.Observe(func(s State) {
+		states = append(states, s)
+		if s.Status == "running" {
+			cancel()
+		}
+	})
+	if err := r.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	seenDegraded, seenRunning := false, false
+	for _, state := range states {
+		if state.Status == "degraded" && state.Code == "UNAVAILABLE" {
+			seenDegraded = true
+		}
+		if state.Status == "running" && state.Code == "" {
+			seenRunning = true
+		}
+		if strings.Contains(state.Code, "secret") {
+			t.Fatal("raw provider error exposed")
+		}
+	}
+	if !seenDegraded || !seenRunning || r.State().Status != "stopped" {
+		t.Fatal(states)
+	}
+}
+
 type outboxRecorder struct {
 	results []DeliveryOutcome
 	err     error
+}
+
+type recoveringOutbox struct {
+	calls  int
+	cancel context.CancelFunc
+}
+
+type leasedOutbox struct {
+	calls  int
+	cancel context.CancelFunc
+	job    Delivery
+}
+
+func (o *leasedOutbox) Claim(context.Context) (*Delivery, error) {
+	o.calls++
+	if o.calls == 1 {
+		return &o.job, nil
+	}
+	o.cancel()
+	return nil, nil // the failed job remains leased and cannot be claimed yet
+}
+func (*leasedOutbox) Complete(context.Context, Delivery, DeliveryOutcome) error { return nil }
+
+func TestEmptyLeasedQueueDoesNotRecoverFailedSend(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	outbox := &leasedOutbox{cancel: cancel, job: Delivery{ID: uuid.New(), ChatID: 101, LeaseExpiresAt: time.Now().Add(time.Minute), Card: TrialCard{RequestID: uuid.New(), Email: "trial@example.test", Status: "pending", CreatedAt: time.Now()}}}
+	h := &http.Client{Transport: testTransport(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 429, Body: io.NopCloser(strings.NewReader(`{"ok":false,"error_code":429,"description":"provider secret"}`))}, nil
+	})}
+	r := runtimeFixture(t, h, &actionRecorder{}, outbox)
+	if err := r.deliveries(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if outbox.calls != 2 || !r.State().Degraded || r.State().Code != "RATE_LIMITED" {
+		t.Fatal("failed send falsely recovered", outbox.calls, r.State())
+	}
+}
+
+func TestEmptyClientClaimClearsClaimOnly(t *testing.T) {
+	env := testkit.Open(t)
+	r := runtimeFixture(t, nil, &actionRecorder{}, &outboxRecorder{})
+	r.clients = &Client{notices: notifications.New(env.Pool, nil, nil, nil, nil)}
+	r.setLoopCode(&r.clientClaimCode, "SERVICE_UNAVAILABLE")
+	r.setLoopCode(&r.clientCode, "RATE_LIMITED")
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if err := r.clientDeliveries(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if r.clientClaimCode != "" || r.State().Code != "RATE_LIMITED" {
+		t.Fatal("client send failure falsely recovered", r.State())
+	}
+}
+
+func (o *recoveringOutbox) Claim(context.Context) (*Delivery, error) {
+	o.calls++
+	if o.calls == 1 {
+		return nil, errors.New("database secret")
+	}
+	o.cancel()
+	return nil, nil
+}
+func (*recoveringOutbox) Complete(context.Context, Delivery, DeliveryOutcome) error { return nil }
+
+func TestEmptyDeliveryClaimClearsTransientError(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	outbox := &recoveringOutbox{cancel: cancel}
+	r := runtimeFixture(t, nil, &actionRecorder{}, outbox)
+	if err := r.deliveries(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if outbox.calls != 2 || r.State().Code != "" {
+		t.Fatal("stale delivery outage", outbox.calls, r.State())
+	}
 }
 
 func (*outboxRecorder) Claim(context.Context) (*Delivery, error) { return nil, nil }
