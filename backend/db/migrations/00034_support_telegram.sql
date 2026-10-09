@@ -5,7 +5,7 @@ ALTER TABLE support_messages ADD CONSTRAINT support_message_content CHECK(text<>
 
 ALTER TABLE audit_events ADD COLUMN operator_source text CHECK(operator_source IS NULL OR operator_source='telegram_support');
 ALTER TABLE audit_events DROP CONSTRAINT audit_single_operator;
-ALTER TABLE audit_events ADD CONSTRAINT audit_single_operator CHECK(operator_tg_id IS NULL OR operator_account_id IS NULL OR operator_source='telegram_support');
+ALTER TABLE audit_events ADD CONSTRAINT audit_single_operator CHECK(operator_tg_id IS NULL OR operator_account_id IS NULL OR COALESCE(operator_source='telegram_support',false));
 ALTER TABLE audit_system_events ADD COLUMN support_telegram jsonb CHECK(support_telegram IS NULL OR (jsonb_typeof(support_telegram)='object' AND octet_length(support_telegram::text)<=8192));
 ALTER TABLE audit_system_events DROP CONSTRAINT audit_system_events_action_check, DROP CONSTRAINT audit_system_events_check;
 ALTER TABLE audit_system_events ADD CONSTRAINT audit_system_events_action_check CHECK(action IN ('audit.pruned','audit.legacy_imported','support.telegram'));
@@ -78,6 +78,7 @@ CREATE TABLE support_telegram_deliveries (
 );
 CREATE UNIQUE INDEX support_active_message_delivery ON support_telegram_deliveries(message_id) WHERE status IN ('queued','sending') AND message_id IS NOT NULL;
 CREATE INDEX support_delivery_pending ON support_telegram_deliveries(sequence) WHERE status IN ('queued','sending');
+CREATE INDEX support_delivery_message_sequence ON support_telegram_deliveries(message_id,sequence DESC) WHERE message_id IS NOT NULL;
 
 -- +goose Down
 -- +goose StatementBegin

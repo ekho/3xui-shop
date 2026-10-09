@@ -224,6 +224,8 @@ type fixture struct {
 	workers             *river.Client[pgx.Tx]
 	root, ca, tokenFile string
 	native              bool
+	nativeCrash         func()
+	nativeBinary        string
 }
 
 func open(t *testing.T) *fixture {

@@ -9,6 +9,28 @@ const conversation:Model<'SupportConversation'>={id:'22222222-2222-4222-8222-222
 const message=(sequence:number,sender:'customer'|'operator'='customer',text='Message '+sequence,delivery:'stored'|'delivered'='stored',attachment:Model<'SupportAttachment'>|null=null):Model<'SupportMessage'>=>({id:`00000000-0000-4000-8000-${String(sequence).padStart(12,'0')}`,sequence,sender,text,created_at:'2026-10-02T10:00:00Z',attachment,delivery});
 const empty:SupportResult={conversation:null,messages:[],has_more:false,oldest_sequence:null};
 
+test('support hides private history when the session loses read access',async({page})=>{
+ let denied=false;
+ await baseRoutes(page,()=>({conversation,messages:[message(1,'operator','Protected private reply')],has_more:false,oldest_sequence:1}),async(route,path)=>{
+  if(path.endsWith('/support')&&denied){await route.fulfill({status:403,json:{error:{code:'ACCOUNT_RESTRICTED'}}});return true;}return false;
+ });
+ await page.goto('/cabinet/support?lang=en');await expect(page.getByText('Protected private reply',{exact:true})).toBeVisible();
+ denied=true;await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+ await expect(page.getByRole('alert')).toBeVisible();await expect(page.getByText('Protected private reply',{exact:true})).toHaveCount(0);await expect(page.getByLabel('Message',{exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'Sign out',exact:true})).toBeEnabled();
+});
+
+test('Telegram delivery remains separate from cabinet read acknowledgement',async({page})=>{
+ const statuses=['queued','sending','sent','failed','unknown','skipped'] as const;
+ const rows=statuses.map((status,index):Model<'SupportMessage'>=>({...message(index+1),telegram_delivery:{id:`30000000-0000-4000-8000-${String(index+1).padStart(12,'0')}`,status,code:status==='unknown'?'ACK_UNKNOWN':'',retry_capability:status==='unknown',media_availability:index===4?'telegram_only':'stored'}}));
+ await baseRoutes(page,()=>({conversation,messages:rows,has_more:false,oldest_sequence:1}));
+ await page.goto('/cabinet/support?lang=en');
+ const list=page.getByRole('list',{name:'Support history'});
+ for(const label of ['Queued for Telegram','Sending to Telegram','Telegram confirmed delivery','Telegram rejected delivery','Telegram delivery is unknown','Telegram delivery skipped'])await expect(list.getByText(label,{exact:true})).toBeVisible();
+ await expect(list.getByText('Stored in support',{exact:true})).toHaveCount(6);
+ await expect(list.getByText('Media is available only in Telegram.',{exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Retry Telegram delivery'})).toHaveCount(0);
+});
+
 async function baseRoutes(page:Page,getSupport:()=>Promise<SupportResult>|SupportResult=()=>empty,extra?:(route:Route,path:string)=>Promise<boolean>){
  await page.route('**/api/v1/**',async route=>{
   const request=route.request(),path=new URL(request.url()).pathname;

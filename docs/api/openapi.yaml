@@ -13229,6 +13229,185 @@
           }
         }
       }
+    },
+    "/api/v1/operator/clients/{id}/support/telegram-deliveries/{deliveryId}/retry": {
+      "post": {
+        "operationId": "retrySupportTelegramDelivery",
+        "description": "Explicit operator confirmation of a new intent for the same support message. Only unconfirmed parts are retried; an unknown send may already have succeeded. Session-derived actor and current role/target proof; unknown query/body fields rejected, JSON limit16KiB, no-store. Existing cabinet read acknowledgement and saved replay blobs are unchanged.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "deliveryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                },
+                "description": "Seconds before retry"
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Exact intent replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportTelegramDelivery"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "New delivery intent accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportTelegramDelivery"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportTelegramRetryInput"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -14533,6 +14712,9 @@
               "stored",
               "delivered"
             ]
+          },
+          "telegram_delivery": {
+            "$ref": "#/components/schemas/SupportTelegramDelivery"
           }
         },
         "required": [
@@ -19552,7 +19734,8 @@
             "type": "string",
             "enum": [
               "audit.pruned",
-              "audit.legacy_imported"
+              "audit.legacy_imported",
+              "support.telegram"
             ]
           },
           "period_day": {
@@ -19586,6 +19769,9 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
+          },
+          "support_telegram": {
+            "$ref": "#/components/schemas/SupportTelegramAudit"
           }
         },
         "required": [
@@ -19661,6 +19847,202 @@
           "legacy_events",
           "system_events",
           "has_more"
+        ]
+      },
+      "SupportTelegramDelivery": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "sending",
+              "sent",
+              "failed",
+              "unknown",
+              "skipped"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Z_]{0,48}$"
+          },
+          "retry_capability": {
+            "type": "boolean"
+          },
+          "media_availability": {
+            "type": "string",
+            "enum": [
+              "stored",
+              "telegram_only"
+            ],
+            "x-enum-varnames": [
+              "SupportMediaStored",
+              "SupportMediaTelegramOnly"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "code",
+          "retry_capability",
+          "media_availability"
+        ]
+      },
+      "SupportTelegramRetryInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "confirmed": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "confirmed",
+          "reason"
+        ]
+      },
+      "SupportTelegramAudit": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Typed protected support source metadata. Signed int64 IDs are decimal strings. Actual native provider IDs are retained; absent legacy message/update IDs are omitted. Unknown actor is null; original legacy source ID never implies current account ownership. No message bodies or file identifiers.",
+        "properties": {
+          "bot_id": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$"
+          },
+          "group_id": {
+            "type": "string",
+            "pattern": "^-?[1-9][0-9]{0,18}$"
+          },
+          "chat_id": {
+            "type": "string",
+            "pattern": "^-?[1-9][0-9]{0,18}$"
+          },
+          "message_id": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$"
+          },
+          "update_id": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]{0,18})$"
+          },
+          "source_id": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$"
+          },
+          "thread_id": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "nullable": true
+          },
+          "actor_tg_id": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "nullable": true
+          },
+          "actor_account_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "target_account_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "topic_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "receipt_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "message",
+              "topic_closed",
+              "topic_reopened",
+              "command",
+              "delivery",
+              "topic_bound",
+              "legacy_imported",
+              "legacy_bound",
+              "guest_banned",
+              "guest_unbanned"
+            ],
+            "x-enum-varnames": [
+              "SupportSourceMessage",
+              "SupportSourceTopicClosed",
+              "SupportSourceTopicReopened",
+              "SupportSourceCommand",
+              "SupportSourceDelivery",
+              "SupportSourceTopicBound",
+              "SupportSourceLegacyImported",
+              "SupportSourceLegacyBound",
+              "SupportSourceGuestBanned",
+              "SupportSourceGuestUnbanned"
+            ]
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "observed",
+              "requested",
+              "completed",
+              "queued",
+              "sent",
+              "failed",
+              "unknown",
+              "skipped"
+            ],
+            "x-enum-varnames": [
+              "SupportSourceObserved",
+              "SupportSourceRequested",
+              "SupportSourceCompleted",
+              "SupportSourceQueued",
+              "SupportSourceSent",
+              "SupportSourceFailed",
+              "SupportSourceUnknown",
+              "SupportSourceSkipped"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "bot_id",
+          "group_id",
+          "chat_id",
+          "thread_id",
+          "actor_tg_id",
+          "actor_account_id",
+          "target_account_id",
+          "topic_id",
+          "receipt_id",
+          "kind",
+          "outcome"
         ]
       }
     }

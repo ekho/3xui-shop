@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"io"
 	"log"
 	"math/big"
@@ -160,6 +161,7 @@ func nativeNoticeBinary(t *testing.T, f *fixture, handler http.Handler, childSet
 		settings["SMTP_PASSWORD_FILE"] = write("smtp-password", []byte(f.cfg.Mail.SMTPPassword))
 	}
 	binary := filepath.Join(dir, "server")
+	f.nativeBinary = binary
 	build := exec.Command("go", "build", "-race", "-o", binary, "./cmd/server")
 	build.Dir = filepath.Join(f.root, "backend")
 	if build.Run() != nil {
@@ -172,6 +174,19 @@ func nativeNoticeBinary(t *testing.T, f *fixture, handler http.Handler, childSet
 	t.Logf("fresh cmd/server SHA256 %x", sha256.Sum256(data))
 	var process *exec.Cmd
 	var output *os.File
+	f.nativeCrash = func() {
+		t.Helper()
+		if process == nil || process.Process.Kill() != nil {
+			t.Fatal("owned application crash failed")
+		}
+		err := process.Wait()
+		process = nil
+		output.Close()
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ProcessState.Sys().(syscall.WaitStatus).Signal() != syscall.SIGKILL {
+			t.Fatal("owned application did not exit by SIGKILL")
+		}
+	}
 	stop := func() {
 		if process == nil {
 			return
@@ -202,6 +217,8 @@ func nativeNoticeBinary(t *testing.T, f *fixture, handler http.Handler, childSet
 				path := filepath.Join(f.root, ".superpowers", "acceptance", "c28-notices")
 				if strings.HasPrefix(t.Name(), "TestNativeTrialAudit") {
 					path = filepath.Join(f.root, ".superpowers", "acceptance", "c29-audit-history")
+				} else if strings.HasPrefix(t.Name(), "TestNativeTrialSupport") {
+					path = filepath.Join(f.root, ".superpowers", "acceptance", "c37-support-proxy")
 				}
 				if os.MkdirAll(path, 0700) == nil {
 					os.WriteFile(filepath.Join(path, "native-server-failure-"+uuid.NewString()+".log"), data, 0600)

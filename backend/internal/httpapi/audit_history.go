@@ -66,7 +66,18 @@ func (a *API) ReadOperatorAuditHistory(c *echo.Context) error {
 		out.LegacyEvents = append(out.LegacyEvents, wire.LegacyAuditHistoryEvent{SourceId: strconv.FormatInt(row.SourceID, 10), CreatedAt: row.CreatedAt, Action: row.Action, TargetTgId: auditDecimal(row.TargetTgID), ActorId: auditDecimal(row.ActorID), ActorType: row.ActorType, ActorName: row.ActorName, Source: row.Source, AccountId: row.AccountID})
 	}
 	for _, row := range page.System {
-		out.SystemEvents = append(out.SystemEvents, wire.SystemAuditHistoryEvent{Id: row.ID, CreatedAt: row.CreatedAt, Action: wire.SystemAuditHistoryEventAction(row.Action), PeriodDay: row.PeriodDay, Cutoff: row.Cutoff, RetentionDays: row.RetentionDays, NativeCount: row.NativeCount, LegacyCount: row.LegacyCount, SystemCount: row.SystemCount})
+		event := wire.SystemAuditHistoryEvent{Id: row.ID, CreatedAt: row.CreatedAt, Action: wire.SystemAuditHistoryEventAction(row.Action), PeriodDay: row.PeriodDay, Cutoff: row.Cutoff, RetentionDays: row.RetentionDays, NativeCount: row.NativeCount, LegacyCount: row.LegacyCount, SystemCount: row.SystemCount}
+		if row.SupportTelegram != nil {
+			source := row.SupportTelegram
+			event.SupportTelegram = &wire.SupportTelegramAudit{BotId: strconv.FormatInt(source.BotID, 10), GroupId: strconv.FormatInt(source.GroupID, 10), ChatId: strconv.FormatInt(source.ChatID, 10), ThreadId: auditDecimal(source.ThreadID),
+				ActorTgId: auditDecimal(source.ActorTgID), ActorAccountId: source.ActorAccountID, TargetAccountId: source.TargetAccountID, TopicId: source.TopicID, ReceiptId: source.ReceiptID,
+				Kind: wire.SupportTelegramAuditKind(source.Kind), Outcome: wire.SupportTelegramAuditOutcome(source.Outcome), Reason: source.Reason, SourceId: auditDecimal(source.SourceID)}
+			if source.SourceID == nil {
+				event.SupportTelegram.MessageId = auditDecimal(&source.MessageID)
+				event.SupportTelegram.UpdateId = auditDecimal(&source.UpdateID)
+			}
+		}
+		out.SystemEvents = append(out.SystemEvents, event)
 	}
 	return c.JSON(200, out)
 }

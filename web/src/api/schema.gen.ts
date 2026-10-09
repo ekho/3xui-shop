@@ -1804,6 +1804,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/operator/clients/{id}/support/telegram-deliveries/{deliveryId}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Explicit operator confirmation of a new intent for the same support message. Only unconfirmed parts are retried; an unknown send may already have succeeded. Session-derived actor and current role/target proof; unknown query/body fields rejected, JSON limit16KiB, no-store. Existing cabinet read acknowledgement and saved replay blobs are unchanged. */
+        post: operations["retrySupportTelegramDelivery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2125,6 +2142,7 @@ export interface components {
             attachment: components["schemas"]["SupportAttachment"] | null;
             /** @enum {string} */
             delivery: "stored" | "delivered";
+            telegram_delivery?: components["schemas"]["SupportTelegramDelivery"];
         };
         SupportConversation: {
             /** Format: uuid */
@@ -3367,7 +3385,7 @@ export interface components {
             /** Format: date-time */
             created_at: string;
             /** @enum {string} */
-            action: "audit.pruned" | "audit.legacy_imported";
+            action: "audit.pruned" | "audit.legacy_imported" | "support.telegram";
             period_day: string | null;
             /** Format: date-time */
             cutoff: string | null;
@@ -3379,6 +3397,7 @@ export interface components {
             legacy_count: number;
             /** Format: int64 */
             system_count: number;
+            support_telegram?: components["schemas"]["SupportTelegramAudit"];
         };
         AuditHistory: {
             /** @enum {string} */
@@ -3392,6 +3411,45 @@ export interface components {
             legacy_events: components["schemas"]["LegacyAuditHistoryEvent"][];
             system_events: components["schemas"]["SystemAuditHistoryEvent"][];
             has_more: boolean;
+        };
+        SupportTelegramDelivery: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            status: "queued" | "sending" | "sent" | "failed" | "unknown" | "skipped";
+            code: string;
+            retry_capability: boolean;
+            /** @enum {string} */
+            media_availability: "stored" | "telegram_only";
+        };
+        SupportTelegramRetryInput: {
+            /** @enum {boolean} */
+            confirmed: true;
+            reason: string;
+        };
+        /** @description Typed protected support source metadata. Signed int64 IDs are decimal strings. Actual native provider IDs are retained; absent legacy message/update IDs are omitted. Unknown actor is null; original legacy source ID never implies current account ownership. No message bodies or file identifiers. */
+        SupportTelegramAudit: {
+            bot_id: string;
+            group_id: string;
+            chat_id: string;
+            message_id?: string;
+            update_id?: string;
+            source_id?: string;
+            thread_id: string | null;
+            actor_tg_id: string | null;
+            /** Format: uuid */
+            actor_account_id: string | null;
+            /** Format: uuid */
+            target_account_id: string | null;
+            /** Format: uuid */
+            topic_id: string | null;
+            /** Format: uuid */
+            receipt_id: string | null;
+            /** @enum {string} */
+            kind: "message" | "topic_closed" | "topic_reopened" | "command" | "delivery" | "topic_bound" | "legacy_imported" | "legacy_bound" | "guest_banned" | "guest_unbanned";
+            /** @enum {string} */
+            outcome: "observed" | "requested" | "completed" | "queued" | "sent" | "failed" | "unknown" | "skipped";
+            reason?: string;
         };
     };
     responses: never;
@@ -12869,6 +12927,120 @@ export interface operations {
             /** @description Safe error */
             404: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    retrySupportTelegramDelivery: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token": string;
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+                deliveryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportTelegramRetryInput"];
+            };
+        };
+        responses: {
+            /** @description Exact intent replay */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportTelegramDelivery"];
+                };
+            };
+            /** @description New delivery intent accepted */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportTelegramDelivery"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            429: {
+                headers: {
+                    /** @description Seconds before retry */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {

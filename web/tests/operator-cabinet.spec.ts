@@ -3,8 +3,82 @@ import type {components} from '../src/api/schema.gen';
 
 type Model<K extends keyof components['schemas']>=components['schemas'][K];
 const operator={account:{account_id:'10000000-0000-4000-8000-000000000001',email:'operator@example.test',email_verified:true,locale:'en',telegram_linked:false},csrf_token:'s'.repeat(43)};
+
+for(const lang of ['en','ru'] as const)test('confirmed Telegram retry preserves the attempt key after failure '+lang,async({page})=>{
+ const labels=lang==='en'?{retry:'Retry Telegram delivery',reason:'Retry reason',confirm:'Confirm retry',check:'I accept a possible duplicate message',warning:'An earlier send may have succeeded. Retrying can duplicate the message.',queued:'Queued for Telegram'}:{retry:'Повторить отправку в Telegram',reason:'Причина повторной отправки',confirm:'Подтвердить повтор',check:'Подтверждаю возможный повтор сообщения',warning:'Предыдущая отправка могла выполниться. Повтор может создать дубликат сообщения.',queued:'Ожидает отправки в Telegram'};
+ let complete=false;const keys:string[]=[],bodies:unknown[]=[];
+ const delivery={id:'80000000-0000-4000-8000-000000000001',status:'unknown',code:'ACK_UNKNOWN',retry_capability:true,media_availability:'stored'};
+ const conversation={id:'60000000-0000-4000-8000-000000000001',status:'open',support_banned:false,created_at:'2026-10-09T10:00:00Z',updated_at:'2026-10-09T10:00:00Z',customer_received_sequence:0,operator_received_sequence:0};
+ await operatorRoutes(page,async(route,path)=>{
+  if(path.endsWith('/support')&&route.request().method()==='GET'){await route.fulfill({json:{conversation,messages:[{id:'70000000-0000-4000-8000-000000000001',sequence:1,sender:'operator',text:'Owned relay',created_at:'2026-10-09T10:00:00Z',attachment:null,delivery:'stored',telegram_delivery:complete?{...delivery,id:'80000000-0000-4000-8000-000000000002',status:'queued',code:'',retry_capability:false}:delivery}],has_more:false,oldest_sequence:1}});return true;}
+  if(path.endsWith('/telegram-deliveries/'+delivery.id+'/retry')){keys.push(route.request().headers()['idempotency-key']);bodies.push(route.request().postDataJSON());if(keys.length===1)await route.fulfill({status:503,json:{error:{code:'SERVICE_UNAVAILABLE'}}});else{complete=true;await route.fulfill({status:201,json:{...delivery,id:'80000000-0000-4000-8000-000000000002',status:'queued',code:'',retry_capability:false}});}return true;}
+  return false;
+ });
+ await page.goto('/admin/clients/'+tgClient.account_id+'/show?lang='+lang);
+ const trigger=page.getByRole('button',{name:labels.retry,exact:true});await trigger.click();
+ await expect(page.getByLabel(labels.reason,{exact:true})).toBeFocused();
+ await page.locator('.telegram-delivery form').getByRole('button',{name:lang==='en'?'Cancel':'Отмена',exact:true}).click();await expect(trigger).toBeFocused();await trigger.click();
+ await expect(page.getByText(labels.warning,{exact:true})).toBeVisible();
+ const confirm=page.getByRole('button',{name:labels.confirm,exact:true});await confirm.click();expect(keys).toHaveLength(0);
+ await page.getByLabel(labels.reason,{exact:true}).fill('Owned support recovery');await page.getByLabel(labels.check,{exact:true}).check();
+ await confirm.focus();await page.keyboard.press('Enter');await expect.poll(()=>keys.length).toBe(1);await expect(page.getByRole('alert')).toBeVisible();
+ await expect(page.getByLabel(labels.reason,{exact:true})).toHaveValue('Owned support recovery');
+ await confirm.click();await expect.poll(()=>keys.length).toBe(2);expect(keys[0]).toBe(keys[1]);expect(keys[0]).toMatch(/^[0-9a-f-]{36}$/);expect(bodies).toEqual([{confirmed:true,reason:'Owned support recovery'},{confirmed:true,reason:'Owned support recovery'}]);
+ await expect(page.getByText(labels.queued,{exact:true})).toBeVisible();await expect(confirm).toHaveCount(0);await expect(page.locator('#support-message-70000000-0000-4000-8000-000000000001')).toBeFocused();
+});
 const webClient:Model<'OperatorClient'>={account_id:'20000000-0000-4000-8000-000000000001',kind:'web',display_name:'',email:'customer@example.test',telegram_id:null,locale:'en',created_at:null,restricted:false,vpn_banned:false,had_subscription:true};
 const tgClient:Model<'OperatorClient'>={account_id:'20000000-0000-4000-8000-000000000002',kind:'telegram',display_name:'Exact Person',email:null,telegram_id:'9223372036854775807',locale:'ru',created_at:'2026-10-02T10:00:00Z',restricted:false,vpn_banned:false,had_subscription:false};
+
+test('support scope clears history draft and file while an older request is pending',async({page})=>{
+ let release!:()=>void;const pending=new Promise<void>(resolve=>release=resolve);let older=0;
+ const otherId=webClient.account_id;
+ const conversation={id:'60000000-0000-4000-8000-000000000001',status:'open',support_banned:false,created_at:'2026-10-09T10:00:00Z',updated_at:'2026-10-09T10:00:00Z',customer_received_sequence:0,operator_received_sequence:0};
+ const row=(sequence:number,text:string)=>({id:`70000000-0000-4000-8000-${String(sequence).padStart(12,'0')}`,sequence,sender:'operator',text,created_at:'2026-10-09T10:00:00Z',attachment:null,delivery:'stored'});
+ await operatorRoutes(page,async(route,path)=>{
+  if(path.endsWith('/operator/clients/'+otherId)){await route.fulfill({json:{...card,client:{...webClient,display_name:'Other Person'}}});return true;}
+  if(path.endsWith('/support')&&route.request().method()==='GET'){const other=path.includes(otherId);await route.fulfill({json:{conversation:{...conversation,id:other?'60000000-0000-4000-8000-000000000002':conversation.id},messages:[row(other?100:20,other?'Other private reply':'Previous private reply')],has_more:!other,oldest_sequence:other?100:20}});return true;}
+  if(path.endsWith('/support/history')){older++;await pending;await route.fulfill({json:{conversation,messages:[row(10,'Delayed previous body')],has_more:false,oldest_sequence:10}}).catch(()=>{});return true;}
+  return false;
+ });
+ await page.goto('/admin/clients/'+tgClient.account_id+'/show?lang=en');
+ await expect(page.getByText('Previous private reply',{exact:true})).toBeVisible();
+ await page.getByLabel('Support reply',{exact:true}).fill('Previous private draft');await page.getByLabel('Support file',{exact:true}).setInputFiles({name:'previous.txt',mimeType:'text/plain',buffer:Buffer.from('private fixture')});
+ await page.getByLabel('Support restriction reason',{exact:true}).fill('Previous support reason');
+ await page.locator('.support-thread').getByRole('button',{name:/Load older/}).click();await expect.poll(()=>older).toBe(1);
+ try{
+  await page.evaluate(id=>{history.pushState({},'',`/admin/clients/${id}/show?lang=en`);dispatchEvent(new PopStateEvent('popstate'));},otherId);
+  await expect(page.getByRole('heading',{name:'Other Person'})).toBeVisible();await expect(page.getByText('Other private reply',{exact:true})).toBeVisible();
+  await expect(page.getByText('Previous private reply',{exact:true})).toHaveCount(0);
+  await expect(page.getByLabel('Support reply',{exact:true})).toHaveValue('');await expect(page.getByLabel('Support file',{exact:true})).toHaveValue('');await expect(page.getByLabel('Support restriction reason',{exact:true})).toHaveValue('');
+ }finally{release();}
+ await page.waitForTimeout(100);await expect(page.getByText('Delayed previous body',{exact:true})).toHaveCount(0);
+});
+for(const transition of ['client','role'] as const)test('delayed Telegram retry clears on '+transition+' scope change',async({page})=>{
+ let release!:()=>void;const waiting=new Promise<void>(resolve=>release=resolve);let requested=0,deny=false;
+ const delivery={id:'80000000-0000-4000-8000-000000000001',status:'unknown',code:'ACK_UNKNOWN',retry_capability:true,media_availability:'stored'};
+ const conversation={id:'60000000-0000-4000-8000-000000000001',status:'open',support_banned:false,created_at:'2026-10-09T10:00:00Z',updated_at:'2026-10-09T10:00:00Z',customer_received_sequence:0,operator_received_sequence:0};
+ await operatorRoutes(page,async(route,path)=>{
+  if(path.endsWith('/operator/clients/'+webClient.account_id)){await route.fulfill({json:{...card,client:{...webClient,display_name:'Other Person'}}});return true;}
+  if(path.endsWith('/support')&&route.request().method()==='GET'){const other=path.includes(webClient.account_id);await route.fulfill({json:{conversation,messages:[{id:other?'90000000-0000-4000-8000-000000000001':'70000000-0000-4000-8000-000000000001',sequence:1,sender:'operator',text:other?'New private history':'Old private history',created_at:'2026-10-09T10:00:00Z',attachment:null,delivery:'stored',...(other?{}:{telegram_delivery:delivery})}],has_more:false,oldest_sequence:1}});return true;}
+  if(path.endsWith('/retry')){requested++;await waiting;await route.fulfill({status:201,json:{...delivery,status:'queued',retry_capability:false}}).catch(()=>{});return true;}
+  if(deny&&path.endsWith('/history')){await route.fulfill({status:403,json:{error:{code:'INVALID_CREDENTIALS'}}});return true;}
+  return false;
+ });
+ await page.goto('/admin/clients/'+tgClient.account_id+'/show?lang=en');
+ const restriction=page.locator('section[aria-label="Account restriction"]').getByRole('textbox');await restriction.fill('Independent restriction draft');
+ await page.getByRole('button',{name:'Retry Telegram delivery',exact:true}).click();await page.getByLabel('Retry reason',{exact:true}).fill('Old retry reason');await page.getByLabel('I accept a possible duplicate message',{exact:true}).check();
+ await expect(restriction).toHaveValue('Independent restriction draft');
+ await page.getByRole('button',{name:'Confirm retry',exact:true}).click();await expect.poll(()=>requested).toBe(1);
+ try {
+  if(transition==='client'){
+   await page.evaluate(id=>{history.pushState({},'',`/admin/clients/${id}/show?lang=en`);dispatchEvent(new PopStateEvent('popstate'));},webClient.account_id);
+   await expect(page.getByText('New private history',{exact:true})).toBeVisible();
+  }else{deny=true;await page.getByRole('button',{name:'Load older trial requests',exact:true}).click();await expect(page.getByRole('heading',{name:'Operator access required'})).toBeVisible();}
+  await expect(page.getByText('Old private history',{exact:true})).toHaveCount(0);await expect(page.getByLabel('Retry reason',{exact:true})).toHaveCount(0);
+ }finally{release();}
+ await expect(page.getByText('Queued for Telegram',{exact:true})).toHaveCount(0);await expect(page.getByText('Old private history',{exact:true})).toHaveCount(0);
+});
+
 const subscription:Model<'Subscription'>={status:'active',expires_at:null,devices:1,traffic_limit_bytes:1024,traffic_used_bytes:0,observed_at:'2026-10-02T10:00:00Z',data_stale:false,connection_available:true,access_profile:'regular',vpn_banned:false,access_operation_id:null,access_operation_status:null};
 const pending:Model<'OperatorTrialRequest'>={request_id:'30000000-0000-4000-8000-000000000001',status:'pending',created_at:'2026-10-02T09:00:00Z',decided_at:null,operation_id:null,previous_request_id:null,comment:'Need access',reason:null,operator_tg_id:null,operator_account_id:null,operation:null};
 const rejected:Model<'OperatorTrialRequest'>={...pending,request_id:'30000000-0000-4000-8000-000000000002',status:'rejected',decided_at:'2026-10-02T09:30:00Z',reason:'Initial reason',operator_account_id:operator.account.account_id};
@@ -12,6 +86,12 @@ const operation:Model<'OperatorOperation'>={operation_id:'40000000-0000-4000-800
 const withOperation:Model<'OperatorTrialRequest'>={...pending,request_id:'30000000-0000-4000-8000-000000000003',status:'approved',operation_id:operation.operation_id,operation};
 const audit:Model<'OperatorAuditEvent'>={id:'50000000-0000-4000-8000-000000000001',created_at:'2026-10-02T08:00:00Z',action:'trial.requested',request_id:pending.request_id,operation_id:null,operator_tg_id:'123456789',operator_account_id:null,reason:'Audited reason',support_message_id:null,access_operation_id:null,system_actor:null,monthly_period:null};
 const card:Model<'OperatorClientCard'>={client:tgClient,subscription,server:{panel_id:'configured-panel',enabled:true},support:null,trial_requests:[pending,rejected,withOperation],trial_has_more:true,audit_events:[audit],audit_has_more:true,legacy_approval:null,legacy_events:[],legacy_has_more:false};
+
+for(const lang of ['en','ru'] as const)test('native support audit retains both operator identities '+lang,async({page})=>{
+ await operatorRoutes(page,async(route,path)=>{if(path.endsWith('/operator/clients/'+tgClient.account_id)){await route.fulfill({json:{...card,audit_events:[{...audit,action:'support_message',operator_tg_id:'732',operator_account_id:operator.account.account_id}]}});return true;}return false;});
+ await page.goto('/admin/clients/'+tgClient.account_id+'/show?lang='+lang);
+ await expect(page.getByText((lang==='en'?'Telegram operator':'Telegram-оператор')+': 732 ('+operator.account.account_id+')',{exact:true})).toBeVisible();
+});
 
 async function operatorRoutes(page:Page,extra?:(route:Route,path:string)=>Promise<boolean>,searches:{q:string;page:number;per_page:number}[]=[]){
  await page.route('**/api/v1/**',async route=>{const request=route.request(),path=new URL(request.url()).pathname;if(extra&&await extra(route,path))return;

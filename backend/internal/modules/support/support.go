@@ -157,6 +157,9 @@ func publicSupportPage(rows []store.SupportPageRow, c store.SupportConversation)
 		if r.AttachmentName.Valid {
 			m.Attachment = &SupportAttachment{Name: r.AttachmentName.String, SizeBytes: r.AttachmentSize}
 		}
+		if r.TelegramDeliveryID != uuid.Nil {
+			m.TelegramDelivery = telegramDeliveryStatus(r.TelegramDeliveryID, r.TelegramDeliveryStatus, r.TelegramDeliveryCode, r.TelegramTopicStatus, r.TelegramOnly.Bool)
+		}
 		out.Messages = append(out.Messages, m)
 	}
 	if len(out.Messages) > 0 {
@@ -182,7 +185,32 @@ func (s *Service) supportPage(ctx context.Context, actor, target uuid.UUID, oper
 	if err != nil {
 		return out, unavailable()
 	}
-	return publicSupportPage(rows, c), nil
+	out = publicSupportPage(rows, c)
+	eligible := false
+	if operator && !c.SupportBanned {
+		a, e := s.accountByID(ctx, target)
+		if e != nil {
+			return out, e
+		}
+		current, e := q.AccountTelegramTopic(ctx, store.AccountTelegramTopicParams{BotID: s.telegramBotID, GroupID: s.telegramGroupID, AccountID: &target})
+		if e != nil && !errors.Is(e, pgx.ErrNoRows) {
+			return out, unavailable()
+		}
+		eligible = e == nil && current.Status == "ready" && !current.SupportBanned && !a.Restricted && !a.TelegramLoginDisabled && accounts.SourceEligible(a)
+		if eligible && a.TelegramID != nil {
+			banned, e := q.TelegramGuestBanned(ctx, *a.TelegramID)
+			if e != nil {
+				return out, unavailable()
+			}
+			eligible = !banned
+		}
+	}
+	for i := range out.Messages {
+		if d := out.Messages[i].TelegramDelivery; d != nil {
+			d.RetryCapability = eligible && (d.Status == "unknown" || d.Status == "failed")
+		}
+	}
+	return out, nil
 }
 func (s *Service) Support(ctx context.Context, actor, target uuid.UUID, operator bool) (SupportResult, error) {
 	return s.supportPage(ctx, actor, target, operator, 0)

@@ -217,9 +217,15 @@ func (q *Queries) SupportMessageBySequence(ctx context.Context, arg SupportMessa
 }
 
 const supportPage = `-- name: SupportPage :many
-SELECT id,sequence,sender_kind,text,created_at,attachment_name,COALESCE(octet_length(attachment_bytes),0)::bigint AS attachment_size,telegram_only
-FROM support_messages WHERE conversation_id=$1 AND ($2::bigint=0 OR sequence<$2::bigint)
-ORDER BY sequence DESC LIMIT 51
+SELECT m.id,m.sequence,m.sender_kind,m.text,m.created_at,m.attachment_name,COALESCE(octet_length(m.attachment_bytes),0)::bigint AS attachment_size,m.telegram_only,
+ COALESCE(d.id,'00000000-0000-0000-0000-000000000000'::uuid) AS telegram_delivery_id,
+ COALESCE(d.status,'')::text AS telegram_delivery_status,COALESCE(d.code,'')::text AS telegram_delivery_code,COALESCE(d.topic_status,'')::text AS telegram_topic_status
+FROM support_messages m LEFT JOIN LATERAL (
+ SELECT d.id,d.status,d.code,t.status AS topic_status FROM support_telegram_deliveries d JOIN support_telegram_topics t ON t.id=d.topic_id
+ WHERE d.message_id=m.id ORDER BY d.sequence DESC LIMIT 1
+) d ON true
+WHERE m.conversation_id=$1 AND ($2::bigint=0 OR m.sequence<$2::bigint)
+ORDER BY m.sequence DESC LIMIT 51
 `
 
 type SupportPageParams struct {
@@ -228,14 +234,18 @@ type SupportPageParams struct {
 }
 
 type SupportPageRow struct {
-	ID             uuid.UUID
-	Sequence       int64
-	SenderKind     string
-	Text           string
-	CreatedAt      pgtype.Timestamptz
-	AttachmentName pgtype.Text
-	AttachmentSize int64
-	TelegramOnly   pgtype.Bool
+	ID                     uuid.UUID
+	Sequence               int64
+	SenderKind             string
+	Text                   string
+	CreatedAt              pgtype.Timestamptz
+	AttachmentName         pgtype.Text
+	AttachmentSize         int64
+	TelegramOnly           pgtype.Bool
+	TelegramDeliveryID     uuid.UUID
+	TelegramDeliveryStatus string
+	TelegramDeliveryCode   string
+	TelegramTopicStatus    string
 }
 
 func (q *Queries) SupportPage(ctx context.Context, arg SupportPageParams) ([]SupportPageRow, error) {
@@ -256,6 +266,10 @@ func (q *Queries) SupportPage(ctx context.Context, arg SupportPageParams) ([]Sup
 			&i.AttachmentName,
 			&i.AttachmentSize,
 			&i.TelegramOnly,
+			&i.TelegramDeliveryID,
+			&i.TelegramDeliveryStatus,
+			&i.TelegramDeliveryCode,
+			&i.TelegramTopicStatus,
 		); err != nil {
 			return nil, err
 		}

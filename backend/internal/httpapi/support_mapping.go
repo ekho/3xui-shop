@@ -31,7 +31,16 @@ func wireSupportMessage(m support.SupportMessage) wire.SupportMessage {
 	if m.Attachment != nil {
 		out.Attachment = &wire.SupportAttachment{Name: m.Attachment.Name, SizeBytes: m.Attachment.SizeBytes}
 	}
+	if m.TelegramDelivery != nil {
+		delivery := wireSupportTelegramDelivery(*m.TelegramDelivery)
+		out.TelegramDelivery = &delivery
+	}
 	return out
+}
+
+func wireSupportTelegramDelivery(d support.TelegramDeliveryStatus) wire.SupportTelegramDelivery {
+	return wire.SupportTelegramDelivery{Id: d.Id, Status: wire.SupportTelegramDeliveryStatus(d.Status), Code: d.Code,
+		RetryCapability: d.RetryCapability, MediaAvailability: wire.SupportTelegramDeliveryMediaAvailability(d.MediaAvailability)}
 }
 
 func wireSupportResult(r support.SupportResult) wire.SupportResult {
