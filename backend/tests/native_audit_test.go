@@ -190,7 +190,7 @@ func TestNativeTrialAudit(t *testing.T) {
 		{SourceID: 9223372036854775807, CreatedAt: old, Action: "legacy.native.old", TargetTgID: &target, ActorType: &actorType, ActorID: &actorID, ActorName: &name, Source: &source, PayloadJSON: &payload},
 		{SourceID: 9223372036854775806, CreatedAt: now.UTC().Truncate(time.Microsecond), Action: "legacy.native.current", TargetTgID: &target, ActorType: &actorType, ActorID: &actorID, ActorName: &name, Source: &source, PayloadJSON: &payload},
 	}}
-	importCLI := func(flag string, p auditreports.LegacyAuditPackage, wantErr string) auditreports.LegacyAuditImportResult {
+	importCLI := func(flag string, p any, wantErr string) auditreports.LegacyAuditImportResult {
 		t.Helper()
 		raw, _ := json.Marshal(p)
 		command := exec.Command(binary, "import-legacy-audit", flag)
@@ -218,6 +218,12 @@ func TestNativeTrialAudit(t *testing.T) {
 	dry := importCLI("--dry-run", packet, "")
 	if dry.Inserted != 2 || dry.Replayed != 0 || count("SELECT count(*) FROM legacy_audit_imports") != 0 || count("SELECT count(*) FROM legacy_audit_events") != 0 {
 		t.Fatal("compiled dry-run wrote or lost sources")
+	}
+	for _, flag := range []string{"--dry-run", "--apply"} {
+		importCLI(flag, json.RawMessage(`{"version":1,"events":[{"source_id":1,"created_at":"2026-10-01T00:00:00.1234560001Z","action":"support.message"}]}`), "IMPORT_INVALID_PACKAGE")
+	}
+	if count("SELECT count(*) FROM legacy_audit_imports") != 0 || count("SELECT count(*) FROM legacy_audit_events") != 0 {
+		t.Fatal("compiled lossy timestamp reached persistence")
 	}
 	applied := importCLI("--apply", packet, "")
 	if applied.Inserted != 2 || applied.Replayed != 0 {

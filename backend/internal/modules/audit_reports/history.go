@@ -2,6 +2,7 @@ package auditreports
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"example.com/cabinet/backend/internal/modules/audit_reports/internal/store"
@@ -177,6 +178,22 @@ func validHistoryInput(in HistoryInput) bool {
 		return in.BeforeID == uuid.Nil && in.BeforeSourceID >= 0 && (in.BeforeCreatedAt == nil) == (in.BeforeSourceID == 0) && (in.LegacyTargetTgID == nil || *in.LegacyTargetTgID > 0 && in.AccountID == nil)
 	}
 	return false
+}
+
+// ParseTimestamp checks the original fraction before Go can truncate it.
+func ParseTimestamp(raw string) (time.Time, error) {
+	if dot := strings.IndexAny(raw, ".,"); dot >= 0 {
+		for i := dot + 1; i < len(raw) && raw[i] >= '0' && raw[i] <= '9'; i++ {
+			if i-dot > 6 && raw[i] != '0' {
+				return time.Time{}, &Error{400, "INVALID_INPUT"}
+			}
+		}
+	}
+	t, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil || !validAuditTime(t) {
+		return time.Time{}, &Error{400, "INVALID_INPUT"}
+	}
+	return t, nil
 }
 
 func validAuditTime(t time.Time) bool {

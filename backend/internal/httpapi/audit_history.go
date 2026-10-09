@@ -15,11 +15,21 @@ func (a *API) ReadOperatorAuditHistory(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	in, err := decode[wire.AuditHistoryInput](a, c, "AuditHistoryInput")
+	in, err := decode[struct {
+		wire.AuditHistoryInput
+		BeforeCreatedAt *string `json:"before_created_at"`
+	}](a, c, "AuditHistoryInput")
 	if err != nil {
 		return err
 	}
-	input := auditreports.HistoryInput{Kind: string(in.Kind), AccountID: in.AccountId, BeforeCreatedAt: in.BeforeCreatedAt}
+	input := auditreports.HistoryInput{Kind: string(in.Kind), AccountID: in.AccountId}
+	if in.BeforeCreatedAt != nil {
+		stamp, err := auditreports.ParseTimestamp(*in.BeforeCreatedAt)
+		if err != nil {
+			return invalid()
+		}
+		input.BeforeCreatedAt = &stamp
+	}
 	if in.BeforeId != nil {
 		input.BeforeID = *in.BeforeId
 	}

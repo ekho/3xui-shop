@@ -35,35 +35,47 @@ source/TG IDs и signed actor ID сохраняются точно; current Tele
 | Task1 focused race: HTTP/CLI/import/retention/mirror/roles/boundaries | 165 тестов/подтестов, 55 верхнеуровневых, 7 пакетов; 0 ошибок/пропусков |
 | Task2 rendered journal | 13 тестов; 0 ошибок/пропусков |
 | Integration: account restrictions + journal | 20 тестов; 0 ошибок/пропусков |
-| Whole Go race, RUN_BROWSER_TESTS=1 | 1474 теста/подтеста, 534 верхнеуровневых в 15 тестовых пакетах; 11 пакетов без тестов отдельно; 0 ошибок/пропущенных тестов |
-| Current connected Go package after the web fix | Все 25 тестов/подтестов, 23 верхнеуровневых; 0 ошибок/пропусков; 230с |
+| Финальный whole Go race, RUN_BROWSER_TESTS=1 | 1489 тестов/подтестов, 536 верхнеуровневых в 15 тестовых пакетах; 11 пакетов без тестов отдельно; 0 ошибок/пропущенных тестов; 1036.887с |
+| Исправление I1: CLI + HTTP + свежий compiled CLI | RED воспроизвёл исходную потерю точности; GREEN — 16 тестов/подтестов, 3 верхнеуровневых; 0 ошибок/пропусков; 37.136с |
 | Whole rendered web | 529 тестов; 0 ошибок/пропусков; 245.840с |
-| Whole Python | 112 тестов; настоящий Go HTTP consumer выполнен; 0 ошибок |
-| Current full Docker native selection | 15 тестов/подтестов, 13 верхнеуровневых; 0 ошибок/пропусков; 162.655с |
+| Финальный whole Python | 112 тестов; настоящий Go HTTP consumer выполнен; 0 ошибок; 26.110с |
+| Финальная full Docker native selection | 15 тестов/подтестов, 13 верхнеуровневых; 0 ошибок/пропусков; 165.136с |
 | Native trial/reminder restart | Тот же operation/grant/keys, настоящий panel readback и TLS SMTP; прошли |
 | Generation/vet/names/types/runtime/production and test web builds | Прошли; additive API и генераторы воспроизводимы |
-| Three local images / current web image / current HTTPS smoke | Прошли; routing, deploy-time public config, secret-file access, migrations, rollback и provision-only restore |
+| Локальные образы и финальный HTTPS smoke | Новый backend, прежние неизменённые web/bot; routing, deploy-time public config, secret-file access, migrations, rollback и provision-only restore прошли |
 
-Полный Go-прогон занял 1083.204с. Во время общих проверок выявлен общий React key
+Первый Go-прогон занял 1083.204с. Во время общих проверок выявлен общий React key
 журнала и существующей restriction form: пять прежних тестов нашли дублированные
 контролы. Общий mount получил отдельный audit key. Первый whole-Go manifest сохраняется
 исторически: сравнение 713 файлов обнаружило только эту строку Admin.tsx.
 Все остальные Go-пакеты имеют те же входные байты; целиком повторён ./tests,
 потребляющий текущий web, вместе с full web/types/build/runtime/current web image/
 smoke/native. Notification browser check импортирует неизменённый NoticeBody.
-1474 — объединённый набор пакетов с заменой результата ./tests, без двойного счёта.
+Исторические 1474 — объединённый набор с заменой результата ./tests, без двойного
+счёта. После исправления I1 выполнен новый полный Go-прогон на текущих байтах.
+
+Единственный свежий финальный reviewer gpt-6-astra/high дал C0/I1/M0.
+I1: стандартный time.Parse отбрасывал ненулевые цифры после девятой до проверки
+микросекунд. Один авторский проход исправил общий ParseTimestamp и оба входа:
+строгий legacy JSON decoder и новый HTTP cursor. CLI отклоняет некорректный пакет
+до обращения к БД; HTTP отвечает 400. Лишние нули и эквивалентное смещение часового
+пояса сохраняются. Повторного ревью нет; нерешённых Critical/Important нет.
 
 Ранние ошибки native fixture (addressable int64, повторяющийся reason locator,
 relative-child locator) исправлены по реальному выводу; проверки не ослаблены и
 таймаут native CLI не повышался. Первоначальный Task2 proof после key fix исторический.
 
 Полные приватные логи, результаты и SHA-индексы сохранены вне Git в
-.superpowers/acceptance/c29-audit-history. Current task3 proof проверяет 713 runtime/
-test/build/API inputs, 18 успешных result/log pairs и native JSON без test skips.
+.superpowers/acceptance/c29-audit-history. Финальный proof проверяет 713 runtime/
+test/build/API inputs, полные успешные result/log pairs и native JSON без test skips.
+После I1 изменились ровно шесть Go-файлов; Go/Python/vet/backend image/smoke/native
+проверены заново. Web529, генераторы, web builds/runtime и web image используют
+прежние точные байты и проверенные SHA результатов. Старый общий image log
+подтверждает только неизменённый bot runtime; прежний backend result исторический.
 
 ## Состояние доставки
 
-Реализация и локальная приёмка выполнены. Единственное финальное ревью, exact-source CI,
+Реализация, локальная приёмка и единственное финальное ревью выполнены. Exact-source CI,
 PR → v2, ручное слияние, annotated prerelease и три OCI indices/шесть platform labels
 ещё не подтверждены; их состояние фиксируется отдельно в issue.
 

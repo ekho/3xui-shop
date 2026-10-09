@@ -36,6 +36,25 @@ type LegacyAuditImportResult struct {
 	Replayed int `json:"replayed"`
 }
 
+func (e *LegacyAuditInput) UnmarshalJSON(data []byte) error {
+	type row LegacyAuditInput
+	in := struct {
+		*row
+		CreatedAt string `json:"created_at"`
+	}{row: (*row)(e)}
+	d := json.NewDecoder(bytes.NewReader(data))
+	d.DisallowUnknownFields()
+	if err := d.Decode(&in); err != nil {
+		return err
+	}
+	t, err := ParseTimestamp(in.CreatedAt)
+	if err != nil {
+		return err
+	}
+	e.CreatedAt = t
+	return nil
+}
+
 func ValidateLegacyAuditPackage(p LegacyAuditPackage) error {
 	if p.Version != 1 || p.Events == nil {
 		return &Error{400, "IMPORT_INVALID_PACKAGE"}

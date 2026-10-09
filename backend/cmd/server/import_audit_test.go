@@ -6,6 +6,7 @@ import (
 	"example.com/cabinet/backend/internal/testkit"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -123,6 +124,30 @@ func TestDecodeLegacyAuditFields(t *testing.T) {
 	} {
 		if _, err := decodeLegacyAuditPackage(strings.NewReader(bad)); err == nil {
 			t.Fatal("invalid/lossy legacy audit field accepted")
+		}
+	}
+}
+
+func TestLegacyAuditOriginalTimestamp(t *testing.T) {
+	t.Setenv("DATABASE_URL_FILE", filepath.Join(t.TempDir(), "missing-database"))
+	for _, stamp := range []string{"2026-10-01T00:00:00.1234560001Z", "2026-10-01T00:00:00.000000000000000001+03:00"} {
+		for _, flag := range []string{"--dry-run", "--apply"} {
+			t.Run(stamp+flag, func(t *testing.T) {
+				body := `{"version":1,"events":[{"source_id":1,"created_at":"` + stamp + `","action":"support.message"}]}`
+				if out, err := auditCLI(t, flag, body); err == nil || out["error"] != "IMPORT_INVALID_PACKAGE" {
+					t.Fatal("lossy original timestamp reached database lookup", out["error"])
+				}
+			})
+		}
+	}
+	for _, stamp := range []string{"2026-10-01T00:00:00.123456000000000000Z", "2026-10-01T03:00:00.123456000000000000+03:00"} {
+		body := `{"version":1,"events":[{"source_id":1,"created_at":"` + stamp + `","action":"support.message"}]}`
+		packet, err := decodeLegacyAuditPackage(strings.NewReader(body))
+		if err != nil || packet.Events[0].CreatedAt.UTC().Format("2006-01-02T15:04:05.999999Z07:00") != "2026-10-01T00:00:00.123456Z" {
+			t.Fatal("exact timestamp with redundant zeros changed", err)
+		}
+		if _, err := decodeLegacyAuditPackage(strings.NewReader(strings.Replace(body, `"action":"support.message"`, `"action":"support.message","unknown":true`, 1))); err == nil {
+			t.Fatal("unknown legacy row field accepted")
 		}
 	}
 }

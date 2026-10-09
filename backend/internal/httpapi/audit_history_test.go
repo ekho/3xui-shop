@@ -191,6 +191,30 @@ func TestAuditHistoryInvalidCursors(t *testing.T) {
 	}
 }
 
+func TestAuditHistoryOriginalTimestamp(t *testing.T) {
+	h, _, _, cfg, _, _, operator := noticeFixture(t, 1)
+	for _, kind := range []string{"native", "legacy", "system"} {
+		for _, stamp := range []string{"2026-10-01T00:00:00.1234560001Z", "2026-10-01T00:00:00.000000000000000001+03:00", "2026-10-01T00:00:00.123456000000000000Z"} {
+			t.Run(kind+stamp, func(t *testing.T) {
+				in := map[string]string{"kind": kind, "before_created_at": stamp}
+				if kind == "legacy" {
+					in["before_source_id"] = "1"
+				} else {
+					in["before_id"] = "aa111111-2222-4333-8444-555555555555"
+				}
+				body, _ := json.Marshal(in)
+				want := 400
+				if stamp == "2026-10-01T00:00:00.123456000000000000Z" {
+					want = 200
+				}
+				if r := supportRequest(h, &operator, "POST", "/api/v1/operator/audit/history", "application/json", body, cfg.HTTP.CabinetOrigin, uuid.Nil); r.Code != want {
+					t.Fatal("original cursor lost precision before validation", r.Code, want)
+				}
+			})
+		}
+	}
+}
+
 func TestAuditHistoryLegacyIdentity(t *testing.T) {
 	h, _, e, cfg, _, client, operator := noticeFixture(t, 1)
 	ctx := context.Background()
