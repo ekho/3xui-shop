@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -69,6 +70,7 @@ def main():
     del token, body, data
     with tempfile.TemporaryDirectory(prefix='anonymous-docker-', dir=os.environ['RUNNER_TEMP']) as empty:
         for label, args in (('default', ['docker']), ('empty', ['docker', '--config', empty])):
+            since = '@' + str(time.time())
             try:
                 result = subprocess.run([*args, 'pull', IMAGE], capture_output=True, text=True, timeout=90)
                 output = result.stdout + result.stderr
@@ -77,6 +79,20 @@ def main():
                       'upstream host present:', 'auth.docker.io' in output or 'registry-1.docker.io' in output)
             except subprocess.TimeoutExpired:
                 print('Canonical pull:', label, 'category: process-timeout')
+            journal = subprocess.run(['sudo', 'journalctl', '-u', 'docker', '--since', since,
+                                      '--no-pager', '-o', 'cat'], check=True, capture_output=True, text=True)
+            for line in journal.stdout.splitlines():
+                if 'Error getting v2 registry' in line or 'Attempting next endpoint for pull after error' in line:
+                    urls = re.findall(r'https://(?:mirror\.gcr\.io|auth\.docker\.io|registry-1\.docker\.io)/[^\s"?]*', line)
+                    endpoints = []
+                    for url in urls:
+                        parts = urllib.parse.urlsplit(url)
+                        kind = 'token' if parts.path in ('/token', '/v2/token') else 'manifest' if '/manifests/' in parts.path else 'ping' if parts.path == '/v2/' else 'other'
+                        endpoints.append((parts.hostname, kind))
+                    print('Pull endpoint event:', label,
+                          'stage:', 'ping' if 'Error getting v2 registry' in line else 'fallback',
+                          'public endpoints:', endpoints,
+                          'categories:', [value for value in ('unauthorized', 'timeout', '429') if value in line.lower()])
 
 
 if __name__ == '__main__':
