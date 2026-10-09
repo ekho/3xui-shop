@@ -212,6 +212,7 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig) *echo.Ech
 	e.POST("/api/v1/operator/clients/:id/support/read", a.AcknowledgeOperatorSupport)
 	e.POST("/api/v1/operator/clients/:id/support/state", a.SetOperatorSupportState)
 	e.POST("/api/v1/operator/clients/:id/support/ban", a.SetOperatorSupportBan)
+	e.POST("/api/v1/operator/clients/:id/support/telegram-deliveries/:deliveryId/retry", a.RetrySupportTelegramDelivery)
 	e.GET("/api/v1/operator/session", a.GetOperatorSession)
 	e.GET("/api/v1/catalogue", a.GetCatalogue)
 	e.GET("/api/v1/stars-subscription", a.GetStarsSubscription)

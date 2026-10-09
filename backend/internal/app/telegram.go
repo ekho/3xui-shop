@@ -31,6 +31,10 @@ func NewTelegram(cfg telegram.Config, modules *Modules, origin string, client *h
 	return runtime, nil
 }
 
+func NewSupportTelegram(cfg telegram.SupportConfig, modules *Modules, origin string, client *http.Client) (*telegram.Runtime, error) {
+	return telegram.NewSupport(cfg, client, origin, modules.Accounts, modules.Support, modules.Subscriptions)
+}
+
 func NewTelegramMiniApp(cfg telegram.Config, owner *accounts.Service, now func() time.Time) *telegram.MiniApp {
 	if !cfg.Enabled {
 		return nil

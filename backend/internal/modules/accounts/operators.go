@@ -90,6 +90,9 @@ func (s *Service) lockOperatorPair(ctx context.Context, tx pgx.Tx, actor, target
 	if actor == uuid.Nil || target == uuid.Nil {
 		return empty, failure(400, "INVALID_INPUT")
 	}
+	if err := lockTelegramPrincipal(ctx, tx, actor); err != nil {
+		return empty, err
+	}
 	first, second := actor, target
 	if bytes.Compare(actor[:], target[:]) > 0 {
 		first, second = target, actor
@@ -109,6 +112,9 @@ func (s *Service) lockOperatorPair(ctx context.Context, tx pgx.Tx, actor, target
 			return empty, unavailable()
 		}
 		if id == actor {
+			if err := telegramPrincipal(ctx, snapshot(a)); err != nil {
+				return empty, err
+			}
 			if a.Restricted {
 				return empty, failure(403, "ACCOUNT_RESTRICTED")
 			}
@@ -141,6 +147,9 @@ func (s *Service) RequireOperator(ctx context.Context, actor uuid.UUID) error {
 	}
 	if account.Restricted {
 		return failure(403, "ACCOUNT_RESTRICTED")
+	}
+	if err := telegramPrincipal(ctx, snapshot(account)); err != nil {
+		return err
 	}
 	if account.Kind != "web" || !account.VerifiedAt.Valid {
 		return failure(403, "INVALID_CREDENTIALS")

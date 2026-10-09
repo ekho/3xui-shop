@@ -23,13 +23,22 @@ type SupportConversation struct {
 }
 
 type SupportMessage struct {
-	Attachment *SupportAttachment `json:"attachment"`
-	CreatedAt  time.Time          `json:"created_at"`
-	Delivery   string             `json:"delivery"`
-	Id         uuid.UUID          `json:"id"`
-	Sender     string             `json:"sender"`
-	Sequence   int64              `json:"sequence"`
-	Text       string             `json:"text"`
+	Attachment       *SupportAttachment      `json:"attachment"`
+	CreatedAt        time.Time               `json:"created_at"`
+	Delivery         string                  `json:"delivery"`
+	Id               uuid.UUID               `json:"id"`
+	Sender           string                  `json:"sender"`
+	Sequence         int64                   `json:"sequence"`
+	Text             string                  `json:"text"`
+	TelegramDelivery *TelegramDeliveryStatus `json:"telegram_delivery,omitempty"`
+}
+
+type TelegramDeliveryStatus struct {
+	Id                uuid.UUID `json:"id"`
+	Status            string    `json:"status"`
+	Code              string    `json:"code"`
+	RetryCapability   bool      `json:"retry_capability"`
+	MediaAvailability string    `json:"media_availability"`
 }
 
 type SupportResult struct {

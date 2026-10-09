@@ -33,6 +33,10 @@ VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9);
 INSERT INTO audit_system_events(id,created_at,action,period_day,cutoff,retention_days,native_count,legacy_count,system_count)
 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9);
 
+-- name: InsertSupportTelegramAudit :exec
+INSERT INTO audit_system_events(id,created_at,action,native_count,legacy_count,system_count,support_telegram)
+VALUES($1,transaction_timestamp(),'support.telegram',0,0,0,$2);
+
 -- name: AuditDatabaseTime :one
 SELECT transaction_timestamp()::timestamptz;
 

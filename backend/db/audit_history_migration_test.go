@@ -46,7 +46,9 @@ func TestAuditHistoryDowngradePreservesFacts(t *testing.T) {
 				}
 			}
 			var before string
-			snapshot := `SELECT jsonb_build_array((SELECT jsonb_agg(x ORDER BY source_id) FROM legacy_audit_imports x),(SELECT jsonb_agg(x ORDER BY source_id) FROM legacy_audit_events x),(SELECT jsonb_agg(x ORDER BY id) FROM audit_system_events x))::text`
+			// Migration 34 may remove its empty additive column before migration 33
+			// blocks. Compare all original audit facts across that schema boundary.
+			snapshot := `SELECT jsonb_build_array((SELECT jsonb_agg(x ORDER BY source_id) FROM legacy_audit_imports x),(SELECT jsonb_agg(x ORDER BY source_id) FROM legacy_audit_events x),(SELECT jsonb_agg(to_jsonb(x)-'support_telegram' ORDER BY id) FROM audit_system_events x))::text`
 			if err = e.Pool.QueryRow(ctx, snapshot).Scan(&before); err != nil {
 				t.Fatal(err)
 			}

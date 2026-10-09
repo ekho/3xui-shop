@@ -4,6 +4,33 @@ type Model<K extends keyof components['schemas']>=components['schemas'][K];
 const actor='10000000-0000-4000-8000-000000000001',account='20000000-0000-4000-8000-000000000001';
 const session={account:{account_id:actor,email:'operator@example.test',email_verified:true,locale:'en',telegram_linked:false},csrf_token:'s'.repeat(43)};
 const when='2026-10-09T05:00:00.123456Z';
+
+for(const lang of ['en','ru'])test('global native support actor includes both identities '+lang,async({page})=>{
+ await routes(page,async(route,path)=>{
+  if(!path.endsWith('/operator/audit/history'))return false;
+  const value=report(route.request().postDataJSON());
+  if(value.kind==='native')value.native_events[0].event.operator_tg_id='732';
+  await route.fulfill({json:value});return true;
+ });
+ await page.goto('/admin/audit?lang='+lang);
+ const label=lang==='en'?'Telegram operator':'Telegram-оператор';
+ await expect(page.getByText(label+': 732 ('+actor+')',{exact:true})).toBeVisible();
+ await expect(page.getByText((lang==='en'?'Unknown actor':'Исполнитель неизвестен'),{exact:true})).toBeVisible();
+});
+
+test('support source shows exact legacy identifiers and an unknown actor',async({page})=>{
+ await routes(page,async(route,path)=>{
+  if(path.endsWith('/operator/audit/history')&&route.request().postDataJSON().kind==='system'){
+   const body=report({kind:'system'});body.system_events=[];
+   await route.fulfill({json:{...body,system_events:[{id:'80000000-0000-4000-8000-000000000001',created_at:when,action:'support.telegram',period_day:null,cutoff:null,retention_days:null,native_count:0,legacy_count:0,system_count:0,support_telegram:{bot_id:'973',group_id:'-10074001',chat_id:'-10074001',source_id:'9223372036854775807',thread_id:null,actor_tg_id:null,actor_account_id:null,target_account_id:null,topic_id:null,receipt_id:null,kind:'legacy_imported',outcome:'completed'}}]}});return true;
+  }return false;
+ });
+ await page.goto('/admin/audit?lang=en');await page.getByLabel('Journal source').selectOption('system');
+ await expect(page.getByRole('heading',{name:'Telegram support event'})).toBeVisible();
+ await expect(page.getByText('9223372036854775807',{exact:true})).toBeVisible();await expect(page.getByText('Unknown actor',{exact:true})).toBeVisible();
+ await expect(page.getByText('legacy_imported',{exact:true})).toBeVisible();await expect(page.getByText('completed',{exact:true})).toBeVisible();
+ await expect(page.getByText('Legacy ticket ID',{exact:true})).toBeVisible();await expect(page.getByText('Telegram message ID',{exact:true})).toHaveCount(0);
+});
 const event:Model<'OperatorAuditEvent'>={id:'30000000-0000-4000-8000-000000000003',created_at:when,action:'support.message',reason:'<b>Recorded reason</b>',operator_account_id:actor,operator_tg_id:null,system_actor:false,request_id:'40000000-0000-4000-8000-000000000001',operation_id:'50000000-0000-4000-8000-000000000001',support_message_id:'60000000-0000-4000-8000-000000000001',access_operation_id:'70000000-0000-4000-8000-000000000001',monthly_period:'2026-10'};
 function report(input:Model<'AuditHistoryInput'>):Model<'AuditHistory'>{
  const out:Model<'AuditHistory'>={version:'audit-history-v1',kind:input.kind,account_id:input.account_id??null,legacy_target_tg_id:input.legacy_target_tg_id??null,native_events:[],legacy_events:[],system_events:[],has_more:false};

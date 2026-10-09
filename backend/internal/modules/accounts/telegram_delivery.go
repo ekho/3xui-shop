@@ -24,17 +24,43 @@ func (s *Service) WithTelegramDelivery(ctx context.Context, id uuid.UUID, tg, ve
 		defer cancel()
 		tx.Rollback(cleanup)
 	}()
-	if err = lockTelegramIdentity(ctx, tx, tg); err != nil {
+	first, second := tg, tg
+	if source, ok := TelegramActor(ctx); ok && *source.TelegramID != tg {
+		second = *source.TelegramID
+		if first > second {
+			first, second = second, first
+		}
+	}
+	if err = lockTelegramIdentity(ctx, tx, first); err != nil {
 		return false, err
 	}
-	a, err := store.New(tx).LockAccount(ctx, id)
+	if second != first {
+		if err = lockTelegramIdentity(ctx, tx, second); err != nil {
+			return false, err
+		}
+	}
+	var a Snapshot
+	if source, ok := TelegramActor(ctx); ok && source.ID != id {
+		a, err = s.LockOperatorPair(ctx, tx, source.ID, id)
+	} else {
+		raw, e := store.New(tx).LockAccount(ctx, id)
+		err = e
+		a = snapshot(raw)
+		if err == nil {
+			err = telegramPrincipal(ctx, a)
+		}
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
+		var sourceError *Error
+		if errors.As(err, &sourceError) {
+			return false, err
+		}
 		return false, unavailable()
 	}
-	if !a.TelegramID.Valid || a.TelegramID.Int64 != tg || a.CredentialVersion != version || a.TelegramLoginDisabled || a.Restricted || !SourceEligible(snapshot(a)) || !a.TermsVersion.Valid || !a.PrivacyVersion.Valid {
+	if a.TelegramID == nil || *a.TelegramID != tg || a.CredentialVersion != version || a.TelegramLoginDisabled || a.Restricted || !SourceEligible(a) || a.TermsVersion == nil || a.PrivacyVersion == nil {
 		return false, nil
 	}
 	// ponytail: account/job locks cover the bounded 10-second send; split the delivery proof

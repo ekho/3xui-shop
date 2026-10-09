@@ -103,6 +103,7 @@ export type SupportAttachment=components['schemas']['SupportAttachment'];
 export type SupportMessage=components['schemas']['SupportMessage'];
 export type SupportConversation=components['schemas']['SupportConversation'];
 export type SupportResult=components['schemas']['SupportResult'];
+export type SupportTelegramDelivery=components['schemas']['SupportTelegramDelivery'];
 export const getSupport=(signal?:AbortSignal)=>request<SupportResult>('support','GET',undefined,signal);
 export const getSupportHistory=(before_sequence:number,signal?:AbortSignal)=>request<SupportResult>('support/history','POST',{before_sequence},signal,true);
 export function createSupportMessage(text:string,file:File|undefined,key:string,signal?:AbortSignal){if(!file)return request<SupportMessage>('support/messages','POST',{text},signal,true,key);const body=new FormData();body.append('text',text);body.append('file',file);return request<SupportMessage>('support/messages','POST',body,signal,true,key);}
@@ -139,6 +140,7 @@ export function createOperatorSupportMessage(id:string,text:string,file:File|und
 export const acknowledgeOperatorSupport=(id:string,sequence:number,signal?:AbortSignal)=>request<void>(operatorClientPath(id)+'/support/read','POST',{sequence},signal,true);
 export const setOperatorSupportState=(id:string,status:'open'|'closed',signal?:AbortSignal)=>request<void>(operatorClientPath(id)+'/support/state','POST',{status},signal,true);
 export const setOperatorSupportBan=(id:string,banned:boolean,reason:string,signal?:AbortSignal)=>request<void>(operatorClientPath(id)+'/support/ban','POST',{banned,reason},signal,true);
+export const retryOperatorSupportTelegramDelivery=(id:string,delivery:string,reason:string,key:string,signal?:AbortSignal)=>request<SupportTelegramDelivery>(operatorClientPath(id)+'/support/telegram-deliveries/'+encodeURIComponent(delivery)+'/retry','POST',{confirmed:true,reason},signal,true,key);
 
 export type CataloguePrice=components['schemas']['CataloguePrice'];
 export type CatalogueTerms=components['schemas']['CatalogueTerms'];

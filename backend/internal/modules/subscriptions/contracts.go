@@ -195,3 +195,8 @@ const SubscriptionPanelErrorIdentityMismatch = "identity_mismatch"
 const SubscriptionPanelErrorInvalidTraffic = "invalid_traffic"
 const SubscriptionPanelErrorUnavailable = "unavailable"
 const SubscriptionPanelErrorUnknownMembership = "unknown_membership"
+
+type PendingOperatorTrial struct {
+	AccountID, RequestID uuid.UUID
+	CreatedAt            time.Time
+}

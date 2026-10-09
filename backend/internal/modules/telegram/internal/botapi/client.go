@@ -22,11 +22,13 @@ type User struct {
 	HasMainWebApp bool   `json:"has_main_web_app"`
 }
 type Chat struct {
-	ID   int64  `json:"id"`
-	Type string `json:"type"`
+	ID      int64  `json:"id"`
+	Type    string `json:"type"`
+	IsForum bool   `json:"is_forum,omitempty"`
 }
 type Message struct {
 	ID                int64           `json:"message_id"`
+	ThreadID          int64           `json:"message_thread_id,omitempty"`
 	From              *User           `json:"from"`
 	Chat              Chat            `json:"chat"`
 	Text              string          `json:"text"`
@@ -34,6 +36,7 @@ type Message struct {
 	ReplyMarkup       *InlineKeyboard `json:"reply_markup"`
 	SuccessfulPayment json.RawMessage `json:"successful_payment"`
 	RefundedPayment   json.RawMessage `json:"refunded_payment"`
+	Raw               json.RawMessage `json:"-"`
 }
 type Callback struct {
 	ID      string   `json:"id"`
@@ -89,17 +92,21 @@ func New(token string, client *http.Client) *Client {
 func invalid() error { return &APIError{Code: "INVALID_RESPONSE"} }
 
 func (c *Client) call(ctx context.Context, method string, body, result any, timeout time.Duration) error {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 	b, err := json.Marshal(body)
 	if err != nil {
 		return &APIError{Code: "INVALID_INPUT"}
 	}
-	r, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.telegram.org/bot"+c.token+"/"+method, bytes.NewReader(b))
+	return c.request(ctx, method, "application/json", bytes.NewReader(b), result, timeout)
+}
+
+func (c *Client) request(ctx context.Context, method, contentType string, body io.Reader, result any, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	r, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.telegram.org/bot"+c.token+"/"+method, body)
 	if err != nil {
 		return &APIError{Code: "INVALID_INPUT"}
 	}
-	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Content-Type", contentType)
 	resp, err := c.http.Do(r)
 	if err != nil {
 		return &APIError{Code: "UNAVAILABLE"}
@@ -150,6 +157,9 @@ func (c *Client) call(ctx context.Context, method string, body, result any, time
 			e.RetryAfter = time.Duration(seconds) * time.Second
 		case 400:
 			e.Code = "BAD_REQUEST"
+			if strings.EqualFold(strings.TrimSpace(envelope.Description), "Bad Request: message thread not found") {
+				e.Code = "THREAD_NOT_FOUND"
+			}
 			if strings.Contains(strings.ToLower(envelope.Description), "message is not modified") {
 				e.Code = "NOT_MODIFIED"
 			}
@@ -186,33 +196,8 @@ func (c *Client) message(ctx context.Context, method string, chatID, messageID i
 	if chatID <= 0 || !utf8.ValidString(text) || strings.ContainsRune(text, '\x00') {
 		return out, &APIError{Code: "INVALID_INPUT"}
 	}
-	if keyboard != nil {
-		for _, row := range keyboard.Rows {
-			for _, b := range row {
-				choices := 0
-				if b.Data != "" {
-					choices++
-					if len(b.Data) > 64 || !utf8.ValidString(b.Data) || strings.ContainsRune(b.Data, '\x00') {
-						return out, &APIError{Code: "INVALID_INPUT"}
-					}
-				}
-				if b.URL != "" {
-					choices++
-					if !validURL(b.URL) {
-						return out, &APIError{Code: "INVALID_INPUT"}
-					}
-				}
-				if b.WebApp != nil {
-					choices++
-					if !validURL(b.WebApp.URL) {
-						return out, &APIError{Code: "INVALID_INPUT"}
-					}
-				}
-				if choices != 1 || !utf8.ValidString(b.Text) || strings.TrimSpace(b.Text) == "" || strings.ContainsRune(b.Text, '\x00') {
-					return out, &APIError{Code: "INVALID_INPUT"}
-				}
-			}
-		}
+	if !validKeyboard(keyboard) {
+		return out, &APIError{Code: "INVALID_INPUT"}
 	}
 	in := map[string]any{"chat_id": chatID, "reply_markup": keyboard}
 	if method != "editMessageReplyMarkup" {
@@ -232,20 +217,9 @@ func (c *Client) SendMessage(ctx context.Context, chatID int64, text string, k *
 	return c.message(ctx, "sendMessage", chatID, 0, text, k)
 }
 
-// General is a separate negative-group transport; private chat guards stay intact.
+// General shares plain-text support transport and preserves private chat guards.
 func (c *Client) SendGeneral(ctx context.Context, groupID int64, text string) error {
-	if groupID >= 0 || groupID < -(1<<52-1) || !utf8.ValidString(text) || strings.ContainsRune(text, '\x00') || strings.TrimSpace(text) == "" || utf8.RuneCountInString(text) > 4096 {
-		return &APIError{Code: "INVALID_INPUT"}
-	}
-	var out struct {
-		ID       int64  `json:"message_id"`
-		Chat     Chat   `json:"chat"`
-		ThreadID *int64 `json:"message_thread_id"`
-	}
-	err := c.call(ctx, "sendMessage", map[string]any{"chat_id": groupID, "text": text, "link_preview_options": map[string]bool{"is_disabled": true}}, &out, 10*time.Second)
-	if err == nil && (out.ID <= 0 || out.Chat.ID != groupID || out.Chat.Type != "supergroup" || out.ThreadID != nil && *out.ThreadID != 1) {
-		return invalid()
-	}
+	_, err := c.SendSupportCard(ctx, groupID, 0, text, nil)
 	return err
 }
 func (c *Client) EditMessage(ctx context.Context, chatID, messageID int64, text string, k *InlineKeyboard) (Message, error) {
@@ -358,4 +332,36 @@ func (c *Client) EditStarsSubscription(ctx context.Context, payer int64, charge 
 		return invalid()
 	}
 	return err
+}
+
+func validKeyboard(keyboard *InlineKeyboard) bool {
+	if keyboard != nil {
+		for _, row := range keyboard.Rows {
+			for _, b := range row {
+				choices := 0
+				if b.Data != "" {
+					choices++
+					if len(b.Data) > 64 || !utf8.ValidString(b.Data) || strings.ContainsRune(b.Data, '\x00') {
+						return false
+					}
+				}
+				if b.URL != "" {
+					choices++
+					if !validURL(b.URL) {
+						return false
+					}
+				}
+				if b.WebApp != nil {
+					choices++
+					if !validURL(b.WebApp.URL) {
+						return false
+					}
+				}
+				if choices != 1 || !utf8.ValidString(b.Text) || strings.TrimSpace(b.Text) == "" || strings.ContainsRune(b.Text, '\x00') {
+					return false
+				}
+			}
+		}
+	}
+	return true
 }

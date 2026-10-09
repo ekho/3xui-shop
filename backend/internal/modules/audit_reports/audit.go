@@ -28,6 +28,10 @@ func RecordTx(ctx context.Context, tx pgx.Tx, event Event) error {
 		CreatedAt: pgtype.Timestamptz{Time: event.CreatedAt, Valid: true}, Action: event.Action,
 		RequestID: event.RequestID, OperationID: event.OperationID, OperatorAccountID: event.OperatorAccountID,
 		SupportMessageID: event.SupportMessageID, AccessOperationID: event.AccessOperationID}
+	if source, ok := ctx.Value(telegramActorKey{}).(telegramActor); ok && event.OperatorAccountID != nil && *event.OperatorAccountID == source.account && event.OperatorTgID == nil {
+		row.OperatorTgID = pgtype.Int8{Int64: source.telegram, Valid: true}
+		row.OperatorSource = pgtype.Text{String: "telegram_support", Valid: true}
+	}
 	if event.OperatorTgID != nil {
 		row.OperatorTgID = pgtype.Int8{Int64: *event.OperatorTgID, Valid: true}
 	}

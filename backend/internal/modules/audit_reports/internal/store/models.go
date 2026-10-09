@@ -24,6 +24,7 @@ type AuditEvent struct {
 	SystemActor       pgtype.Bool
 	MonthlyPeriod     pgtype.Text
 	MirrorAttemptedAt pgtype.Timestamptz
+	OperatorSource    pgtype.Text
 }
 
 type AuditSystemEvent struct {
@@ -37,4 +38,5 @@ type AuditSystemEvent struct {
 	LegacyCount       int64
 	SystemCount       int64
 	MirrorAttemptedAt pgtype.Timestamptz
+	SupportTelegram   []byte
 }

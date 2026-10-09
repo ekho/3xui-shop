@@ -212,6 +212,34 @@ func (a *API) SetOperatorSupportBan(c *echo.Context) error {
 	}
 	return c.NoContent(204)
 }
+
+func (a *API) RetrySupportTelegramDelivery(c *echo.Context) error {
+	actor, target, err := a.supportActor(c, true, true)
+	if err != nil {
+		return err
+	}
+	key, err := idempotencyKey(c)
+	if err != nil {
+		return err
+	}
+	delivery, err := uuid.Parse(c.Param("deliveryId"))
+	if err != nil || delivery == uuid.Nil {
+		return invalid()
+	}
+	in, err := decode[wire.SupportTelegramRetryInput](a, c, "SupportTelegramRetryInput")
+	if err != nil {
+		return err
+	}
+	out, created, err := a.supportOwner.RetryTelegramDelivery(c.Request().Context(), actor, target, delivery, key, bool(in.Confirmed), in.Reason)
+	if err != nil {
+		return supportError(err)
+	}
+	status := 200
+	if created {
+		status = 201
+	}
+	return c.JSON(status, wireSupportTelegramDelivery(out))
+}
 func (a *API) GetSupportAttachment(c *echo.Context) error {
 	account, err := a.auth(c, false)
 	if err != nil {

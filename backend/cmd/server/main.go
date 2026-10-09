@@ -47,6 +47,9 @@ func run() error {
 	if len(os.Args) == 3 && os.Args[1] == "import-legacy-audit" {
 		return runLegacyAuditImport(os.Args[2])
 	}
+	if len(os.Args) == 3 && os.Args[1] == "import-legacy-support" {
+		return runLegacySupportImport(os.Args[2])
+	}
 	if len(os.Args) == 5 && os.Args[1] == "operator" {
 		return runOperatorCommand(os.Args[2], os.Args[3], os.Args[4])
 	}
@@ -87,19 +90,28 @@ func run() error {
 	}
 	svc := app.NewModules(pool, limiter, queue, &cfg)
 	var tg *telegram.Runtime
+	var supportTG *telegram.Runtime
 	var auditMirror func(context.Context, string) error
 	if os.Args[1] == "serve" {
 		tgConfig, e := telegram.LoadConfig(cfg.Accounts.Operators)
 		if e != nil {
 			return e
 		}
-		mirrorConfig, e := telegram.LoadAuditMirrorConfig()
-		if e != nil {
-			return e
+		supportConfig, e := telegram.LoadSupportConfig()
+		if e == nil {
+			e = telegram.ValidatePollingBots(tgConfig, supportConfig)
 		}
-		auditMirror, e = telegram.NewAuditMirror(mirrorConfig, nil)
 		if e != nil {
-			return e
+			slog.Warn("Telegram support channel unavailable", "code", "INVALID_CONFIGURATION")
+			supportTG = telegram.NewUnavailableSupport()
+		}
+		mirrorConfig, e := telegram.LoadAuditMirrorConfig()
+		if e == nil {
+			auditMirror, e = telegram.NewAuditMirror(mirrorConfig, nil)
+		}
+		if e != nil {
+			slog.Warn("Telegram audit mirror unavailable", "code", "INVALID_CONFIGURATION")
+			auditMirror = func(context.Context, string) error { return &telegram.ActionError{Code: "INVALID_CONFIGURATION"} }
 		}
 		if tgConfig.Enabled && cfg.HTTP.AdapterToken != "" {
 			return errors.New("disable legacy bot API before enabling native Telegram")
@@ -108,6 +120,12 @@ func run() error {
 		svc.MiniApp = app.NewTelegramMiniApp(tgConfig, svc.Accounts, cfg.Accounts.Now)
 		if e != nil {
 			return e
+		}
+		if supportTG == nil {
+			supportTG, e = app.NewSupportTelegram(supportConfig, svc, cfg.HTTP.CabinetOrigin, nil)
+			if e != nil {
+				return e
+			}
 		}
 	}
 	workers := river.NewWorkers()
@@ -151,7 +169,7 @@ func run() error {
 	server := &http.Server{Addr: address, Handler: httpapi.New(svc, pool, cfg.HTTP), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 	result := make(chan error, 1)
 	go func() { result <- server.ListenAndServe() }()
-	return app.Serve(ctx, server, result, schedulerResult, tg)
+	return app.Serve(ctx, server, result, schedulerResult, tg, supportTG)
 }
 
 func runOperatorCommand(action, flag, path string) error {

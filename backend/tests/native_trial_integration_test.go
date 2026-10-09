@@ -823,7 +823,7 @@ func TestNativeTrialReports(t *testing.T) {
 		f.panel.mu.Lock()
 		defer f.panel.mu.Unlock()
 		// Each of the three reads reaches the fake's unsupported bulk GET.
-		if f.panel.adds != 1 || f.panel.forbidden != 3 || len(f.panel.clients) != 1 {
+		if f.panel.adds != 1 || f.panel.forbidden != 0 || f.panel.bulkUnavailable != 3 || len(f.panel.clients) != 1 {
 			t.Fatal("unavailable report changed the owned fake client")
 		}
 	}

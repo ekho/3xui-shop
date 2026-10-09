@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/support/internal/store"
@@ -109,6 +110,10 @@ func (s *Service) lockSupport(ctx context.Context, tx pgx.Tx, actor, target uuid
 			return empty, failure(404, "INVALID_INPUT")
 		}
 		if err != nil {
+			var sourceError *accounts.Error
+			if errors.As(err, &sourceError) {
+				return empty, err
+			}
 			return empty, unavailable()
 		}
 		if a.Restricted {
@@ -152,6 +157,9 @@ func publicSupportPage(rows []store.SupportPageRow, c store.SupportConversation)
 		if r.AttachmentName.Valid {
 			m.Attachment = &SupportAttachment{Name: r.AttachmentName.String, SizeBytes: r.AttachmentSize}
 		}
+		if r.TelegramDeliveryID != uuid.Nil {
+			m.TelegramDelivery = telegramDeliveryStatus(r.TelegramDeliveryID, r.TelegramDeliveryStatus, r.TelegramDeliveryCode, r.TelegramTopicStatus, r.TelegramOnly.Bool)
+		}
 		out.Messages = append(out.Messages, m)
 	}
 	if len(out.Messages) > 0 {
@@ -177,7 +185,32 @@ func (s *Service) supportPage(ctx context.Context, actor, target uuid.UUID, oper
 	if err != nil {
 		return out, unavailable()
 	}
-	return publicSupportPage(rows, c), nil
+	out = publicSupportPage(rows, c)
+	eligible := false
+	if operator && !c.SupportBanned {
+		a, e := s.accountByID(ctx, target)
+		if e != nil {
+			return out, e
+		}
+		current, e := q.AccountTelegramTopic(ctx, store.AccountTelegramTopicParams{BotID: s.telegramBotID, GroupID: s.telegramGroupID, AccountID: &target})
+		if e != nil && !errors.Is(e, pgx.ErrNoRows) {
+			return out, unavailable()
+		}
+		eligible = e == nil && current.Status == "ready" && !current.SupportBanned && !a.Restricted && !a.TelegramLoginDisabled && accounts.SourceEligible(a)
+		if eligible && a.TelegramID != nil {
+			banned, e := q.TelegramGuestBanned(ctx, *a.TelegramID)
+			if e != nil {
+				return out, unavailable()
+			}
+			eligible = !banned
+		}
+	}
+	for i := range out.Messages {
+		if d := out.Messages[i].TelegramDelivery; d != nil {
+			d.RetryCapability = eligible && (d.Status == "unknown" || d.Status == "failed")
+		}
+	}
+	return out, nil
 }
 func (s *Service) Support(ctx context.Context, actor, target uuid.UUID, operator bool) (SupportResult, error) {
 	return s.supportPage(ctx, actor, target, operator, 0)
@@ -213,6 +246,23 @@ func (s *Service) CreateSupportMessage(ctx context.Context, actor, target uuid.U
 	if len(file) > supportFileMax {
 		return out, false, failure(413, "INVALID_INPUT")
 	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return out, false, unavailable()
+	}
+	defer tx.Rollback(ctx)
+	out, created, err := s.createSupportMessageTx(ctx, tx, actor, target, operator, key, text, name, file, nil)
+	if err != nil {
+		return out, false, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return out, false, unavailable()
+	}
+	return out, created, nil
+}
+
+func (s *Service) createSupportMessageTx(ctx context.Context, tx pgx.Tx, actor, target uuid.UUID, operator bool, key uuid.UUID, text, name string, file []byte, source *TelegramInput) (SupportMessage, bool, error) {
+	var out SupportMessage
 	principal := "account:" + actor.String()
 	hash := bodyHash(struct {
 		Target     uuid.UUID
@@ -221,11 +271,9 @@ func (s *Service) CreateSupportMessage(ctx context.Context, actor, target uuid.U
 		FileHash   [32]byte
 		FileSize   int
 	}{target, operator, text, name, sha256.Sum256(file), len(file)})
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return out, false, unavailable()
+	if source != nil {
+		hash = telegramMessageDigest(*source)
 	}
-	defer tx.Rollback(ctx)
 	q := store.New(tx)
 	c, err := s.lockSupport(ctx, tx, actor, target, operator)
 	if err != nil {
@@ -251,7 +299,10 @@ func (s *Service) CreateSupportMessage(ctx context.Context, actor, target uuid.U
 		return out, false, unavailable()
 	}
 	if used > supportConversationMax-int64(len(file)) {
-		return out, false, failure(413, "INVALID_INPUT")
+		if source == nil || !telegramMedia(source.MediaKind) {
+			return out, false, failure(413, "INVALID_INPUT")
+		}
+		file, name, source.TelegramOnly = nil, "", true
 	}
 	if err := s.limitSupportMessage(ctx, actor, key); err != nil {
 		return out, false, err
@@ -264,7 +315,11 @@ func (s *Service) CreateSupportMessage(ctx context.Context, actor, target uuid.U
 	if operator {
 		kind = "operator"
 	}
-	m, err := q.AddSupportMessage(ctx, store.AddSupportMessageParams{ID: uuid.New(), ConversationID: c.ID, SenderAccountID: actor, SenderKind: kind, Text: text, CreatedAt: stamp(s.now()), AttachmentName: attachment, AttachmentBytes: file})
+	var telegramOnly pgtype.Bool
+	if source != nil {
+		telegramOnly = pgtype.Bool{Bool: source.TelegramOnly, Valid: true}
+	}
+	m, err := q.AddSupportMessage(ctx, store.AddSupportMessageParams{ID: uuid.New(), ConversationID: c.ID, SenderAccountID: actor, SenderKind: kind, Text: text, CreatedAt: stamp(s.now()), AttachmentName: attachment, AttachmentBytes: file, TelegramOnly: telegramOnly})
 	if err != nil {
 		return out, false, unavailable()
 	}
@@ -272,6 +327,15 @@ func (s *Service) CreateSupportMessage(ctx context.Context, actor, target uuid.U
 		return out, false, unavailable()
 	}
 	out = publicSupportMessage(m, c)
+	if err = s.enqueueSupportMessageTx(ctx, tx, target, m, operator, source); err != nil {
+		return out, false, err
+	}
+	if s.telegramBotID != 0 {
+		out.TelegramDelivery, err = s.messageTelegramStatusTx(ctx, tx, m.ID, m.TelegramOnly.Bool)
+		if err != nil {
+			return out, false, err
+		}
+	}
 	if operator {
 		a, err := s.authority.LookupTx(ctx, tx, target)
 		if err != nil {
@@ -289,9 +353,6 @@ func (s *Service) CreateSupportMessage(ctx context.Context, actor, target uuid.U
 	}
 	if err = s.saveIdempotency(ctx, q, principal, "createSupportMessage", key, hash, out); err != nil {
 		return out, false, err
-	}
-	if err = tx.Commit(ctx); err != nil {
-		return out, false, unavailable()
 	}
 	return out, true, nil
 }
@@ -348,6 +409,16 @@ func (s *Service) SetSupportState(ctx context.Context, actor, target uuid.UUID, 
 		return unavailable()
 	}
 	defer tx.Rollback(ctx)
+	if err = s.setSupportStateTx(ctx, tx, actor, target, operator, state); err != nil {
+		return err
+	}
+	if tx.Commit(ctx) != nil {
+		return unavailable()
+	}
+	return nil
+}
+
+func (s *Service) setSupportStateTx(ctx context.Context, tx pgx.Tx, actor, target uuid.UUID, operator bool, state string) error {
 	c, err := s.lockSupport(ctx, tx, actor, target, operator)
 	if err != nil {
 		return err
@@ -365,9 +436,6 @@ func (s *Service) SetSupportState(ctx context.Context, actor, target uuid.UUID, 
 	if err := s.supportAudit(ctx, tx, "support_state_"+state, target, actor, operator, nil, ""); err != nil {
 		return err
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return unavailable()
-	}
 	return nil
 }
 
@@ -380,6 +448,16 @@ func (s *Service) SetSupportBan(ctx context.Context, actor, target uuid.UUID, ba
 		return unavailable()
 	}
 	defer tx.Rollback(ctx)
+	if err = s.setSupportBanTx(ctx, tx, actor, target, banned, reason); err != nil {
+		return err
+	}
+	if tx.Commit(ctx) != nil {
+		return unavailable()
+	}
+	return nil
+}
+
+func (s *Service) setSupportBanTx(ctx context.Context, tx pgx.Tx, actor, target uuid.UUID, banned bool, reason string) error {
 	c, err := s.lockSupport(ctx, tx, actor, target, true)
 	if err != nil {
 		return err
@@ -394,15 +472,15 @@ func (s *Service) SetSupportBan(ctx context.Context, actor, target uuid.UUID, ba
 	if q.UpdateSupportBan(ctx, store.UpdateSupportBanParams{ID: c.ID, SupportBanned: banned, UpdatedAt: stamp(s.now())}) != nil {
 		return unavailable()
 	}
+	if q.SetTelegramAccountBan(ctx, store.SetTelegramAccountBanParams{AccountID: &target, SupportBanned: banned}) != nil {
+		return unavailable()
+	}
 	action := "support_unbanned"
 	if banned {
 		action = "support_banned"
 	}
 	if err := s.supportAudit(ctx, tx, action, target, actor, true, nil, reason); err != nil {
 		return err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return unavailable()
 	}
 	return nil
 }

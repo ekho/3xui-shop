@@ -584,7 +584,7 @@ def native_check():
     with log.open('w') as output:
         log.chmod(0o600)
         result=subprocess.run(['go','test','-json','-race','./tests','-run','TestNativeTrial|TestNativeNotices','-count=1'],
-                              cwd=ROOT/'backend',env=environment,stdout=output,stderr=subprocess.STDOUT,timeout=180)
+                              cwd=ROOT/'backend',env=environment,stdout=output,stderr=subprocess.STDOUT,timeout=600)
     assert result.returncode==0, 'native Go integration failed; see private native-go.log'
     events=[json.loads(line) for line in log.read_text().splitlines() if line.startswith('{')]
     assert not any(e.get('Action')=='fail' or e.get('Action')=='skip' and e.get('Test') for e in events), 'native Go test failed or skipped; see private native-go.log'

@@ -13,7 +13,7 @@ import (
 )
 
 const auditPage = `-- name: AuditPage :many
-SELECT id, created_at, action, account_id, request_id, operation_id, operator_tg_id, reason, operator_account_id, support_message_id, access_operation_id, system_actor, monthly_period, mirror_attempted_at FROM audit_events
+SELECT id, created_at, action, account_id, request_id, operation_id, operator_tg_id, reason, operator_account_id, support_message_id, access_operation_id, system_actor, monthly_period, mirror_attempted_at, operator_source FROM audit_events
 WHERE account_id=$1
  AND ($2::timestamptz IS NULL OR
       (created_at,id)<($2::timestamptz,$3::uuid))
@@ -50,6 +50,7 @@ func (q *Queries) AuditPage(ctx context.Context, arg AuditPageParams) ([]AuditEv
 			&i.SystemActor,
 			&i.MonthlyPeriod,
 			&i.MirrorAttemptedAt,
+			&i.OperatorSource,
 		); err != nil {
 			return nil, err
 		}
@@ -63,8 +64,8 @@ func (q *Queries) AuditPage(ctx context.Context, arg AuditPageParams) ([]AuditEv
 
 const recordAudit = `-- name: RecordAudit :exec
 INSERT INTO audit_events(id,created_at,action,account_id,request_id,operation_id,operator_tg_id,reason,
- operator_account_id,support_message_id,access_operation_id,system_actor,monthly_period)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+ operator_account_id,support_message_id,access_operation_id,system_actor,monthly_period,operator_source)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 `
 
 type RecordAuditParams struct {
@@ -81,6 +82,7 @@ type RecordAuditParams struct {
 	AccessOperationID *uuid.UUID
 	SystemActor       pgtype.Bool
 	MonthlyPeriod     pgtype.Text
+	OperatorSource    pgtype.Text
 }
 
 func (q *Queries) RecordAudit(ctx context.Context, arg RecordAuditParams) error {
@@ -98,6 +100,7 @@ func (q *Queries) RecordAudit(ctx context.Context, arg RecordAuditParams) error 
 		arg.AccessOperationID,
 		arg.SystemActor,
 		arg.MonthlyPeriod,
+		arg.OperatorSource,
 	)
 	return err
 }

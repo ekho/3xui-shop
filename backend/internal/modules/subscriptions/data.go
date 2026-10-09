@@ -181,3 +181,30 @@ func (s *Service) readTrialProfile(ctx context.Context, op vpn.TrialState) (vpn.
 	}
 	return s.vpn.ReadTrialProfile(ctx, op)
 }
+
+func (s *Service) PendingOperatorTrials(ctx context.Context, actor uuid.UUID) ([]PendingOperatorTrial, bool, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, false, unavailable()
+	}
+	defer tx.Rollback(ctx)
+	if _, err = s.accounts.LockOperatorPair(ctx, tx, actor, actor); err != nil {
+		return nil, false, accountError(err)
+	}
+	rows, err := store.New(tx).PendingOperatorTrials(ctx)
+	if err != nil {
+		return nil, false, unavailable()
+	}
+	more := len(rows) > 50
+	if more {
+		rows = rows[:50]
+	}
+	out := make([]PendingOperatorTrial, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, PendingOperatorTrial{AccountID: r.AccountID, RequestID: r.ID, CreatedAt: r.CreatedAt.Time})
+	}
+	if tx.Commit(ctx) != nil {
+		return nil, false, unavailable()
+	}
+	return out, more, nil
+}

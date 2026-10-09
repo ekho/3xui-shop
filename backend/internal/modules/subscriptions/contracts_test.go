@@ -114,3 +114,43 @@ func TestLegacyDecisionReplay(t *testing.T) {
 		t.Fatal("callback replay duplicated its effects")
 	}
 }
+
+func TestPendingOperatorTrials(t *testing.T) {
+	e := testkit.Open(t)
+	ctx := context.Background()
+	operator := uuid.New()
+	if _, err := e.Pool.Exec(ctx, `INSERT INTO accounts(id,email_key,locale,password_hash,verified_at,vpn_id,sub_id,panel_key,terms_version,privacy_version,telegram_id) VALUES($1,'queue-operator@example.test','ru','fixture',$2,$3,'aaaaaaaaaaaaaaaa',$4,'1','1',732)`, operator, e.Clock(), uuid.New(), "acct_"+operator.String()); err != nil {
+		t.Fatal(err)
+	}
+	a := accounts.New(e.Pool, e.Redis, nil, accounts.Config{})
+	if a.ChangeOperatorRole(ctx, operator, true) != nil {
+		t.Fatal("operator")
+	}
+	if _, err := e.Pool.Exec(ctx, `WITH inserted AS(INSERT INTO accounts(id,vpn_id,sub_id,panel_key,kind,locale,email_key,password_hash,verified_at,terms_version,privacy_version) SELECT id,gen_random_uuid(),left(md5(id::text),16),'acct_'||id,'web','ru','pending-'||id||'@example.test','fixture',$1,'1','1' FROM(SELECT gen_random_uuid() AS id FROM generate_series(1,51)) s RETURNING id) INSERT INTO trial_requests(id,account_id,status,comment,created_at) SELECT gen_random_uuid(),id,'pending','private trial comment',$1 FROM inserted`, e.Clock()); err != nil {
+		t.Fatal(err)
+	}
+	service := New(e.Pool, a, nil, nil, nil, func() Config { return Config{} }, e.Clock)
+	proof, _, err := a.ResolveTelegramContext(ctx, 732)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, more, err := service.PendingOperatorTrials(proof, operator)
+	if err != nil || len(rows) != 50 || !more {
+		t.Fatal("bounded pending manual trials", len(rows), more, err)
+	}
+	for _, row := range rows {
+		if row.AccountID == uuid.Nil || row.RequestID == uuid.Nil || row.CreatedAt.IsZero() {
+			t.Fatal("queue identity")
+		}
+	}
+	raw, err := json.Marshal(rows)
+	if err != nil || bytes.Contains(raw, []byte("private trial comment")) {
+		t.Fatal("queue leaks bodies")
+	}
+	if a.ChangeOperatorRole(ctx, operator, false) != nil {
+		t.Fatal("revoke")
+	}
+	if _, _, err = service.PendingOperatorTrials(proof, operator); err == nil {
+		t.Fatal("revoked queue read")
+	}
+}

@@ -347,6 +347,36 @@ func (q *Queries) OperatorTrialPage(ctx context.Context, arg OperatorTrialPagePa
 	return items, nil
 }
 
+const pendingOperatorTrials = `-- name: PendingOperatorTrials :many
+SELECT account_id,id,created_at FROM trial_requests WHERE status='pending' ORDER BY created_at,id LIMIT 51
+`
+
+type PendingOperatorTrialsRow struct {
+	AccountID uuid.UUID
+	ID        uuid.UUID
+	CreatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) PendingOperatorTrials(ctx context.Context) ([]PendingOperatorTrialsRow, error) {
+	rows, err := q.db.Query(ctx, pendingOperatorTrials)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PendingOperatorTrialsRow
+	for rows.Next() {
+		var i PendingOperatorTrialsRow
+		if err := rows.Scan(&i.AccountID, &i.ID, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const reserveGrant = `-- name: ReserveGrant :exec
 INSERT INTO trial_grants(account_id,request_id,operation_id,status,created_at) VALUES($1,$2,$3,'reserved',$4)
 `

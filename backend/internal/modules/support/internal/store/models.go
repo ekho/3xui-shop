@@ -18,6 +18,14 @@ type IdempotencyRecord struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type LegacySupportImport struct {
+	BotID      int64
+	GroupID    int64
+	SourceID   int64
+	SourceHash []byte
+	SourceJson []byte
+}
+
 type SupportConversation struct {
 	ID                       uuid.UUID
 	AccountID                uuid.UUID
@@ -39,4 +47,58 @@ type SupportMessage struct {
 	CreatedAt       pgtype.Timestamptz
 	AttachmentName  pgtype.Text
 	AttachmentBytes []byte
+	TelegramOnly    pgtype.Bool
+}
+
+type SupportTelegramDelivery struct {
+	ID              uuid.UUID
+	Sequence        int64
+	TopicID         *uuid.UUID
+	MessageID       *uuid.UUID
+	ReceiptID       *uuid.UUID
+	Kind            string
+	Status          string
+	Code            string
+	Parts           []byte
+	Lease           *uuid.UUID
+	LeaseExpiresAt  pgtype.Timestamptz
+	AvailableAt     pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
+	PriorDeliveryID *uuid.UUID
+}
+
+type SupportTelegramReceipt struct {
+	ID               uuid.UUID
+	BotID            int64
+	GroupID          int64
+	ChatID           int64
+	MessageID        int64
+	UpdateID         int64
+	ActorTgID        pgtype.Int8
+	ThreadID         pgtype.Int8
+	Action           string
+	CallbackID       string
+	Digest           []byte
+	ActorAccountID   *uuid.UUID
+	TargetAccountID  *uuid.UUID
+	TopicID          *uuid.UUID
+	SupportMessageID *uuid.UUID
+	OwnerKey         uuid.UUID
+	Result           []byte
+	CreatedAt        pgtype.Timestamptz
+}
+
+type SupportTelegramTopic struct {
+	ID            uuid.UUID
+	BotID         int64
+	GroupID       int64
+	Kind          string
+	AccountID     *uuid.UUID
+	GuestTgID     pgtype.Int8
+	ThreadID      pgtype.Int8
+	Status        string
+	Closed        bool
+	SupportBanned bool
+	CreatedAt     pgtype.Timestamptz
+	SourceID      pgtype.Int8
 }

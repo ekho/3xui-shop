@@ -43,7 +43,7 @@ func (q *Queries) AuditDayPruned(ctx context.Context, arg AuditDayPrunedParams) 
 const claimNativeAuditMirror = `-- name: ClaimNativeAuditMirror :one
 UPDATE audit_events SET mirror_attempted_at=transaction_timestamp()
 WHERE id=(SELECT id FROM audit_events WHERE mirror_attempted_at IS NULL ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1)
-RETURNING id, created_at, action, account_id, request_id, operation_id, operator_tg_id, reason, operator_account_id, support_message_id, access_operation_id, system_actor, monthly_period, mirror_attempted_at
+RETURNING id, created_at, action, account_id, request_id, operation_id, operator_tg_id, reason, operator_account_id, support_message_id, access_operation_id, system_actor, monthly_period, mirror_attempted_at, operator_source
 `
 
 func (q *Queries) ClaimNativeAuditMirror(ctx context.Context) (AuditEvent, error) {
@@ -64,6 +64,7 @@ func (q *Queries) ClaimNativeAuditMirror(ctx context.Context) (AuditEvent, error
 		&i.SystemActor,
 		&i.MonthlyPeriod,
 		&i.MirrorAttemptedAt,
+		&i.OperatorSource,
 	)
 	return i, err
 }
@@ -71,7 +72,7 @@ func (q *Queries) ClaimNativeAuditMirror(ctx context.Context) (AuditEvent, error
 const claimSystemAuditMirror = `-- name: ClaimSystemAuditMirror :one
 UPDATE audit_system_events SET mirror_attempted_at=transaction_timestamp()
 WHERE id=(SELECT id FROM audit_system_events WHERE mirror_attempted_at IS NULL ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1)
-RETURNING id, created_at, action, period_day, cutoff, retention_days, native_count, legacy_count, system_count, mirror_attempted_at
+RETURNING id, created_at, action, period_day, cutoff, retention_days, native_count, legacy_count, system_count, mirror_attempted_at, support_telegram
 `
 
 func (q *Queries) ClaimSystemAuditMirror(ctx context.Context) (AuditSystemEvent, error) {
@@ -88,6 +89,7 @@ func (q *Queries) ClaimSystemAuditMirror(ctx context.Context) (AuditSystemEvent,
 		&i.LegacyCount,
 		&i.SystemCount,
 		&i.MirrorAttemptedAt,
+		&i.SupportTelegram,
 	)
 	return i, err
 }
@@ -139,6 +141,21 @@ func (q *Queries) InsertLegacyAuditDigest(ctx context.Context, arg InsertLegacyA
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const insertSupportTelegramAudit = `-- name: InsertSupportTelegramAudit :exec
+INSERT INTO audit_system_events(id,created_at,action,native_count,legacy_count,system_count,support_telegram)
+VALUES($1,transaction_timestamp(),'support.telegram',0,0,0,$2)
+`
+
+type InsertSupportTelegramAuditParams struct {
+	ID              uuid.UUID
+	SupportTelegram []byte
+}
+
+func (q *Queries) InsertSupportTelegramAudit(ctx context.Context, arg InsertSupportTelegramAuditParams) error {
+	_, err := q.db.Exec(ctx, insertSupportTelegramAudit, arg.ID, arg.SupportTelegram)
+	return err
 }
 
 const insertSystemAudit = `-- name: InsertSystemAudit :exec
@@ -267,7 +284,7 @@ func (q *Queries) MuteSystemAuditMirror(ctx context.Context) error {
 }
 
 const operatorAuditPage = `-- name: OperatorAuditPage :many
-SELECT id, created_at, action, account_id, request_id, operation_id, operator_tg_id, reason, operator_account_id, support_message_id, access_operation_id, system_actor, monthly_period, mirror_attempted_at FROM audit_events
+SELECT id, created_at, action, account_id, request_id, operation_id, operator_tg_id, reason, operator_account_id, support_message_id, access_operation_id, system_actor, monthly_period, mirror_attempted_at, operator_source FROM audit_events
 WHERE ($1::uuid IS NULL OR account_id=$1::uuid)
  AND ($2::timestamptz IS NULL OR
       (created_at,id)<($2::timestamptz,$3::uuid))
@@ -304,6 +321,7 @@ func (q *Queries) OperatorAuditPage(ctx context.Context, arg OperatorAuditPagePa
 			&i.SystemActor,
 			&i.MonthlyPeriod,
 			&i.MirrorAttemptedAt,
+			&i.OperatorSource,
 		); err != nil {
 			return nil, err
 		}
@@ -352,7 +370,7 @@ func (q *Queries) PruneSystemAudit(ctx context.Context, createdAt pgtype.Timesta
 }
 
 const systemAuditPage = `-- name: SystemAuditPage :many
-SELECT id, created_at, action, period_day, cutoff, retention_days, native_count, legacy_count, system_count, mirror_attempted_at FROM audit_system_events
+SELECT id, created_at, action, period_day, cutoff, retention_days, native_count, legacy_count, system_count, mirror_attempted_at, support_telegram FROM audit_system_events
 WHERE ($1::timestamptz IS NULL OR
  (created_at,id)<($1::timestamptz,$2::uuid))
 ORDER BY created_at DESC,id DESC LIMIT 51
@@ -383,6 +401,7 @@ func (q *Queries) SystemAuditPage(ctx context.Context, arg SystemAuditPageParams
 			&i.LegacyCount,
 			&i.SystemCount,
 			&i.MirrorAttemptedAt,
+			&i.SupportTelegram,
 		); err != nil {
 			return nil, err
 		}

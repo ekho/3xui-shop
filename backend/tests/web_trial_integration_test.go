@@ -45,6 +45,7 @@ type panel struct {
 	mu                        sync.Mutex
 	clients                   map[string]map[string]any
 	adds, forbidden, requests int
+	bulkUnavailable           int
 	loseReply                 bool
 	blocked, release          chan struct{}
 }
@@ -56,6 +57,9 @@ func (p *panel) serve(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	reply := func(ok bool, obj any) { json.NewEncoder(w).Encode(map[string]any{"success": ok, "obj": obj}) }
 	switch {
+	case r.Method == "GET" && r.URL.Path == "/panel/api/clients/list":
+		p.bulkUnavailable++
+		w.WriteHeader(http.StatusMethodNotAllowed)
 	case r.Method == "GET" && r.URL.Path == "/panel/api/inbounds/list":
 		reply(true, []map[string]any{{"id": 1, "enable": true, "tag": "regular-tcp"}, {"id": 91, "enable": true, "tag": "unknown"}})
 	case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/panel/api/clients/get/"):
@@ -143,6 +147,28 @@ func (p *panel) serve(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func TestPanelUnsupportedBulkReadIsReadOnly(t *testing.T) {
+	client := map[string]any{"email": "acct_owned", "id": uuid.NewString(), "subId": "abcdefghijklmnop"}
+	p := &panel{clients: map[string]map[string]any{"acct_owned": client}}
+	before, _ := json.Marshal(p.clients)
+	read := httptest.NewRecorder()
+	p.serve(read, httptest.NewRequest(http.MethodGet, "/panel/api/clients/list", nil))
+	if read.Code != http.StatusMethodNotAllowed || p.bulkUnavailable != 1 || p.forbidden != 0 || p.adds != 0 {
+		t.Fatal("unsupported read was classified as a forbidden write")
+	}
+	write := httptest.NewRecorder()
+	p.serve(write, httptest.NewRequest(http.MethodPost, "/panel/api/clients/list", nil))
+	if write.Code != http.StatusMethodNotAllowed || p.forbidden != 1 {
+		t.Fatal("unsupported write escaped the fixture guard")
+	}
+	duplicate := httptest.NewRecorder()
+	p.serve(duplicate, httptest.NewRequest(http.MethodPost, "/panel/api/clients/add", strings.NewReader(`{"client":{"email":"acct_owned"},"inboundIds":[1]}`)))
+	after, _ := json.Marshal(p.clients)
+	if duplicate.Code != http.StatusConflict || p.forbidden != 2 || p.adds != 0 || !bytes.Equal(before, after) {
+		t.Fatal("duplicate write changed the owned client or escaped the guard")
+	}
+}
+
 func TestPanelTrafficFixtureMatchesOwnedClient(t *testing.T) {
 	ownedID := uuid.New()
 	p := &panel{clients: map[string]map[string]any{
@@ -224,6 +250,8 @@ type fixture struct {
 	workers             *river.Client[pgx.Tx]
 	root, ca, tokenFile string
 	native              bool
+	nativeCrash         func()
+	nativeBinary        string
 }
 
 func open(t *testing.T) *fixture {

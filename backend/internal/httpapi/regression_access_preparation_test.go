@@ -4,8 +4,11 @@ import (
 	"context"
 	"crypto/x509"
 	"errors"
+	"example.com/cabinet/backend/internal/app"
+	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 	"net/http"
 	"net/http/httptest"
@@ -155,6 +158,59 @@ func TestRegressionAccessPreparation(t *testing.T) {
 			ops, jobs := preparationAccessCount(t, s)
 			if ops != beforeOps || jobs != beforeJobs || p.adds != 0 || p.otherWrites != 0 {
 				t.Fatal("preparation created effects after state change")
+			}
+		})
+	}
+}
+
+// The public owner retains one Telegram proof across the real TLS read and
+// both caller transactions; an outer transaction would deadlock this one pool.
+func TestRegressionAccessTelegramPreparation(t *testing.T) {
+	for _, mode := range []string{"current", "version", "binding", "role"} {
+		t.Run(mode, func(t *testing.T) {
+			s, _, p, actor, target, _ := accessActors(t)
+			ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+			defer cancel()
+			if _, err := s.pool.Exec(ctx, `UPDATE accounts SET telegram_id=711 WHERE id=$1`, actor); err != nil {
+				t.Fatal(err)
+			}
+			proof, _, err := s.accounts.ResolveTelegramContext(ctx, 711)
+			if err != nil {
+				t.Fatal(err)
+			}
+			beforeOps, beforeJobs := preparationAccessCount(t, s)
+			preparationPanel(t, s, p, func(ctx context.Context) {
+				preparationNoTransaction(t, ctx, s)
+				var err error
+				switch mode {
+				case "version":
+					_, err = s.pool.Exec(ctx, `UPDATE accounts SET credential_version=credential_version+1 WHERE id=$1`, actor)
+				case "binding":
+					_, err = s.pool.Exec(ctx, `UPDATE accounts SET telegram_id=712 WHERE id=$1`, actor)
+				case "role":
+					err = s.changeOperatorRole(ctx, actor, false)
+				}
+				if err != nil {
+					t.Error("source change blocked during read", err)
+				}
+			})
+			pc := s.pool.Config().Copy()
+			pc.MaxConns = 1
+			one, err := pgxpool.NewWithConfig(ctx, pc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer one.Close()
+			owner := app.NewModules(one, s.limiter, s.queue, s.cfg).Subscriptions
+			days := 1
+			out, err := owner.CreateAccessOperation(proof, actor, target, uuid.New(), subscriptions.AccessOperationInput{Kind: "compensate", Days: &days, Reason: "owned Telegram phase"})
+			ops, jobs := preparationAccessCount(t, s)
+			if mode == "current" {
+				if err != nil || out.Status != "pending" || ops != beforeOps+1 || jobs != beforeJobs+1 {
+					t.Fatal("current source one-connection operation", err)
+				}
+			} else if err == nil || ops != beforeOps || jobs != beforeJobs || p.updates != 0 || p.resets != 0 {
+				t.Fatal("stale Telegram source queued second-phase operation", err)
 			}
 		})
 	}
