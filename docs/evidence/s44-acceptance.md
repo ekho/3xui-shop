@@ -20,7 +20,10 @@ HTTPS Caddy использует изменённый repository Caddyfile; fron
 уже собранного локального fixture, без изменений frontend-кода.
 
 Backend собран из актуального дерева после review fixes:
-image ID `sha256:26b42de8a7da6ab9446fbdc122435d5595798de7b916f8d2ded6415906c033e5`.
+OCI image index/runtime image ID
+`sha256:bc6a263bd5469146258ea1afea4425f3480e766bab231ca1c426404178ffdec0`;
+build config digest
+`sha256:26b42de8a7da6ab9446fbdc122435d5595798de7b916f8d2ded6415906c033e5`.
 Контейнер scratch запускает `/server` непосредственно, без shell/curl/supervisor.
 `cabinet-native`, `cabinet-test`, стенд #42 и основной checkout не изменялись.
 
