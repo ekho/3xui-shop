@@ -107,7 +107,7 @@ test('Mini App handles older/broken optional SDK methods without losing login',a
 test('Mini App browser-open action forwards only the public login URL',async({page})=>{
  await fixture(page);await page.goto('/mini-app?lang=en');await expect(page.getByRole('heading',{name:'Mini client'})).toBeVisible();
  await page.getByRole('link',{name:'Open cabinet in browser',exact:true}).click();
- const opened=await page.evaluate(()=>(window as any).__sdk.opened);expect(opened).toEqual(['http://127.0.0.1:4173/login?lang=en']);
+ const opened=await page.evaluate(()=>(window as any).__sdk.opened);expect(opened).toEqual(['http://127.0.0.1:'+(process.env.E2E_PORT||'4173')+'/login?lang=en']);
  expect(JSON.stringify(opened)).not.toMatch(/owned-signed|mini_|csrf|11111111|sub\//);
 });
 test('Mini App logout destroys private key and does not sign in automatically',async({page})=>{
@@ -182,7 +182,7 @@ for(const lang of ['ru','en'] as const)for(const path of ['/','/cabinet','/catal
   await expect(action).toBeVisible();await expect(action).toHaveAccessibleDescription(/email/i);
   const writes=f.calls.filter(c=>!['GET','HEAD','OPTIONS'].includes(c.method)).length;
   await action.focus();await page.keyboard.press('Enter');await action.focus();await page.keyboard.press('Space');
-  const url='http://127.0.0.1:4173/login'+(lang==='en'?'?lang=en':'');
+  const url='http://127.0.0.1:'+(process.env.E2E_PORT||'4173')+'/login'+(lang==='en'?'?lang=en':'');
   expect(await page.evaluate(()=>(window as any).__sdk.opened)).toEqual([url,url]);
   expect(f.calls.filter(c=>!['GET','HEAD','OPTIONS'].includes(c.method))).toHaveLength(writes);expect(f.sessions()).toBe(1);
   expect(await storage(page)).not.toMatch(/owned-signed|mini_|csrf_token|__telegram__initParams/);
@@ -203,5 +203,5 @@ for(const mode of ['missing','throws'] as const)test('Mini App other payments '+
   if(mode==='missing')delete (window as any).Telegram.WebApp.openLink;else (window as any).Telegram.WebApp.openLink=()=>{throw new Error('owned optional method failure')};
  },mode);
  const action=page.getByRole('button',{name:'Other payment methods',exact:true});await action.focus();await page.keyboard.press('Enter');
- expect(await page.evaluate(()=>(window as any).__sdk.fallback)).toEqual([['http://127.0.0.1:4173/login?lang=en','_blank','noopener,noreferrer']]);
+ expect(await page.evaluate(()=>(window as any).__sdk.fallback)).toEqual([['http://127.0.0.1:'+(process.env.E2E_PORT||'4173')+'/login?lang=en','_blank','noopener,noreferrer']]);
 });
