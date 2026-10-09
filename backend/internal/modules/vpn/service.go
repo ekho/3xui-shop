@@ -15,6 +15,7 @@ import (
 type Settings struct {
 	Panel                        Config
 	PanelID, AccessResetTimezone string
+	SubscriptionBaseURL          string
 	PanelDuplicateGuardVerified  bool
 }
 type Error struct {

@@ -43,6 +43,18 @@ func (s *Service) LookupManyTx(ctx context.Context, tx pgx.Tx, ids []uuid.UUID) 
 	return out, nil
 }
 
+func (s *Service) PanelLoadsTx(ctx context.Context, tx pgx.Tx) (map[string]int64, error) {
+	rows, err := store.New(tx).PanelLoads(ctx)
+	if err != nil {
+		return nil, unavailable()
+	}
+	loads := make(map[string]int64, len(rows))
+	for _, row := range rows {
+		loads[row.AssignedPanelID.String] = row.Clients
+	}
+	return loads, nil
+}
+
 // LegacyIdentitiesTx resolves and optionally locks a bounded import's identity
 // set in UUID order, without foreign SQL or one query per imported user.
 func (s *Service) LegacyIdentitiesTx(ctx context.Context, tx pgx.Tx, telegramIDs []int64, lock bool) ([]Snapshot, error) {

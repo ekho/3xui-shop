@@ -168,3 +168,33 @@ func (q *Queries) LockIdempotency(ctx context.Context, arg LockIdempotencyParams
 	_, err := q.db.Exec(ctx, lockIdempotency, arg.Principal, arg.Operation, arg.Key)
 	return err
 }
+
+const panelLoads = `-- name: PanelLoads :many
+SELECT assigned_panel_id, count(*) AS clients FROM accounts
+WHERE assigned_panel_id IS NOT NULL GROUP BY assigned_panel_id
+`
+
+type PanelLoadsRow struct {
+	AssignedPanelID pgtype.Text
+	Clients         int64
+}
+
+func (q *Queries) PanelLoads(ctx context.Context) ([]PanelLoadsRow, error) {
+	rows, err := q.db.Query(ctx, panelLoads)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PanelLoadsRow
+	for rows.Next() {
+		var i PanelLoadsRow
+		if err := rows.Scan(&i.AssignedPanelID, &i.Clients); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

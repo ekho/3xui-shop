@@ -9,3 +9,7 @@ SELECT pg_advisory_xact_lock(hashtextextended('idem:'||sqlc.arg(principal)::text
 
 -- name: AccountsByIDs :many
 SELECT * FROM accounts WHERE id=ANY(sqlc.arg(ids)::uuid[]) ORDER BY id;
+
+-- name: PanelLoads :many
+SELECT assigned_panel_id, count(*) AS clients FROM accounts
+WHERE assigned_panel_id IS NOT NULL GROUP BY assigned_panel_id;

@@ -82,6 +82,7 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 	vpnOwner := vpn.New(pool, owner, func() *river.Client[pgx.Tx] { return queue }, func() vpn.Settings {
 		c := cfg.VPN
 		c.PanelID = cfg.Subscriptions.PanelID
+		c.SubscriptionBaseURL = cfg.Subscriptions.SubscriptionBaseURL
 		return c
 	}, now, func(ctx context.Context, tx pgx.Tx, r, o uuid.UUID, status string) error {
 		return subscriptionOwner.RecordTrialOutcomeTx(ctx, tx, r, o, status)
