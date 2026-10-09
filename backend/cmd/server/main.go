@@ -87,10 +87,18 @@ func run() error {
 	}
 	svc := app.NewModules(pool, limiter, queue, &cfg)
 	var tg *telegram.Runtime
+	var supportTG *telegram.Runtime
 	var auditMirror func(context.Context, string) error
 	if os.Args[1] == "serve" {
 		tgConfig, e := telegram.LoadConfig(cfg.Accounts.Operators)
 		if e != nil {
+			return e
+		}
+		supportConfig, e := telegram.LoadSupportConfig()
+		if e != nil {
+			return e
+		}
+		if e = telegram.ValidatePollingBots(tgConfig, supportConfig); e != nil {
 			return e
 		}
 		mirrorConfig, e := telegram.LoadAuditMirrorConfig()
@@ -106,6 +114,10 @@ func run() error {
 		}
 		tg, e = app.NewTelegram(tgConfig, svc, cfg.HTTP.CabinetOrigin, nil)
 		svc.MiniApp = app.NewTelegramMiniApp(tgConfig, svc.Accounts, cfg.Accounts.Now)
+		if e != nil {
+			return e
+		}
+		supportTG, e = app.NewSupportTelegram(supportConfig, svc, cfg.HTTP.CabinetOrigin, nil)
 		if e != nil {
 			return e
 		}
@@ -151,7 +163,7 @@ func run() error {
 	server := &http.Server{Addr: address, Handler: httpapi.New(svc, pool, cfg.HTTP), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 	result := make(chan error, 1)
 	go func() { result <- server.ListenAndServe() }()
-	return app.Serve(ctx, server, result, schedulerResult, tg)
+	return app.Serve(ctx, server, result, schedulerResult, tg, supportTG)
 }
 
 func runOperatorCommand(action, flag, path string) error {

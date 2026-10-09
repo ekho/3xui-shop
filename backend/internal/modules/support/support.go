@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/support/internal/store"
@@ -109,6 +110,10 @@ func (s *Service) lockSupport(ctx context.Context, tx pgx.Tx, actor, target uuid
 			return empty, failure(404, "INVALID_INPUT")
 		}
 		if err != nil {
+			var sourceError *accounts.Error
+			if errors.As(err, &sourceError) {
+				return empty, err
+			}
 			return empty, unavailable()
 		}
 		if a.Restricted {
@@ -213,6 +218,23 @@ func (s *Service) CreateSupportMessage(ctx context.Context, actor, target uuid.U
 	if len(file) > supportFileMax {
 		return out, false, failure(413, "INVALID_INPUT")
 	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return out, false, unavailable()
+	}
+	defer tx.Rollback(ctx)
+	out, created, err := s.createSupportMessageTx(ctx, tx, actor, target, operator, key, text, name, file, nil)
+	if err != nil {
+		return out, false, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return out, false, unavailable()
+	}
+	return out, created, nil
+}
+
+func (s *Service) createSupportMessageTx(ctx context.Context, tx pgx.Tx, actor, target uuid.UUID, operator bool, key uuid.UUID, text, name string, file []byte, source *TelegramInput) (SupportMessage, bool, error) {
+	var out SupportMessage
 	principal := "account:" + actor.String()
 	hash := bodyHash(struct {
 		Target     uuid.UUID
@@ -221,11 +243,6 @@ func (s *Service) CreateSupportMessage(ctx context.Context, actor, target uuid.U
 		FileHash   [32]byte
 		FileSize   int
 	}{target, operator, text, name, sha256.Sum256(file), len(file)})
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return out, false, unavailable()
-	}
-	defer tx.Rollback(ctx)
 	q := store.New(tx)
 	c, err := s.lockSupport(ctx, tx, actor, target, operator)
 	if err != nil {
@@ -272,6 +289,15 @@ func (s *Service) CreateSupportMessage(ctx context.Context, actor, target uuid.U
 		return out, false, unavailable()
 	}
 	out = publicSupportMessage(m, c)
+	if err = s.enqueueSupportMessageTx(ctx, tx, target, m, operator, source); err != nil {
+		return out, false, err
+	}
+	if s.telegramBotID != 0 {
+		out.TelegramDelivery, err = s.messageTelegramStatusTx(ctx, tx, m.ID)
+		if err != nil {
+			return out, false, err
+		}
+	}
 	if operator {
 		a, err := s.authority.LookupTx(ctx, tx, target)
 		if err != nil {
@@ -289,9 +315,6 @@ func (s *Service) CreateSupportMessage(ctx context.Context, actor, target uuid.U
 	}
 	if err = s.saveIdempotency(ctx, q, principal, "createSupportMessage", key, hash, out); err != nil {
 		return out, false, err
-	}
-	if err = tx.Commit(ctx); err != nil {
-		return out, false, unavailable()
 	}
 	return out, true, nil
 }

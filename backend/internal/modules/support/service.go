@@ -24,12 +24,13 @@ func failure(status int, code string) error { return &Error{Status: status, Code
 func unavailable() error                    { return failure(503, "SERVICE_UNAVAILABLE") }
 
 type Service struct {
-	pool          *pgxpool.Pool
-	notifications *notifications.Service
-	limiter       *redis.Client
-	authority     *accounts.Service
-	rateNamespace string
-	now           func() time.Time
+	pool                           *pgxpool.Pool
+	notifications                  *notifications.Service
+	limiter                        *redis.Client
+	authority                      *accounts.Service
+	rateNamespace                  string
+	now                            func() time.Time
+	telegramBotID, telegramGroupID int64
 }
 
 func New(pool *pgxpool.Pool, limiter *redis.Client, authority *accounts.Service, rateNamespace string, now func() time.Time, notices *notifications.Service) *Service {

@@ -2,6 +2,7 @@ package auditreports
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -41,6 +42,7 @@ type SystemEvent struct {
 	Cutoff                                *time.Time
 	RetentionDays                         *int32
 	NativeCount, LegacyCount, SystemCount int64
+	SupportTelegram                       *SupportTelegramEvent
 }
 type HistoryPage struct {
 	Version, Kind    string
@@ -234,6 +236,12 @@ func systemEvent(row store.AuditSystemEvent) SystemEvent {
 	}
 	if row.RetentionDays.Valid {
 		out.RetentionDays = &row.RetentionDays.Int32
+	}
+	if len(row.SupportTelegram) != 0 {
+		var event SupportTelegramEvent
+		if json.Unmarshal(row.SupportTelegram, &event) == nil {
+			out.SupportTelegram = &event
+		}
 	}
 	return out
 }

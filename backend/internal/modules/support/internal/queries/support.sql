@@ -5,7 +5,7 @@ SELECT * FROM support_conversations WHERE account_id=$1 FOR UPDATE;
 -- name: CreateSupportConversation :one
 INSERT INTO support_conversations(id,account_id,status,created_at,updated_at) VALUES($1,$2,'open',$3,$3) RETURNING *;
 -- name: SupportPage :many
-SELECT id,sequence,sender_kind,text,created_at,attachment_name,COALESCE(octet_length(attachment_bytes),0)::bigint AS attachment_size
+SELECT id,sequence,sender_kind,text,created_at,attachment_name,COALESCE(octet_length(attachment_bytes),0)::bigint AS attachment_size,telegram_only
 FROM support_messages WHERE conversation_id=$1 AND (sqlc.arg(before_sequence)::bigint=0 OR sequence<sqlc.arg(before_sequence)::bigint)
 ORDER BY sequence DESC LIMIT 51;
 -- name: SupportMessageByID :one

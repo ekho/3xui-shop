@@ -5,18 +5,22 @@ import (
 	"errors"
 	"example.com/cabinet/backend/internal/modules/telegram"
 	"net/http"
+	"sync"
 	"time"
 )
 
-func Serve(ctx context.Context, server *http.Server, result, schedulerResult <-chan error, tg *telegram.Runtime) error {
+func Serve(ctx context.Context, server *http.Server, result, schedulerResult <-chan error, tg *telegram.Runtime, additional ...*telegram.Runtime) error {
 	channelCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	channelDone := make(chan struct{})
-	if tg != nil && tg.State().Enabled {
-		go func() { defer close(channelDone); _ = tg.Run(channelCtx) }()
-	} else {
-		close(channelDone)
+	var channels sync.WaitGroup
+	for _, channel := range append([]*telegram.Runtime{tg}, additional...) {
+		if channel != nil && channel.State().Enabled {
+			channels.Add(1)
+			go func() { defer channels.Done(); _ = channel.Run(channelCtx) }()
+		}
 	}
+	go func() { channels.Wait(); close(channelDone) }()
 	var err error
 	select {
 	case err = <-schedulerResult:

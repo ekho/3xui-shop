@@ -24,6 +24,7 @@ type Runtime struct {
 	dispatcher                         *dispatcher
 	outbox                             Outbox
 	clients                            *Client
+	support                            *supportBridge
 	mu                                 sync.RWMutex
 	pollCode, deliveryCode, clientCode string
 }
@@ -64,14 +65,14 @@ func safeCode(err error) string {
 	var api *botapi.APIError
 	if errors.As(err, &api) {
 		switch api.Code {
-		case "UNAUTHORIZED", "CONFLICT", "RATE_LIMITED", "FORBIDDEN", "BAD_REQUEST", "NOT_MODIFIED", "INVALID_RESPONSE", "INVALID_INPUT", "UNAVAILABLE":
+		case "UNAUTHORIZED", "CONFLICT", "RATE_LIMITED", "FORBIDDEN", "BAD_REQUEST", "THREAD_NOT_FOUND", "NOT_MODIFIED", "INVALID_RESPONSE", "INVALID_INPUT", "UNAVAILABLE":
 			return api.Code
 		}
 	}
 	var action *ActionError
 	if errors.As(err, &action) {
 		switch action.Code {
-		case "REQUEST_STATE_CONFLICT", "UNSUPPORTED_PAYMENT", "WEBHOOK_CONFIGURED", "MINI_APP_NOT_CONFIGURED", "INVALID_INPUT":
+		case "REQUEST_STATE_CONFLICT", "UNSUPPORTED_PAYMENT", "WEBHOOK_CONFIGURED", "MINI_APP_NOT_CONFIGURED", "INVALID_INPUT", "SUPPORT_BOT_MISMATCH", "SUPPORT_GROUP_NOT_FORUM", "SUPPORT_ADMIN_REQUIRED":
 			return action.Code
 		}
 	}
@@ -95,7 +96,7 @@ func (r *Runtime) setLoopCode(field *string, code string) {
 }
 func fatal(err error) bool {
 	switch safeCode(err) {
-	case "UNAUTHORIZED", "CONFLICT", "WEBHOOK_CONFIGURED", "UNSUPPORTED_PAYMENT", "MINI_APP_NOT_CONFIGURED":
+	case "UNAUTHORIZED", "CONFLICT", "WEBHOOK_CONFIGURED", "UNSUPPORTED_PAYMENT", "MINI_APP_NOT_CONFIGURED", "SUPPORT_BOT_MISMATCH", "SUPPORT_GROUP_NOT_FORUM", "SUPPORT_ADMIN_REQUIRED":
 		return true
 	}
 	return false
@@ -143,6 +144,9 @@ func (r *Runtime) Run(parent context.Context) error {
 		}
 		if err == nil && r.clients != nil {
 			err = r.clients.start(ctx, r.api, r.token)
+		}
+		if err == nil && r.support != nil {
+			err = r.support.start(ctx)
 		}
 		if err == nil {
 			r.mu.Lock()
@@ -255,16 +259,31 @@ func (r *Runtime) deliveries(ctx context.Context) error {
 	delay := time.Second
 	for ctx.Err() == nil {
 		claimCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		d, err := r.outbox.Claim(claimCtx)
+		var err error
+		var empty bool
+		var deliver func(context.Context) error
+		if r.support != nil {
+			d, e := r.support.owner.ClaimTelegramDelivery(claimCtx)
+			err, empty = e, d == nil
+			if d != nil {
+				deliver = func(ctx context.Context) error { return r.support.owner.DeliverTelegram(ctx, *d, r.support.send) }
+			}
+		} else {
+			d, e := r.outbox.Claim(claimCtx)
+			err, empty = e, d == nil
+			if d != nil {
+				deliver = func(ctx context.Context) error { return r.deliver(ctx, *d) }
+			}
+		}
 		cancel()
-		if err == nil && d == nil {
+		if err == nil && empty {
 			if !pause(ctx, 5*time.Second) {
 				return nil
 			}
 			continue
 		}
 		if err == nil {
-			err = r.deliver(ctx, *d)
+			err = deliver(ctx)
 		}
 		if err == nil {
 			r.setCode(false, "")
@@ -325,6 +344,9 @@ func (r *Runtime) deliver(ctx context.Context, d Delivery) error {
 }
 
 func (r *Runtime) handle(ctx context.Context, u botapi.Update) error {
+	if r.support != nil {
+		return r.support.handle(ctx, u)
+	}
 	if present(u.Subscription) {
 		return r.starsSubscriptionUpdate(ctx, u.ID, u.Subscription)
 	}

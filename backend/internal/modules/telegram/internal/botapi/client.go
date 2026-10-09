@@ -22,11 +22,13 @@ type User struct {
 	HasMainWebApp bool   `json:"has_main_web_app"`
 }
 type Chat struct {
-	ID   int64  `json:"id"`
-	Type string `json:"type"`
+	ID      int64  `json:"id"`
+	Type    string `json:"type"`
+	IsForum bool   `json:"is_forum,omitempty"`
 }
 type Message struct {
 	ID                int64           `json:"message_id"`
+	ThreadID          int64           `json:"message_thread_id,omitempty"`
 	From              *User           `json:"from"`
 	Chat              Chat            `json:"chat"`
 	Text              string          `json:"text"`
@@ -150,6 +152,9 @@ func (c *Client) call(ctx context.Context, method string, body, result any, time
 			e.RetryAfter = time.Duration(seconds) * time.Second
 		case 400:
 			e.Code = "BAD_REQUEST"
+			if strings.EqualFold(strings.TrimSpace(envelope.Description), "Bad Request: message thread not found") {
+				e.Code = "THREAD_NOT_FOUND"
+			}
 			if strings.Contains(strings.ToLower(envelope.Description), "message is not modified") {
 				e.Code = "NOT_MODIFIED"
 			}

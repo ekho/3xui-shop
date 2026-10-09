@@ -42,7 +42,7 @@ func (q *Queries) AckSupportOperator(ctx context.Context, arg AckSupportOperator
 
 const addSupportMessage = `-- name: AddSupportMessage :one
 INSERT INTO support_messages(id,conversation_id,sender_account_id,sender_kind,text,created_at,attachment_name,attachment_bytes)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, conversation_id, sequence, sender_account_id, sender_kind, text, created_at, attachment_name, attachment_bytes
+VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, conversation_id, sequence, sender_account_id, sender_kind, text, created_at, attachment_name, attachment_bytes, telegram_only
 `
 
 type AddSupportMessageParams struct {
@@ -78,6 +78,7 @@ func (q *Queries) AddSupportMessage(ctx context.Context, arg AddSupportMessagePa
 		&i.CreatedAt,
 		&i.AttachmentName,
 		&i.AttachmentBytes,
+		&i.TelegramOnly,
 	)
 	return i, err
 }
@@ -176,7 +177,7 @@ func (q *Queries) SupportFileBytes(ctx context.Context, conversationID uuid.UUID
 }
 
 const supportMessageByID = `-- name: SupportMessageByID :one
-SELECT id, conversation_id, sequence, sender_account_id, sender_kind, text, created_at, attachment_name, attachment_bytes FROM support_messages WHERE id=$1
+SELECT id, conversation_id, sequence, sender_account_id, sender_kind, text, created_at, attachment_name, attachment_bytes, telegram_only FROM support_messages WHERE id=$1
 `
 
 func (q *Queries) SupportMessageByID(ctx context.Context, id uuid.UUID) (SupportMessage, error) {
@@ -192,6 +193,7 @@ func (q *Queries) SupportMessageByID(ctx context.Context, id uuid.UUID) (Support
 		&i.CreatedAt,
 		&i.AttachmentName,
 		&i.AttachmentBytes,
+		&i.TelegramOnly,
 	)
 	return i, err
 }
@@ -213,7 +215,7 @@ func (q *Queries) SupportMessageBySequence(ctx context.Context, arg SupportMessa
 }
 
 const supportPage = `-- name: SupportPage :many
-SELECT id,sequence,sender_kind,text,created_at,attachment_name,COALESCE(octet_length(attachment_bytes),0)::bigint AS attachment_size
+SELECT id,sequence,sender_kind,text,created_at,attachment_name,COALESCE(octet_length(attachment_bytes),0)::bigint AS attachment_size,telegram_only
 FROM support_messages WHERE conversation_id=$1 AND ($2::bigint=0 OR sequence<$2::bigint)
 ORDER BY sequence DESC LIMIT 51
 `
@@ -231,6 +233,7 @@ type SupportPageRow struct {
 	CreatedAt      pgtype.Timestamptz
 	AttachmentName pgtype.Text
 	AttachmentSize int64
+	TelegramOnly   pgtype.Bool
 }
 
 func (q *Queries) SupportPage(ctx context.Context, arg SupportPageParams) ([]SupportPageRow, error) {
@@ -250,6 +253,7 @@ func (q *Queries) SupportPage(ctx context.Context, arg SupportPageParams) ([]Sup
 			&i.CreatedAt,
 			&i.AttachmentName,
 			&i.AttachmentSize,
+			&i.TelegramOnly,
 		); err != nil {
 			return nil, err
 		}

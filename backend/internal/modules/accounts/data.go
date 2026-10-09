@@ -74,8 +74,20 @@ func (s *Service) LegacyIdentitiesTx(ctx context.Context, tx pgx.Tx, telegramIDs
 
 // Lock participates in the caller's transaction; the caller commits or rolls back.
 func (s *Service) Lock(ctx context.Context, tx pgx.Tx, id uuid.UUID) (Snapshot, error) {
+	if actor, ok := TelegramActor(ctx); ok {
+		if actor.ID != id {
+			return s.LockOperatorPair(ctx, tx, actor.ID, id)
+		}
+		if err := lockTelegramPrincipal(ctx, tx, id); err != nil {
+			return Snapshot{}, err
+		}
+	}
 	a, err := store.New(tx).LockAccount(ctx, id)
-	return accountResult(a, err)
+	out, err := accountResult(a, err)
+	if err == nil {
+		err = telegramPrincipal(ctx, out)
+	}
+	return out, err
 }
 func accountResult(a store.Account, err error) (Snapshot, error) {
 	if errors.Is(err, pgx.ErrNoRows) {
