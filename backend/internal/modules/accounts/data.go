@@ -177,6 +177,13 @@ func (s *Service) UnlimitedAccounts(ctx context.Context) ([]uuid.UUID, error) {
 }
 func (s *Service) LegacyApproval(ctx context.Context, id uuid.UUID) (LegacyApprovalUser, error) {
 	r, err := store.New(s.pool).LegacyApprovalByAccount(ctx, id)
+	return legacyApprovalResult(r, err)
+}
+func (s *Service) LegacyApprovalTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (LegacyApprovalUser, error) {
+	r, err := store.New(tx).LegacyApprovalByAccount(ctx, id)
+	return legacyApprovalResult(r, err)
+}
+func legacyApprovalResult(r store.LegacyApprovalSnapshot, err error) (LegacyApprovalUser, error) {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return LegacyApprovalUser{}, ErrNotFound
 	}

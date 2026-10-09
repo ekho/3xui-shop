@@ -12,8 +12,55 @@ SELECT * FROM support_telegram_topics WHERE id=$1 FOR UPDATE;
 INSERT INTO support_telegram_topics(id,bot_id,group_id,kind,account_id,guest_tg_id,status) VALUES($1,$2,$3,$4,$5,$6,'pending') RETURNING *;
 -- name: SetTelegramTopicState :exec
 UPDATE support_telegram_topics SET status=$2,thread_id=$3 WHERE id=$1;
+-- name: RetireTelegramTopic :exec
+WITH retired AS(UPDATE support_telegram_topics t SET status='retired' WHERE t.id=$1 RETURNING t.id)
+UPDATE support_telegram_deliveries d SET status='skipped',code='TOPIC_RETIRED',lease=NULL,lease_expires_at=NULL,
+parts=(SELECT jsonb_agg(CASE WHEN p->>'status' IN ('queued','sending') THEN jsonb_set(p,'{status}','"skipped"') ELSE p END ORDER BY n)
+ FROM jsonb_array_elements(d.parts) WITH ORDINALITY AS a(p,n))
+WHERE d.topic_id IN(SELECT r.id FROM retired r) AND d.status IN('queued','sending');
+-- name: AddReplacementTelegramTopic :one
+INSERT INTO support_telegram_topics(id,bot_id,group_id,kind,account_id,guest_tg_id,thread_id,status,closed,support_banned,source_id)
+SELECT sqlc.arg(new_id)::uuid,bot_id,group_id,kind,account_id,guest_tg_id,sqlc.arg(new_thread)::bigint,'ready',false,support_banned,source_id
+FROM support_telegram_topics WHERE id=sqlc.arg(old_id)::uuid RETURNING *;
 -- name: TelegramGuestBanned :one
 SELECT EXISTS(SELECT 1 FROM support_telegram_guest_bans WHERE telegram_id=$1 AND banned);
+-- name: SetTelegramGuestBan :exec
+INSERT INTO support_telegram_guest_bans(telegram_id,banned) VALUES($1,$2)
+ON CONFLICT(telegram_id) DO UPDATE SET banned=EXCLUDED.banned,updated_at=clock_timestamp();
+-- name: SetTelegramTopicClosed :exec
+UPDATE support_telegram_topics SET closed=$2 WHERE id=$1;
+-- name: SetTelegramTopicBan :exec
+UPDATE support_telegram_topics SET support_banned=$2 WHERE id=$1;
+-- name: SetTelegramAccountBan :exec
+UPDATE support_telegram_topics SET support_banned=$2 WHERE account_id=$1 AND status<>'retired';
+-- name: HasTelegramTopicCreator :one
+SELECT EXISTS(SELECT 1 FROM support_telegram_deliveries WHERE topic_id=$1 AND kind='topic_create');
+-- name: PendingTelegramTopics :many
+SELECT id FROM support_telegram_topics WHERE bot_id=$1 AND group_id=$2 AND status IN('pending','sending','failed','unknown') ORDER BY created_at,id LIMIT 21;
+-- name: LatestTopicTelegramDelivery :one
+SELECT id,status,code FROM support_telegram_deliveries WHERE topic_id=$1 ORDER BY sequence DESC LIMIT 1;
+-- name: LegacySupportDigest :one
+SELECT source_hash FROM legacy_support_imports WHERE bot_id=$1 AND group_id=$2 AND source_id=$3;
+-- name: LegacySupportSource :one
+SELECT * FROM legacy_support_imports WHERE bot_id=$1 AND group_id=$2 AND source_id=$3;
+-- name: LegacyTelegramTopic :one
+SELECT * FROM support_telegram_topics WHERE bot_id=$1 AND group_id=$2 AND source_id=$3 AND status<>'retired';
+-- name: BindLegacyTelegramTopic :exec
+UPDATE support_telegram_topics SET kind='account',account_id=$2 WHERE id=$1 AND kind='orphan';
+-- name: InsertLegacySupport :execrows
+INSERT INTO legacy_support_imports(bot_id,group_id,source_id,source_hash,source_json) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING;
+-- name: AddLegacyTelegramTopic :exec
+INSERT INTO support_telegram_topics(id,bot_id,group_id,kind,account_id,thread_id,status,closed,support_banned,created_at,source_id)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11);
+-- name: LockTelegramReceipt :one
+SELECT * FROM support_telegram_receipts WHERE id=$1 FOR UPDATE;
+-- name: TelegramConfirmationDelivered :one
+SELECT EXISTS(SELECT 1 FROM support_telegram_deliveries d, jsonb_array_elements(d.parts) p
+ WHERE d.receipt_id=$1 AND d.kind='ack' AND d.status='sent' AND p->>'kind'='confirmation'
+ AND p->>'confirmation_id'=$1::uuid::text AND p->>'status'='sent'
+ AND p->>'confirmed_message_id'=$2::bigint::text);
+-- name: TelegramThreadInUse :one
+SELECT EXISTS(SELECT 1 FROM support_telegram_topics WHERE bot_id=$1 AND group_id=$2 AND thread_id=$3 AND id<>$4 AND status<>'retired');
 -- name: TelegramReceipt :one
 SELECT * FROM support_telegram_receipts WHERE id=$1;
 -- name: AddTelegramReceipt :exec
@@ -34,6 +81,8 @@ SELECT * FROM support_telegram_deliveries WHERE id=$1 FOR UPDATE;
 -- name: LatestMessageTelegramDelivery :one
 SELECT d.*,t.status AS topic_status FROM support_telegram_deliveries d JOIN support_telegram_topics t ON t.id=d.topic_id
 WHERE d.message_id=$1 ORDER BY d.sequence DESC LIMIT 1;
+-- name: ActiveMessageTelegramDelivery :one
+SELECT EXISTS(SELECT 1 FROM support_telegram_deliveries WHERE message_id=$1 AND status IN ('queued','sending'));
 -- name: ExpireTelegramSending :exec
 WITH expired AS (
  UPDATE support_telegram_deliveries d SET status='unknown',code='ACK_UNKNOWN',lease=NULL,lease_expires_at=NULL,
@@ -44,9 +93,10 @@ WITH expired AS (
 UPDATE support_telegram_topics SET status='unknown' WHERE id IN (SELECT topic_id FROM expired WHERE kind='topic_create');
 -- name: ClaimTelegramDelivery :one
 WITH candidate AS (
- SELECT d.id FROM support_telegram_deliveries d JOIN support_telegram_topics t ON t.id=d.topic_id
- WHERE t.bot_id=$2 AND t.group_id=$3 AND d.status='queued' AND d.available_at<=clock_timestamp() AND (d.lease_expires_at IS NULL OR d.lease_expires_at<=clock_timestamp())
- AND (d.kind='topic_create' AND t.status='pending' OR d.kind<>'topic_create' AND t.status='ready')
+ SELECT d.id FROM support_telegram_deliveries d LEFT JOIN support_telegram_topics t ON t.id=d.topic_id LEFT JOIN support_telegram_receipts r ON r.id=d.receipt_id
+ WHERE d.status='queued' AND d.available_at<=clock_timestamp() AND (d.lease_expires_at IS NULL OR d.lease_expires_at<=clock_timestamp())
+ AND ((t.bot_id=$2 AND t.group_id=$3 AND (d.kind='topic_create' AND t.status='pending' OR d.kind<>'topic_create' AND t.status='ready'))
+ OR (d.topic_id IS NULL AND d.kind='ack' AND r.bot_id=$2 AND r.group_id=$3))
  ORDER BY d.sequence LIMIT 1 FOR UPDATE OF d SKIP LOCKED
 )
 UPDATE support_telegram_deliveries SET lease=$1,lease_expires_at=clock_timestamp()+interval '60 seconds'

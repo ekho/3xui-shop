@@ -243,6 +243,9 @@ func (s *Service) createSupportMessageTx(ctx context.Context, tx pgx.Tx, actor, 
 		FileHash   [32]byte
 		FileSize   int
 	}{target, operator, text, name, sha256.Sum256(file), len(file)})
+	if source != nil {
+		hash = telegramMessageDigest(*source)
+	}
 	q := store.New(tx)
 	c, err := s.lockSupport(ctx, tx, actor, target, operator)
 	if err != nil {
@@ -268,7 +271,10 @@ func (s *Service) createSupportMessageTx(ctx context.Context, tx pgx.Tx, actor, 
 		return out, false, unavailable()
 	}
 	if used > supportConversationMax-int64(len(file)) {
-		return out, false, failure(413, "INVALID_INPUT")
+		if source == nil || !telegramMedia(source.MediaKind) {
+			return out, false, failure(413, "INVALID_INPUT")
+		}
+		file, name, source.TelegramOnly = nil, "", true
 	}
 	if err := s.limitSupportMessage(ctx, actor, key); err != nil {
 		return out, false, err
@@ -281,7 +287,11 @@ func (s *Service) createSupportMessageTx(ctx context.Context, tx pgx.Tx, actor, 
 	if operator {
 		kind = "operator"
 	}
-	m, err := q.AddSupportMessage(ctx, store.AddSupportMessageParams{ID: uuid.New(), ConversationID: c.ID, SenderAccountID: actor, SenderKind: kind, Text: text, CreatedAt: stamp(s.now()), AttachmentName: attachment, AttachmentBytes: file})
+	var telegramOnly pgtype.Bool
+	if source != nil {
+		telegramOnly = pgtype.Bool{Bool: source.TelegramOnly, Valid: true}
+	}
+	m, err := q.AddSupportMessage(ctx, store.AddSupportMessageParams{ID: uuid.New(), ConversationID: c.ID, SenderAccountID: actor, SenderKind: kind, Text: text, CreatedAt: stamp(s.now()), AttachmentName: attachment, AttachmentBytes: file, TelegramOnly: telegramOnly})
 	if err != nil {
 		return out, false, unavailable()
 	}
@@ -293,7 +303,7 @@ func (s *Service) createSupportMessageTx(ctx context.Context, tx pgx.Tx, actor, 
 		return out, false, err
 	}
 	if s.telegramBotID != 0 {
-		out.TelegramDelivery, err = s.messageTelegramStatusTx(ctx, tx, m.ID)
+		out.TelegramDelivery, err = s.messageTelegramStatusTx(ctx, tx, m.ID, m.TelegramOnly.Bool)
 		if err != nil {
 			return out, false, err
 		}
@@ -371,6 +381,16 @@ func (s *Service) SetSupportState(ctx context.Context, actor, target uuid.UUID, 
 		return unavailable()
 	}
 	defer tx.Rollback(ctx)
+	if err = s.setSupportStateTx(ctx, tx, actor, target, operator, state); err != nil {
+		return err
+	}
+	if tx.Commit(ctx) != nil {
+		return unavailable()
+	}
+	return nil
+}
+
+func (s *Service) setSupportStateTx(ctx context.Context, tx pgx.Tx, actor, target uuid.UUID, operator bool, state string) error {
 	c, err := s.lockSupport(ctx, tx, actor, target, operator)
 	if err != nil {
 		return err
@@ -388,9 +408,6 @@ func (s *Service) SetSupportState(ctx context.Context, actor, target uuid.UUID, 
 	if err := s.supportAudit(ctx, tx, "support_state_"+state, target, actor, operator, nil, ""); err != nil {
 		return err
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return unavailable()
-	}
 	return nil
 }
 
@@ -403,6 +420,16 @@ func (s *Service) SetSupportBan(ctx context.Context, actor, target uuid.UUID, ba
 		return unavailable()
 	}
 	defer tx.Rollback(ctx)
+	if err = s.setSupportBanTx(ctx, tx, actor, target, banned, reason); err != nil {
+		return err
+	}
+	if tx.Commit(ctx) != nil {
+		return unavailable()
+	}
+	return nil
+}
+
+func (s *Service) setSupportBanTx(ctx context.Context, tx pgx.Tx, actor, target uuid.UUID, banned bool, reason string) error {
 	c, err := s.lockSupport(ctx, tx, actor, target, true)
 	if err != nil {
 		return err
@@ -417,15 +444,15 @@ func (s *Service) SetSupportBan(ctx context.Context, actor, target uuid.UUID, ba
 	if q.UpdateSupportBan(ctx, store.UpdateSupportBanParams{ID: c.ID, SupportBanned: banned, UpdatedAt: stamp(s.now())}) != nil {
 		return unavailable()
 	}
+	if q.SetTelegramAccountBan(ctx, store.SetTelegramAccountBanParams{AccountID: &target, SupportBanned: banned}) != nil {
+		return unavailable()
+	}
 	action := "support_unbanned"
 	if banned {
 		action = "support_banned"
 	}
 	if err := s.supportAudit(ctx, tx, action, target, actor, true, nil, reason); err != nil {
 		return err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return unavailable()
 	}
 	return nil
 }

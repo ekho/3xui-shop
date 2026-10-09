@@ -18,6 +18,14 @@ type IdempotencyRecord struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type LegacySupportImport struct {
+	BotID      int64
+	GroupID    int64
+	SourceID   int64
+	SourceHash []byte
+	SourceJson []byte
+}
+
 type SupportConversation struct {
 	ID                       uuid.UUID
 	AccountID                uuid.UUID
@@ -45,7 +53,7 @@ type SupportMessage struct {
 type SupportTelegramDelivery struct {
 	ID              uuid.UUID
 	Sequence        int64
-	TopicID         uuid.UUID
+	TopicID         *uuid.UUID
 	MessageID       *uuid.UUID
 	ReceiptID       *uuid.UUID
 	Kind            string
@@ -81,15 +89,16 @@ type SupportTelegramReceipt struct {
 }
 
 type SupportTelegramTopic struct {
-	ID        uuid.UUID
-	BotID     int64
-	GroupID   int64
-	Kind      string
-	AccountID *uuid.UUID
-	GuestTgID pgtype.Int8
-	ThreadID  pgtype.Int8
-	Status    string
-	Closed    bool
-	CreatedAt pgtype.Timestamptz
-	SourceID  pgtype.Int8
+	ID            uuid.UUID
+	BotID         int64
+	GroupID       int64
+	Kind          string
+	AccountID     *uuid.UUID
+	GuestTgID     pgtype.Int8
+	ThreadID      pgtype.Int8
+	Status        string
+	Closed        bool
+	SupportBanned bool
+	CreatedAt     pgtype.Timestamptz
+	SourceID      pgtype.Int8
 }

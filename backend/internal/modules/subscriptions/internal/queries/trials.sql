@@ -35,3 +35,5 @@ SELECT * FROM trial_requests WHERE account_id=$1
  AND (sqlc.arg(before_created_at)::timestamptz IS NULL OR
       (created_at,id)<(sqlc.arg(before_created_at)::timestamptz,sqlc.arg(before_id)::uuid))
 ORDER BY created_at DESC,id DESC LIMIT 51;
+-- name: PendingOperatorTrials :many
+SELECT account_id,id,created_at FROM trial_requests WHERE status='pending' ORDER BY created_at,id LIMIT 51;

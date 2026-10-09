@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"unicode/utf8"
 )
 
 type TelegramSource struct {
@@ -60,11 +61,15 @@ func (s *Service) validTelegramSource(in TelegramSource) bool {
 
 func (s *Service) ReceiveTelegramMessage(ctx context.Context, in TelegramInput) (TelegramReceiptResult, error) {
 	var out TelegramReceiptResult
-	if !s.validTelegramSource(in.Source) || in.Source.Action != "message" || in.Source.CallbackID != "" || !validSupportText(in.Text) || in.Text == "" && len(in.Bytes) == 0 || len(in.Bytes) > supportFileMax || len(in.Bytes) == 0 && in.Name != "" || len(in.Bytes) > 0 && !validSupportName(in.Name) {
+	media := telegramMedia(in.MediaKind)
+	if len(in.Bytes) > supportFileMax && media {
+		in.Bytes, in.Name, in.TelegramOnly = nil, "", true
+	}
+	if !s.validTelegramSource(in.Source) || in.Source.Action != "message" || in.Source.CallbackID != "" || !validSupportText(in.Text) || in.MediaKind != "" && !media || in.TelegramOnly && (!media || len(in.Bytes) > 0) || in.Text == "" && len(in.Bytes) == 0 && !in.TelegramOnly || len(in.Bytes) > supportFileMax || len(in.Bytes) == 0 && in.Name != "" || len(in.Bytes) > 0 && !validSupportName(in.Name) {
 		return out, failure(400, "INVALID_INPUT")
 	}
 	actor, ok := accounts.TelegramActor(ctx)
-	if !ok || actor.TelegramID == nil || *actor.TelegramID != in.Source.ActorID {
+	if ok && (actor.TelegramID == nil || *actor.TelegramID != in.Source.ActorID) || !ok && in.Source.ChatID == s.telegramGroupID {
 		return out, failure(403, "INVALID_CREDENTIALS")
 	}
 	tx, err := s.pool.Begin(ctx)
@@ -73,11 +78,31 @@ func (s *Service) ReceiveTelegramMessage(ctx context.Context, in TelegramInput) 
 	}
 	defer tx.Rollback(ctx)
 	q := store.New(tx)
+	if !ok {
+		out, err = s.receiveGuestTelegramTx(ctx, tx, in, nil, store.SupportTelegramTopic{})
+		if err != nil {
+			return out, err
+		}
+		if tx.Commit(ctx) != nil {
+			return out, unavailable()
+		}
+		return out, nil
+	}
 	target := actor.ID
 	operator := in.Source.ChatID == s.telegramGroupID
 	var topic store.SupportTelegramTopic
 	if operator {
 		topic, err = q.TelegramTopicByThread(ctx, store.TelegramTopicByThreadParams{BotID: s.telegramBotID, GroupID: s.telegramGroupID, ThreadID: telegramInt(in.Source.ThreadID)})
+		if err == nil && topic.Kind == "guest" {
+			out, err = s.receiveGuestTelegramTx(ctx, tx, in, &actor, topic)
+			if err != nil {
+				return out, err
+			}
+			if tx.Commit(ctx) != nil {
+				return out, unavailable()
+			}
+			return out, nil
+		}
 		if errors.Is(err, pgx.ErrNoRows) || err == nil && (topic.Kind != "account" || topic.AccountID == nil) {
 			return out, failure(404, "INVALID_INPUT")
 		}
@@ -95,6 +120,13 @@ func (s *Service) ReceiveTelegramMessage(ctx context.Context, in TelegramInput) 
 		return out, err
 	}
 	if c.SupportBanned || a.Restricted || a.TelegramLoginDisabled {
+		return out, failure(403, "ACCOUNT_RESTRICTED")
+	}
+	currentTopic, topicErr := q.AccountTelegramTopic(ctx, store.AccountTelegramTopicParams{BotID: s.telegramBotID, GroupID: s.telegramGroupID, AccountID: &target})
+	if topicErr != nil && !errors.Is(topicErr, pgx.ErrNoRows) {
+		return out, unavailable()
+	}
+	if topicErr == nil && currentTopic.SupportBanned {
 		return out, failure(403, "ACCOUNT_RESTRICTED")
 	}
 	if a.TelegramID != nil {
@@ -158,17 +190,141 @@ func (s *Service) ReceiveTelegramMessage(ctx context.Context, in TelegramInput) 
 	return out, nil
 }
 
+func guestIdentityError(err error) error {
+	if errors.Is(err, accounts.ErrTelegramExists) {
+		return failure(409, "REQUEST_STATE_CONFLICT")
+	}
+	return err
+}
+
+func (s *Service) receiveGuestTelegramTx(ctx context.Context, tx pgx.Tx, in TelegramInput, actor *accounts.Snapshot, topic store.SupportTelegramTopic) (TelegramReceiptResult, error) {
+	var out TelegramReceiptResult
+	guest := in.Source.ActorID
+	if actor != nil {
+		if topic.Kind != "guest" || !topic.GuestTgID.Valid {
+			return out, failure(404, "INVALID_INPUT")
+		}
+		guest = topic.GuestTgID.Int64
+		if err := s.authority.LockSupportGuestOperatorTx(ctx, tx, actor.ID, guest); err != nil {
+			return out, err
+		}
+	}
+	if err := s.authority.CheckTelegramAvailable(ctx, tx, guest); err != nil {
+		return out, guestIdentityError(err)
+	}
+	q := store.New(tx)
+	banned, err := q.TelegramGuestBanned(ctx, guest)
+	if err != nil {
+		return out, unavailable()
+	}
+	if banned {
+		return out, failure(403, "ACCOUNT_RESTRICTED")
+	}
+	if topic.ID == uuid.Nil {
+		topic, err = q.GuestTelegramTopic(ctx, store.GuestTelegramTopicParams{BotID: s.telegramBotID, GroupID: s.telegramGroupID, GuestTgID: telegramInt(guest)})
+		if errors.Is(err, pgx.ErrNoRows) {
+			topic, err = q.AddTelegramTopic(ctx, store.AddTelegramTopicParams{ID: uuid.New(), BotID: s.telegramBotID, GroupID: s.telegramGroupID, Kind: "guest", GuestTgID: telegramInt(guest)})
+			if err == nil {
+				_, err = s.addTelegramDeliveryTx(ctx, tx, topic.ID, nil, nil, "topic_create", []TelegramPart{{Kind: "create_topic", ChatID: s.telegramGroupID, Text: fmt.Sprintf("Guest %d", guest), RecipientTelegramID: guest, Status: "queued"}}, nil)
+			}
+		}
+		if err != nil {
+			return out, unavailable()
+		}
+	}
+	topic, err = q.LockTelegramTopic(ctx, topic.ID)
+	if err != nil {
+		return out, unavailable()
+	}
+	if topic.Kind != "guest" || topic.GuestTgID != telegramInt(guest) || topic.BotID != s.telegramBotID || topic.GroupID != s.telegramGroupID || topic.Status == "retired" || actor != nil && (topic.Status != "ready" || topic.ThreadID != telegramInt(in.Source.ThreadID)) {
+		return out, failure(409, "REQUEST_STATE_CONFLICT")
+	}
+	out.ID = telegramReceiptID(in.Source)
+	hash := telegramMessageDigest(in)
+	var actorID *uuid.UUID
+	if actor != nil {
+		actorID = &actor.ID
+	}
+	prior, err := q.TelegramReceipt(ctx, out.ID)
+	if err == nil {
+		if !bytes.Equal(prior.Digest, hash) || prior.ActorTgID != telegramInt(in.Source.ActorID) || prior.TargetAccountID != nil || prior.TopicID == nil || *prior.TopicID != topic.ID || !sameUUID(prior.ActorAccountID, actorID) {
+			return out, failure(409, "IDEMPOTENCY_CONFLICT")
+		}
+		if json.Unmarshal(prior.Result, &out) != nil {
+			return out, unavailable()
+		}
+		out.Replay = true
+		return out, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return out, unavailable()
+	}
+	rateActor := uuid.NewSHA1(uuid.NameSpaceOID, []byte(fmt.Sprintf("support-guest:%d", guest)))
+	if err = s.limitSupportMessage(ctx, rateActor, out.ID); err != nil {
+		return out, err
+	}
+	raw, err := json.Marshal(out)
+	if err != nil {
+		return out, unavailable()
+	}
+	if err = q.AddTelegramReceipt(ctx, store.AddTelegramReceiptParams{ID: out.ID, BotID: in.Source.BotID, GroupID: in.Source.GroupID, ChatID: in.Source.ChatID, MessageID: in.Source.MessageID, UpdateID: in.Source.UpdateID, ActorTgID: telegramInt(in.Source.ActorID), ThreadID: telegramInt(in.Source.ThreadID), Action: in.Source.Action, CallbackID: in.Source.CallbackID, Digest: hash, ActorAccountID: actorID, TopicID: &topic.ID, OwnerKey: out.ID, Result: raw}); err != nil {
+		return out, unavailable()
+	}
+	p := TelegramPart{Kind: "copy", ChatID: s.telegramGroupID, CopyChatID: in.Source.ChatID, CopyMessageID: in.Source.MessageID, RecipientTelegramID: guest, Status: "queued"}
+	if actor != nil {
+		p.ChatID = guest
+		p.SourceAccountID = actor.ID
+		p.SourceTelegramID = in.Source.ActorID
+		p.SourceVersion = actor.CredentialVersion
+	}
+	parts := []TelegramPart{p}
+	if topic.Closed {
+		reopen := p
+		reopen.Kind = "reopen_topic"
+		reopen.ChatID = s.telegramGroupID
+		reopen.CopyChatID = 0
+		reopen.CopyMessageID = 0
+		parts = append([]TelegramPart{reopen}, parts...)
+	}
+	if _, err = s.addTelegramDeliveryTx(ctx, tx, topic.ID, nil, &out.ID, "message", parts, nil); err != nil {
+		return out, err
+	}
+	if err = q.SetTelegramTopicClosed(ctx, store.SetTelegramTopicClosedParams{ID: topic.ID, Closed: false}); err != nil {
+		return out, unavailable()
+	}
+	tg := in.Source.ActorID
+	event := auditreports.SupportTelegramEvent{ID: uuid.New(), BotID: s.telegramBotID, GroupID: s.telegramGroupID, ChatID: in.Source.ChatID, MessageID: in.Source.MessageID, UpdateID: in.Source.UpdateID, ActorTgID: &tg, ActorAccountID: actorID, TopicID: &topic.ID, ReceiptID: &out.ID, Kind: "message", Outcome: "queued"}
+	if in.Source.ThreadID > 1 {
+		event.ThreadID = &in.Source.ThreadID
+	}
+	if auditreports.RecordSupportTelegramTx(ctx, tx, event) != nil {
+		return out, unavailable()
+	}
+	return out, nil
+}
+
+func sameUUID(a, b *uuid.UUID) bool { return a == nil && b == nil || a != nil && b != nil && *a == *b }
+
 func (s *Service) accountTelegramTopicTx(ctx context.Context, tx pgx.Tx, account uuid.UUID) (store.SupportTelegramTopic, error) {
 	q := store.New(tx)
 	t, err := q.AccountTelegramTopic(ctx, store.AccountTelegramTopicParams{BotID: s.telegramBotID, GroupID: s.telegramGroupID, AccountID: &account})
 	if err == nil {
-		return t, nil
-	}
-	if !errors.Is(err, pgx.ErrNoRows) {
-		return t, unavailable()
-	}
-	t, err = q.AddTelegramTopic(ctx, store.AddTelegramTopicParams{ID: uuid.New(), BotID: s.telegramBotID, GroupID: s.telegramGroupID, Kind: "account", AccountID: &account})
-	if err != nil {
+		if t.Status != "pending" {
+			return t, nil
+		}
+		hasCreator, e := q.HasTelegramTopicCreator(ctx, &t.ID)
+		if e != nil {
+			return t, unavailable()
+		}
+		if hasCreator {
+			return t, nil
+		}
+	} else if errors.Is(err, pgx.ErrNoRows) {
+		t, err = q.AddTelegramTopic(ctx, store.AddTelegramTopicParams{ID: uuid.New(), BotID: s.telegramBotID, GroupID: s.telegramGroupID, Kind: "account", AccountID: &account})
+		if err != nil {
+			return t, unavailable()
+		}
+	} else {
 		return t, unavailable()
 	}
 	a, err := s.authority.LookupTx(ctx, tx, account)
@@ -189,7 +345,11 @@ func (s *Service) addTelegramDeliveryTx(ctx context.Context, tx pgx.Tx, topic uu
 	if err != nil {
 		return uuid.Nil, unavailable()
 	}
-	if err = store.New(tx).AddTelegramDelivery(ctx, store.AddTelegramDeliveryParams{ID: id, TopicID: topic, MessageID: message, ReceiptID: receipt, Kind: kind, Parts: raw, PriorDeliveryID: prior}); err != nil {
+	var topicID *uuid.UUID
+	if topic != uuid.Nil {
+		topicID = &topic
+	}
+	if err = store.New(tx).AddTelegramDelivery(ctx, store.AddTelegramDeliveryParams{ID: id, TopicID: topicID, MessageID: message, ReceiptID: receipt, Kind: kind, Parts: raw, PriorDeliveryID: prior}); err != nil {
 		return uuid.Nil, unavailable()
 	}
 	return id, nil
@@ -225,6 +385,12 @@ func (s *Service) enqueueSupportMessageTx(ctx context.Context, tx pgx.Tx, target
 			parts = append(parts, supportMessageParts(m, *a.TelegramID)...)
 		}
 	}
+	if topic.Closed {
+		parts = append([]TelegramPart{{Kind: "reopen_topic", ChatID: s.telegramGroupID}}, parts...)
+		if q := store.New(tx); q.SetTelegramTopicClosed(ctx, store.SetTelegramTopicClosedParams{ID: topic.ID, Closed: false}) != nil {
+			return unavailable()
+		}
+	}
 	for i := range parts {
 		p := &parts[i]
 		p.Status = "queued"
@@ -246,11 +412,23 @@ func supportMessageParts(m store.SupportMessage, chat int64) []TelegramPart {
 	if !m.AttachmentName.Valid {
 		return []TelegramPart{{Kind: "text", ChatID: chat, Text: m.Text}}
 	}
-	// Caption handling is expanded with the media cases in Task2.
-	return []TelegramPart{{Kind: "text", ChatID: chat, Text: m.Text}, {Kind: "document", ChatID: chat, Name: m.AttachmentName.String, MessageID: m.ID}}
+	document := TelegramPart{Kind: "document", ChatID: chat, Name: m.AttachmentName.String, MessageID: m.ID}
+	if utf8.RuneCountInString(m.Text) <= 1024 {
+		document.Text = m.Text
+		return []TelegramPart{document}
+	}
+	return []TelegramPart{{Kind: "text", ChatID: chat, Text: m.Text}, document}
 }
 
-func telegramDeliveryStatus(id uuid.UUID, status, code, topicStatus string) *TelegramDeliveryStatus {
+func telegramMedia(kind string) bool {
+	switch kind {
+	case "photo", "document", "video", "animation", "audio", "voice", "video_note", "sticker", "unknown":
+		return true
+	}
+	return false
+}
+
+func telegramDeliveryStatus(id uuid.UUID, status, code, topicStatus string, telegramOnly bool) *TelegramDeliveryStatus {
 	if status == "queued" && topicStatus == "unknown" {
 		status, code = "unknown", "TOPIC_UNKNOWN"
 	}
@@ -260,9 +438,13 @@ func telegramDeliveryStatus(id uuid.UUID, status, code, topicStatus string) *Tel
 	if status == "queued" && topicStatus == "retired" {
 		status, code = "skipped", "TOPIC_RETIRED"
 	}
-	return &TelegramDeliveryStatus{Id: id, Status: status, Code: code, RetryCapability: (status == "unknown" || status == "failed") && topicStatus == "ready", MediaAvailability: "stored"}
+	media := "stored"
+	if telegramOnly {
+		media = "telegram_only"
+	}
+	return &TelegramDeliveryStatus{Id: id, Status: status, Code: code, RetryCapability: (status == "unknown" || status == "failed") && topicStatus == "ready", MediaAvailability: media}
 }
-func (s *Service) messageTelegramStatusTx(ctx context.Context, tx pgx.Tx, message uuid.UUID) (*TelegramDeliveryStatus, error) {
+func (s *Service) messageTelegramStatusTx(ctx context.Context, tx pgx.Tx, message uuid.UUID, telegramOnly bool) (*TelegramDeliveryStatus, error) {
 	r, err := store.New(tx).LatestMessageTelegramDelivery(ctx, &message)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -270,5 +452,5 @@ func (s *Service) messageTelegramStatusTx(ctx context.Context, tx pgx.Tx, messag
 	if err != nil {
 		return nil, unavailable()
 	}
-	return telegramDeliveryStatus(r.ID, r.Status, r.Code, r.TopicStatus), nil
+	return telegramDeliveryStatus(r.ID, r.Status, r.Code, r.TopicStatus, telegramOnly), nil
 }

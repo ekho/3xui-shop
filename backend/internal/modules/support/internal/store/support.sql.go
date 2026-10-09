@@ -41,8 +41,8 @@ func (q *Queries) AckSupportOperator(ctx context.Context, arg AckSupportOperator
 }
 
 const addSupportMessage = `-- name: AddSupportMessage :one
-INSERT INTO support_messages(id,conversation_id,sender_account_id,sender_kind,text,created_at,attachment_name,attachment_bytes)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, conversation_id, sequence, sender_account_id, sender_kind, text, created_at, attachment_name, attachment_bytes, telegram_only
+INSERT INTO support_messages(id,conversation_id,sender_account_id,sender_kind,text,created_at,attachment_name,attachment_bytes,telegram_only)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, conversation_id, sequence, sender_account_id, sender_kind, text, created_at, attachment_name, attachment_bytes, telegram_only
 `
 
 type AddSupportMessageParams struct {
@@ -54,6 +54,7 @@ type AddSupportMessageParams struct {
 	CreatedAt       pgtype.Timestamptz
 	AttachmentName  pgtype.Text
 	AttachmentBytes []byte
+	TelegramOnly    pgtype.Bool
 }
 
 func (q *Queries) AddSupportMessage(ctx context.Context, arg AddSupportMessageParams) (SupportMessage, error) {
@@ -66,6 +67,7 @@ func (q *Queries) AddSupportMessage(ctx context.Context, arg AddSupportMessagePa
 		arg.CreatedAt,
 		arg.AttachmentName,
 		arg.AttachmentBytes,
+		arg.TelegramOnly,
 	)
 	var i SupportMessage
 	err := row.Scan(

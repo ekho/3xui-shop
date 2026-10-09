@@ -10,6 +10,7 @@ import (
 	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"example.com/cabinet/backend/internal/modules/campaigns"
 	"example.com/cabinet/backend/internal/modules/payments"
+	"example.com/cabinet/backend/internal/modules/support"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"io"
 	"os"
@@ -149,6 +150,36 @@ func runLegacyApprovalImport(flag string) error {
 func importError(code string) error {
 	_ = json.NewEncoder(os.Stdout).Encode(map[string]string{"error": code})
 	return errors.New(code)
+}
+
+func runLegacySupportImport(flag string) error {
+	if flag != "--dry-run" && flag != "--apply" {
+		return errors.New("invalid import command")
+	}
+	p, err := decodeLegacyJSON[support.LegacySupportInput](os.Stdin)
+	if err != nil || support.ValidateLegacySupportInput(p) != nil {
+		return importError("IMPORT_INVALID_PACKAGE")
+	}
+	databaseURL, err := app.SecretFile("DATABASE_URL")
+	if err != nil {
+		return importError("IMPORT_DATABASE_UNAVAILABLE")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		return importError("IMPORT_DATABASE_UNAVAILABLE")
+	}
+	defer pool.Close()
+	result, err := app.NewModules(pool, nil, nil, &app.Config{}).Support.ImportLegacySupport(ctx, p, flag == "--dry-run")
+	if err != nil {
+		var domain *support.Error
+		if errors.As(err, &domain) {
+			return importError(domain.Code)
+		}
+		return importError("IMPORT_DATABASE_UNAVAILABLE")
+	}
+	return json.NewEncoder(os.Stdout).Encode(result)
 }
 
 func decodeLegacyAuditPackage(reader io.Reader) (auditreports.LegacyAuditPackage, error) {

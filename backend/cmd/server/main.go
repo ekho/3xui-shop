@@ -47,6 +47,9 @@ func run() error {
 	if len(os.Args) == 3 && os.Args[1] == "import-legacy-audit" {
 		return runLegacyAuditImport(os.Args[2])
 	}
+	if len(os.Args) == 3 && os.Args[1] == "import-legacy-support" {
+		return runLegacySupportImport(os.Args[2])
+	}
 	if len(os.Args) == 5 && os.Args[1] == "operator" {
 		return runOperatorCommand(os.Args[2], os.Args[3], os.Args[4])
 	}

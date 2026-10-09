@@ -13,7 +13,7 @@ import (
 )
 
 const accountTelegramTopic = `-- name: AccountTelegramTopic :one
-SELECT id, bot_id, group_id, kind, account_id, guest_tg_id, thread_id, status, closed, created_at, source_id FROM support_telegram_topics WHERE bot_id=$1 AND group_id=$2 AND account_id=$3 AND status<>'retired'
+SELECT id, bot_id, group_id, kind, account_id, guest_tg_id, thread_id, status, closed, support_banned, created_at, source_id FROM support_telegram_topics WHERE bot_id=$1 AND group_id=$2 AND account_id=$3 AND status<>'retired'
 `
 
 type AccountTelegramTopicParams struct {
@@ -35,6 +35,86 @@ func (q *Queries) AccountTelegramTopic(ctx context.Context, arg AccountTelegramT
 		&i.ThreadID,
 		&i.Status,
 		&i.Closed,
+		&i.SupportBanned,
+		&i.CreatedAt,
+		&i.SourceID,
+	)
+	return i, err
+}
+
+const activeMessageTelegramDelivery = `-- name: ActiveMessageTelegramDelivery :one
+SELECT EXISTS(SELECT 1 FROM support_telegram_deliveries WHERE message_id=$1 AND status IN ('queued','sending'))
+`
+
+func (q *Queries) ActiveMessageTelegramDelivery(ctx context.Context, messageID *uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, activeMessageTelegramDelivery, messageID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const addLegacyTelegramTopic = `-- name: AddLegacyTelegramTopic :exec
+INSERT INTO support_telegram_topics(id,bot_id,group_id,kind,account_id,thread_id,status,closed,support_banned,created_at,source_id)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+`
+
+type AddLegacyTelegramTopicParams struct {
+	ID            uuid.UUID
+	BotID         int64
+	GroupID       int64
+	Kind          string
+	AccountID     *uuid.UUID
+	ThreadID      pgtype.Int8
+	Status        string
+	Closed        bool
+	SupportBanned bool
+	CreatedAt     pgtype.Timestamptz
+	SourceID      pgtype.Int8
+}
+
+func (q *Queries) AddLegacyTelegramTopic(ctx context.Context, arg AddLegacyTelegramTopicParams) error {
+	_, err := q.db.Exec(ctx, addLegacyTelegramTopic,
+		arg.ID,
+		arg.BotID,
+		arg.GroupID,
+		arg.Kind,
+		arg.AccountID,
+		arg.ThreadID,
+		arg.Status,
+		arg.Closed,
+		arg.SupportBanned,
+		arg.CreatedAt,
+		arg.SourceID,
+	)
+	return err
+}
+
+const addReplacementTelegramTopic = `-- name: AddReplacementTelegramTopic :one
+INSERT INTO support_telegram_topics(id,bot_id,group_id,kind,account_id,guest_tg_id,thread_id,status,closed,support_banned,source_id)
+SELECT $1::uuid,bot_id,group_id,kind,account_id,guest_tg_id,$2::bigint,'ready',false,support_banned,source_id
+FROM support_telegram_topics WHERE id=$3::uuid RETURNING id, bot_id, group_id, kind, account_id, guest_tg_id, thread_id, status, closed, support_banned, created_at, source_id
+`
+
+type AddReplacementTelegramTopicParams struct {
+	NewID     uuid.UUID
+	NewThread int64
+	OldID     uuid.UUID
+}
+
+func (q *Queries) AddReplacementTelegramTopic(ctx context.Context, arg AddReplacementTelegramTopicParams) (SupportTelegramTopic, error) {
+	row := q.db.QueryRow(ctx, addReplacementTelegramTopic, arg.NewID, arg.NewThread, arg.OldID)
+	var i SupportTelegramTopic
+	err := row.Scan(
+		&i.ID,
+		&i.BotID,
+		&i.GroupID,
+		&i.Kind,
+		&i.AccountID,
+		&i.GuestTgID,
+		&i.ThreadID,
+		&i.Status,
+		&i.Closed,
+		&i.SupportBanned,
 		&i.CreatedAt,
 		&i.SourceID,
 	)
@@ -47,7 +127,7 @@ INSERT INTO support_telegram_deliveries(id,topic_id,message_id,receipt_id,kind,s
 
 type AddTelegramDeliveryParams struct {
 	ID              uuid.UUID
-	TopicID         uuid.UUID
+	TopicID         *uuid.UUID
 	MessageID       *uuid.UUID
 	ReceiptID       *uuid.UUID
 	Kind            string
@@ -117,7 +197,7 @@ func (q *Queries) AddTelegramReceipt(ctx context.Context, arg AddTelegramReceipt
 }
 
 const addTelegramTopic = `-- name: AddTelegramTopic :one
-INSERT INTO support_telegram_topics(id,bot_id,group_id,kind,account_id,guest_tg_id,status) VALUES($1,$2,$3,$4,$5,$6,'pending') RETURNING id, bot_id, group_id, kind, account_id, guest_tg_id, thread_id, status, closed, created_at, source_id
+INSERT INTO support_telegram_topics(id,bot_id,group_id,kind,account_id,guest_tg_id,status) VALUES($1,$2,$3,$4,$5,$6,'pending') RETURNING id, bot_id, group_id, kind, account_id, guest_tg_id, thread_id, status, closed, support_banned, created_at, source_id
 `
 
 type AddTelegramTopicParams struct {
@@ -149,17 +229,33 @@ func (q *Queries) AddTelegramTopic(ctx context.Context, arg AddTelegramTopicPara
 		&i.ThreadID,
 		&i.Status,
 		&i.Closed,
+		&i.SupportBanned,
 		&i.CreatedAt,
 		&i.SourceID,
 	)
 	return i, err
 }
 
+const bindLegacyTelegramTopic = `-- name: BindLegacyTelegramTopic :exec
+UPDATE support_telegram_topics SET kind='account',account_id=$2 WHERE id=$1 AND kind='orphan'
+`
+
+type BindLegacyTelegramTopicParams struct {
+	ID        uuid.UUID
+	AccountID *uuid.UUID
+}
+
+func (q *Queries) BindLegacyTelegramTopic(ctx context.Context, arg BindLegacyTelegramTopicParams) error {
+	_, err := q.db.Exec(ctx, bindLegacyTelegramTopic, arg.ID, arg.AccountID)
+	return err
+}
+
 const claimTelegramDelivery = `-- name: ClaimTelegramDelivery :one
 WITH candidate AS (
- SELECT d.id FROM support_telegram_deliveries d JOIN support_telegram_topics t ON t.id=d.topic_id
- WHERE t.bot_id=$2 AND t.group_id=$3 AND d.status='queued' AND d.available_at<=clock_timestamp() AND (d.lease_expires_at IS NULL OR d.lease_expires_at<=clock_timestamp())
- AND (d.kind='topic_create' AND t.status='pending' OR d.kind<>'topic_create' AND t.status='ready')
+ SELECT d.id FROM support_telegram_deliveries d LEFT JOIN support_telegram_topics t ON t.id=d.topic_id LEFT JOIN support_telegram_receipts r ON r.id=d.receipt_id
+ WHERE d.status='queued' AND d.available_at<=clock_timestamp() AND (d.lease_expires_at IS NULL OR d.lease_expires_at<=clock_timestamp())
+ AND ((t.bot_id=$2 AND t.group_id=$3 AND (d.kind='topic_create' AND t.status='pending' OR d.kind<>'topic_create' AND t.status='ready'))
+ OR (d.topic_id IS NULL AND d.kind='ack' AND r.bot_id=$2 AND r.group_id=$3))
  ORDER BY d.sequence LIMIT 1 FOR UPDATE OF d SKIP LOCKED
 )
 UPDATE support_telegram_deliveries SET lease=$1,lease_expires_at=clock_timestamp()+interval '60 seconds'
@@ -231,7 +327,7 @@ func (q *Queries) ExpireTelegramSending(ctx context.Context) error {
 }
 
 const guestTelegramTopic = `-- name: GuestTelegramTopic :one
-SELECT id, bot_id, group_id, kind, account_id, guest_tg_id, thread_id, status, closed, created_at, source_id FROM support_telegram_topics WHERE bot_id=$1 AND group_id=$2 AND guest_tg_id=$3 AND status<>'retired'
+SELECT id, bot_id, group_id, kind, account_id, guest_tg_id, thread_id, status, closed, support_banned, created_at, source_id FROM support_telegram_topics WHERE bot_id=$1 AND group_id=$2 AND guest_tg_id=$3 AND status<>'retired'
 `
 
 type GuestTelegramTopicParams struct {
@@ -253,10 +349,48 @@ func (q *Queries) GuestTelegramTopic(ctx context.Context, arg GuestTelegramTopic
 		&i.ThreadID,
 		&i.Status,
 		&i.Closed,
+		&i.SupportBanned,
 		&i.CreatedAt,
 		&i.SourceID,
 	)
 	return i, err
+}
+
+const hasTelegramTopicCreator = `-- name: HasTelegramTopicCreator :one
+SELECT EXISTS(SELECT 1 FROM support_telegram_deliveries WHERE topic_id=$1 AND kind='topic_create')
+`
+
+func (q *Queries) HasTelegramTopicCreator(ctx context.Context, topicID *uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, hasTelegramTopicCreator, topicID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const insertLegacySupport = `-- name: InsertLegacySupport :execrows
+INSERT INTO legacy_support_imports(bot_id,group_id,source_id,source_hash,source_json) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING
+`
+
+type InsertLegacySupportParams struct {
+	BotID      int64
+	GroupID    int64
+	SourceID   int64
+	SourceHash []byte
+	SourceJson []byte
+}
+
+func (q *Queries) InsertLegacySupport(ctx context.Context, arg InsertLegacySupportParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertLegacySupport,
+		arg.BotID,
+		arg.GroupID,
+		arg.SourceID,
+		arg.SourceHash,
+		arg.SourceJson,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const latestMessageTelegramDelivery = `-- name: LatestMessageTelegramDelivery :one
@@ -267,7 +401,7 @@ WHERE d.message_id=$1 ORDER BY d.sequence DESC LIMIT 1
 type LatestMessageTelegramDeliveryRow struct {
 	ID              uuid.UUID
 	Sequence        int64
-	TopicID         uuid.UUID
+	TopicID         *uuid.UUID
 	MessageID       *uuid.UUID
 	ReceiptID       *uuid.UUID
 	Kind            string
@@ -305,6 +439,93 @@ func (q *Queries) LatestMessageTelegramDelivery(ctx context.Context, messageID *
 	return i, err
 }
 
+const latestTopicTelegramDelivery = `-- name: LatestTopicTelegramDelivery :one
+SELECT id,status,code FROM support_telegram_deliveries WHERE topic_id=$1 ORDER BY sequence DESC LIMIT 1
+`
+
+type LatestTopicTelegramDeliveryRow struct {
+	ID     uuid.UUID
+	Status string
+	Code   string
+}
+
+func (q *Queries) LatestTopicTelegramDelivery(ctx context.Context, topicID *uuid.UUID) (LatestTopicTelegramDeliveryRow, error) {
+	row := q.db.QueryRow(ctx, latestTopicTelegramDelivery, topicID)
+	var i LatestTopicTelegramDeliveryRow
+	err := row.Scan(&i.ID, &i.Status, &i.Code)
+	return i, err
+}
+
+const legacySupportDigest = `-- name: LegacySupportDigest :one
+SELECT source_hash FROM legacy_support_imports WHERE bot_id=$1 AND group_id=$2 AND source_id=$3
+`
+
+type LegacySupportDigestParams struct {
+	BotID    int64
+	GroupID  int64
+	SourceID int64
+}
+
+func (q *Queries) LegacySupportDigest(ctx context.Context, arg LegacySupportDigestParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, legacySupportDigest, arg.BotID, arg.GroupID, arg.SourceID)
+	var source_hash []byte
+	err := row.Scan(&source_hash)
+	return source_hash, err
+}
+
+const legacySupportSource = `-- name: LegacySupportSource :one
+SELECT bot_id, group_id, source_id, source_hash, source_json FROM legacy_support_imports WHERE bot_id=$1 AND group_id=$2 AND source_id=$3
+`
+
+type LegacySupportSourceParams struct {
+	BotID    int64
+	GroupID  int64
+	SourceID int64
+}
+
+func (q *Queries) LegacySupportSource(ctx context.Context, arg LegacySupportSourceParams) (LegacySupportImport, error) {
+	row := q.db.QueryRow(ctx, legacySupportSource, arg.BotID, arg.GroupID, arg.SourceID)
+	var i LegacySupportImport
+	err := row.Scan(
+		&i.BotID,
+		&i.GroupID,
+		&i.SourceID,
+		&i.SourceHash,
+		&i.SourceJson,
+	)
+	return i, err
+}
+
+const legacyTelegramTopic = `-- name: LegacyTelegramTopic :one
+SELECT id, bot_id, group_id, kind, account_id, guest_tg_id, thread_id, status, closed, support_banned, created_at, source_id FROM support_telegram_topics WHERE bot_id=$1 AND group_id=$2 AND source_id=$3 AND status<>'retired'
+`
+
+type LegacyTelegramTopicParams struct {
+	BotID    int64
+	GroupID  int64
+	SourceID pgtype.Int8
+}
+
+func (q *Queries) LegacyTelegramTopic(ctx context.Context, arg LegacyTelegramTopicParams) (SupportTelegramTopic, error) {
+	row := q.db.QueryRow(ctx, legacyTelegramTopic, arg.BotID, arg.GroupID, arg.SourceID)
+	var i SupportTelegramTopic
+	err := row.Scan(
+		&i.ID,
+		&i.BotID,
+		&i.GroupID,
+		&i.Kind,
+		&i.AccountID,
+		&i.GuestTgID,
+		&i.ThreadID,
+		&i.Status,
+		&i.Closed,
+		&i.SupportBanned,
+		&i.CreatedAt,
+		&i.SourceID,
+	)
+	return i, err
+}
+
 const lockTelegramDelivery = `-- name: LockTelegramDelivery :one
 SELECT id, sequence, topic_id, message_id, receipt_id, kind, status, code, parts, lease, lease_expires_at, available_at, created_at, prior_delivery_id FROM support_telegram_deliveries WHERE id=$1 FOR UPDATE
 `
@@ -331,8 +552,38 @@ func (q *Queries) LockTelegramDelivery(ctx context.Context, id uuid.UUID) (Suppo
 	return i, err
 }
 
+const lockTelegramReceipt = `-- name: LockTelegramReceipt :one
+SELECT id, bot_id, group_id, chat_id, message_id, update_id, actor_tg_id, thread_id, action, callback_id, digest, actor_account_id, target_account_id, topic_id, support_message_id, owner_key, result, created_at FROM support_telegram_receipts WHERE id=$1 FOR UPDATE
+`
+
+func (q *Queries) LockTelegramReceipt(ctx context.Context, id uuid.UUID) (SupportTelegramReceipt, error) {
+	row := q.db.QueryRow(ctx, lockTelegramReceipt, id)
+	var i SupportTelegramReceipt
+	err := row.Scan(
+		&i.ID,
+		&i.BotID,
+		&i.GroupID,
+		&i.ChatID,
+		&i.MessageID,
+		&i.UpdateID,
+		&i.ActorTgID,
+		&i.ThreadID,
+		&i.Action,
+		&i.CallbackID,
+		&i.Digest,
+		&i.ActorAccountID,
+		&i.TargetAccountID,
+		&i.TopicID,
+		&i.SupportMessageID,
+		&i.OwnerKey,
+		&i.Result,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const lockTelegramTopic = `-- name: LockTelegramTopic :one
-SELECT id, bot_id, group_id, kind, account_id, guest_tg_id, thread_id, status, closed, created_at, source_id FROM support_telegram_topics WHERE id=$1 FOR UPDATE
+SELECT id, bot_id, group_id, kind, account_id, guest_tg_id, thread_id, status, closed, support_banned, created_at, source_id FROM support_telegram_topics WHERE id=$1 FOR UPDATE
 `
 
 func (q *Queries) LockTelegramTopic(ctx context.Context, id uuid.UUID) (SupportTelegramTopic, error) {
@@ -348,6 +599,7 @@ func (q *Queries) LockTelegramTopic(ctx context.Context, id uuid.UUID) (SupportT
 		&i.ThreadID,
 		&i.Status,
 		&i.Closed,
+		&i.SupportBanned,
 		&i.CreatedAt,
 		&i.SourceID,
 	)
@@ -394,6 +646,48 @@ func (q *Queries) MessageTelegramDeliveries(ctx context.Context, messageIds []uu
 	return items, nil
 }
 
+const pendingTelegramTopics = `-- name: PendingTelegramTopics :many
+SELECT id FROM support_telegram_topics WHERE bot_id=$1 AND group_id=$2 AND status IN('pending','sending','failed','unknown') ORDER BY created_at,id LIMIT 21
+`
+
+type PendingTelegramTopicsParams struct {
+	BotID   int64
+	GroupID int64
+}
+
+func (q *Queries) PendingTelegramTopics(ctx context.Context, arg PendingTelegramTopicsParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, pendingTelegramTopics, arg.BotID, arg.GroupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const retireTelegramTopic = `-- name: RetireTelegramTopic :exec
+WITH retired AS(UPDATE support_telegram_topics t SET status='retired' WHERE t.id=$1 RETURNING t.id)
+UPDATE support_telegram_deliveries d SET status='skipped',code='TOPIC_RETIRED',lease=NULL,lease_expires_at=NULL,
+parts=(SELECT jsonb_agg(CASE WHEN p->>'status' IN ('queued','sending') THEN jsonb_set(p,'{status}','"skipped"') ELSE p END ORDER BY n)
+ FROM jsonb_array_elements(d.parts) WITH ORDINALITY AS a(p,n))
+WHERE d.topic_id IN(SELECT r.id FROM retired r) AND d.status IN('queued','sending')
+`
+
+func (q *Queries) RetireTelegramTopic(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, retireTelegramTopic, id)
+	return err
+}
+
 const saveTelegramDelivery = `-- name: SaveTelegramDelivery :execrows
 UPDATE support_telegram_deliveries SET status=$2,code=$3,parts=$4,available_at=clock_timestamp()+$5::integer*interval '1 second',
 lease=CASE WHEN $2='sending' THEN lease ELSE NULL END,lease_expires_at=CASE WHEN $2='sending' THEN clock_timestamp()+interval '60 seconds' ELSE NULL END
@@ -424,6 +718,63 @@ func (q *Queries) SaveTelegramDelivery(ctx context.Context, arg SaveTelegramDeli
 	return result.RowsAffected(), nil
 }
 
+const setTelegramAccountBan = `-- name: SetTelegramAccountBan :exec
+UPDATE support_telegram_topics SET support_banned=$2 WHERE account_id=$1 AND status<>'retired'
+`
+
+type SetTelegramAccountBanParams struct {
+	AccountID     *uuid.UUID
+	SupportBanned bool
+}
+
+func (q *Queries) SetTelegramAccountBan(ctx context.Context, arg SetTelegramAccountBanParams) error {
+	_, err := q.db.Exec(ctx, setTelegramAccountBan, arg.AccountID, arg.SupportBanned)
+	return err
+}
+
+const setTelegramGuestBan = `-- name: SetTelegramGuestBan :exec
+INSERT INTO support_telegram_guest_bans(telegram_id,banned) VALUES($1,$2)
+ON CONFLICT(telegram_id) DO UPDATE SET banned=EXCLUDED.banned,updated_at=clock_timestamp()
+`
+
+type SetTelegramGuestBanParams struct {
+	TelegramID int64
+	Banned     bool
+}
+
+func (q *Queries) SetTelegramGuestBan(ctx context.Context, arg SetTelegramGuestBanParams) error {
+	_, err := q.db.Exec(ctx, setTelegramGuestBan, arg.TelegramID, arg.Banned)
+	return err
+}
+
+const setTelegramTopicBan = `-- name: SetTelegramTopicBan :exec
+UPDATE support_telegram_topics SET support_banned=$2 WHERE id=$1
+`
+
+type SetTelegramTopicBanParams struct {
+	ID            uuid.UUID
+	SupportBanned bool
+}
+
+func (q *Queries) SetTelegramTopicBan(ctx context.Context, arg SetTelegramTopicBanParams) error {
+	_, err := q.db.Exec(ctx, setTelegramTopicBan, arg.ID, arg.SupportBanned)
+	return err
+}
+
+const setTelegramTopicClosed = `-- name: SetTelegramTopicClosed :exec
+UPDATE support_telegram_topics SET closed=$2 WHERE id=$1
+`
+
+type SetTelegramTopicClosedParams struct {
+	ID     uuid.UUID
+	Closed bool
+}
+
+func (q *Queries) SetTelegramTopicClosed(ctx context.Context, arg SetTelegramTopicClosedParams) error {
+	_, err := q.db.Exec(ctx, setTelegramTopicClosed, arg.ID, arg.Closed)
+	return err
+}
+
 const setTelegramTopicState = `-- name: SetTelegramTopicState :exec
 UPDATE support_telegram_topics SET status=$2,thread_id=$3 WHERE id=$1
 `
@@ -437,6 +788,25 @@ type SetTelegramTopicStateParams struct {
 func (q *Queries) SetTelegramTopicState(ctx context.Context, arg SetTelegramTopicStateParams) error {
 	_, err := q.db.Exec(ctx, setTelegramTopicState, arg.ID, arg.Status, arg.ThreadID)
 	return err
+}
+
+const telegramConfirmationDelivered = `-- name: TelegramConfirmationDelivered :one
+SELECT EXISTS(SELECT 1 FROM support_telegram_deliveries d, jsonb_array_elements(d.parts) p
+ WHERE d.receipt_id=$1 AND d.kind='ack' AND d.status='sent' AND p->>'kind'='confirmation'
+ AND p->>'confirmation_id'=$1::uuid::text AND p->>'status'='sent'
+ AND p->>'confirmed_message_id'=$2::bigint::text)
+`
+
+type TelegramConfirmationDeliveredParams struct {
+	ReceiptID *uuid.UUID
+	Column2   int64
+}
+
+func (q *Queries) TelegramConfirmationDelivered(ctx context.Context, arg TelegramConfirmationDeliveredParams) (bool, error) {
+	row := q.db.QueryRow(ctx, telegramConfirmationDelivered, arg.ReceiptID, arg.Column2)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const telegramDeliveryByID = `-- name: TelegramDeliveryByID :one
@@ -506,8 +876,31 @@ func (q *Queries) TelegramReceipt(ctx context.Context, id uuid.UUID) (SupportTel
 	return i, err
 }
 
+const telegramThreadInUse = `-- name: TelegramThreadInUse :one
+SELECT EXISTS(SELECT 1 FROM support_telegram_topics WHERE bot_id=$1 AND group_id=$2 AND thread_id=$3 AND id<>$4 AND status<>'retired')
+`
+
+type TelegramThreadInUseParams struct {
+	BotID    int64
+	GroupID  int64
+	ThreadID pgtype.Int8
+	ID       uuid.UUID
+}
+
+func (q *Queries) TelegramThreadInUse(ctx context.Context, arg TelegramThreadInUseParams) (bool, error) {
+	row := q.db.QueryRow(ctx, telegramThreadInUse,
+		arg.BotID,
+		arg.GroupID,
+		arg.ThreadID,
+		arg.ID,
+	)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const telegramTopicByID = `-- name: TelegramTopicByID :one
-SELECT id, bot_id, group_id, kind, account_id, guest_tg_id, thread_id, status, closed, created_at, source_id FROM support_telegram_topics WHERE id=$1
+SELECT id, bot_id, group_id, kind, account_id, guest_tg_id, thread_id, status, closed, support_banned, created_at, source_id FROM support_telegram_topics WHERE id=$1
 `
 
 func (q *Queries) TelegramTopicByID(ctx context.Context, id uuid.UUID) (SupportTelegramTopic, error) {
@@ -523,6 +916,7 @@ func (q *Queries) TelegramTopicByID(ctx context.Context, id uuid.UUID) (SupportT
 		&i.ThreadID,
 		&i.Status,
 		&i.Closed,
+		&i.SupportBanned,
 		&i.CreatedAt,
 		&i.SourceID,
 	)
@@ -530,7 +924,7 @@ func (q *Queries) TelegramTopicByID(ctx context.Context, id uuid.UUID) (SupportT
 }
 
 const telegramTopicByThread = `-- name: TelegramTopicByThread :one
-SELECT id, bot_id, group_id, kind, account_id, guest_tg_id, thread_id, status, closed, created_at, source_id FROM support_telegram_topics WHERE bot_id=$1 AND group_id=$2 AND thread_id=$3 AND status='ready'
+SELECT id, bot_id, group_id, kind, account_id, guest_tg_id, thread_id, status, closed, support_banned, created_at, source_id FROM support_telegram_topics WHERE bot_id=$1 AND group_id=$2 AND thread_id=$3 AND status='ready'
 `
 
 type TelegramTopicByThreadParams struct {
@@ -552,6 +946,7 @@ func (q *Queries) TelegramTopicByThread(ctx context.Context, arg TelegramTopicBy
 		&i.ThreadID,
 		&i.Status,
 		&i.Closed,
+		&i.SupportBanned,
 		&i.CreatedAt,
 		&i.SourceID,
 	)

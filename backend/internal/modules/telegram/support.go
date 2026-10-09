@@ -2,24 +2,26 @@ package telegram
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/support"
 	"example.com/cabinet/backend/internal/modules/telegram/internal/botapi"
+	"github.com/google/uuid"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 type supportBridge struct {
 	cfg       SupportConfig
 	botID     int64
 	origin    string
+	username  string
 	authority *accounts.Service
 	owner     *support.Service
 	access    *subscriptions.Service
@@ -35,7 +37,7 @@ func NewSupport(cfg SupportConfig, client *http.Client, origin string, authority
 		return r, nil
 	}
 	u, err := url.Parse(origin)
-	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || authority == nil || owner == nil || access == nil {
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.RawPath != "" || (u.Path != "" && u.Path != "/") || authority == nil || owner == nil || access == nil {
 		return nil, errors.New("invalid support domain contracts")
 	}
 	id, _ := strconv.ParseInt(strings.SplitN(cfg.Token, ":", 2)[0], 10, 64)
@@ -69,6 +71,7 @@ func (b *supportBridge) start(ctx context.Context) error {
 	if member.Status != "administrator" || !member.CanManageTopics {
 		return &ActionError{Code: "SUPPORT_ADMIN_REQUIRED"}
 	}
+	b.username = me.Username
 	return nil
 }
 
@@ -76,30 +79,88 @@ func (b *supportBridge) handle(ctx context.Context, u botapi.Update) error {
 	if present(u.Subscription) || present(u.PreCheckout) || u.Message != nil && (present(u.Message.SuccessfulPayment) || present(u.Message.RefundedPayment)) {
 		return &ActionError{Code: "UNSUPPORTED_PAYMENT"}
 	}
+	if u.Callback != nil {
+		return b.handleSupportCallback(ctx, *u.Callback, u.ID)
+	}
 	m := u.Message
-	if m == nil || m.From == nil || m.From.IsBot || m.From.ID <= 0 || m.From.ID > 1<<52-1 || m.ID <= 0 || m.ID > 1<<52-1 {
+	if m == nil || m.ID <= 0 || m.ID > 1<<52-1 {
+		return nil
+	}
+	if m.Chat.ID == b.cfg.GroupID && m.Chat.Type == "supergroup" && m.ThreadID > 1 && m.ThreadID <= 1<<52-1 {
+		var fields map[string]json.RawMessage
+		if len(m.Raw) > 0 && json.Unmarshal(m.Raw, &fields) == nil {
+			_, closed := fields["forum_topic_closed"]
+			_, reopened := fields["forum_topic_reopened"]
+			if closed || reopened {
+				if closed && reopened {
+					return nil
+				}
+				digest, err := m.SupportDigest()
+				if err != nil {
+					return err
+				}
+				actor := int64(0)
+				if m.From != nil && m.From.ID > 0 && m.From.ID <= 1<<52-1 {
+					actor = m.From.ID
+				}
+				action := "topic_reopened"
+				if closed {
+					action = "topic_closed"
+				}
+				return supportHandlingError(b.owner.ObserveTelegramTopic(ctx, support.TelegramSource{BotID: b.botID, GroupID: b.cfg.GroupID, ChatID: m.Chat.ID, MessageID: m.ID, UpdateID: u.ID, ActorID: actor, ThreadID: m.ThreadID, Action: action, Digest: digest}, closed))
+			}
+		}
+	}
+	if m.From == nil || m.From.IsBot || m.From.ID <= 0 || m.From.ID > 1<<52-1 {
 		return nil
 	}
 	if m.Chat.ID != m.From.ID || m.Chat.Type != "private" || m.ThreadID != 0 {
-		if m.Chat.ID != b.cfg.GroupID || m.Chat.Type != "supergroup" || m.ThreadID <= 1 || m.ThreadID > 1<<52-1 {
+		if m.Chat.ID != b.cfg.GroupID || m.Chat.Type != "supergroup" || m.ThreadID < 0 || m.ThreadID > 1<<52-1 {
 			return nil
 		}
+	}
+	if m.Chat.Type == "private" && (m.Text == "/start" || strings.EqualFold(m.Text, "/start@"+b.username)) {
+		lang := clientLang(*m.From)
+		_, err := b.api.SendMessage(ctx, m.Chat.ID, clientText(lang, "Напишите сообщение в этот чат, чтобы обратиться в поддержку.", "Send a message here to contact support."), &botapi.InlineKeyboard{Rows: [][]botapi.Button{{{Text: clientText(lang, "Открыть кабинет", "Open cabinet"), URL: b.origin + "/cabinet/support?lang=" + lang}}}})
+		return err
 	}
 	sourceCtx, actor, err := b.authority.ResolveTelegramContext(ctx, m.From.ID)
 	if err != nil {
 		return supportHandlingError(err)
 	}
-	if actor == nil {
-		return nil
-	} // Guest contact is implemented in Task2.
-	raw, err := json.Marshal(struct {
-		Chat, Message, Human, Thread int64
-		Text                         string
-	}{m.Chat.ID, m.ID, m.From.ID, m.ThreadID, m.Text})
-	if err != nil {
-		return &ActionError{Code: "INVALID_INPUT"}
+	if m.Chat.ID == b.cfg.GroupID {
+		if actor == nil {
+			return nil
+		}
+		if err = b.authority.RequireOperator(sourceCtx, actor.ID); err != nil {
+			return supportHandlingError(err)
+		}
 	}
-	in := support.TelegramInput{Source: support.TelegramSource{BotID: b.botID, GroupID: b.cfg.GroupID, ChatID: m.Chat.ID, MessageID: m.ID, UpdateID: u.ID, ActorID: m.From.ID, ThreadID: m.ThreadID, Action: "message", Digest: sha256.Sum256(raw)}, Text: m.Text}
+	if strings.HasPrefix(strings.TrimSpace(m.Text), "/") {
+		if m.Chat.ID != b.cfg.GroupID || actor == nil {
+			return nil
+		}
+		in, topic, ok := parseSupportCommand(m.Text, b.username)
+		if !ok {
+			return nil
+		}
+		digest, e := m.SupportDigest()
+		if e != nil {
+			return e
+		}
+		return supportHandlingError(b.runSupportCommand(sourceCtx, support.TelegramSource{BotID: b.botID, GroupID: b.cfg.GroupID, ChatID: m.Chat.ID, MessageID: m.ID, UpdateID: u.ID, ActorID: m.From.ID, ThreadID: m.ThreadID, Action: "command", Digest: digest}, topic, in))
+	}
+	if m.Chat.ID == b.cfg.GroupID && m.ThreadID <= 1 {
+		return nil
+	}
+	if utf8.RuneCountInString(m.Text) > 4000 {
+		_, err = b.api.SendSupportText(ctx, m.Chat.ID, m.ThreadID, clientText(clientLang(*m.From), "Сообщение слишком длинное: отправьте до 4000 символов или приложите файл.", "Message is too long: send up to 4000 characters or attach a file."))
+		return err
+	}
+	in, err := b.messageInput(ctx, *m, u.ID, actor != nil)
+	if err != nil {
+		return err
+	}
 	_, err = b.owner.ReceiveTelegramMessage(sourceCtx, in)
 	return supportHandlingError(err)
 }
@@ -107,7 +168,8 @@ func (b *supportBridge) handle(ctx context.Context, u botapi.Update) error {
 func supportHandlingError(err error) error {
 	var account *accounts.Error
 	var owner *support.Error
-	if errors.As(err, &account) && account.Status < 500 || errors.As(err, &owner) && owner.Status < 500 {
+	var access *subscriptions.Error
+	if errors.As(err, &account) && account.Status < 500 || errors.As(err, &owner) && owner.Status < 500 || errors.As(err, &access) && access.Status < 500 {
 		return nil
 	}
 	return err
@@ -123,6 +185,22 @@ func (b *supportBridge) send(ctx context.Context, part support.TelegramPart) (su
 		out.MessageID, err = b.api.SendSupportText(ctx, part.ChatID, part.ThreadID, part.Text)
 	case "copy":
 		out.MessageID, err = b.api.CopySupportMessage(ctx, part.ChatID, part.ThreadID, part.CopyChatID, part.CopyMessageID)
+	case "document":
+		out.MessageID, err = b.api.SendSupportDocument(ctx, part.ChatID, part.ThreadID, part.Name, part.Bytes, part.Text)
+	case "close_topic", "reopen_topic":
+		out.Acknowledged, err = b.api.SetForumTopicClosed(ctx, part.ChatID, part.ThreadID, part.Kind == "close_topic")
+	case "general", "control", "confirmation":
+		keyboard := &botapi.InlineKeyboard{Rows: [][]botapi.Button{{{Text: "Open cabinet", URL: b.origin + "/admin/clients"}}}}
+		for _, link := range part.Links {
+			if link.AccountID == uuid.Nil {
+				return support.TelegramOutcome{Status: "failed", Code: "BAD_REQUEST"}, nil
+			}
+			keyboard.Rows = append(keyboard.Rows, []botapi.Button{{Text: link.AccountID.String(), URL: b.origin + "/admin/clients/" + link.AccountID.String() + "/show"}})
+		}
+		if part.Kind == "confirmation" {
+			keyboard.Rows = append(keyboard.Rows, []botapi.Button{{Text: "Confirm", Data: "sp1:c:" + part.ConfirmationID.String()}, {Text: "Cancel", Data: "sp1:x:" + part.ConfirmationID.String()}})
+		}
+		out.MessageID, err = b.api.SendSupportCard(ctx, part.ChatID, part.ThreadID, part.Text, keyboard)
 	default:
 		return support.TelegramOutcome{Status: "failed", Code: "BAD_REQUEST"}, nil
 	}

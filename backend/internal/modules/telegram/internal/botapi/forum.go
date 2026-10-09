@@ -15,6 +15,28 @@ type ChatMember struct {
 
 func forumID(id int64) bool { return id < 0 && id >= -(1<<52-1) }
 
+func (c *Client) SetForumTopicClosed(ctx context.Context, group, thread int64, closed bool) (bool, error) {
+	if !forumID(group) || thread <= 1 || thread > 1<<52-1 {
+		return false, &APIError{Code: "INVALID_INPUT"}
+	}
+	method := "reopenForumTopic"
+	if closed {
+		method = "closeForumTopic"
+	}
+	var ok bool
+	err := c.call(ctx, method, map[string]any{"chat_id": group, "message_thread_id": thread}, &ok, 10*time.Second)
+	if err == nil && !ok {
+		return false, invalid()
+	}
+	return ok, err
+}
+func (c *Client) SendSupportCard(ctx context.Context, group, thread int64, text string, keyboard *InlineKeyboard) (int64, error) {
+	if !forumID(group) || thread < 0 || thread > 1<<52-1 {
+		return 0, &APIError{Code: "INVALID_INPUT"}
+	}
+	return c.supportText(ctx, group, thread, text, keyboard, thread <= 1)
+}
+
 func supportDestination(chatID, threadID int64) bool {
 	return chatID > 0 && chatID <= 1<<52-1 && threadID == 0 || forumID(chatID) && threadID > 1 && threadID <= 1<<52-1
 }
@@ -55,16 +77,22 @@ func (c *Client) CreateForumTopic(ctx context.Context, groupID int64, name strin
 	return out.ID, err
 }
 func (c *Client) SendSupportText(ctx context.Context, chatID, threadID int64, text string) (int64, error) {
-	if !supportDestination(chatID, threadID) || !utf8.ValidString(text) || strings.TrimSpace(text) == "" || utf8.RuneCountInString(text) > 4096 || strings.ContainsRune(text, '\x00') {
+	return c.supportText(ctx, chatID, threadID, text, nil, false)
+}
+func (c *Client) supportText(ctx context.Context, chatID, threadID int64, text string, keyboard *InlineKeyboard, general bool) (int64, error) {
+	if (!general && !supportDestination(chatID, threadID) || general && (!forumID(chatID) || threadID > 1 || threadID < 0)) || !utf8.ValidString(text) || strings.TrimSpace(text) == "" || utf8.RuneCountInString(text) > 4096 || strings.ContainsRune(text, '\x00') || !validKeyboard(keyboard) {
 		return 0, &APIError{Code: "INVALID_INPUT"}
 	}
 	in := map[string]any{"chat_id": chatID, "text": text, "link_preview_options": map[string]bool{"is_disabled": true}}
-	if threadID != 0 {
+	if keyboard != nil {
+		in["reply_markup"] = keyboard
+	}
+	if !general && threadID != 0 {
 		in["message_thread_id"] = threadID
 	}
 	var out Message
 	err := c.call(ctx, "sendMessage", in, &out, 10*time.Second)
-	if err == nil && (out.ID <= 0 || out.ID > 1<<52-1 || out.Chat.ID != chatID || out.ThreadID != threadID || chatID < 0 && out.Chat.Type != "supergroup" || chatID > 0 && out.Chat.Type != "private") {
+	if err == nil && (out.ID <= 0 || out.ID > 1<<52-1 || out.Chat.ID != chatID || !general && out.ThreadID != threadID || general && out.ThreadID != 0 && out.ThreadID != 1 || chatID < 0 && out.Chat.Type != "supergroup" || chatID > 0 && out.Chat.Type != "private") {
 		return 0, invalid()
 	}
 	return out.ID, err

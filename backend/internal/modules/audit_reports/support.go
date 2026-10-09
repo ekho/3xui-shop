@@ -6,6 +6,7 @@ import (
 	"example.com/cabinet/backend/internal/modules/audit_reports/internal/store"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"strings"
 )
 
 type SupportTelegramEvent struct {
@@ -23,10 +24,20 @@ type SupportTelegramEvent struct {
 	ReceiptID       *uuid.UUID `json:"receipt_id"`
 	Kind            string     `json:"kind"`
 	Outcome         string     `json:"outcome"`
+	Reason          *string    `json:"reason,omitempty"`
+	SourceID        *int64     `json:"source_id,omitempty"`
 }
 
 func RecordSupportTelegramTx(ctx context.Context, tx pgx.Tx, event SupportTelegramEvent) error {
-	if event.ID == uuid.Nil || event.BotID <= 0 || event.GroupID >= 0 || event.ChatID == 0 || event.MessageID <= 0 || event.UpdateID < 0 || event.ThreadID != nil && *event.ThreadID <= 1 || event.ActorTgID != nil && *event.ActorTgID <= 0 || event.ActorAccountID != nil && event.ActorTgID == nil {
+	if event.Reason != nil && (!auditTextValid(*event.Reason, 1000) || strings.TrimSpace(*event.Reason) == "") {
+		return &Error{400, "INVALID_INPUT"}
+	}
+	legacyKind := event.Kind == "legacy_imported" || event.Kind == "legacy_bound"
+	legacy := legacyKind && event.SourceID != nil && *event.SourceID > 0 && event.MessageID == 0 && event.UpdateID == 0 && event.ActorTgID == nil && event.ActorAccountID == nil && event.ChatID == event.GroupID
+	if (event.SourceID != nil || legacyKind) && !legacy {
+		return &Error{400, "INVALID_INPUT"}
+	}
+	if event.ID == uuid.Nil || event.BotID <= 0 || event.GroupID >= 0 || event.ChatID == 0 || event.MessageID <= 0 && !legacy || event.UpdateID < 0 || event.ThreadID != nil && (*event.ThreadID <= 0 || !legacy && *event.ThreadID <= 1) || event.ActorTgID != nil && *event.ActorTgID <= 0 || event.ActorAccountID != nil && event.ActorTgID == nil {
 		return &Error{400, "INVALID_INPUT"}
 	}
 	for _, id := range []*uuid.UUID{event.ActorAccountID, event.TargetAccountID, event.TopicID, event.ReceiptID} {
@@ -35,7 +46,7 @@ func RecordSupportTelegramTx(ctx context.Context, tx pgx.Tx, event SupportTelegr
 		}
 	}
 	switch event.Kind {
-	case "message", "topic_closed", "topic_reopened", "command", "delivery", "topic_bound", "legacy_imported", "guest_banned", "guest_unbanned":
+	case "message", "topic_closed", "topic_reopened", "command", "delivery", "topic_bound", "legacy_imported", "legacy_bound", "guest_banned", "guest_unbanned":
 	default:
 		return &Error{400, "INVALID_INPUT"}
 	}
@@ -47,6 +58,18 @@ func RecordSupportTelegramTx(ctx context.Context, tx pgx.Tx, event SupportTelegr
 	raw, err := json.Marshal(event)
 	if err != nil {
 		return &Error{400, "INVALID_INPUT"}
+	}
+	if legacy {
+		var object map[string]json.RawMessage
+		if json.Unmarshal(raw, &object) != nil {
+			return &Error{400, "INVALID_INPUT"}
+		}
+		delete(object, "message_id")
+		delete(object, "update_id")
+		raw, err = json.Marshal(object)
+		if err != nil {
+			return &Error{400, "INVALID_INPUT"}
+		}
 	}
 	return store.New(tx).InsertSupportTelegramAudit(ctx, store.InsertSupportTelegramAuditParams{ID: event.ID, SupportTelegram: raw})
 }

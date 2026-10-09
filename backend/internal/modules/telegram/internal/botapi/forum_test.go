@@ -78,6 +78,36 @@ func TestSupportForumWire(t *testing.T) {
 	}
 }
 
+func TestSupportForumControlWire(t *testing.T) {
+	h := &http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
+		var p map[string]json.RawMessage
+		if json.NewDecoder(r.Body).Decode(&p) != nil || string(p["chat_id"]) != "-10074001" {
+			t.Fatal("control group escaped")
+		}
+		result := `true`
+		if strings.HasSuffix(r.URL.Path, "sendMessage") {
+			if p["message_thread_id"] != nil || p["parse_mode"] != nil || p["reply_markup"] == nil {
+				t.Fatal("General prompt destination/markup")
+			}
+			result = `{"message_id":91,"chat":{"id":-10074001,"type":"supergroup"}}`
+		} else if string(p["message_thread_id"]) != "888" || !strings.HasSuffix(r.URL.Path, "closeForumTopic") && !strings.HasSuffix(r.URL.Path, "reopenForumTopic") {
+			t.Fatal("topic action boundary")
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true,"result":` + result + `}`))}, nil
+	})}
+	c := New("owned-fixture", h)
+	for _, closed := range []bool{true, false} {
+		ok, err := c.SetForumTopicClosed(context.Background(), -10074001, 888, closed)
+		if err != nil || !ok {
+			t.Fatal("bool topic ACK lost", err)
+		}
+	}
+	id, err := c.SendSupportCard(context.Background(), -10074001, 0, "Confirm", &InlineKeyboard{Rows: [][]Button{{{Text: "Confirm", Data: "sp1:c:owned"}}}})
+	if err != nil || id != 91 {
+		t.Fatal("General prompt ACK", err)
+	}
+}
+
 func TestSupportForumErrorProof(t *testing.T) {
 	for _, tc := range []struct{ description, code string }{{"Bad Request: message thread not found", "THREAD_NOT_FOUND"}, {"Bad Request: something else", "BAD_REQUEST"}} {
 		t.Run(tc.code, func(t *testing.T) {

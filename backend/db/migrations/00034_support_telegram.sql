@@ -28,6 +28,7 @@ CREATE TABLE support_telegram_topics (
  thread_id bigint CHECK(thread_id>0),
  status text NOT NULL CHECK(status IN ('pending','sending','ready','failed','unknown','retired')),
  closed boolean NOT NULL DEFAULT false,
+ support_banned boolean NOT NULL DEFAULT false,
  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  source_id bigint,
  CHECK((kind='account' AND account_id IS NOT NULL AND guest_tg_id IS NULL)
@@ -62,7 +63,7 @@ CREATE TABLE support_telegram_receipts (
 CREATE TABLE support_telegram_deliveries (
  id uuid PRIMARY KEY,
  sequence bigint GENERATED ALWAYS AS IDENTITY NOT NULL UNIQUE,
- topic_id uuid NOT NULL REFERENCES support_telegram_topics(id),
+ topic_id uuid REFERENCES support_telegram_topics(id),
  message_id uuid REFERENCES support_messages(id), receipt_id uuid REFERENCES support_telegram_receipts(id),
  kind text NOT NULL CHECK(kind IN ('message','topic_create','topic_action','ack')),
  status text NOT NULL CHECK(status IN ('queued','sending','sent','failed','unknown','skipped')),
@@ -72,7 +73,8 @@ CREATE TABLE support_telegram_deliveries (
  available_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  prior_delivery_id uuid REFERENCES support_telegram_deliveries(id),
- CHECK((lease IS NULL)=(lease_expires_at IS NULL))
+ CHECK((lease IS NULL)=(lease_expires_at IS NULL)),
+ CHECK(topic_id IS NOT NULL OR (kind='ack' AND receipt_id IS NOT NULL))
 );
 CREATE UNIQUE INDEX support_active_message_delivery ON support_telegram_deliveries(message_id) WHERE status IN ('queued','sending') AND message_id IS NOT NULL;
 CREATE INDEX support_delivery_pending ON support_telegram_deliveries(sequence) WHERE status IN ('queued','sending');

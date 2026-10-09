@@ -17,8 +17,8 @@ SELECT sender_kind FROM support_messages WHERE conversation_id=$1 AND sequence=$
 -- name: SupportFileBytes :one
 SELECT COALESCE(SUM(octet_length(attachment_bytes)),0)::bigint FROM support_messages WHERE conversation_id=$1;
 -- name: AddSupportMessage :one
-INSERT INTO support_messages(id,conversation_id,sender_account_id,sender_kind,text,created_at,attachment_name,attachment_bytes)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *;
+INSERT INTO support_messages(id,conversation_id,sender_account_id,sender_kind,text,created_at,attachment_name,attachment_bytes,telegram_only)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *;
 -- name: UpdateSupportState :exec
 UPDATE support_conversations SET status=$2,updated_at=$3 WHERE id=$1;
 -- name: UpdateSupportBan :exec
