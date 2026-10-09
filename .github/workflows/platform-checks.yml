@@ -40,6 +40,7 @@ jobs:
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
         with:
           buildkitd-config: .github/buildkitd.toml
+          buildkitd-flags: --debug --allow-insecure-entitlement security.insecure --allow-insecure-entitlement network.host
       - name: Select builder for Compose and native scripts
         env:
           BUILDER: ${{ steps.buildx.outputs.name }}
@@ -95,8 +96,22 @@ jobs:
       - name: Verify BuildKit mirror requests
         shell: bash
         run: |
+          docker exec "buildx_buildkit_${BUILDX_BUILDER}0" cat /etc/buildkit/buildkitd.toml \
+            | python3 -c 'import sys,tomllib; config=tomllib.loads(sys.stdin.read()); assert "mirror.gcr.io" in config["registry"]["docker.io"]["mirrors"]; print("BuildKit container mirror config verified")'
           docker logs "buildx_buildkit_${BUILDX_BUILDER}0" 2>&1 \
-            | grep -oE 'url="https://mirror\.gcr\.io/v2/[^"? ]+' | sort -u
+            | grep -oE 'https://mirror\.gcr\.io/v2/[^"?[:space:]]+' | sort -u
+      - name: Diagnose daemon fallback without raw logs
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import re, subprocess
+          result = subprocess.run(['sudo', 'journalctl', '-u', 'docker', '--no-pager', '-o', 'cat'], check=True, capture_output=True, text=True)
+          for line in result.stdout.splitlines():
+              if 'Error getting v2 registry' in line or 'Attempting next endpoint for pull after error' in line:
+                  hosts = [host for host in ('mirror.gcr.io', 'registry-1.docker.io', 'auth.docker.io') if host in line]
+                  errors = [error for error in ('timeout', 'deadline exceeded', 'unauthorized', 'denied', '429', '403', '404', 'x509') if error in line.lower()]
+                  print('Docker registry fallback:', hosts, 'categories:', errors)
+          PY
       - name: Cleanup
         if: always()
         run: |

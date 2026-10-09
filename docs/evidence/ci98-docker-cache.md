@@ -26,6 +26,9 @@ BuildKit bootstrap/Compose (and QEMU after merge). It proves the configured Engi
 path was exercised, not an individual cache hit. BuildKit evidence is actual
 `mirror.gcr.io/v2/` HTTPS request URLs, filtered without headers or query strings.
 Compose supports `BUILDX_BUILDER`; native subprocesses inherit it.
+Debug logging is enabled through the builder's explicit CLI flags, preserving
+the setup action's existing default entitlements. The effective container config
+is read back before mirror request evidence is accepted.
 
 Public registry preflight returned the unchanged Python 3.13, Go, PostgreSQL and
 Redis pinned manifest digests on 2026-10-10; the handoff already verified pinned
@@ -39,5 +42,5 @@ GitHub-hosted job discards its daemon at job end. Do not change a shared daemon.
 
 Sources: [Google daemon configuration and fallback](https://docs.cloud.google.com/artifact-registry/docs/pull-cached-dockerhub-images),
 [Docker BuildKit mirror and debug evidence](https://docs.docker.com/build/buildkit/configure/#registry-mirror),
-[BuildKit 0.33 logging config](https://github.com/moby/buildkit/blob/v0.33.1/docs/buildkitd.toml.md),
+[BuildKit 0.33 debug flag](https://github.com/moby/buildkit/blob/v0.33.1/cmd/buildkitd/main.go),
 [Compose builder selection](https://github.com/docker/compose/blob/main/cmd/compose/build.go).

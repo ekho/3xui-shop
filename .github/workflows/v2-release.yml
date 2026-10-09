@@ -56,6 +56,7 @@ jobs:
         id: buildx
         with:
           buildkitd-config: .github/buildkitd.toml
+          buildkitd-flags: --debug --allow-insecure-entitlement security.insecure --allow-insecure-entitlement network.host
       - name: Log in to GHCR
         if: github.ref == 'refs/heads/v2'
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
@@ -91,8 +92,10 @@ jobs:
         env:
           BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
         run: |
+          docker exec "buildx_buildkit_${BUILDX_BUILDER}0" cat /etc/buildkit/buildkitd.toml \
+            | python3 -c 'import sys,tomllib; config=tomllib.loads(sys.stdin.read()); assert "mirror.gcr.io" in config["registry"]["docker.io"]["mirrors"]; print("BuildKit container mirror config verified")'
           docker logs "buildx_buildkit_${BUILDX_BUILDER}0" 2>&1 \
-            | grep -oE 'url="https://mirror\.gcr\.io/v2/[^"? ]+' | sort -u
+            | grep -oE 'https://mirror\.gcr\.io/v2/[^"?[:space:]]+' | sort -u
 
   release:
     name: GitHub prerelease
