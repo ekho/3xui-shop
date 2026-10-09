@@ -64,9 +64,16 @@ jobs:
         run: |
           python deploy/acceptance/local.py up --reuse-images
           python deploy/acceptance/local.py check
+      - name: Isolated backup and restore rehearsal
+        run: |
+          python deploy/acceptance/backup_restore.py up
+          python deploy/acceptance/backup_restore.py check
       - name: Cleanup
         if: always()
         run: |
+          if [ -f .superpowers/acceptance/backup-restore/runtime.json ]; then
+            python deploy/acceptance/backup_restore.py down
+          fi
           if [ -f .superpowers/acceptance/native-docker/public.env ]; then
             python deploy/acceptance/local.py down
           fi

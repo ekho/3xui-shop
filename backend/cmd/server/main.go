@@ -32,6 +32,9 @@ func main() {
 	}
 }
 func run() error {
+	if len(os.Args) >= 3 && os.Args[1] == "backup" {
+		return runBackupCommand(os.Args[2:])
+	}
 	if len(os.Args) >= 3 && os.Args[1] == "catalogue" {
 		return runCatalogueCommand(os.Args[2:])
 	}
