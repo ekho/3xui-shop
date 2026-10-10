@@ -35,6 +35,9 @@ func main() {
 	}
 }
 func run() (runErr error) {
+	if len(os.Args) >= 3 && os.Args[1] == "backup" {
+		return runBackupCommand(os.Args[2:])
+	}
 	if len(os.Args) == 2 && os.Args[1] == "healthcheck" {
 		return runHealthcheck(listenAddress())
 	}
