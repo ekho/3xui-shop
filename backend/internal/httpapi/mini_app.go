@@ -18,7 +18,7 @@ func miniAppRouteAllowed(path, method string) bool {
 			return true
 		}
 		switch path {
-		case "/api/v1/stars-subscription", "/api/v1/payment-methods", "/api/v1/telegram/mini-app/account", "/api/v1/auth/session", "/api/v1/me/identity", "/api/v1/subscription", "/api/v1/subscription/renewal", "/api/v1/subscription/plan-change", "/api/v1/subscription/key", "/api/v1/trial-requests/current", "/api/v1/catalogue", "/api/v1/orders/current", "/api/v1/orders/:id", "/api/v1/support", "/api/v1/support/messages/:id/attachment":
+		case "/api/v1/maintenance", "/api/v1/stars-subscription", "/api/v1/payment-methods", "/api/v1/telegram/mini-app/account", "/api/v1/auth/session", "/api/v1/me/identity", "/api/v1/subscription", "/api/v1/subscription/renewal", "/api/v1/subscription/plan-change", "/api/v1/subscription/key", "/api/v1/trial-requests/current", "/api/v1/catalogue", "/api/v1/orders/current", "/api/v1/orders/:id", "/api/v1/support", "/api/v1/support/messages/:id/attachment":
 			return true
 		}
 	}

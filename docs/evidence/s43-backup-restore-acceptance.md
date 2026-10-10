@@ -2,7 +2,7 @@
 
 Задача: [#45](https://github.com/ekho/3xui-shop/issues/45). Проверка 2026-10-09–10,
 исходная `origin/v2` — `9305fa5b6a5dec44648aa9a57bb1501164e455f6`.
-Это приёмка synthetic данных и работающей CLI; merge и production не выполнены.
+Это приёмка synthetic данных и работающей CLI; С43 ещё не слита, production не выполнен.
 
 ## Изоляция и доказанный результат
 
@@ -219,6 +219,43 @@ Delta review выявил потерю специфичности guard при `
 и прошёл за 39.91 секунды. Собственный fixture снова удалён без остатка.
 Окончательный consumer #44 проверяется после её actual merge;
 несмерженная ветка #44 не переносится, полный CI нового HEAD ещё требуется.
+
+### Интеграция доставленной #44
+
+Последняя интеграция использует только actual merge #44
+`9a078b35aac2cf2d96fcf2b307ffbf1913e8d009`: его tree совпадает с проверенным
+final source `0d062ad83de803b07447ecda2bf611653167ff4a`. Добавлена доставленная
+migration 38; собственных migrations С43 нет. Единственный конфликт — выбор
+PostgreSQL fixture в restore consumer. Вызов `controlledPostgresContainer`
+сохраняет проверку ownership/container/loopback port для metadata, optional
+Compose и согласованных двух входов. Все новые assertions #42/#44 сохранены,
+включая reservation, `DownTo(36)`, выбор guard и отказ `DownTo(34)`; после отказа
+версия дополнительно обязана остаться 36. Полный consumer остался идентичен
+ранее проверенному blob `858068ecc0d67202306faee3918e102567500d6d`.
+
+На объединённом tree `ced49e364d65b88b1ea7fa2344d5393afcdf5a5e`:
+
+- cmd/server, operations, db, app и Telegram `-count=1 -race` — PASS за
+  44.50 секунды. `TestServerManagementMigrationEmptyRollbackAndHistoryGuard`
+  прошёл за 1.51 секунды и действительно выбирает rollback до 36.
+- Полный `TestWebTrialBackupRestore` — PASS за 37.54 секунды. Вместе с пятью
+  metadata/Compose/selector/ownership guards весь scope прошёл за 44.35
+  секунды, без skip. Restore включает migration 38 и повторный migration replay.
+- Собственный fixture `cabinet-backup-8ff7818b` и private files удалены;
+  остаток принадлежащих ему containers/networks/volumes — ноль.
+- Все проверяющие CI stages actual #44 сохранены без изменения. Команды её
+  общего Cleanup сохранены в отдельных `always()` steps; с backup cleanup
+  их четыре. 10/10 CI script tests, naming, YAML/TOML/producer syntax и
+  diff-check — PASS.
+
+Независимое native review неизменённого backup core не нашло замечаний.
+Inventory перечисляет все public ordinary/partitioned tables и копирует все
+columns/rows; pg_dump не фильтрует бизнес-виды или таблицы. Новые maintenance
+и другие additive public DB facts входят в package этим общим механизмом.
+CLI `NewBackup` и runtime maintenance `New` остаются разными конструкторами;
+backup dispatch выполняется до общего runtime. Неизменённые дорогие локальные
+Go/web/Python scopes повторно не запускались: окончательный source требует
+полного PR CI, включая настоящий CLI rehearsal.
 
 ## Operations image в контейнерном BuildKit
 

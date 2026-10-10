@@ -46,6 +46,7 @@ type API struct {
 	reminders      *notifications.ReminderService
 	notices        *notifications.NoticeService
 	auditReports   *auditreports.Service
+	maintenance    *operations.Maintenance
 	pool           *pgxpool.Pool
 	cfg            app.HTTPConfig
 	contract       *openapi3.T
@@ -63,7 +64,7 @@ func failure(status int, code string) error {
 }
 func unavailable() error { return failure(503, "SERVICE_UNAVAILABLE") }
 func newAPI(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, contract *openapi3.T) *API {
-	return &API{miniApp: modules.MiniApp, accounts: modules.Accounts, vpn: modules.VPN, catalogueOwner: modules.Catalogue, campaignsOwner: modules.Campaigns, subscriptions: modules.Subscriptions, payments: modules.Payments, supportOwner: modules.Support, notifications: modules.Notifications, reminders: modules.Reminders, notices: modules.Notices, auditReports: modules.AuditReports, pool: pool, cfg: cfg, contract: contract}
+	return &API{miniApp: modules.MiniApp, accounts: modules.Accounts, vpn: modules.VPN, catalogueOwner: modules.Catalogue, campaignsOwner: modules.Campaigns, subscriptions: modules.Subscriptions, payments: modules.Payments, supportOwner: modules.Support, notifications: modules.Notifications, reminders: modules.Reminders, notices: modules.Notices, auditReports: modules.AuditReports, maintenance: modules.Maintenance, pool: pool, cfg: cfg, contract: contract}
 }
 
 func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, readiness ...*operations.Readiness) *echo.Echo {
@@ -164,6 +165,9 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, readiness
 	e.POST("/api/v1/telegram/link", a.ConfirmTelegramLink)
 	e.POST("/api/v1/campaign-visits", a.RecordCampaignVisit)
 	e.POST("/api/v1/operator/campaigns/search", a.ListOperatorCampaigns)
+	e.GET("/api/v1/maintenance", a.GetMaintenance)
+	e.GET("/api/v1/operator/maintenance", a.GetOperatorMaintenance)
+	e.POST("/api/v1/operator/maintenance", a.SetOperatorMaintenance)
 	e.POST("/api/v1/operator/reports/statistics", a.ReadOperatorStatistics)
 	e.POST("/api/v1/operator/audit/history", a.ReadOperatorAuditHistory)
 	e.POST("/api/v1/operator/campaigns", a.CreateCampaign)

@@ -19,6 +19,7 @@ import (
 )
 
 type Config struct {
+	Admission                                func(context.Context, pgx.Tx) error
 	CabinetOrigin, PanelID, YooMoneyWalletID string
 	YooMoneyEnabled                          bool
 	StarsEnabled                             bool
@@ -31,6 +32,18 @@ type Config struct {
 	CryptomusMerchantID, CryptomusAPIKey     string
 	HeleketEnabled                           bool
 	HeleketMerchantID, HeleketAPIKey         string
+}
+
+func (s *Service) allowNew(ctx context.Context, tx pgx.Tx) error {
+	if check := s.config().Admission; check != nil {
+		if err := check(ctx, tx); err != nil {
+			if err.Error() == "MAINTENANCE" {
+				return failure(503, "MAINTENANCE")
+			}
+			return unavailable()
+		}
+	}
+	return nil
 }
 
 type Error struct {

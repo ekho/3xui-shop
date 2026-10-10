@@ -1,6 +1,15 @@
 version: '2'
 sql:
   - engine: postgresql
+    queries: internal/modules/operations/internal/queries
+    schema: db/migrations
+    gen:
+      go:
+        package: store
+        out: internal/modules/operations/internal/store
+        sql_package: pgx/v5
+        omit_unused_structs: true
+  - engine: postgresql
     queries: internal/modules/accounts/internal/queries
     schema: db/migrations
     gen:
