@@ -156,3 +156,49 @@ Restore-test overlap с #45 (`web_trial_integration_test.go` и его отде�
 `postgres_fixture_test.go`) передан координатору. Source #45 не копировался,
 дополнительный adapter interface не добавлялся; endpoint/ownership/history guards
 и `DownTo(ctx,34)` сохраняются.
+
+## Интеграция завершённой #42 — 10 октября 2026
+
+#42 закрыта, Project Done; PR96 слит в v2 на
+`a6ef9bf3dab4407dcf664dda04c93619f549deb8`, source
+`83d1f6d23eb560feaeb2b6bfb356db08b645d089`. Проверены GitHub state/checks,
+SSH ref и наличие `00037_server_management.sql`. Миграция37 получена из
+уже слитой целевой ветки; наша `00038_maintenance.sql` не переименована.
+Нативные gates source83 прошли; [handoff #42](https://github.com/ekho/3xui-shop/issues/42#issuecomment-6091858817).
+
+До этой интеграции полный exact-source CI S42 на `7e7cf856a274d99c5f23433c0c662feb4d26a731`
+завершился SUCCESS: [Platform push](https://github.com/ekho/3xui-shop/actions/runs/38005769710),
+[Platform PR](https://github.com/ekho/3xui-shop/actions/runs/38005816632),
+[три image jobs](https://github.com/ekho/3xui-shop/actions/runs/38005816723).
+Это отдельный green CI; исходный локальный полный Go RED остаётся в истории.
+
+Слияние обнаружило семь реальных content conflicts. Объединены maintenance и VPN
+в HTTP assembly, оба операторских ресурса с `can_manage_servers` и стабильным
+callback формы обслуживания, оба набора Playwright tests и собственный E2E port.
+Все OpenAPI paths обеих сторон сохранены без изменения; maintenance schemas
+совпадают с S42, server schemas и OperatorSession — с #42. Go/SQL/TS перегенерированы
+каноническими командами; повторная генерация не меняет дерево.
+
+Restore сохраняет проверку единственной reservation, явный выбор версии36 и
+проверку DB version, затем прежний `DownTo(ctx,34)` и точную ошибку запрета потери
+server history. Сохранены dump/restore, endpoint/container guards и последующие
+identity/reservation assertions. Неслитые source/helper #45 не импортировались.
+CI совпадает с merged #42, включая добавленные ею native infrastructure gates;
+publication workflow, pins и Python/dependencies не менялись этой интеграцией.
+
+| Свежая локальная проверка product tree `f288d51d4c00f38f982420209924962b74193716` | Результат |
+| --- | --- |
+| Selected Go race checks: httpapi, operations, vpn, tests; maintenance/server-management authority/replay, registry, native flows/browser и backup restore | Все четыре пакета PASS; 121.515s / 19.925s / 132.960s / 142.987s; wrapper208.886s |
+| Maintenance, server-management и operator-cabinet Playwright cases | 39/39 PASS; wrapper112.260s; build/typecheck выполнены |
+| `go vet ./...`, frontend typecheck, whitespace, повторная canonical generation | PASS; vet6.437s, генерация без diff |
+
+Это сфокусированная проверка изменившейся интеграции, а не новый полный локальный
+`go test ./...`. Полный GitHub CI нового окончательного HEAD и независимое ревью
+фиксируются в PR до manual merge. Прежние ограничения и неизвестная причина
+scheduler0/0 сохраняются. Свои контейнеры/volumes удалены после проверок.
+
+По исходному человеческому критерию продуктовая задача завершается фактическим
+merge в v2 после обязательных pre-merge gates, затем закрытием issue, Project Done
+и уборкой/handoff; координатор архивирует чат. Автоматический preview GHCR/prerelease
+разрешён, его будущее завершение не добавляет gate закрытия этой продуктовой задачи.
+Production не входит в полномочие.

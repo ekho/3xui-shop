@@ -21,6 +21,19 @@ func (q *Queries) LockServerPool(ctx context.Context) error {
 	return err
 }
 
+const managedServerBusy = `-- name: ManagedServerBusy :one
+SELECT EXISTS(SELECT 1 FROM vpn_server_reservations WHERE server_id=$1)
+ OR EXISTS(SELECT 1 FROM trial_operations WHERE (panel_id=$1 OR target->>'panel_id'=$1) AND status IN ('pending','provisioning','needs_review'))
+ OR EXISTS(SELECT 1 FROM access_operations WHERE target->>'panel_id'=$1 AND status IN ('pending','provisioning','needs_review'))
+`
+
+func (q *Queries) ManagedServerBusy(ctx context.Context, serverID string) (pgtype.Bool, error) {
+	row := q.db.QueryRow(ctx, managedServerBusy, serverID)
+	var column_1 pgtype.Bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const observePoolServer = `-- name: ObservePoolServer :exec
 UPDATE vpn_servers SET online=$1,observed_at=$2,
  subscription_base_url=CASE WHEN subscription_base_url='' THEN $3::text ELSE subscription_base_url END
