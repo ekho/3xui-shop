@@ -9,6 +9,7 @@ import (
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/catalogue"
 	"example.com/cabinet/backend/internal/modules/notifications"
+	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/vpn"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
@@ -46,6 +47,18 @@ func newRegressionFixture(pool *pgxpool.Pool, limiter *redis.Client, queue *rive
 	s.API = newAPI(modules, pool, cfg.HTTP, contract)
 	s.vpn, s.mailDelivery = modules.VPN, modules.MailDelivery
 	return s
+}
+func (s *regressionFixture) decideTrialRequest(ctx context.Context, id uuid.UUID, in subscriptions.DecisionInput) (subscriptions.DecisionResult, error) {
+	out, err := s.subscriptions.DecideTrialRequest(ctx, id, in)
+	return out, subscriptionError(err)
+}
+func (s *regressionFixture) reconsiderTrialRequest(ctx context.Context, id, key uuid.UUID, in subscriptions.ReconsiderInput) (subscriptions.TrialRequest, error) {
+	out, err := s.subscriptions.ReconsiderTrialRequest(ctx, id, key, in)
+	return out, subscriptionError(err)
+}
+func (s *regressionFixture) reconcileTrialOperation(ctx context.Context, id, key uuid.UUID, in subscriptions.ReconcileInput) (subscriptions.ReconcileResult, error) {
+	out, err := s.subscriptions.ReconcileTrialOperation(ctx, id, key, in)
+	return out, subscriptionError(err)
 }
 func regressionVPNSettings(cfg *app.Config) vpn.Settings {
 	out := cfg.VPN

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"example.com/cabinet/backend/internal/modules/accounts"
+	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
 	"sync"
@@ -179,7 +180,7 @@ func TestRegressionOperatorConcurrentBotWebDecisionOneGrant(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		_, e := s.decideTrialRequest(ctx, request.RequestId, wire.DecisionInput{OperatorTgId: 101, Decision: "approve", CallbackQueryId: uuid.NewString()})
+		_, e := s.decideTrialRequest(ctx, request.RequestId, subscriptions.DecisionInput{OperatorTgId: 101, Decision: "approve", CallbackQueryId: uuid.NewString()})
 		results <- e
 	}()
 	go func() {

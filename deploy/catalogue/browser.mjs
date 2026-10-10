@@ -103,10 +103,10 @@ let browser,operator,outsider,step='startup';
 try{
  browser=await chromium.launch({args:['--ignore-certificate-errors-spki-list='+pin]});
  const transport=bridge('transport'),initial=bridge('current');
- check('Catalogue owned runtime and empty catalogue','own project, bot/reconcile stopped, Docker VPN connected, empty catalogue',
+ check('Catalogue owned runtime and empty catalogue','own project, native Telegram disabled, bot/reconcile stopped, Docker VPN connected, empty catalogue',
   'owned='+String(transport.project===ownedProject)+', stopped='+transport.bot_stopped+'/'+transport.reconcile_stopped+
-  ', VPN='+transport.vpn_connected+', plans/revisions='+initial.plans+'/'+initial.revisions,
-  transport.project===ownedProject&&transport.no_telegram_operators&&transport.bot_stopped&&
+  ', Telegram disabled='+transport.telegram_disabled+', VPN='+transport.vpn_connected+', plans/revisions='+initial.plans+'/'+initial.revisions,
+  transport.project===ownedProject&&transport.no_telegram_operators&&transport.telegram_disabled&&transport.bot_stopped&&
   transport.reconcile_stopped&&transport.vpn_connected&&initial.plans===0&&initial.revisions===0);
  operator=await register(browser,'en');
  const customer=await register(browser,'ru');

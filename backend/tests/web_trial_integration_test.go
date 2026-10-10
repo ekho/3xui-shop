@@ -7,7 +7,7 @@ import (
 	"crypto/ed25519"
 	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
+	"errors"
 	"example.com/cabinet/backend/db"
 	"example.com/cabinet/backend/internal/app"
 	"example.com/cabinet/backend/internal/httpapi"
@@ -300,17 +300,17 @@ func TestPanelAccessFixturePreservesOwnedClient(t *testing.T) {
 }
 
 type fixture struct {
-	env                 *testkit.Env
-	svc                 *app.Modules
-	cfg                 app.Config
-	public, internal    *httptest.Server
-	mail                *testkit.SMTP
-	panel               *panel
-	workers             *river.Client[pgx.Tx]
-	root, ca, tokenFile string
-	native              bool
-	nativeCrash         func()
-	nativeBinary        string
+	env          *testkit.Env
+	svc          *app.Modules
+	cfg          app.Config
+	public       *httptest.Server
+	mail         *testkit.SMTP
+	panel        *panel
+	workers      *river.Client[pgx.Tx]
+	root         string
+	native       bool
+	nativeCrash  func()
+	nativeBinary string
 }
 
 func open(t *testing.T) *fixture {
@@ -328,12 +328,11 @@ func openMode(t *testing.T, native bool, miniKey ...ed25519.PublicKey) *fixture 
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.cfg = app.Config{Accounts: accounts.Config{TermsVersion: "1", PrivacyVersion: "1", CodeKey: bytes.Repeat([]byte{4}, 32), RateNamespace: uuid.NewString(), Operators: []int64{101}}, Mail: notifications.MailConfig{MailKey: bytes.Repeat([]byte{3}, 32), SMTPAddress: f.mail.Address, SMTPRootCAs: f.mail.Roots, SMTPFrom: "sender@example.test"}, HTTP: app.HTTPConfig{AdapterToken: strings.Repeat("f", 43)}, Subscriptions: subscriptions.Config{PanelID: "dedicated-test", TrialEnabled: true, TrialPeriodDays: 3, TrialTrafficGB: 15, TrialDevices: 1, SubscriptionBaseURL: "https://subscriptions.example.test/sub/"}, VPN: vpn.Settings{Panel: vpn.Config{PanelURL: ps.URL, PanelToken: "fixture-panel"}}}
+	f.cfg = app.Config{Accounts: accounts.Config{TermsVersion: "1", PrivacyVersion: "1", CodeKey: bytes.Repeat([]byte{4}, 32), RateNamespace: uuid.NewString(), Operators: []int64{101}}, Mail: notifications.MailConfig{MailKey: bytes.Repeat([]byte{3}, 32), SMTPAddress: f.mail.Address, SMTPRootCAs: f.mail.Roots, SMTPFrom: "sender@example.test"}, Subscriptions: subscriptions.Config{PanelID: "dedicated-test", TrialEnabled: true, TrialPeriodDays: 3, TrialTrafficGB: 15, TrialDevices: 1, SubscriptionBaseURL: "https://subscriptions.example.test/sub/"}, VPN: vpn.Settings{Panel: vpn.Config{PanelURL: ps.URL, PanelToken: "fixture-panel"}}}
 	f.cfg.VPN.Panel.PanelRootCAs = x509.NewCertPool()
 	f.cfg.VPN.Panel.PanelRootCAs.AddCert(ps.Certificate())
 	if native {
 		f.cfg.Accounts.Operators = []int64{101, 202}
-		f.cfg.HTTP.AdapterToken = ""
 		configureNativeDocker(t, f)
 	}
 	var handler http.Handler
@@ -368,15 +367,6 @@ func openMode(t *testing.T, native bool, miniKey ...ed25519.PublicKey) *fixture 
 		f.svc.MiniApp = telegram.NewMiniApp(123456789, miniKey[0], f.svc.Accounts, time.Now)
 	}
 	handler = httpapi.New(f.svc, f.env.Pool, f.cfg.HTTP)
-	if !native {
-		f.internal = httptest.NewTLSServer(handler)
-		t.Cleanup(f.internal.Close)
-		dir := t.TempDir()
-		f.ca = filepath.Join(dir, "ca.pem")
-		f.tokenFile = filepath.Join(dir, "adapter-token")
-		os.WriteFile(f.ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f.internal.Certificate().Raw}), 0600)
-		os.WriteFile(f.tokenFile, []byte(f.cfg.HTTP.AdapterToken), 0600)
-	}
 	workers := river.NewWorkers()
 	river.AddWorker(workers, &notifications.MailWorker{Service: f.svc.MailDelivery})
 	river.AddWorker(workers, &vpn.ProvisionWorker{Service: f.svc.VPN})
@@ -397,24 +387,21 @@ func openMode(t *testing.T, native bool, miniKey ...ed25519.PublicKey) *fixture 
 }
 func (f *fixture) send(t *testing.T, c *http.Client, method, path string, body any, csrf, key string, internal bool, miniToken ...string) (int, []byte, *http.Response) {
 	t.Helper()
+	if internal {
+		t.Fatal("retired internal fixture transport requested")
+	}
 	var raw []byte
 	if body != nil {
 		raw, _ = json.Marshal(body)
 	}
-	base := f.public.URL
-	if internal {
-		base = f.internal.URL
-	}
-	req, err := http.NewRequest(method, base+path, bytes.NewReader(raw))
+	req, err := http.NewRequest(method, f.public.URL+path, bytes.NewReader(raw))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if internal {
-		req.Header.Set("Authorization", "Bearer "+f.cfg.HTTP.AdapterToken)
-	} else if method == "POST" {
+	if method == "POST" {
 		req.Header.Set("Origin", f.cfg.HTTP.CabinetOrigin)
 	}
 	if csrf != "" {
@@ -521,14 +508,48 @@ func (f *fixture) signup(t *testing.T, email string, source ...string) (*http.Cl
 	json.Unmarshal(b, &trial)
 	return c, csrf, trial
 }
-func (f *fixture) python(t *testing.T, requestID uuid.UUID) {
+func (f *fixture) decideTrial(t *testing.T, requestID uuid.UUID) {
 	t.Helper()
-	cmd := exec.Command("poetry", "run", "python", "-m", "unittest", "tests.test_web_trial_contract", "-v")
-	cmd.Dir = f.root
-	cmd.Env = append(os.Environ(), "TRIAL_CONTRACT_URL="+f.internal.URL, "TRIAL_CONTRACT_TOKEN_FILE="+f.tokenFile, "TRIAL_CONTRACT_CA_FILE="+f.ca, "TRIAL_CONTRACT_REQUEST_ID="+requestID.String())
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("real Python consumer failed: %s", out)
+	ctx := context.Background()
+	bridge := app.NewTrialBridge(f.svc.Subscriptions, f.svc.Notifications)
+	var card *telegram.Delivery
+	for range 20 {
+		job, err := bridge.Claim(ctx)
+		if err != nil {
+			t.Fatal("native delivery claim", err)
+		}
+		if job == nil {
+			break
+		}
+		if err := bridge.Complete(ctx, *job, telegram.DeliveryOutcome{Kind: "sent", ChatID: job.ChatID, MessageID: 1}); err != nil {
+			t.Fatal("native delivery completion", err)
+		}
+		if job.Card.RequestID == requestID {
+			card = job
+			break
+		}
+	}
+	if card == nil || card.Kind != "approval_card" || card.ChatID != 101 {
+		t.Fatal("durable native approval card missing")
+	}
+	if err := bridge.Complete(ctx, *card, telegram.DeliveryOutcome{Kind: "sent", ChatID: card.ChatID, MessageID: 1}); err != nil {
+		t.Fatal("native delivery replay", err)
+	}
+	in := telegram.TrialDecision{RequestID: requestID, ActorID: 101, Action: "approve", CallbackID: uuid.NewString()}
+	decision, err := bridge.Decide(ctx, in)
+	if err != nil || decision.Trial.Status != "approved" {
+		t.Fatal("native trial decision", err)
+	}
+	replayed, err := bridge.Decide(ctx, in)
+	if err != nil || replayed.Trial.OperationID == nil || decision.Trial.OperationID == nil || *replayed.Trial.OperationID != *decision.Trial.OperationID {
+		t.Fatal("native callback replay", err)
+	}
+	var conflict *telegram.ActionError
+	if _, err = bridge.Decide(ctx, telegram.TrialDecision{RequestID: requestID, ActorID: 101, Action: "reject", CallbackID: uuid.NewString()}); !errors.As(err, &conflict) || conflict.CurrentRequestStatus != "approved" {
+		t.Fatal("opposite native decision lacked winning state", err)
+	}
+	if _, err = bridge.Decide(ctx, telegram.TrialDecision{RequestID: requestID, ActorID: 999, Action: "approve", CallbackID: uuid.NewString()}); !errors.As(err, &conflict) || conflict.Code != "INVALID_CREDENTIALS" {
+		t.Fatal("forged native operator accepted", err)
 	}
 }
 func TestWebTrialFlowAndFailures(t *testing.T) {
@@ -544,7 +565,7 @@ func TestWebTrialFlowAndFailures(t *testing.T) {
 	if status != 404 {
 		t.Fatal("public internal ingress accessible")
 	}
-	f.python(t, r.RequestId) // Actor comes from a parsed aiogram Update; no provision worker yet.
+	f.decideTrial(t, r.RequestId)
 	var op uuid.UUID
 	f.env.Pool.QueryRow(ctx, `SELECT operation_id FROM trial_requests WHERE id=$1`, r.RequestId).Scan(&op)
 	var grant string
@@ -554,7 +575,7 @@ func TestWebTrialFlowAndFailures(t *testing.T) {
 	}
 	// Restrict another approved account before any provision workers start.
 	_, _, restricted := f.signup(t, "restricted@example.test")
-	f.python(t, restricted.RequestId)
+	f.decideTrial(t, restricted.RequestId)
 	if _, err := f.env.Pool.Exec(ctx, `UPDATE accounts SET restricted=true WHERE id=(SELECT account_id FROM trial_requests WHERE id=$1)`, restricted.RequestId); err != nil {
 		t.Fatal(err)
 	}
@@ -590,7 +611,7 @@ func TestWebTrialFlowAndFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	second, secondCSRF, r2 := f.signup(t, "recover@example.test")
-	f.python(t, r2.RequestId)
+	f.decideTrial(t, r2.RequestId)
 	var op2 uuid.UUID
 	f.env.Pool.QueryRow(ctx, `SELECT operation_id FROM trial_requests WHERE id=$1`, r2.RequestId).Scan(&op2)
 	wait(t, func() bool {
@@ -601,9 +622,9 @@ func TestWebTrialFlowAndFailures(t *testing.T) {
 	var before []byte
 	f.env.Pool.QueryRow(ctx, `SELECT target FROM trial_operations WHERE id=$1`, op2).Scan(&before)
 	f.env.Pool.Exec(ctx, `DROP TRIGGER fail_apply ON trial_operations; DROP FUNCTION fail_apply()`)
-	status, _, _ = f.send(t, f.internal.Client(), "POST", "/internal/v1/trial-operations/"+op2.String()+"/reconcile", map[string]any{"operator_tg_id": 101, "reason": "recover original operation"}, "", uuid.NewString(), true)
-	if status != 202 {
-		t.Fatal("reconcile", status)
+	reconciled, err := app.NewTrialBridge(f.svc.Subscriptions, f.svc.Notifications).Reconcile(ctx, telegram.SupportAction{TargetID: op2, ActorID: 101, Key: uuid.New(), Reason: "recover original operation"})
+	if err != nil || reconciled.ID != op2 {
+		t.Fatal("native reconcile", err)
 	}
 	wait(t, func() bool {
 		var s string
@@ -646,6 +667,28 @@ func (f *fixture) browser(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "mail.json")
 	stop := make(chan struct{})
 	done := make(chan struct{})
+	decision := make(chan error, 1)
+	go func() {
+		ticker := time.NewTicker(25 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				var id uuid.UUID
+				err := f.env.Pool.QueryRow(context.Background(), `SELECT r.id FROM trial_requests r JOIN accounts a ON a.id=r.account_id WHERE a.email_key='browser@example.test' AND r.status='pending'`).Scan(&id)
+				if err == pgx.ErrNoRows {
+					continue
+				}
+				if err == nil {
+					_, err = app.NewTrialBridge(f.svc.Subscriptions, f.svc.Notifications).Decide(context.Background(), telegram.TrialDecision{RequestID: id, ActorID: 101, Action: "approve", CallbackID: uuid.NewString()})
+				}
+				decision <- err
+				return
+			}
+		}
+	}()
 	go func() {
 		defer close(done)
 		ticker := time.NewTicker(25 * time.Millisecond)
@@ -672,10 +715,18 @@ func (f *fixture) browser(t *testing.T) {
 	defer func() { close(stop); <-done }()
 	cmd := exec.Command("npm", "run", "test:e2e")
 	cmd.Dir = filepath.Join(f.root, "web")
-	cmd.Env = append(os.Environ(), "E2E_MODE=real", "TEST_ORIGIN="+f.public.URL, "TEST_MAIL_FILE="+file, "TRIAL_CONTRACT_URL="+f.internal.URL, "TRIAL_CONTRACT_TOKEN_FILE="+f.tokenFile, "TRIAL_CONTRACT_CA_FILE="+f.ca)
+	cmd.Env = append(os.Environ(), "E2E_MODE=real", "TEST_ORIGIN="+f.public.URL, "TEST_MAIL_FILE="+file)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("real browser flow failed: %s", out)
+	}
+	select {
+	case err := <-decision:
+		if err != nil {
+			t.Fatal("native browser decision", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("browser trial did not reach native decision")
 	}
 }
 
@@ -708,12 +759,7 @@ func TestWebTrialHTTPContractPaths(t *testing.T) {
 				continue
 			}
 			count++
-			private := strings.HasPrefix(path, "/internal/")
-			client := c
-			if private {
-				client = f.internal.Client()
-			}
-			status, _, _ := f.send(t, client, strings.ToUpper(method), path+"?unknown=1", nil, csrf, uuid.NewString(), private)
+			status, _, _ := f.send(t, c, strings.ToUpper(method), path+"?unknown=1", nil, csrf, uuid.NewString(), false)
 			if status != 400 {
 				t.Errorf("%s %s unknown query: %d", method, path, status)
 			}
@@ -728,7 +774,7 @@ func TestWebTrialBackupRestore(t *testing.T) {
 	f := open(t)
 	ctx := context.Background()
 	c, _, r := f.signup(t, "restore@example.test")
-	f.python(t, r.RequestId)
+	f.decideTrial(t, r.RequestId)
 	var op uuid.UUID
 	f.env.Pool.QueryRow(ctx, `SELECT operation_id FROM trial_requests WHERE id=$1`, r.RequestId).Scan(&op)
 	blocked := make(chan struct{})

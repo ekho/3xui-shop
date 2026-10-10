@@ -224,7 +224,15 @@ func (a *API) ReceiveYooKassa(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if err = a.payments.ReceiveYooKassa(c.Request().Context(), in.Object.Id.String()); err != nil {
+	if in.Event == wire.RefundSucceeded {
+		if in.Object.PaymentId == nil {
+			return paymentError(&payments.Error{Status: 400, Code: "INVALID_INPUT"})
+		}
+		err = a.payments.ReceiveYooKassaRefund(c.Request().Context(), in.Object.Id.String(), in.Object.PaymentId.String())
+	} else {
+		err = a.payments.ReceiveYooKassa(c.Request().Context(), in.Object.Id.String())
+	}
+	if err != nil {
 		return paymentError(err)
 	}
 	return c.NoContent(200)

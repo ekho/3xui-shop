@@ -34,59 +34,10 @@ func toSubscriptionCurrentTrialRequest(v subscriptions.CurrentTrialRequest) wire
 	return out
 }
 
-func toSubscriptionTelegramPayload(v subscriptions.TelegramPayload) wire.TelegramPayload {
-	out := wire.TelegramPayload{}
-	out.Comment = v.Comment
-	out.CreatedAt = v.CreatedAt
-	out.DisplayName = v.DisplayName
-	if v.Email != nil {
-		value := openapi_types.Email(*v.Email)
-		out.Email = &value
-	}
-	out.OperationId = v.OperationId
-	out.RequestId = v.RequestId
-	out.Status = wire.TelegramPayloadStatus(v.Status)
-	out.TargetMessageId = v.TargetMessageId
-	out.TelegramId = v.TelegramId
-	return out
-}
-
-func toSubscriptionDecisionResult(v subscriptions.DecisionResult) wire.DecisionResult {
-	out := wire.DecisionResult{}
-	out.Card = toSubscriptionTelegramPayload(v.Card)
-	out.DeliveryState = wire.DecisionResultDeliveryState(v.DeliveryState)
-	out.OperationId = v.OperationId
-	out.Request = toSubscriptionTrialRequest(v.Request)
-	return out
-}
-
-func fromSubscriptionDecisionInput(v wire.DecisionInput) subscriptions.DecisionInput {
-	out := subscriptions.DecisionInput{}
-	out.CallbackQueryId = v.CallbackQueryId
-	out.Decision = string(v.Decision)
-	out.OperatorTgId = v.OperatorTgId
-	out.Reason = v.Reason
-	return out
-}
-
-func fromSubscriptionReconsiderInput(v wire.ReconsiderInput) subscriptions.ReconsiderInput {
-	out := subscriptions.ReconsiderInput{}
-	out.OperatorTgId = v.OperatorTgId
-	out.Reason = v.Reason
-	return out
-}
-
 func toSubscriptionReconcileResult(v subscriptions.ReconcileResult) wire.ReconcileResult {
 	out := wire.ReconcileResult{}
 	out.OperationId = v.OperationId
 	out.Status = wire.ReconcileResultStatus(v.Status)
-	return out
-}
-
-func fromSubscriptionReconcileInput(v wire.ReconcileInput) subscriptions.ReconcileInput {
-	out := subscriptions.ReconcileInput{}
-	out.OperatorTgId = v.OperatorTgId
-	out.Reason = v.Reason
 	return out
 }
 
@@ -281,16 +232,6 @@ func (a *API) currentTrialRequest(ctx context.Context, accountID uuid.UUID) (wir
 	return toSubscriptionCurrentTrialRequest(v), subscriptionError(err)
 }
 
-func (a *API) decideTrialRequest(ctx context.Context, id uuid.UUID, in wire.DecisionInput) (wire.DecisionResult, error) {
-	v, err := a.subscriptions.DecideTrialRequest(ctx, id, fromSubscriptionDecisionInput(in))
-	return toSubscriptionDecisionResult(v), subscriptionError(err)
-}
-
-func (a *API) reconsiderTrialRequest(ctx context.Context, id, key uuid.UUID, in wire.ReconsiderInput) (wire.TrialRequest, error) {
-	v, err := a.subscriptions.ReconsiderTrialRequest(ctx, id, key, fromSubscriptionReconsiderInput(in))
-	return toSubscriptionTrialRequest(v), subscriptionError(err)
-}
-
 func (a *API) subscription(ctx context.Context, account uuid.UUID) (out wire.Subscription, retErr error) {
 	v, err := a.subscriptions.Subscription(ctx, account)
 	return toSubscriptionSubscription(v), subscriptionError(err)
@@ -314,9 +255,4 @@ func (a *API) getAccessOperation(ctx context.Context, actor, target, id uuid.UUI
 func (a *API) reconcileAccessOperation(ctx context.Context, actor, target, id, key uuid.UUID, in wire.AccessReconcileInput) (wire.AccessOperation, error) {
 	v, err := a.subscriptions.ReconcileAccessOperation(ctx, actor, target, id, key, fromSubscriptionAccessReconcileInput(in))
 	return toSubscriptionAccessOperation(v), subscriptionError(err)
-}
-
-func (a *API) reconcileTrialOperation(ctx context.Context, id, key uuid.UUID, in wire.ReconcileInput) (wire.ReconcileResult, error) {
-	v, err := a.subscriptions.ReconcileTrialOperation(ctx, id, key, fromSubscriptionReconcileInput(in))
-	return toSubscriptionReconcileResult(v), subscriptionError(err)
 }

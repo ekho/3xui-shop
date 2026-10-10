@@ -211,7 +211,7 @@ def restore():
                for name in ('backend', 'gateway', 'panel'))
         or transport['project'] != manifest.get('project')
         or not transport['bot_stopped'] or not transport['reconcile_stopped']
-        or not transport['no_telegram_operators'] or not transport['vpn_connected']
+        or not transport['no_telegram_operators'] or not transport['telegram_disabled'] or not transport['vpn_connected']
         or transport['vpn_config_digest'] != manifest.get('vpn_config_sha256')):
         raise RuntimeError('root Access profile runtime manifest not ready')
     EVIDENCE.mkdir(parents=True, exist_ok=True, mode=0o700)

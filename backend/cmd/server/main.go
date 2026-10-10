@@ -12,6 +12,7 @@ import (
 	"example.com/cabinet/backend/internal/modules/payments"
 	"example.com/cabinet/backend/internal/modules/telegram"
 	"example.com/cabinet/backend/internal/modules/vpn"
+	"fmt"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -30,14 +31,37 @@ import (
 )
 
 func main() {
+	if len(os.Args) >= 2 && os.Args[1] == "cutover-check" {
+		if len(os.Args) != 2 || runCutoverCheck(os.Stdout) != nil {
+			fmt.Fprintln(os.Stderr, "CUTOVER_UNSUPPORTED_ARTIFACT")
+			os.Exit(1)
+		}
+		return
+	}
+	if len(os.Args) >= 2 && os.Args[1] == "export-legacy" {
+		if runLegacyExport(os.Args[2:]) != nil {
+			fmt.Fprintln(os.Stderr, "EXPORT_FAILED")
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(); err != nil {
 		slog.Error("backend stopped", "code", "SERVICE_UNAVAILABLE")
 		os.Exit(1)
 	}
 }
 func run() (runErr error) {
+	if len(os.Args) == 2 && os.Args[1] == "cutover-check" {
+		return runCutoverCheck(os.Stdout)
+	}
+	if len(os.Args) >= 2 && os.Args[1] == "export-legacy" {
+		return runLegacyExport(os.Args[2:])
+	}
 	if len(os.Args) >= 2 && os.Args[1] == "import-legacy" {
 		return runLegacyMigration(os.Args[2:])
+	}
+	if len(os.Args) == 4 && os.Args[1] == "legacy-payments" {
+		return runLegacyReceipts(os.Args[2], os.Args[3])
 	}
 	if len(os.Args) >= 3 && os.Args[1] == "backup" {
 		return runBackupCommand(os.Args[2:])
@@ -78,23 +102,6 @@ func run() (runErr error) {
 		slog.Error("invalid configuration")
 		return err
 	}
-	var reporter *operations.Reporter
-	if os.Args[1] == "serve" {
-		reporter = operations.NewReporter(slog.Default(), cfg.OperationsEmail, func(ctx context.Context, to, subject, body string) error {
-			return notifications.SendSMTP(ctx, cfg.Mail, to, subject, body)
-		})
-		reporter.Notify("backend", "starting", "")
-		defer func() {
-			if runErr != nil {
-				reporter.Notify("backend", "error", "SERVICE_UNAVAILABLE")
-			} else {
-				reporter.Notify("backend", "stopped", "")
-			}
-			stop, done := context.WithTimeout(context.Background(), 4*time.Second)
-			defer done()
-			_ = reporter.Close(stop)
-		}()
-	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
@@ -113,6 +120,49 @@ func run() (runErr error) {
 	}
 	if err = pool.Ping(ctx); err != nil {
 		return err
+	}
+	owner, err := operations.AcquireRuntimeOwner(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	retainOwner := false
+	defer func() {
+		if !retainOwner {
+			runErr = errors.Join(runErr, owner.Close())
+		}
+	}()
+	stopWatching := make(chan struct{})
+	defer close(stopWatching)
+	go func() {
+		select {
+		case <-owner.Lost():
+			cancel()
+			slog.Error("runtime ownership lost", "code", "SERVICE_UNAVAILABLE")
+			os.Exit(1)
+		case <-stopWatching:
+		}
+	}()
+	if err = owner.Check(ctx); err != nil {
+		return err
+	}
+	var reporter *operations.Reporter
+	if os.Args[1] == "serve" {
+		reporter = operations.NewReporter(slog.Default(), cfg.OperationsEmail, func(ctx context.Context, to, subject, body string) error {
+			return notifications.SendSMTP(ctx, cfg.Mail, to, subject, body)
+		})
+		reporter.Notify("backend", "starting", "")
+		defer func() {
+			if runErr != nil {
+				reporter.Notify("backend", "error", "SERVICE_UNAVAILABLE")
+			} else {
+				reporter.Notify("backend", "stopped", "")
+			}
+			stop, done := context.WithTimeout(context.Background(), 4*time.Second)
+			defer done()
+			if reporter.Close(stop) != nil {
+				retainOwner = true
+			}
+		}()
 	}
 	opts, err := redis.ParseURL(cfg.RedisURL)
 	if err != nil {
@@ -157,9 +207,6 @@ func run() (runErr error) {
 			slog.Warn("Telegram audit mirror unavailable", "code", "INVALID_CONFIGURATION")
 			auditMirror = func(context.Context, string) error { return &telegram.ActionError{Code: "INVALID_CONFIGURATION"} }
 		}
-		if tgConfig.Enabled && cfg.HTTP.AdapterToken != "" {
-			return errors.New("disable legacy bot API before enabling native Telegram")
-		}
 		tg, e = app.NewTelegram(tgConfig, svc, cfg.HTTP.CabinetOrigin, nil)
 		svc.MiniApp = app.NewTelegramMiniApp(tgConfig, svc.Accounts, cfg.Accounts.Now)
 		if e != nil {
@@ -192,6 +239,9 @@ func run() (runErr error) {
 	}
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()
+	if err = owner.Check(ctx); err != nil {
+		return err
+	}
 	if err = worker.Start(workerCtx); err != nil {
 		return err
 	}
@@ -212,6 +262,7 @@ func run() (runErr error) {
 		}
 		if !stopped {
 			skipPoolClose = true
+			retainOwner = true
 		}
 		if stopped && reporter != nil {
 			reporter.Notify("river", "stopped", "")
@@ -229,6 +280,9 @@ func run() (runErr error) {
 		return err
 	}
 	defer listener.Close()
+	if err = owner.Check(ctx); err != nil {
+		return err
+	}
 	schedulerCtx, schedulerCancel := context.WithCancel(ctx)
 	defer schedulerCancel()
 	schedulerResult := make(chan error, 5)
@@ -267,9 +321,7 @@ func run() (runErr error) {
 		}()
 	}
 	startScheduler("scheduler_monthly", svc.VPN.RunMonthlyResetScheduler)
-	if cfg.HTTP.AdapterToken == "" {
-		startScheduler("scheduler_vpn_groups", svc.VPN.RunGroupReconciliationScheduler)
-	}
+	startScheduler("scheduler_vpn_groups", svc.VPN.RunGroupReconciliationScheduler)
 	startScheduler("scheduler_stars", svc.Payments.RunStarsSubscriptionScheduler)
 	startScheduler("scheduler_reminders", svc.Reminders.RunScheduler)
 	startScheduler("scheduler_audit", func(ctx context.Context) error { return svc.AuditReports.RunScheduler(ctx, auditMirror) })
@@ -285,7 +337,11 @@ func run() (runErr error) {
 			reporter.Notify("schedulers", "stopped", "")
 		}
 	case <-time.After(20 * time.Second):
+		retainOwner = true
 		return errors.New("schedulers did not stop")
+	}
+	if serveErr != nil {
+		retainOwner = true
 	}
 	return serveErr
 }

@@ -105,13 +105,6 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, readiness
 			code = "INVALID_INPUT"
 		}
 		body := map[string]any{"code": code, "message": code, "request_id": uuid.NewString()}
-		if domain != nil && domain.Status == 409 && c.Path() == "/internal/v1/trial-requests/:id/decision" {
-			for k, v := range domain.Details {
-				if k == "current_request_status" || k == "operation_id" {
-					body[k] = v
-				}
-			}
-		}
 		c.JSON(status, map[string]any{"error": body})
 	}
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -133,14 +126,6 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, readiness
 			}
 			if len(c.Request().Header.Values("Authorization")) > 1 {
 				return failure(401, "INVALID_CREDENTIALS")
-			}
-			if strings.HasPrefix(c.Path(), "/internal/") {
-				if cfg.AdapterToken == "" || subtle.ConstantTimeCompare([]byte(c.Request().Header.Get("Authorization")), []byte("Bearer "+cfg.AdapterToken)) != 1 {
-					return &apiError{Status: 401, Code: "INVALID_CREDENTIALS"}
-				}
-				if c.Request().Header.Get("Origin") != "" {
-					return &apiError{Status: 403, Code: "INVALID_CREDENTIALS"}
-				}
 			}
 			return next(c)
 		}
@@ -205,15 +190,10 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, readiness
 	e.POST("/api/v1/trial-requests", a.CreateTrialRequest)
 	e.POST("/api/v1/trials/activate", a.ActivateTelegramTrial)
 	e.GET("/api/v1/trial-requests/current", a.GetCurrentTrialRequest)
-	e.POST("/internal/v1/trial-requests/:id/decision", a.DecideTrialRequest)
-	e.POST("/internal/v1/trial-requests/:id/reconsider", a.ReconsiderTrialRequest)
 	e.GET("/api/v1/subscription", a.GetSubscription)
 	e.GET("/api/v1/subscription/renewal", a.GetRenewalOffer)
 	e.GET("/api/v1/subscription/plan-change", a.GetPlanChangeContext)
 	e.GET("/api/v1/subscription/key", a.GetSubscriptionKey)
-	e.POST("/internal/v1/trial-operations/:id/reconcile", a.ReconcileTrialOperation)
-	e.POST("/internal/v1/telegram/jobs/claim", a.ClaimTelegramJobs)
-	e.POST("/internal/v1/telegram/jobs/:id/result", a.CompleteTelegramJob)
 	e.GET("/api/v1/support", a.GetSupport)
 	e.GET("/api/v1/reminders", a.GetReminders)
 	e.GET("/api/v1/notices", a.GetNotices)
@@ -266,6 +246,10 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, readiness
 	e.POST("/webhooks/yookassa", a.ReceiveYooKassa)
 	e.POST("/webhooks/cryptomus", a.ReceiveCryptomus)
 	e.POST("/webhooks/heleket", a.ReceiveHeleket)
+	e.POST("/yoomoney", a.ReceiveYooMoney)
+	e.POST("/yookassa", a.ReceiveYooKassa)
+	e.POST("/cryptomus", a.ReceiveCryptomus)
+	e.POST("/heleket", a.ReceiveHeleket)
 	e.GET("/api/v1/operator/catalogue", a.GetOperatorCatalogue)
 	e.POST("/api/v1/operator/catalogue/plans", a.CreateCataloguePlan)
 	e.POST("/api/v1/operator/catalogue/plans/:id/revision", a.ReviseCataloguePlan)
@@ -493,41 +477,6 @@ func (a *API) GetCurrentTrialRequest(c *echo.Context) error {
 	}
 	return c.JSON(200, out)
 }
-func (a *API) DecideTrialRequest(c *echo.Context) error {
-	id, err := resourceID(c)
-	if err != nil {
-		return err
-	}
-	in, err := decode[wire.DecisionInput](a, c, "DecisionInput")
-	if err != nil {
-		return err
-	}
-	out, err := a.decideTrialRequest(c.Request().Context(), id, in)
-	if err != nil {
-		return err
-	}
-	return c.JSON(200, out)
-}
-func (a *API) ReconsiderTrialRequest(c *echo.Context) error {
-	id, err := resourceID(c)
-	if err != nil {
-		return err
-	}
-	key, err := idempotencyKey(c)
-	if err != nil {
-		return err
-	}
-	in, err := decode[wire.ReconsiderInput](a, c, "ReconsiderInput")
-	if err != nil {
-		return err
-	}
-	out, err := a.reconsiderTrialRequest(c.Request().Context(), id, key, in)
-	if err != nil {
-		return err
-	}
-	return c.JSON(201, out)
-}
-
 func (a *API) GetSubscription(c *echo.Context) error {
 	account, e := a.auth(c, false)
 	if e != nil {
@@ -550,52 +499,6 @@ func (a *API) GetSubscriptionKey(c *echo.Context) error {
 	}
 	return c.JSON(200, out)
 }
-func (a *API) ReconcileTrialOperation(c *echo.Context) error {
-	id, e := resourceID(c)
-	if e != nil {
-		return e
-	}
-	key, e := idempotencyKey(c)
-	if e != nil {
-		return e
-	}
-	in, e := decode[wire.ReconcileInput](a, c, "ReconcileInput")
-	if e != nil {
-		return e
-	}
-	out, e := a.reconcileTrialOperation(c.Request().Context(), id, key, in)
-	if e != nil {
-		return e
-	}
-	return c.JSON(202, out)
-}
-
-func (a *API) ClaimTelegramJobs(c *echo.Context) error {
-	in, e := decode[wire.ClaimInput](a, c, "ClaimInput")
-	if e != nil {
-		return e
-	}
-	out, e := a.claimTelegramJobs(c.Request().Context(), in)
-	if e != nil {
-		return e
-	}
-	return c.JSON(200, out)
-}
-func (a *API) CompleteTelegramJob(c *echo.Context) error {
-	id, e := resourceID(c)
-	if e != nil {
-		return e
-	}
-	in, e := decode[wire.TelegramResultInput](a, c, "TelegramResultInput")
-	if e != nil {
-		return e
-	}
-	if e = a.completeTelegramJob(c.Request().Context(), id, in); e != nil {
-		return e
-	}
-	return c.JSON(200, wire.CompleteResult{})
-}
-
 func requireEmptyBody(c *echo.Context) error {
 	body, err := io.ReadAll(io.LimitReader(c.Request().Body, 1))
 	if err != nil || len(body) != 0 {

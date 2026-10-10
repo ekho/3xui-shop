@@ -265,8 +265,10 @@ LOCAL_PROFILE=native python3 deploy/purchase/renewal-local.py stop
 `check` проверяет active/expired/exhausted, replay, очередное продление, покупку
 после возврата к триалу и поздние ban/plan/identity guards. Исчерпание создаётся
 синтетическими счётчиками при остановленной панели этого проекта. SQLite
-обрабатывается внутри Docker VM, в контейнере из закреплённой Python базы
-Dockerfile.bot, с отключённой сетью и только собственным panel DB mount.
+обрабатывается внутри Docker VM: test-only Go helper `backend/tests/fixtures/paneldb`
+монтируется в существующий backend image с отключённой сетью и собственным panel DB
+mount. Helper проверяет identity и число memberships, обновляет только traffic в
+одной транзакции; Python product image не требуется.
 `restore` задерживает её access job,
 сохраняет funded target, останавливает исходный backend и сравнивает восстановленную
 базу READ ONLY без запуска её исполнителей. После очистки авторизации и повторной

@@ -161,10 +161,10 @@ function privateContinuation(value){
 let browser,step='preflight';
 try{
  const transport=bridge('transport');
- record('AC8 Subscription operation owned runtime guard','root manifest supplied, own project, baseline VPN connected, bot/reconcile stopped',
+ record('AC8 Subscription operation owned runtime guard','root manifest supplied, own project, native Telegram disabled, baseline VPN connected, bot/reconcile stopped',
   {manifest_present:true,own_project:transport.project===manifest.project,vpn:transport.vpn_connected,
-   stopped:transport.bot_stopped&&transport.reconcile_stopped},
-  transport.project===manifest.project&&transport.vpn_connected&&transport.bot_stopped&&transport.reconcile_stopped&&transport.no_telegram_operators);
+   stopped:transport.bot_stopped&&transport.reconcile_stopped,telegram_disabled:transport.telegram_disabled},
+  transport.project===manifest.project&&transport.vpn_connected&&transport.bot_stopped&&transport.reconcile_stopped&&transport.no_telegram_operators&&transport.telegram_disabled);
  browser=await chromium.launch({args:['--ignore-certificate-errors-spki-list='+pin]});
  if(stage==='setup'){
   if(existsSync(fixturePath))throw Error('Subscription operation fixtures already exist; do not overwrite');

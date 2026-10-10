@@ -1,10 +1,10 @@
 name: Platform checks
 on:
   pull_request:
-    paths: ['backend/**', 'web/**', 'docs/api/**', 'app/**', 'tests/**', 'pyproject.toml', 'poetry.lock', 'deploy/**', '.github/workflows/platform-checks.yml', '.github/scripts/**', '.github/buildkitd.toml']
+    paths: ['backend/**', 'web/**', 'docs/api/**', 'tests/**', 'deploy/**', '.github/workflows/platform-checks.yml', '.github/scripts/**', '.github/buildkitd.toml']
   push:
     branches: ['feature/**']
-    paths: ['backend/**', 'web/**', 'docs/api/**', 'app/**', 'tests/**', 'pyproject.toml', 'poetry.lock', 'deploy/**', '.github/workflows/platform-checks.yml', '.github/scripts/**', '.github/buildkitd.toml']
+    paths: ['backend/**', 'web/**', 'docs/api/**', 'tests/**', 'deploy/**', '.github/workflows/platform-checks.yml', '.github/scripts/**', '.github/buildkitd.toml']
 permissions:
   contents: read
 concurrency:
@@ -16,6 +16,9 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # existing repository v4 pin
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Configure Docker Hub cache before containers
         run: |
           printf 'DOCKER_CONFIG=%s\n' "$(mktemp -d "$RUNNER_TEMP/ci-docker-config.XXXXXX")" >> "$GITHUB_ENV"
@@ -60,8 +63,6 @@ jobs:
           python-version: '3.13'
       - name: Dependencies and isolated databases
         run: |
-          python -m pip install poetry==2.5.1
-          poetry install --no-interaction
           npm --prefix web ci --ignore-scripts
           cd web && npx playwright install --with-deps chromium
           cd ..
@@ -84,13 +85,13 @@ jobs:
           (cd web && node scripts/runtime-config.test.mjs)
       - name: Behavior and connected consumers
         run: |
-          RUN_BROWSER_TESTS=1 make -C backend test-integration TEST_TIMEOUT=60m
-          poetry run python -m unittest discover -s tests -v
+          RUN_BROWSER_TESTS=1 RUN_CUTOVER_ARTIFACT_TESTS=1 make -C backend test-integration TEST_TIMEOUT=60m
+          python -m unittest discover -s tests -v
           npm --prefix web run test:e2e
       - name: Container readiness (local images only)
         run: |
           docker compose --env-file deploy/acceptance/.env.example -f deploy/acceptance/compose.acceptance.yml config --quiet
-          docker compose --env-file deploy/acceptance/.env.example -f deploy/acceptance/compose.acceptance.yml build backend gateway bot
+          docker compose --env-file deploy/acceptance/.env.example -f deploy/acceptance/compose.acceptance.yml build backend gateway
           python deploy/acceptance/smoke.py
       - name: Native process with 3X-UI 3.7.0 and TLS SMTP
         run: |

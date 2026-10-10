@@ -43,20 +43,7 @@ def seed_traffic(account):
     row = purchase.account_row(account)
     purchase.compose('stop', 'panel')
     try:
-        # Same owned Docker-VM SQLite fixture pattern as exhaust_counters.
-        script = """import json,sqlite3,sys
-row=json.load(sys.stdin)
-with sqlite3.connect('/panel/x-ui.db') as db:
-    assert db.execute('SELECT count(*) FROM clients WHERE email=? AND uuid=? AND sub_id=?',
-        (row['panel_key'],row['vpn_id'],row['sub_id'])).fetchone()[0]==1
-    assert db.execute('UPDATE client_traffics SET up=111,down=222 WHERE email=?',
-        (row['panel_key'],)).rowcount>0
-"""
-        image = (purchase.ROOT / 'deploy/acceptance/Dockerfile.bot').read_text().splitlines()[0].split()[1]
-        local.command(['docker', 'run', '--rm', '--pull', 'missing', '--network', 'none',
-            '--read-only', '--user', str(os.getuid()) + ':' + str(os.getgid()), '-i',
-            '--mount', 'type=bind,source=' + str(local.STATE / 'panel-db') + ',target=/panel',
-            '--entrypoint', 'python', image, '-c', script], stdin=json.dumps(row).encode())
+        purchase.panel_traffic_fixture(row, 111, 222)
     finally:
         purchase.compose('up', '--no-build', '--pull', 'never', '--no-deps', '-d', 'panel')
     def ready():
@@ -111,7 +98,7 @@ def refund(operator, actor, opener, login, order, receipt):
 def check():
     config = json.loads(purchase.compose('config', '--format', 'json'))
     env = config['services']['backend']['environment']
-    assert env['TELEGRAM_ENABLED'] == 'false' and env['LEGACY_BOT_API_ENABLED'] == 'false'
+    assert env['TELEGRAM_ENABLED'] == 'false'
     assert env['SHOP_PAYMENT_YOOMONEY_ENABLED'] == 'true' and env['YOOMONEY_WALLET_ID'] == '410000000000000'
     assert config['services']['panel']['image'].startswith('ghcr.io/mhsanaei/3x-ui:3.7.0@sha256:')
     assert not set(purchase.compose('ps', '--services', '--status', 'running').decode().splitlines()).intersection({'bot', 'reconcile'})

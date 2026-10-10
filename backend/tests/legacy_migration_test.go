@@ -5,9 +5,12 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha1"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -94,8 +97,9 @@ func legacySyntheticPacket(t *testing.T, root string) operations.LegacyPackage {
 	if err := fixture.Run(); err != nil {
 		t.Fatal("synthetic SQLite fixture creation failed")
 	}
-	exporter := exec.Command("python3", filepath.Join(root, "deploy/data-migration/export_legacy.py"), source,
+	exporter := exec.Command("go", "run", "./cmd/server", "export-legacy", source,
 		"--source", "synthetic-source", "--support-bot-id", "12345", "--support-group-id", "-10012345")
+	exporter.Dir = filepath.Join(root, "backend")
 	raw, err := exporter.Output()
 	if err != nil {
 		t.Fatal("private SQLite exporter failed")
@@ -134,7 +138,7 @@ func TestPopulatedLegacyMigrationPreservesNativeFacts(t *testing.T) {
 	wait(t, runtime.StarsGateway().Ready)
 	t.Cleanup(stop)
 
-	ancestor, _, actor := f.signupAccount(t, nativeEmail("migration-ancestor"))
+	ancestor, actorCSRF, actor := f.signupAccount(t, nativeEmail("migration-ancestor"))
 	firstCode := nativeReferralCode(t, nativeReferralRead(t, f, ancestor))
 	inviter, _, inviterID := f.signupAccount(t, nativeEmail("migration-inviter"), firstCode)
 	secondCode := nativeReferralCode(t, nativeReferralRead(t, f, inviter))
@@ -295,12 +299,41 @@ func TestPopulatedLegacyMigrationPreservesNativeFacts(t *testing.T) {
 	defer lateStop()
 	_, lateOrder := nativeStarsOrder(t, f, key, int64(uuid.New().ID())+1000000000, plan)
 	lateStop()
+	nativeRewardModules(t, f, key)
+	setNativeMaintenance(t, f, ancestor, actorCSRF, true, 0, uuid.NewString())
+	f.cfg.Payments.YooMoneyNotificationSecret = []byte("owned cutover receipt fixture")
+	lateFields := url.Values{"notification_type": {"p2p-incoming"}, "operation_id": {"owned-cutover-receipt"},
+		"amount": {"97.00"}, "currency": {"643"}, "datetime": {f.env.Clock().Format(time.RFC3339Nano)},
+		"sender": {"owned-fixture-sender"}, "codepro": {"false"}, "label": {packet.Payments.Transactions[0].PaymentID}}
+	proof := sha1.Sum([]byte(strings.Join([]string{lateFields.Get("notification_type"), lateFields.Get("operation_id"),
+		lateFields.Get("amount"), lateFields.Get("currency"), lateFields.Get("datetime"), lateFields.Get("sender"),
+		lateFields.Get("codepro"), string(f.cfg.Payments.YooMoneyNotificationSecret), lateFields.Get("label")}, "&")))
+	lateFields.Set("sha1_hash", hex.EncodeToString(proof[:]))
+	latePayment := func() {
+		response, err := f.public.Client().PostForm(f.public.URL+"/yoomoney", lateFields)
+		if err != nil {
+			t.Fatal("late callback unavailable", err)
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			t.Fatal("late callback rejected in maintenance", response.StatusCode)
+		}
+	}
+	latePayment()
+	latePayment()
+	var receipts, invented int
+	if f.env.Pool.QueryRow(ctx, `SELECT
+	 (SELECT count(*) FROM legacy_payment_receipts WHERE provider='yoomoney' AND source_id='owned-cutover-receipt' AND amount_minor=9700 AND currency='RUB' AND state='review' AND source_transaction_id=$1),
+	 (SELECT count(*) FROM purchase_orders WHERE account_id IN (SELECT account_id FROM legacy_payment_transactions))`, packet.Payments.Transactions[0].SourceID).Scan(&receipts, &invented) != nil || receipts != 1 || invented != 0 {
+		t.Fatal("late verified money lost or synthetic funding created")
+	}
 	steady := legacyDatabaseDigest(t, f.env.Pool)
 	replay, err := f.svc.LegacyImport.Import(ctx, actor, packet, false)
 	if err != nil || !replay.Replayed || replay.SourceDigest != report.SourceDigest || legacyDatabaseDigest(t, f.env.Pool) != steady {
 		t.Fatal("same-process replay changed populated schema")
 	}
 	nativeRewardModules(t, f, key)
+	latePayment()
 	replay, err = f.svc.LegacyImport.Import(ctx, actor, packet, false)
 	if err != nil || !replay.Replayed || legacyDatabaseDigest(t, f.env.Pool) != steady || !reflect.DeepEqual(nativeRewardFacts(t, f, funded.OrderId), rewardFacts) {
 		t.Fatal("application restart replay changed native/source facts")

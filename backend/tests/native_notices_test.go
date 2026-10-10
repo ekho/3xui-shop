@@ -145,7 +145,7 @@ func nativeNoticeBinary(t *testing.T, f *fixture, handler http.Handler, childSet
 		"TERMS_VERSION": "1", "PRIVACY_VERSION": "1", "TRIAL_ENABLED": "false", "PANEL_ID": f.cfg.Subscriptions.PanelID,
 		"PANEL_URL": panel.String(), "SUBSCRIPTION_BASE_URL": f.cfg.Subscriptions.SubscriptionBaseURL, "PANEL_CA_FILE": write("panel-ca", root(panel.Host, f.cfg.VPN.Panel.PanelRootCAs)),
 		"SMTP_ADDRESS": f.cfg.Mail.SMTPAddress, "SMTP_FROM": f.cfg.Mail.SMTPFrom, "SMTP_CA_FILE": write("smtp-ca", root(f.cfg.Mail.SMTPAddress, f.cfg.Mail.SMTPRootCAs)),
-		"LEGACY_BOT_API_ENABLED": "false", "TELEGRAM_ENABLED": "true", "BOT_OPERATOR_IDS": "101,202",
+		"TELEGRAM_ENABLED": "true", "BOT_OPERATOR_IDS": "101,202",
 		"BOT_TOKEN_FILE": write("bot-token", []byte("123456789:abcdefghijklmnopqrstuvwxyz012345678")),
 		"HTTPS_PROXY":    proxy.URL, "SSL_CERT_FILE": write("bot-ca", pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})), "SSL_CERT_DIR": filepath.Join(dir, "empty-ca-directory"),
 		"GODEBUG": "x509sslcertoverrideplatform=1",

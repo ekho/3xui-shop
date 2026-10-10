@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
 	"math"
@@ -10,8 +11,8 @@ import (
 	"testing"
 )
 
-func decision(actor int64, mode string) wire.DecisionInput {
-	return wire.DecisionInput{OperatorTgId: actor, Decision: wire.DecisionInputDecision(mode), CallbackQueryId: uuid.NewString()}
+func decision(actor int64, mode string) subscriptions.DecisionInput {
+	return subscriptions.DecisionInput{OperatorTgId: actor, Decision: subscriptions.DecisionInputDecision(mode), CallbackQueryId: uuid.NewString()}
 }
 func TestRegressionTrialDecisionAtomicity(t *testing.T) {
 	s, e := fixture(t)
@@ -30,7 +31,7 @@ func TestRegressionTrialDecisionAtomicity(t *testing.T) {
 		t.Fatal("same key accepts changed body")
 	}
 	var wg sync.WaitGroup
-	results := make(chan wire.DecisionResult, 2)
+	results := make(chan subscriptions.DecisionResult, 2)
 	errors := make(chan error, 2)
 	for _, actor := range []int64{101, 202} {
 		wg.Add(1)
@@ -127,11 +128,11 @@ func TestRegressionTrialReconsideration(t *testing.T) {
 	}
 	key := uuid.New()
 	for _, reason := range []string{"", strings.Repeat("я", 1001)} {
-		if _, err = s.reconsiderTrialRequest(ctx, r.RequestId, key, wire.ReconsiderInput{OperatorTgId: 101, Reason: reason}); status(err) != 400 {
+		if _, err = s.reconsiderTrialRequest(ctx, r.RequestId, key, subscriptions.ReconsiderInput{OperatorTgId: 101, Reason: reason}); status(err) != 400 {
 			t.Fatal("invalid support reason")
 		}
 	}
-	in := wire.ReconsiderInput{OperatorTgId: 101, Reason: "Support reviewed the request"}
+	in := subscriptions.ReconsiderInput{OperatorTgId: 101, Reason: "Support reviewed the request"}
 	newRequest, err := s.reconsiderTrialRequest(ctx, r.RequestId, key, in)
 	if err != nil || newRequest.Status != "pending" || newRequest.PreviousRequestId == nil || *newRequest.PreviousRequestId != r.RequestId {
 		t.Fatal("support reconsider", err)
@@ -259,7 +260,7 @@ func TestRegressionTrialReconsiderationRace(t *testing.T) {
 		wg.Add(1)
 		go func(actor int64) {
 			defer wg.Done()
-			_, err := s.reconsiderTrialRequest(ctx, r.RequestId, uuid.New(), wire.ReconsiderInput{OperatorTgId: actor, Reason: "Support review"})
+			_, err := s.reconsiderTrialRequest(ctx, r.RequestId, uuid.New(), subscriptions.ReconsiderInput{OperatorTgId: actor, Reason: "Support review"})
 			errs <- err
 		}(actor)
 	}

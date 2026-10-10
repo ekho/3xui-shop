@@ -3,8 +3,9 @@
 Native-профиль запускает один backend для HTTP, River jobs, scheduler и
 Telegram. Python bot и отдельный `reconcile` здесь не запускаются. Перенесены
 апрув web-триалов, клиентские команды, переходы в Mini App и клиентские
-уведомления. Денежные Telegram-события остаются за С34–С36; production cutover
-допустим после готовности этих владельцев, импорта и отдельной приёмки.
+уведомления. Денежные Telegram-события обслуживают С34–С36; текущая передача
+исполнения и совместимый rollback описаны в [С47](../../deploy/cutover/README.md).
+Production переключение требует отдельного разрешения.
 
 Из корня checkout с Docker, Go и OpenSSL:
 
@@ -18,8 +19,8 @@ python3 deploy/acceptance/local.py down
 `.superpowers/acceptance/native-docker` и loopback HTTPS на `58443`.
 Панель закреплена на 3X-UI **3.7.0**, почта — Mailpit с TLS и authentication.
 Публичные условия и поддержка задаются при запуске gateway. Системное доверие
-сертификатам, Happ и production не меняются. Legacy-стенд нужно остановить
-перед запуском: он использует те же loopback-порты.
+сертификатам, Happ и production не меняются. Перед запуском убедитесь, что
+loopback-порты свободны и прежний собственный стенд остановлен.
 
 `check` запускает Go HTTP/jobs/Telegram integration с simulated Bot API и
 настоящими SMTP/панелью. Затем публичное web-решение создаёт отложенную job,
@@ -32,9 +33,9 @@ compiled backend останавливается и запускается с т�
 `TELEGRAM_ENABLED=true`, путь `BOT_TOKEN_FILE` и реальные `BOT_OPERATOR_IDS`.
 Токен должен быть файлом, операторы должны начать личный чат; webhook должен
 отсутствовать. Пересоздайте только backend через те же три Compose-файла и
-`--env-file`; не включайте профиль Python `telegram`. Native overlay задаёт
-`LEGACY_BOT_API_ENABLED=false`; одновременное включение двух транспортов
-backend отклоняет. При `TELEGRAM_ENABLED=false` токен не читается.
+`--env-file`. Runtime-владение допускает один `serve` или `reconcile` для БД;
+прежний poller и его supervisor должны быть подтверждённо остановлены.
+При `TELEGRAM_ENABLED=false` токен не читается.
 
 Для клиентского режима настройте **Main Mini App** этого бота в BotFather
 на HTTPS `${CABINET_ORIGIN}/mini-app/cabinet`. Backend проверяет `getMe`, ID
@@ -58,10 +59,11 @@ backend отклоняет. При `TELEGRAM_ENABLED=false` токен не чи
 
 401/409, настроенный webhook или неподдержанный payment update останавливают
 Telegram-модуль с безопасным кодом в логах. HTTP и workers продолжают работу.
-Для смены transport: остановить старый poller, установить native configuration,
-запустить один backend. Обратный переход: остановить native backend, выключить
-его Telegram-модуль, включить legacy API и запустить прежний adapter. БД, pending
-deliveries и callbacks сохраняются. Не запускайте два poller с одним токеном.
+Для смены конфигурации остановите прежний runtime/poller и его supervisor,
+дождитесь завершения и запустите один backend. Code rollback выполняется только
+на проверенный compatible Go checkpoint с текущей PostgreSQL и поддержкой late
+receipts по [С47](../../deploy/cutover/README.md). Сохраняются pending deliveries,
+исходные keys и money facts. Прежний Python adapter и его API удалены.
 
 Причина ещё не подтверждённого пересмотра хранится в памяти. После рестарта
 оператор начинает диалог заново; подтверждённые решения и jobs уже в БД.

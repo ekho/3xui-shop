@@ -108,6 +108,9 @@ func (s *Service) completeStarsRefundTx(ctx context.Context, tx pgx.Tx, p purcha
 	return nil
 }
 func (s *Service) RecordStarsRefund(ctx context.Context, in StarsPaymentInput) error {
+	if strings.HasPrefix(in.Payload, "subscription:") {
+		return s.recordLegacyStars(ctx, in, true)
+	}
 	if !validStarsPayment(in) || in.Currency != "XTR" {
 		return failure(409, "STARS_UNSUPPORTED_PAYMENT")
 	}

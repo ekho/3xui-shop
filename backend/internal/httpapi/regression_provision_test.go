@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/vpn"
 	"example.com/cabinet/backend/internal/testkit"
 	"example.com/cabinet/backend/internal/wire"
@@ -440,7 +441,7 @@ func TestRegressionProvisionReconciliationRecovery(t *testing.T) {
 	p.failRead = false
 	p.failAfterAdd = false
 	e.Advance(time.Hour)
-	in := wire.ReconcileInput{OperatorTgId: 101, Reason: "Panel connection restored"}
+	in := subscriptions.ReconcileInput{OperatorTgId: 101, Reason: "Panel connection restored"}
 	key := uuid.New()
 	out, err := s.reconcileTrialOperation(ctx, id, key, in)
 	if err != nil || out.OperationId != id {
@@ -532,7 +533,7 @@ func TestRegressionProvisionReconciliationAbsentAfterAmbiguity(t *testing.T) {
 	_ = s.provision(ctx, id)
 	p.dropAdd = false
 	p.failRead = false
-	_, err := s.reconcileTrialOperation(ctx, id, uuid.New(), wire.ReconcileInput{OperatorTgId: 101, Reason: "Investigated missing client"})
+	_, err := s.reconcileTrialOperation(ctx, id, uuid.New(), subscriptions.ReconcileInput{OperatorTgId: 101, Reason: "Investigated missing client"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -542,7 +543,7 @@ func TestRegressionProvisionReconciliationAbsentAfterAmbiguity(t *testing.T) {
 		t.Fatal("ambiguous absence bypassed uniqueness guarantee", err)
 	}
 	s.cfg.VPN.PanelDuplicateGuardVerified = true
-	_, err = s.reconcileTrialOperation(ctx, id, uuid.New(), wire.ReconcileInput{OperatorTgId: 101, Reason: "Fixture uniqueness was verified"})
+	_, err = s.reconcileTrialOperation(ctx, id, uuid.New(), subscriptions.ReconcileInput{OperatorTgId: 101, Reason: "Fixture uniqueness was verified"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -587,7 +588,7 @@ func TestRegressionProvisionReconciliationDBCrash(t *testing.T) {
 	if err = e.Pool.QueryRow(ctx, `SELECT count(*) FROM trial_grants WHERE status='granted'`).Scan(&granted); err != nil || granted != 0 {
 		t.Fatal("grant after owner loss", err)
 	}
-	if _, err = s.reconcileTrialOperation(ctx, id, uuid.New(), wire.ReconcileInput{OperatorTgId: 101, Reason: "Database session restored"}); err != nil {
+	if _, err = s.reconcileTrialOperation(ctx, id, uuid.New(), subscriptions.ReconcileInput{OperatorTgId: 101, Reason: "Database session restored"}); err != nil {
 		t.Fatal(err)
 	}
 	if err = s.provision(ctx, id); err != nil {

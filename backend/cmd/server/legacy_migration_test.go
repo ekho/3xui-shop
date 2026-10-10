@@ -54,8 +54,8 @@ func syntheticMigrationPacket(t *testing.T) (operations.LegacyPackage, []byte) {
 	if command.Run() != nil {
 		t.Fatal("synthetic source generation failed")
 	}
-	command = exec.Command("python3", filepath.Join(root, "deploy/data-migration/export_legacy.py"), source, "--source", "synthetic-source", "--support-bot-id", "12345", "--support-group-id", "-10012345")
-	command.Dir = root
+	command = exec.Command("go", "run", "./cmd/server", "export-legacy", source, "--source", "synthetic-source", "--support-bot-id", "12345", "--support-group-id", "-10012345")
+	command.Dir = filepath.Join(root, "backend")
 	raw, err := command.Output()
 	if err != nil {
 		t.Fatal("complete source export failed")

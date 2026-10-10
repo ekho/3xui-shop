@@ -1,8 +1,7 @@
-import ast
 from contextlib import closing
 import hashlib
-import importlib.util
 import json
+import os
 import sqlite3
 import subprocess
 import sys
@@ -14,10 +13,21 @@ from tests.fixtures.legacy_snapshot import create
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPORTER = ROOT / "deploy/data-migration/export_legacy.py"
+BACKEND = ROOT / "backend"
 
 
 class ExportTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.binary_dir = tempfile.TemporaryDirectory(dir=ROOT)
+        cls.binary = Path(cls.binary_dir.name) / "server"
+        subprocess.run(["go", "build", "-o", str(cls.binary), "./cmd/server"],
+                       cwd=BACKEND, check=True, capture_output=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.binary_dir.cleanup()
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(dir=ROOT)
         self.addCleanup(self.tmp.cleanup)
@@ -26,9 +36,10 @@ class ExportTest(unittest.TestCase):
 
     def run_export(self, path=None):
         return subprocess.run(
-            [sys.executable, str(EXPORTER), str(path or self.path), "--source", "synthetic-source",
+            [str(self.binary), "export-legacy", str(path or self.path), "--source", "synthetic-source",
              "--support-bot-id", "12345", "--support-group-id", "-10012345"],
-            capture_output=True, check=False,
+            capture_output=True, check=False, cwd=BACKEND,
+            env={**os.environ, "DATABASE_URL": "invalid", "REDIS_URL": "invalid"},
         )
 
     def assert_rejected(self):
@@ -61,37 +72,15 @@ class ExportTest(unittest.TestCase):
         self.assertEqual(len(packet["catalogue_source"]["durations"]), 1)
         self.assertEqual(packet["audit"]["events"][0]["created_at"], "2026-10-10T12:13:14.123456Z")
 
-    def test_fixture_columns_match_current_orm_models(self):
-        model_columns = {}
-        for file in (ROOT / "app/db/models").glob("*.py"):
-            tree = ast.parse(file.read_text())
-            for node in tree.body:
-                if not isinstance(node, ast.ClassDef):
-                    continue
-                table = next((item.value.value for item in node.body if isinstance(item, ast.Assign)
-                              and any(isinstance(target, ast.Name) and target.id == "__tablename__" for target in item.targets)
-                              and isinstance(item.value, ast.Constant)), None)
-                if table is None:
-                    continue
-                model_columns[table] = {item.target.id for item in node.body if isinstance(item, ast.AnnAssign)
-                                        and isinstance(item.target, ast.Name) and isinstance(item.value, ast.Call)
-                                        and isinstance(item.value.func, ast.Name) and item.value.func.id == "mapped_column"}
-        with closing(sqlite3.connect(self.path)) as db:
-            fixture_columns = {table: {row[1] for row in db.execute(f"PRAGMA table_info({table})")}
-                               for table in model_columns}
-        self.assertEqual(fixture_columns, model_columns)
-
     def test_nullable_unknown_flags_are_preserved(self):
-        spec = importlib.util.spec_from_file_location("legacy_export", EXPORTER)
-        exporter = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(exporter)
-        with closing(sqlite3.connect(self.path)) as db:
-            db.row_factory = sqlite3.Row
-            rows = {table: [dict(row) for row in db.execute(f"SELECT * FROM {table} ORDER BY id")]
-                    for table in exporter.TABLES}
-        rows["users"][2]["is_trial_used"] = None
-        rows["users"][2]["is_stars_auto_renew"] = None
-        packet = exporter.build(rows, "synthetic-source", 12345, -10012345)
+        with closing(sqlite3.connect(self.path)) as db, db:
+            db.executescript("PRAGMA foreign_keys=OFF; CREATE TABLE users_new AS SELECT * FROM users; "
+                             "DROP TABLE users; ALTER TABLE users_new RENAME TO users; "
+                             "CREATE UNIQUE INDEX users_tg_id ON users(tg_id); "
+                             "UPDATE users SET is_trial_used=NULL,is_stars_auto_renew=NULL WHERE id=3;")
+        result = self.run_export()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        packet = json.loads(result.stdout)
         self.assertIsNone(packet["users"][2]["is_trial_used"])
         self.assertIsNone(packet["stars"][2]["is_stars_auto_renew"])
 
@@ -110,10 +99,12 @@ class ExportTest(unittest.TestCase):
                 self.assert_rejected()
 
     def test_offset_timestamp_keeps_exact_microseconds(self):
-        spec = importlib.util.spec_from_file_location("legacy_export", EXPORTER)
-        exporter = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(exporter)
-        self.assertEqual(exporter.stamp("2026-10-10T15:13:14.123456+03:00"), "2026-10-10T12:13:14.123456Z")
+        with closing(sqlite3.connect(self.path)) as db, db:
+            db.execute("UPDATE audit_log SET created_at=? WHERE id=1", ("2026-10-10T15:13:14.123456+03:00",))
+        result = self.run_export()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["audit"]["events"][0]["created_at"],
+                         "2026-10-10T12:13:14.123456Z")
 
     def test_support_whole_second_then_fractional_second_is_valid(self):
         with closing(sqlite3.connect(self.path)) as db, db:

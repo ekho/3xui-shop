@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -16,41 +15,20 @@ import (
 	"testing"
 )
 
-// Normalizing the old raw union before hashing would reject persisted results.
+// Normalizing the old raw result before hashing would reject persisted results.
 func TestTelegramDeliveryPersistedCompatibility(t *testing.T) {
 	ctx := context.Background()
-	var sent, failed wire.TelegramResult
-	if err := sent.FromTelegramSent(wire.TelegramSent{ChatId: 101, Kind: "sent", MessageId: 42}); err != nil {
-		t.Fatal(err)
-	}
-	if err := failed.FromTelegramFailed(wire.TelegramFailed{Code: "timeout", Kind: "delivery_failed"}); err != nil {
-		t.Fatal(err)
-	}
-	for _, pair := range []struct{ old, current any }{
-		{sent, notifications.TelegramSent{ChatId: 101, Kind: "sent", MessageId: 42}},
-		{failed, notifications.TelegramFailed{Code: "timeout", Kind: "delivery_failed"}},
+	for _, pair := range []struct {
+		old     string
+		current any
+	}{
+		{`{"chat_id":101,"kind":"sent","message_id":42}`, notifications.TelegramSent{ChatId: 101, Kind: "sent", MessageId: 42}},
+		{`{"code":"timeout","kind":"delivery_failed"}`, notifications.TelegramFailed{Code: "timeout", Kind: "delivery_failed"}},
 	} {
-		old, err := json.Marshal(pair.old)
-		if err != nil {
-			t.Fatal(err)
-		}
 		current, err := json.Marshal(pair.current)
-		if err != nil || !bytes.Equal(old, current) {
-			t.Fatal("bridge outcome JSON changed", err)
+		if err != nil || string(current) != pair.old {
+			t.Fatal("stored outcome JSON changed", err)
 		}
-	}
-	payload := wire.TelegramPayload{RequestId: uuid.New(), Status: "pending"}
-	rawPayload, err := json.Marshal(payload)
-	if err != nil {
-		t.Fatal(err)
-	}
-	oldJob, err := json.Marshal(wire.TelegramJob{ChatId: 101, JobId: uuid.Nil, Kind: "approval_card", Payload: payload})
-	if err != nil {
-		t.Fatal(err)
-	}
-	newJob, err := json.Marshal(notifications.TelegramJob{ChatID: 101, JobID: uuid.Nil, Kind: "approval_card", Payload: rawPayload})
-	if err != nil || !bytes.Equal(oldJob, newJob) {
-		t.Fatal("job/payload null and optional fields changed", err)
 	}
 	for _, state := range []string{"sent", "failed"} {
 		t.Run(state, func(t *testing.T) {
@@ -66,11 +44,7 @@ func TestTelegramDeliveryPersistedCompatibility(t *testing.T) {
 				raw = json.RawMessage("{ \"kind\": \"delivery_failed\", \"extra\": true, \"code\": \"timeout\" }")
 				code, message = "timeout", nil
 			}
-			var legacy wire.TelegramResult
-			if json.Unmarshal(raw, &legacy) != nil {
-				t.Fatal("legacy fixture")
-			}
-			oldBytes, err := json.Marshal(legacy)
+			oldBytes, err := json.Marshal(raw)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -84,9 +58,6 @@ func TestTelegramDeliveryPersistedCompatibility(t *testing.T) {
 			}
 			if err = svc.Notifications.CompleteTelegramJob(ctx, j.JobID, j.LeaseToken, raw); err != nil {
 				t.Fatal("old raw result replay", err)
-			}
-			if err = svc.completeTelegramJob(ctx, j.JobID, wire.TelegramResultInput{LeaseToken: j.LeaseToken, Result: legacy}); err != nil {
-				t.Fatal("HTTP facade legacy replay", err)
 			}
 			if err = e.Pool.QueryRow(ctx, `SELECT to_jsonb(d)::text FROM telegram_deliveries d WHERE id=$1`, j.JobID).Scan(&after); err != nil || before != after {
 				t.Fatal("replay changed saved delivery", err)

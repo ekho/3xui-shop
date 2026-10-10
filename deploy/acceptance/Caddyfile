@@ -18,7 +18,10 @@ https://{$CABINET_HOST}:8443 {
  header @browserSecurity Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-PgqzSxMpLRBzUhg2SooHKWZ2oAc0yWVxeNMrpG5YqoM='; style-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self' https://yoomoney.ru; frame-ancestors 'none'" {
   defer
  }
- @maintenance expression `{env.CABINET_MAINTENANCE} == "true"`
+ @maintenance {
+  expression `{env.CABINET_MAINTENANCE} == "true"`
+  not path /internal/* /webhooks/yoomoney /webhooks/yookassa /webhooks/cryptomus /webhooks/heleket /yoomoney /yookassa /cryptomus /heleket
+ }
  handle @maintenance {
   respond "Service maintenance" 503
  }
@@ -28,16 +31,20 @@ https://{$CABINET_HOST}:8443 {
  handle /api/* {
   reverse_proxy backend:8080
  }
- handle /webhooks/yoomoney {
+ @yoomoney path /webhooks/yoomoney /yoomoney
+ handle @yoomoney {
   reverse_proxy backend:8080
  }
- handle /webhooks/yookassa {
+ @yookassa path /webhooks/yookassa /yookassa
+ handle @yookassa {
   reverse_proxy backend:8080
  }
- handle /webhooks/cryptomus {
+ @cryptomus path /webhooks/cryptomus /cryptomus
+ handle @cryptomus {
   reverse_proxy backend:8080
  }
- handle /webhooks/heleket {
+ @heleket path /webhooks/heleket /heleket
+ handle @heleket {
   reverse_proxy backend:8080
  }
  handle /healthz {
@@ -61,16 +68,5 @@ https://{$CABINET_HOST}:8443 {
   root * /srv
   try_files {path} /index.html
   file_server
- }
-}
-https://gateway:9443 {
- header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
- tls /run/secrets/adapter_cert /run/secrets/adapter_key
- import headers
- handle /internal/* {
-  reverse_proxy backend:8080
- }
- handle {
-  respond 404
  }
 }

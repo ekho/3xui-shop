@@ -16,8 +16,6 @@ services:
   reconcile:
     environment: *panel-env
     secrets: [panel_password]
-  bot:
-    profiles: [telegram]
   gateway:
     volumes:
       - ./Caddyfile.local:/etc/caddy/Caddyfile:ro

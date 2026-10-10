@@ -22,21 +22,22 @@ Grant разрешён только подтверждённому unrestricted 
 фактическая смена права записывается в аудит. Удаление роли закрывает следующие
 защищённые запросы, текущая клиентская сессия сохраняет безопасный выход.
 
-Backend и opt-in Telegram adapter имеют разные требования: backend принимает
+Backend с выключенным embedded Telegram принимает
 `BOT_OPERATOR_IDS=`. Для заявки при отсутствии Telegram-операторов нужен
 действующий web-оператор. Решение, reservation и worker используют прежние UUID,
-target и один Grant. Профиль bot не включается для web-only проверки.
+target и один Grant. Embedded Telegram выключен для web-only проверки.
 
-На собственном `cabinet-s01-local` стенде:
+На собственном native стенде ([С01](s01-test-rollout.md)):
 
 ```sh
-LOCAL_PROFILE=legacy python3 deploy/acceptance/local.py up
+python3 deploy/acceptance/local.py up
 node deploy/operator-cabinet/browser.mjs
 ```
 
 До второй команды source/image должны соответствовать проверяемой ревизии,
 `BOT_OPERATOR_IDS` в private `public.env` и running backend должен быть пустым,
-adapter остановлен, HTTPS cabinet/Mailpit/native3.7.0 и прежний Docker VPN здоровы.
+единственный Go runtime работает с Telegram off, HTTPS cabinet/Mailpit/native3.7.0
+и прежний собственный Docker VPN здоровы.
 Driver создаёт отдельные web-аккаунты, выдаёт роль через файловый CLI, проверяет
 обращение и web-триал. Для Telegram-only создания читает настоящий `ADMIN_TG_ID`
 из private worktree `.env`; уже использованный ID не заменяется выдуманным.
@@ -46,13 +47,14 @@ Controlled fixtures меняют только собственные новые 
 apply trigger; прежние значения/trigger восстанавливаются в finally. Restore
 использует настоящие dump/restore и правила [С02](s02-account-security.md),
 проверяет roles/actors/identity/history/bytea и отзывает старые sessions/proofs.
-Кратковременный fixture actor101 нужен только существующему restore helper,
-после него возвращается пустой Telegram config. Предыдущий Docker VPN сохраняется.
+Restore helper использует действующий публичный web-operator port, без transport
+adapter или временных Telegram operator IDs. Предыдущий Docker VPN сохраняется.
 Установленный Happ, системный VPN, clipboard и доверие сертификатам Mac
 не изменяются. Подробные verdicts сохраняются локально без credentials/keys.
 
 Миграция00009 не допускает Down при Telegram-origin аккаунтах или web-решениях,
 чтобы не удалить их source/actor. Откат приложения требует совместимого кода
 и сохранения новой схемы/данных; rollback старым dump не используется.
-Перенос старых клиентов/единственного writer и внешнее включение — С46/С47,
+Перенос старых клиентов/единственного writer и внешнее включение —
+[С46](../../deploy/data-migration/README.md)/[С47](../../deploy/cutover/README.md),
 вне этой локальной приёмки.

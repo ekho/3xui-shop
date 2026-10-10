@@ -35,7 +35,6 @@ func fixture(t *testing.T) (*regressionFixture, *testkit.Env) {
 	}
 	cfg := app.Config{HTTP: app.HTTPConfig{CabinetOrigin: "https://cabinet.example.test"}, Mail: notifications.MailConfig{MailKey: bytes.Repeat([]byte{1}, 32)}, Accounts: accounts.Config{CodeKey: bytes.Repeat([]byte{2}, 32), TermsVersion: "1", PrivacyVersion: "1", RateNamespace: uuid.NewString()}}
 	cfg.Accounts.Operators = []int64{101, 202}
-	cfg.HTTP.AdapterToken = strings.Repeat("x", 43)
 	cfg.Subscriptions.PanelID = "dedicated-test"
 	cfg.Subscriptions.TrialEnabled = true
 	cfg.Subscriptions.TrialPeriodDays = 3
@@ -280,7 +279,7 @@ func TestRegressionMailDeliveryTLS(t *testing.T) {
 	}
 }
 func TestRegressionRegistrationConfig(t *testing.T) {
-	for _, name := range []string{"BOT_OPERATOR_IDS", "BOT_ADAPTER_TOKEN", "BOT_ADAPTER_TOKEN_FILE", "LEGACY_BOT_API_ENABLED", "TRIAL_ENABLED", "TRIAL_PERIOD", "TRIAL_TRAFFIC_GB", "BONUS_DEVICES_COUNT", "PANEL_ID"} {
+	for _, name := range []string{"BOT_OPERATOR_IDS", "TRIAL_ENABLED", "TRIAL_PERIOD", "TRIAL_TRAFFIC_GB", "BONUS_DEVICES_COUNT", "PANEL_ID"} {
 		t.Setenv(name, "")
 	}
 	dir := t.TempDir()
@@ -303,16 +302,10 @@ func TestRegressionRegistrationConfig(t *testing.T) {
 	}
 	t.Run("native-operators", func(t *testing.T) {
 		t.Setenv("BOT_OPERATOR_IDS", "101,202")
-		t.Setenv("LEGACY_BOT_API_ENABLED", "false")
 		native, err := app.LoadConfig()
-		if err != nil || native.HTTP.AdapterToken != "" || len(native.Accounts.Operators) != 2 {
-			t.Fatal("native operators require legacy secret", err)
+		if err != nil || len(native.Accounts.Operators) != 2 {
+			t.Fatal("native operator allowlist", err)
 		}
-		t.Setenv("LEGACY_BOT_API_ENABLED", "true")
-		if _, err = app.LoadConfig(); err == nil {
-			t.Fatal("legacy transport accepted missing secret")
-		}
-		t.Setenv("LEGACY_BOT_API_ENABLED", "false")
 		t.Setenv("BOT_OPERATOR_IDS", "101,bad")
 		if _, err = app.LoadConfig(); err == nil {
 			t.Fatal("bad allowlist accepted")

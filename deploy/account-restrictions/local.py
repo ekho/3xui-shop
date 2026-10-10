@@ -98,9 +98,21 @@ def state(account, db=None):
 
 
 def transport():
-    config = local.ENV.read_text()
-    return {'no_telegram_operators': 'BOT_OPERATOR_IDS=\n' in config,
-            'bot_stopped': local.compose('ps', '-q', 'bot').decode().strip() == '',
+    config = dict(line.split('=', 1) for line in local.ENV.read_text().splitlines() if '=' in line)
+    backend = local.compose('ps', '-q', 'backend').decode().strip()
+    running = set()
+    if backend:
+        result = local.command(['docker', 'inspect', '--format',
+                                '{{range .Config.Env}}{{if eq . "BOT_OPERATOR_IDS="}}operators-empty {{end}}'
+                                '{{if eq . "TELEGRAM_ENABLED=false"}}telegram-disabled {{end}}{{end}}',
+                                backend]).decode().strip()
+        running = set(result.split())
+    bot = local.command(['docker', 'ps', '-q', '--filter', 'label=com.docker.compose.project=' + local.PROJECT,
+                         '--filter', 'label=com.docker.compose.service=bot']).decode().strip()
+    return {'no_telegram_operators': config.get('BOT_OPERATOR_IDS') is not None
+            and config['BOT_OPERATOR_IDS'].strip() == '' and 'operators-empty' in running,
+            'telegram_disabled': config.get('TELEGRAM_ENABLED') == 'false' and 'telegram-disabled' in running,
+            'bot_stopped': bot == '',
             'reconcile_stopped': local.compose('ps', '-q', 'reconcile').decode().strip() == '',
             'vpn_connected': local.vpn_connected(),
             'vpn_config_digest': sha256((local.STATE / 'vpn.json').read_bytes()).hexdigest(),

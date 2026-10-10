@@ -184,11 +184,11 @@ async function catalogue(actor){
 function same(nativeA,nativeB,fields){return fields.every(field=>nativeA[field]===nativeB[field]);}
 function safeTransport(){
  const t=bridge('transport');
- check('AC8 Access profile root runtime transport guard','owned project, stopped bot/reconcile, no Telegram operator, connected and unchanged primary VPN',
+ check('AC8 Access profile root runtime transport guard','owned project, stopped bot/reconcile, empty Telegram operators and native Telegram disabled, connected and unchanged primary VPN',
   {project_match:t.project===manifest.project,bot_stopped:t.bot_stopped,reconcile_stopped:t.reconcile_stopped,
-   telegram_empty:t.no_telegram_operators,vpn_connected:t.vpn_connected,
+   telegram_empty:t.no_telegram_operators,telegram_disabled:t.telegram_disabled,vpn_connected:t.vpn_connected,
    primary_digest_match:t.vpn_config_digest===manifest.vpn_config_sha256},
-  t.project===manifest.project&&t.bot_stopped&&t.reconcile_stopped&&t.no_telegram_operators&&
+  t.project===manifest.project&&t.bot_stopped&&t.reconcile_stopped&&t.no_telegram_operators&&t.telegram_disabled&&
   t.vpn_connected&&t.vpn_config_digest===manifest.vpn_config_sha256);
 }
 try{

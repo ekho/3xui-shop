@@ -30,6 +30,7 @@ func (f kassaTransport) RoundTrip(r *http.Request) (*http.Response, error) { ret
 type kassaStub struct {
 	mu             sync.Mutex
 	payment        map[string]any
+	refund         map[string]any
 	posts          [][]byte
 	keys           []string
 	gets           int
@@ -90,6 +91,10 @@ func kassaOrderFixture(t *testing.T, input func(*regressionFixture, *testkit.Env
 				w.WriteHeader(500)
 				return
 			}
+		} else if r.Method == "GET" && f.refund != nil && r.URL.Path == "/v3/refunds/"+f.refund["id"].(string) {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(f.refund)
+			return
 		} else if r.Method == "GET" && r.URL.Path == "/v3/payments/"+f.payment["id"].(string) {
 			f.gets++
 		} else {
@@ -386,8 +391,8 @@ func TestYooKassaHTTPAuthoritativeStatus(t *testing.T) {
 	}
 	unknown := `{"type":"notification","event":"payment.succeeded","object":{"id":"` + uuid.NewString() + `"}}`
 	before := f.gets
-	if code := request(unknown, "127.0.0.1"); code != 200 || f.gets != before {
-		t.Fatal("unknown payment caused an API request or failed acknowledgement", code)
+	if code := request(unknown, "127.0.0.1"); code != 503 || f.gets != before {
+		t.Fatal("unverified unknown payment was acknowledged", code)
 	}
 	for _, body := range []string{`{}`, `{"type":"notification","event":"payment.succeeded","object":{"id":"bad"}}`, strings.Repeat("a", 16385), unknown + unknown} {
 		if code := request(body, "127.0.0.1"); code != 400 {

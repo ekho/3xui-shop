@@ -172,8 +172,10 @@ def restore():
     database_before = database_path.read_bytes()
     connected = local.vpn_connected()
     config = local.ENV.read_text()
-    if not any(line == 'BOT_OPERATOR_IDS=' for line in config.splitlines()) or not transport()['adapter_stopped']:
-        raise RuntimeError('web-only precondition not met')
+    current_transport = transport()
+    if not (current_transport['no_telegram_operators'] and current_transport['telegram_disabled']
+            and current_transport['adapter_stopped']):
+        raise RuntimeError('native web-only precondition not met')
     complete = False
     def stop_reconcile():
         try:
@@ -184,9 +186,6 @@ def restore():
         if local.compose('ps', '-q', 'reconcile').decode().strip():
             raise RuntimeError('owned reconcile still running')
     try:
-        local.write('public.env', config.replace('BOT_OPERATOR_IDS=\n', 'BOT_OPERATOR_IDS=101\n', 1))
-        local.compose('up', '--no-build', '--pull', 'never', '--no-deps', '--force-recreate', '-d', 'backend')
-        local.wait_until(local.ready)
         with contextlib.redirect_stdout(io.StringIO()):
             local.restore()
         complete = True
@@ -211,13 +210,9 @@ def restore():
             except Exception:
                 cleanup_errors.append('database pointer or local pause fixture')
         try:
-            current = local.ENV.read_text()
-            if complete and 'BOT_OPERATOR_IDS=101\n' in current:
-                local.write('public.env', current.replace('BOT_OPERATOR_IDS=101\n', 'BOT_OPERATOR_IDS=\n', 1))
-            else:
-                local.write('public.env', config)
+            local.write('public.env', config)
         except Exception:
-            cleanup_errors.append('web-only configuration')
+            cleanup_errors.append('native configuration')
         try:
             local.compose('up', '--no-build', '--pull', 'never', '--no-deps', '--force-recreate', '-d', 'backend')
             local.compose('up', '--no-build', '--pull', 'never', '--no-deps', '--force-recreate', '-d', 'gateway')
@@ -234,10 +229,12 @@ def restore():
         except Exception:
             cleanup_errors.append('owned VPN')
         try:
-            if not transport()['no_telegram_operators']:
-                cleanup_errors.append('running Telegram configuration')
+            final_transport = transport()
+            if not (final_transport['no_telegram_operators'] and final_transport['telegram_disabled']
+                    and final_transport['adapter_stopped']):
+                cleanup_errors.append('native Telegram configuration')
         except Exception:
-            cleanup_errors.append('Telegram configuration check')
+            cleanup_errors.append('native Telegram configuration check')
         if cleanup_errors:
             # Leave the original healthy pointer/config active when finalization failed.
             try:
@@ -261,21 +258,25 @@ def restore():
     final = transport()
     return {'restored': True, 'prior_vpn_connected': local.vpn_connected() == connected,
             'prior_vpn_config_equal': vpn_path.read_bytes() == prior,
-            'no_telegram_operators': final['no_telegram_operators'], 'adapter_stopped': final['adapter_stopped']}
+            'no_telegram_operators': final['no_telegram_operators'],
+            'telegram_disabled': final['telegram_disabled'], 'adapter_stopped': final['adapter_stopped']}
 
 
 def transport():
     config = dict(line.split('=', 1) for line in local.ENV.read_text().splitlines() if '=' in line)
     backend = local.compose('ps', '-q', 'backend').decode().strip()
-    running_empty = False
+    running = set()
     if backend:
         result = local.command(['docker', 'inspect', '--format',
-                                '{{range .Config.Env}}{{if eq . "BOT_OPERATOR_IDS="}}empty{{end}}{{end}}',
+                                '{{range .Config.Env}}{{if eq . "BOT_OPERATOR_IDS="}}operators-empty {{end}}'
+                                '{{if eq . "TELEGRAM_ENABLED=false"}}telegram-disabled {{end}}{{end}}',
                                 backend]).decode().strip()
-        running_empty = result == 'empty'
+        running = set(result.split())
     bot = local.command(['docker', 'ps', '-q', '--filter', 'label=com.docker.compose.project=' + local.PROJECT,
                          '--filter', 'label=com.docker.compose.service=bot']).decode().strip()
-    return {'no_telegram_operators': config.get('BOT_OPERATOR_IDS') == '' and running_empty,
+    return {'no_telegram_operators': config.get('BOT_OPERATOR_IDS') is not None
+            and config['BOT_OPERATOR_IDS'].strip() == '' and 'operators-empty' in running,
+            'telegram_disabled': config.get('TELEGRAM_ENABLED') == 'false' and 'telegram-disabled' in running,
             'adapter_stopped': bot == ''}
 
 

@@ -17,7 +17,7 @@ for name in sorted(set(files)):
         continue
     if not name.startswith('docs/') and path_label.search(name):
         failures.append(name + ': scenario in path')
-    if path.suffix == '.md' or path.name in ('go.sum', 'package-lock.json', 'poetry.lock', 'uv.lock'):
+    if path.suffix == '.md' or path.name in ('go.sum', 'package-lock.json', 'uv.lock'):
         continue
     try:
         lines = path.read_text().splitlines()

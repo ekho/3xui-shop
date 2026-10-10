@@ -3,14 +3,15 @@
 Сценарий #53, контракт `2026-10-10-s46-data-migration-v1`, владелец `operations`.
 Операция переносит поддерживаемый снимок последней SQLite-схемы в одну PostgreSQL
 транзакцию. Репетиция использует только собственные синтетические данные.
-Production-перенос, остановка Python и cutover относятся к #54 и здесь не выполняются.
+Порядок остановки исполнителей и cutover описан в [С47](../cutover/README.md).
+Эта локальная репетиция не разрешает production-перенос.
 
 ## Вход и доступ
 
 - Нужен отдельный законченный SQLite snapshot по явному абсолютному каноническому
   пути: обычный файл текущего OS-пользователя, права `0600`, без symlink в пути.
   Экспортёр открывает его read-only и проверяет schema/integrity/foreign keys.
-- В PostgreSQL уже применены миграции до **00043**. Есть активный проверенный web
+- В PostgreSQL уже применены миграции до **00044**. Есть активный проверенный web
   account с операторской ролью; его UUID хранится в отдельном приватном `0600`
   operator file. Доступ к файлам БД сам по себе не заменяет проверку роли.
 - `DATABASE_URL_FILE` — отдельный абсолютный приватный `0600` файл. Используется
@@ -26,7 +27,7 @@ Production-перенос, остановка Python и cutover относятс
 
 ```sh
 umask 077
-python3 deploy/data-migration/export_legacy.py /absolute/private/source.sqlite \
+server export-legacy /absolute/private/source.sqlite \
   --source synthetic-source --support-bot-id 12345 --support-group-id -10012345 \
   > /absolute/private/package.json
 DATABASE_URL_FILE=/absolute/private/database-url \
@@ -75,7 +76,7 @@ Apply фиксирует immutable source provenance, digest, source catalogue m
 Не меняйте source name для обхода конфликта. Повтор и перезапуск сохраняют
 поздние native facts, изменения live metadata и original identity history.
 
-Поддерживаемая схема определяется текущими ORM/migrations; отсутствующие/лишние
+Поддерживаемая схема определяется явным Go source contract exporter и сохранёнными историческими migrations; отсутствующие/лишние
 таблицы или колонки, dangling links, cycles, duplicate JSON keys, невалидные
 enums/Unicode, точность timestamp хуже микросекунды и numeric overflow отклоняются.
 Старые исторические schema variants не угадываются. URL серверов должны
@@ -83,10 +84,10 @@ enums/Unicode, точность timestamp хуже микросекунды и n
 fragment; HTTP источник явно отклоняется. Неоднозначные/неизвестные plan profiles
 и NULL `invites.clicks/is_active` также отклоняются; NULL invite time сохраняется.
 
-После populated-переноса проверка #45 должна сохранить всю схему до 00043,
+После populated-переноса проверка #45 должна сохранить всю схему до 00044, поздние подтверждённые payment receipts,
 source provenance и уже существующие native funded/pending/grant/reward facts.
 Restore всегда создаёт отдельную новую БД и требует NOSUPERUSER CREATEDB роли.
-Down ниже 00043 блокируется при сохранённой source history, старых UUID subId
+Down 00044 блокируется при retained financial records; ниже 00043 блокируется при сохранённой source history, старых UUID subId
 или nullable campaign trial facts; старые миграции и их guards не изменены.
 
 ## Локальная проверка
