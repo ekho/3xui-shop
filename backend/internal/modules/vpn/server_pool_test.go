@@ -34,6 +34,8 @@ func poolFixture(t *testing.T) (*testkit.Env, *Service, *Settings, *httptest.Ser
 			w.Write([]byte(`{"success":true,"obj":[{"id":1,"tag":"regular","enable":true}]}`))
 		case "POST /panel/api/setting/all":
 			w.Write([]byte(`{"success":true,"obj":{"subEnable":true,"subURI":"https://secondary.example.test/sub/"}}`))
+		case "GET /panel/api/clients/list":
+			w.Write([]byte(`{"success":true,"obj":[]}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -150,7 +152,7 @@ func TestServerPoolRegistry(t *testing.T) {
 	if err == nil {
 		t.Fatal("retired ID revived")
 	}
-	if _, err = provider.Down(ctx); err == nil || !strings.Contains(err.Error(), "server pool downgrade blocked") {
+	if _, err = provider.DownTo(ctx, 34); err == nil || !strings.Contains(err.Error(), "server pool downgrade blocked") {
 		t.Fatalf("history downgrade: %v", err)
 	}
 }

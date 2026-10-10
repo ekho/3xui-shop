@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func TestOperatorCLIFileGrantAndRestrictedRevoke(t *testing.T) {
+func TestInfrastructureAndOperatorCLIFileGrantAndRestrictedRevoke(t *testing.T) {
 	e := testkit.Open(t)
 	ctx := context.Background()
 	id := uuid.New()
@@ -50,6 +50,15 @@ func TestOperatorCLIFileGrantAndRestrictedRevoke(t *testing.T) {
 	if err = runOperatorCommand("grant", "--account-file", accountFile); err != nil {
 		t.Fatal("idempotent grant", err)
 	}
+	if err = runRoleCommand("infrastructure", "grant", "--account-file", accountFile); err != nil {
+		t.Fatal("infrastructure grant", err)
+	}
+	if err = runRoleCommand("infrastructure", "grant", "--account-file", accountFile); err != nil {
+		t.Fatal("infrastructure replay", err)
+	}
+	if err = e.Pool.QueryRow(ctx, `SELECT count(*) FROM infrastructure_operators WHERE account_id=$1`, id).Scan(&roles); err != nil || roles != 1 {
+		t.Fatal("infrastructure role absent", err)
+	}
 	if _, err = e.Pool.Exec(ctx, `UPDATE accounts SET restricted=true WHERE id=$1`, id); err != nil {
 		t.Fatal(err)
 	}
@@ -61,6 +70,12 @@ func TestOperatorCLIFileGrantAndRestrictedRevoke(t *testing.T) {
 	}
 	if err = e.Pool.QueryRow(ctx, `SELECT count(*) FROM operator_accounts WHERE account_id=$1`, id).Scan(&roles); err != nil || roles != 0 {
 		t.Fatal("role retained", err)
+	}
+	if err = e.Pool.QueryRow(ctx, `SELECT count(*) FROM infrastructure_operators WHERE account_id=$1`, id).Scan(&roles); err != nil || roles != 0 {
+		t.Fatal("infrastructure role retained", err)
+	}
+	if err = runRoleCommand("infrastructure", "grant", "--account-file", accountFile); err == nil {
+		t.Fatal("grant without operator role")
 	}
 	if err = runOperatorCommand("revoke", "--account-file", accountFile); err != nil {
 		t.Fatal("idempotent revoke", err)

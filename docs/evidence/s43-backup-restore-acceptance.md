@@ -198,6 +198,28 @@ test, включая downgrade, replay, reservation, running job и повтор
 Неизменённые дорогие полные локальные Go/web/Python scopes не повторялись;
 окончательный HEAD требует полного CI.
 
+### Интеграция доставленной #42
+
+Вторая интеграция использует actual merge #42
+`a6ef9bf3dab4407dcf664dda04c93619f549deb8`. Сохранены infrastructure CLI и все
+новые server-management CI scopes. Restore consumer сохраняет новые assertions
+о retained reservation, успешном откате к migration 36 и выборе её guard;
+следующий запрет отката проверяется через `DownTo(ctx, 34)`. После отказа
+дополнительно проверяется, что версия осталась 36: одинаковая строка ошибки
+guard 35 не должна скрыть ошибочно успешный откат 36.
+Backup dispatch по-прежнему выполняется до runtime/config.
+
+После разрешения конфликтов cmd/server и operations `-race` прошли за 8.822
+и 4.194 секунды. Полный `TestWebTrialBackupRestore` на новом source прошёл
+за 55.20 секунды вместе с fixture guards; собственный fixture удалён,
+остаток resources — ноль. YAML self-check сравнил все именованные CI scopes
+с actual #42 и подтвердил четыре независимых `always()` cleanup.
+Delta review выявил потерю специфичности guard при `DownTo(34)`;
+после добавления проверки версии полный real restore повторён с `-race`
+и прошёл за 39.91 секунды. Собственный fixture снова удалён без остатка.
+Окончательный consumer #44 проверяется после её actual merge;
+несмерженная ветка #44 не переносится, полный CI нового HEAD ещё требуется.
+
 ## Operations image в контейнерном BuildKit
 
 CI source `900a7be53405226dfa8cc0e5aca5fc4967d95d2c`,

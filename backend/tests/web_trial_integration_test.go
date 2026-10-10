@@ -748,8 +748,23 @@ func TestWebTrialBackupRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var restoredReservations int
+	if err = restored.QueryRow(ctx, `SELECT count(*) FROM vpn_server_reservations WHERE trial_operation_id=$1`, op).Scan(&restoredReservations); err != nil || restoredReservations != 1 {
+		t.Fatal("restored backup lost the retained server reservation", err)
+	}
+	if _, err = provider.DownTo(ctx, 36); err != nil {
+		t.Fatal("restored migrations did not roll back to server-pool version 36", err)
+	}
+	version, err := provider.GetDBVersion(ctx)
+	if err != nil || version != 36 {
+		t.Fatal("server-pool downgrade guard was not selected", version, err)
+	}
 	if _, err = provider.DownTo(ctx, 34); err == nil || !strings.Contains(err.Error(), "server pool downgrade blocked") {
 		t.Fatal("restored server history allowed downgrade", err)
+	}
+	version, err = provider.GetDBVersion(ctx)
+	if err != nil || version != 36 {
+		t.Fatal("server-pool downgrade guard did not retain version 36", version, err)
 	}
 	if err = db.Migrate(ctx, restored); err != nil {
 		t.Fatal("restored additive migration")

@@ -13408,6 +13408,697 @@
           }
         }
       }
+    },
+    "/api/v1/operator/servers": {
+      "get": {
+        "operationId": "listManagedServers",
+        "description": "Explicit infrastructure operator permission, current verified web session, no-store. Unknown fields and query parameters rejected.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatorServers"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createManagedServer",
+        "description": "Explicit infrastructure operator permission, current verified web session, no-store. Unknown fields and query parameters rejected.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatorServerDetail"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Idempotent replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatorServerDetail"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperatorServerCreateInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/operator/servers/sync": {
+      "post": {
+        "operationId": "syncManagedServers",
+        "description": "Explicit infrastructure operator permission, current verified web session, no-store. Unknown fields and query parameters rejected.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatorServers"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperatorServerEmptyInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/operator/servers/{server_id}": {
+      "get": {
+        "operationId": "getManagedServer",
+        "description": "Explicit infrastructure operator permission, current verified web session, no-store. Unknown fields and query parameters rejected.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "server_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Opaque server ID; percent-encode the path segment."
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatorServerDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/operator/servers/{server_id}/ping": {
+      "post": {
+        "operationId": "pingManagedServer",
+        "description": "Explicit infrastructure operator permission, current verified web session, no-store. Unknown fields and query parameters rejected.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Opaque server ID; percent-encode the path segment."
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatorServerDetail"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperatorServerEmptyInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/operator/servers/{server_id}/delete": {
+      "post": {
+        "operationId": "deleteManagedServer",
+        "description": "Explicit infrastructure operator permission, current verified web session, no-store. Unknown fields and query parameters rejected.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Opaque server ID; percent-encode the path segment."
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatorServerDetail"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperatorServerDeleteInput"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -14912,6 +15603,10 @@
           },
           "csrf_token": {
             "type": "string"
+          },
+          "can_manage_servers": {
+            "type": "boolean",
+            "description": "Optional explicit infrastructure permission for this operator."
           }
         },
         "required": [
@@ -20044,6 +20739,189 @@
           "kind",
           "outcome"
         ]
+      },
+      "OperatorServerSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "host": {
+            "type": "string",
+            "format": "uri"
+          },
+          "max_clients": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "assigned_clients": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "reserved_clients": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "retired": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "host",
+          "max_clients",
+          "online",
+          "observed_at",
+          "assigned_clients",
+          "reserved_clients",
+          "retired"
+        ]
+      },
+      "OperatorServerDetail": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "host": {
+            "type": "string",
+            "format": "uri"
+          },
+          "max_clients": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "assigned_clients": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "reserved_clients": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "retired": {
+            "type": "boolean"
+          },
+          "can_ping": {
+            "type": "boolean"
+          },
+          "can_delete": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "host",
+          "max_clients",
+          "online",
+          "observed_at",
+          "assigned_clients",
+          "reserved_clients",
+          "retired",
+          "can_ping",
+          "can_delete"
+        ]
+      },
+      "OperatorServers": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "servers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OperatorServerSummary"
+            }
+          }
+        },
+        "required": [
+          "servers"
+        ]
+      },
+      "OperatorServerCreateInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "host": {
+            "type": "string",
+            "format": "uri"
+          },
+          "max_clients": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "required": [
+          "name",
+          "host",
+          "max_clients"
+        ]
+      },
+      "OperatorServerDeleteInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "confirmation": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "confirmation"
+        ]
+      },
+      "OperatorServerEmptyInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
       }
     }
   }

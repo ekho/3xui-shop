@@ -62,8 +62,11 @@ func run() (runErr error) {
 	if len(os.Args) == 5 && os.Args[1] == "operator" {
 		return runOperatorCommand(os.Args[2], os.Args[3], os.Args[4])
 	}
+	if len(os.Args) == 5 && os.Args[1] == "infrastructure" {
+		return runRoleCommand("infrastructure", os.Args[2], os.Args[3], os.Args[4])
+	}
 	if len(os.Args) != 2 || (os.Args[1] != "serve" && os.Args[1] != "migrate" && os.Args[1] != "reconcile") {
-		slog.Error("usage: server serve|migrate|reconcile or server operator grant|revoke --account-file <absolute-path>")
+		slog.Error("usage: server serve|migrate|reconcile or server operator|infrastructure grant|revoke --account-file <absolute-path>")
 		return errors.New("invalid command")
 	}
 	cfg, err := app.LoadConfig()
@@ -287,6 +290,13 @@ func listenAddress() string {
 }
 
 func runOperatorCommand(action, flag, path string) error {
+	return runRoleCommand("operator", action, flag, path)
+}
+
+func runRoleCommand(role, action, flag, path string) error {
+	if role != "operator" && role != "infrastructure" {
+		return errors.New("invalid role command")
+	}
 	if (action != "grant" && action != "revoke") || flag != "--account-file" || !filepath.IsAbs(path) {
 		return errors.New("invalid operator command")
 	}
@@ -316,8 +326,14 @@ func runOperatorCommand(action, flag, path string) error {
 	if err = pool.Ping(ctx); err != nil {
 		return errors.New("database unavailable")
 	}
-	if err = app.NewModules(pool, nil, nil, &app.Config{}).Accounts.ChangeOperatorRole(ctx, id, action == "grant"); err != nil {
-		return errors.New("operator role change failed")
+	authority := app.NewModules(pool, nil, nil, &app.Config{}).Accounts
+	if role == "infrastructure" {
+		err = authority.ChangeInfrastructureRole(ctx, id, action == "grant")
+	} else {
+		err = authority.ChangeOperatorRole(ctx, id, action == "grant")
+	}
+	if err != nil {
+		return errors.New("role change failed")
 	}
 	return nil
 }
