@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"example.com/cabinet/backend/internal/modules/accounts"
+	"example.com/cabinet/backend/internal/modules/bonuses"
 	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/operations"
 	"example.com/cabinet/backend/internal/modules/payments"
@@ -23,6 +24,7 @@ type Client struct {
 	botID            int64
 	api              *botapi.Client
 	accounts         *accounts.Service
+	bonuses          *bonuses.Service
 	payments         *payments.Service
 	notices          *notifications.Service
 	maintenance      *operations.Maintenance
@@ -105,6 +107,9 @@ func (c *Client) send(ctx context.Context, chat int64, lang, path, source string
 	k := &botapi.InlineKeyboard{Rows: [][]botapi.Button{{b}, {{
 		Text: clientText(lang, "Поддержка", "Support"), WebApp: &botapi.WebAppInfo{URL: c.route("/support", lang)},
 	}}}}
+	if c.bonuses != nil {
+		k.Rows = append(k.Rows, []botapi.Button{{Text: clientText(lang, "Приглашения", "Invitations"), WebApp: &botapi.WebAppInfo{URL: c.route("/referrals", lang)}}})
+	}
 	message := clientText(lang, "Подписка, подключение и поддержка доступны в кабинете.", "Your subscription, connection and support are available in the cabinet.")
 	if c.maintenance != nil {
 		status, err := c.maintenance.Status(ctx)
@@ -210,7 +215,7 @@ func (c *Client) handle(ctx context.Context, u botapi.Update) (bool, error) {
 	}
 	command := strings.SplitN(fields[0], "@", 2)
 	switch command[0] {
-	case "/start", "/help", "/support", "/paysupport":
+	case "/start", "/help", "/support", "/paysupport", "/referrals":
 	default:
 		return false, nil
 	}
@@ -221,6 +226,9 @@ func (c *Client) handle(ctx context.Context, u botapi.Update) (bool, error) {
 	if len(fields) > 2 || (command[0] != "/start" && len(fields) != 1) || (len(fields) == 2 && !startPayload(fields[1])) {
 		_, err := c.api.SendMessage(ctx, m.Chat.ID, clientText(lang, "Некорректная команда. Используйте /start.", "Invalid command. Use /start."), nil)
 		return true, cosmetic(err)
+	}
+	if command[0] == "/referrals" {
+		return true, c.sendReferrals(ctx, m.Chat.ID, lang)
 	}
 	path, source := "", ""
 	if command[0] == "/support" || command[0] == "/paysupport" {
@@ -239,7 +247,7 @@ func (c *Client) callback(parent context.Context, q *botapi.Callback) (bool, err
 	closeOperatorNotice := strings.HasPrefix(state, "on1:")
 	if !legacySubscription && !closeNotice && !closeOperatorNotice {
 		switch state {
-		case "start", "main_menu", "profile", "show_key", "download", "platform", "platform_ios", "platform_android", "platform_macos", "platform_windows", "download_show_qr", "support", "how_to_connect", "vpn_not_working", "subscription", "close_notification", "redirect_to_download":
+		case "start", "main_menu", "profile", "show_key", "download", "platform", "platform_ios", "platform_android", "platform_macos", "platform_windows", "download_show_qr", "support", "how_to_connect", "vpn_not_working", "subscription", "close_notification", "redirect_to_download", "referral":
 		default:
 			return false, nil
 		}
@@ -264,6 +272,12 @@ func (c *Client) callback(parent context.Context, q *botapi.Callback) (bool, err
 	}
 	if !button {
 		return refuse()
+	}
+	if state == "referral" {
+		if err := c.sendReferrals(ctx, q.From.ID, lang); err != nil {
+			return true, err
+		}
+		return true, cosmetic(c.api.AnswerCallback(ctx, q.ID, "", false))
 	}
 	if closeNotice {
 		raw := strings.TrimPrefix(q.Data, "cn1:")

@@ -189,6 +189,7 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, readiness
 	e.POST("/api/v1/auth/login", a.LoginAccount)
 	e.POST("/api/v1/auth/logout", a.LogoutAccount)
 	e.GET("/api/v1/me", a.GetAccount)
+	e.GET("/api/v1/referrals", a.GetReferrals)
 	e.GET("/api/v1/auth/session", a.GetSessionContext)
 	e.GET("/api/v1/me/security", a.GetAccountSecurity)
 	e.GET("/api/v1/me/identity", a.GetAccountIdentity)

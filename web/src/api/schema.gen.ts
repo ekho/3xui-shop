@@ -2027,6 +2027,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/referrals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Current eligible account only, for browser or signed Mini App. No account selector/query/body. Stable personal link uses current deployment origin. Granted and pending DAYS are persisted facts; MONEY record counts do not represent a wallet or payout. */
+        get: operations["getReferrals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3795,6 +3812,31 @@ export interface components {
         PromocodeListInput: {
             page: number;
             per_page: number;
+        };
+        ReferralsResult: {
+            /** @enum {string} */
+            version: "2026-10-10-referrals-v1";
+            /** Format: uri */
+            web_url: string;
+            levels: components["schemas"]["ReferralLevel"][];
+            /** Format: int64 */
+            unclassified_records: number;
+        };
+        ReferralLevel: {
+            /** @enum {integer} */
+            level: 1 | 2;
+            /** Format: int64 */
+            invited: number;
+            granted_days: string;
+            pending_days: string;
+            /** Format: int64 */
+            granted_rewards: number;
+            /** Format: int64 */
+            pending_rewards: number;
+            /** Format: int64 */
+            money_records: number;
+            /** Format: int64 */
+            pending_money_records: number;
         };
     };
     responses: never;
@@ -14500,6 +14542,62 @@ export interface operations {
                 headers: {
                     /** @description Seconds before retry */
                     "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    getReferrals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralsResult"];
+                };
+            };
+            /** @description Safe error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Safe error */
+            403: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content: {
