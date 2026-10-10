@@ -24,7 +24,8 @@ func TestServerManagementMigrationEmptyRollbackAndHistoryGuard(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err = provider.Down(ctx); err != nil {
+			// Exercise migration 37's rollback even after newer migrations are added.
+			if _, err = provider.DownTo(ctx, 36); err != nil {
 				t.Fatalf("empty rollback: %v", err)
 			}
 			if _, err = provider.Up(ctx); err != nil {
@@ -48,7 +49,7 @@ func TestServerManagementMigrationEmptyRollbackAndHistoryGuard(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err = provider.Down(ctx); err == nil || !strings.Contains(err.Error(), "server management downgrade blocked") {
+			if _, err = provider.DownTo(ctx, 36); err == nil || !strings.Contains(err.Error(), "server management downgrade blocked") {
 				t.Fatalf("retained %s downgraded: %v", kind, err)
 			}
 			var count int

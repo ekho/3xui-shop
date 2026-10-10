@@ -202,3 +202,32 @@ merge в v2 после обязательных pre-merge gates, затем за
 и уборкой/handoff; координатор архивирует чат. Автоматический preview GHCR/prerelease
 разрешён, его будущее завершение не добавляет gate закрытия этой продуктовой задачи.
 Production не входит в полномочие.
+
+## Исправление rollback fixture после миграции38 — 10 октября 2026
+
+Полные [Platform push38013255530](https://github.com/ekho/3xui-shop/actions/runs/38013255530)
+и [Platform PR38013259624](https://github.com/ekho/3xui-shop/actions/runs/38013259624)
+на source `47a0e59fda8fb59b0bd7464c1bb0463104f70591` завершились RED.
+Оба показали одну причину: `TestServerManagementMigrationEmptyRollbackAndHistoryGuard`
+из #42 падал в subcases `role` и `action` с `retained ... downgraded: <nil>`.
+Выбранная локальная интеграционная проверка не включала пакет `db`; полный CI
+обнаружил предположение теста о том, что migration37 всегда последняя.
+
+`provider.Down(ctx)` после добавления38 успешно откатывал только пустую38,
+не достигая server-management history guard37. В обоих местах существующего
+теста цель заменена на `provider.DownTo(ctx,36)`: теперь проверяются пустой
+откат37 с повторным применением и запрет отката37 при сохранённой роли/действии.
+Точные error и count assertions сохранены. SQL migrations и runtime не менялись.
+
+До исправления локальный focused race запуск того же теста воспроизвёл оба
+сбоя: command exit1, package2.506s, wrapper4.986s. После исправления весь пакет
+`go test ./db -count=1 -race -timeout=5m -v` прошёл: command exit0,
+package58.550s, wrapper61.103s; оба subcases и пустой rollback/reapply PASS.
+Использовались только own PG/Redis и private URL files; own containers/volumes
+снова удалены. Первичные receipts/logs сохранены в `/tmp/3xui-s42-022d/`.
+
+Изменились только этот тест и acceptance document. Предыдущее independent
+review и локальные native/browser/restore результаты exact47 сохраняются для
+неизменённого product source. Исправление проходит отдельное independent review
+и обязательный полный CI нового HEAD; точные результаты фиксируются в PR.
+Ни этот DB PASS, ни прежние source7e green CI не заменяют новый exact-head gate.
