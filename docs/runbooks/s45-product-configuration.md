@@ -1,4 +1,4 @@
-# Deployment inventory v2 — С45
+# Deployment inventory 3xui-mole — С45
 
 Владелец [#47](https://github.com/ekho/3xui-shop/issues/47), контракт
 `2026-10-10-s45-product-config-v1`. Это перечень **используемых** настроек,
@@ -119,7 +119,7 @@ YooKassa test mode default false; это явно выбранный режим 
 универсальный dev bypass. Локальные provider transports/Stars fixtures
 инъецируются тестами, не production env. `LOCAL_YOOMONEY_FIXTURE_ENABLED`
 принадлежит только native overlay и использует synthetic wallet/secret.
-Нет v2 `SHOP_CURRENCY`: provider выбирает currency, catalogue имеет точную
+Нет `SHOP_CURRENCY`: provider выбирает currency, catalogue имеет точную
 RUB/USD/XTR цену. Отсутствующая цена не конвертируется и не подставляется.
 
 ## Frontend/Caddy: public runtime, не build args

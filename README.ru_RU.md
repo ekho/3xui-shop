@@ -1,4 +1,4 @@
-# 3xui-mole v2
+# 3xui-mole
 
 [English](README.md)
 
@@ -8,9 +8,10 @@ Web/Caddy работают отдельным образом, PostgreSQL хра�
 Redis используется для ограничения запросов. Старый Python runtime и переходный
 HTTP-адаптер бота удалены.
 
-Проект называется **3xui-mole**. Репозиторий GitHub пока остаётся
+Новый проект **3xui-mole** начинает собственную нумерацию с **0.1.0**;
+предварительные сборки используют `0.1.0-dev.N`. Репозиторий GitHub пока остаётся
 [`ekho/3xui-shop`](https://github.com/ekho/3xui-shop), действующие адреса образов
-GHCR сохраняются; см. [предварительные релизы](docs/releases-v2.md).
+GHCR сохраняются; см. [предварительные релизы](docs/releases.md).
 Исторические записи и ссылки на upstream сохраняют исходные названия.
 
 Чтобы показать это имя в шапке кабинета и вкладке браузера, задайте необязательный
@@ -33,7 +34,7 @@ npm --prefix web run build
 - [Локальная приёмка](docs/runbooks/s01-test-rollout.md)
 - [Перенос SQLite](deploy/data-migration/README.md)
 - [Переключение, поздние платежи и rollback](deploy/cutover/README.md)
-- [Предварительные backend/web релизы](docs/releases-v2.md)
+- [Предварительные backend/web релизы](docs/releases.md)
 - [Контракт API](docs/api/openapi.yaml)
 
 Рабочие ветки создаются от актуальной `origin/v2`, PR направляются в `v2`.

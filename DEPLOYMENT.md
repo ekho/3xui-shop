@@ -1,4 +1,4 @@
-# Развёртывание 3xui-mole v2
+# Развёртывание 3xui-mole
 
 Продукт состоит из одного Go backend и отдельного web/Caddy image. Backend
 объединяет HTTP/River/main и support Telegram/schedulers. PostgreSQL содержит
@@ -10,7 +10,7 @@ Alembic/Poetry и `/internal/v1` transport больше не использую�
 [Deployment inventory](docs/runbooks/s45-product-configuration.md) перечисляет
 текущие readers/defaults и ограничения. Public параметры web передаются при
 запуске Caddy; секреты и connection URI — через приватные `*_FILE` вне Git.
-[Preview releases](docs/releases-v2.md) публикуют backend и web; это не deploy.
+[Preview releases](docs/releases.md) публикуют backend и web; это не deploy.
 
 `deploy/acceptance/.env.example` и `compose.acceptance.yml` служат шаблоном
 выделенного стенда. Local/native overlays содержат синтетические panel/SMTP
