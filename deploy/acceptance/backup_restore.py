@@ -109,7 +109,7 @@ def check():
     def server_args(args, *, pause_dump=False, source='database-source', restore='database-restore'):
         env = {'DATABASE_URL_FILE': '/fixture/' + source, 'RESTORE_DATABASE_URL_FILE': '/fixture/' + restore,
                'REDIS_URL_FILE': '/fixture/redis-container', 'MAIL_KEY_FILE': '/fixture/mail-key', 'CODE_KEY_FILE': '/fixture/code-key',
-               'CABINET_ORIGIN': 'https://backup.example.test', 'TERMS_VERSION': '1', 'PRIVACY_VERSION': '1', 'LEGACY_BOT_API_ENABLED': 'false'}
+               'CABINET_ORIGIN': 'https://backup.example.test', 'TERMS_VERSION': '1', 'PRIVACY_VERSION': '1'}
         if pause_dump:
             env['PATH'] = '/fixture/controlled-bin:/usr/lib/postgresql/17/bin:/usr/bin:/bin'
         command_args = ['docker', 'run', '--rm', '--network', runtime['project'] + '_default', '--user', f'{os.getuid()}:{os.getgid()}',

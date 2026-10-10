@@ -28,7 +28,6 @@ func httpFixture(t *testing.T) (http.Handler, *testkit.Env, app.Config) {
 	}
 	cfg := app.Config{HTTP: app.HTTPConfig{CabinetOrigin: "https://cabinet.example.test"}, Accounts: accounts.Config{TermsVersion: "1", PrivacyVersion: "1", CodeKey: bytes.Repeat([]byte{2}, 32), RateNamespace: uuid.NewString()}, Mail: notifications.MailConfig{MailKey: bytes.Repeat([]byte{1}, 32)}}
 	cfg.Accounts.Operators = []int64{101, 202}
-	cfg.HTTP.AdapterToken = strings.Repeat("x", 43)
 	cfg.Subscriptions.PanelID = "dedicated-test"
 	cfg.Subscriptions.TrialEnabled = true
 	cfg.Subscriptions.TrialPeriodDays = 3
@@ -172,7 +171,7 @@ func TestLoginRateLimit(t *testing.T) {
 	}
 }
 
-func TestInternalOperatorBoundary(t *testing.T) {
+func TestTrialRequestHTTPBoundary(t *testing.T) {
 	h, e, cfg := httpFixture(t)
 	verifiedHTTP(t, h, e, cfg)
 	rr := request(h, "POST", "/api/v1/auth/login", `{"email":"login@example.test","password":"my long safe password ✨"}`, cfg.HTTP.CabinetOrigin)
@@ -205,40 +204,17 @@ func TestInternalOperatorBoundary(t *testing.T) {
 	if rr = create(login.CsrfToken, key); rr.Code != 200 {
 		t.Fatal("trial replay", rr.Code)
 	}
-	internal := func(token string, actor int64, mode string, withCookie bool) *httptest.ResponseRecorder {
-		body := fmt.Sprintf(`{"operator_tg_id":%d,"decision":"%s","callback_query_id":"%s"}`, actor, mode, uuid.NewString())
-		r := httptest.NewRequest("POST", "/internal/v1/trial-requests/"+trial.RequestId.String()+"/decision", strings.NewReader(body))
-		r.Header.Set("Content-Type", "application/json")
-		if token != "" {
-			r.Header.Set("Authorization", "Bearer "+token)
-		}
-		if withCookie {
-			r.AddCookie(cookie)
-		}
-		out := httptest.NewRecorder()
-		h.ServeHTTP(out, r)
-		return out
-	}
-	for _, token := range []string{"", "wrong"} {
-		if rr = internal(token, 101, "approve", true); rr.Code != 401 {
-			t.Fatal("user cookie must not authorize internal", rr.Code)
-		}
-	}
-	if rr = internal(cfg.HTTP.AdapterToken, 999, "approve", false); rr.Code != 403 {
-		t.Fatal("forged operator", rr.Code)
-	}
-	if rr = internal(cfg.HTTP.AdapterToken, 101, "approve", false); rr.Code != 200 {
-		t.Fatal("authorized decision", rr.Code)
-	}
-	if rr = internal(cfg.HTTP.AdapterToken, 202, "reject", false); rr.Code != 409 || !strings.Contains(rr.Body.String(), `"current_request_status":"approved"`) {
-		t.Fatal("winning state", rr.Code)
+	var replay wire.TrialRequest
+	if json.Unmarshal(rr.Body.Bytes(), &replay) != nil || replay.RequestId != trial.RequestId {
+		t.Fatal("trial replay changed request")
 	}
 	r := httptest.NewRequest("GET", "/api/v1/trial-requests/current", nil)
 	r.AddCookie(cookie)
 	rr = httptest.NewRecorder()
 	h.ServeHTTP(rr, r)
-	if rr.Code != 200 || strings.Contains(rr.Body.String(), "operator_tg_id") || strings.Contains(rr.Body.String(), "support_declined") {
-		t.Fatal("internal state leaked")
+	var current wire.CurrentTrialRequest
+	if rr.Code != 200 || json.Unmarshal(rr.Body.Bytes(), &current) != nil || current.Request == nil || current.Request.RequestId != trial.RequestId || strings.Contains(rr.Body.String(), "operator_tg_id") || strings.Contains(rr.Body.String(), "support_declined") {
+		t.Fatal("trial request state or privacy")
 	}
 }
 
@@ -270,20 +246,5 @@ func TestSubscriptionPrivacy(t *testing.T) {
 		if tc.status == 409 && !strings.Contains(out.Body.String(), "OPERATION_NOT_READY") {
 			t.Fatal("key error contract")
 		}
-	}
-}
-
-func TestTelegramLease(t *testing.T) {
-	h, _, cfg := httpFixture(t)
-	if rr := request(h, "POST", "/internal/v1/telegram/jobs/claim", `{"limit":1}`, ""); rr.Code != 401 {
-		t.Fatal("unauthorized claim", rr.Code)
-	}
-	r := httptest.NewRequest("POST", "/internal/v1/telegram/jobs/claim", strings.NewReader(`{"limit":1}`))
-	r.Header.Set("Authorization", "Bearer "+cfg.HTTP.AdapterToken)
-	r.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, r)
-	if rr.Code != 200 || strings.TrimSpace(rr.Body.String()) != `{"jobs":[]}` {
-		t.Fatal("empty claim shape", rr.Code)
 	}
 }

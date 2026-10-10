@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"example.com/cabinet/backend/internal/modules/accounts"
@@ -100,4 +101,28 @@ func (s *Service) ImportLegacyStarsTx(ctx context.Context, tx pgx.Tx, users []Le
 		inserted++
 	}
 	return inserted, nil
+}
+
+func (s *Service) recordLegacyStars(ctx context.Context, in StarsPaymentInput, refunded bool) error {
+	if s.stars == nil || in.BotID != s.stars.BotID || in.BotID <= 0 || in.PayerID <= 0 || in.PayerID > 1<<52-1 || in.Currency != "XTR" || in.Amount <= 0 || len(in.Payload) > 128 || !validText(in.ChargeID, 1, 4096) || !validText(in.ProviderChargeID, 0, 4096) || in.At.Unix() <= 0 || in.At.After(s.now().Add(5*time.Minute)) {
+		return failure(409, "STARS_UNSUPPORTED_PAYMENT")
+	}
+	decoded, err := decodeLegacySubscription(in.Payload, in.PayerID)
+	// Legacy developer invoices charged 1 XTR while keeping the tariff price in the payload.
+	if err != nil || decoded.method == nil || *decoded.method != "telegram_stars" {
+		return failure(409, "STARS_UNSUPPORTED_PAYMENT")
+	}
+	var account *uuid.UUID
+	err = s.pool.QueryRow(ctx, `SELECT account_id FROM legacy_stars_imports WHERE source_tg_id=$1`, in.PayerID).Scan(&account)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return unavailable()
+	}
+	kind := "paid"
+	if refunded {
+		kind = "refunded"
+	} else if in.Recurring && !in.FirstRecurring {
+		kind = "recurring"
+	}
+	proof := starsPaymentProof(in)
+	return s.retainLegacyReceipt(ctx, legacyReceipt{provider: "telegram_stars", kind: kind, sourceID: in.ChargeID, reference: in.ChargeID, account: account, amount: &in.Amount, currency: "XTR", at: in.At.UTC().Truncate(time.Microsecond), proof: json.RawMessage(proof)})
 }

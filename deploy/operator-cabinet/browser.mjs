@@ -129,9 +129,9 @@ try{
  check('Operator cabinet CLI grant','file-based grant applies to verified operator',
   'role present='+granted.role,granted.role===true&&bridge('vpn').connected===beforeVPN);
  const transport=bridge('transport');
- check('Operator cabinet web-only runtime','BOT_OPERATOR_IDS empty and Telegram bot adapter stopped',
-  'no Telegram operators='+transport.no_telegram_operators+', adapter stopped='+transport.adapter_stopped,
-  transport.no_telegram_operators&&transport.adapter_stopped);
+ check('Operator cabinet web-only runtime','empty Telegram operator IDs, native Telegram disabled and retired bot container absent',
+  'no Telegram operators='+transport.no_telegram_operators+', Telegram disabled='+transport.telegram_disabled+', adapter stopped='+transport.adapter_stopped,
+  transport.no_telegram_operators&&transport.telegram_disabled&&transport.adapter_stopped);
  await operator.page.goto(origin+'/admin?lang=en');
  await expect(operator.page.getByRole('heading',{name:'Clients'})).toBeVisible();
  step='search and card';
@@ -470,7 +470,7 @@ try{
    (JSON.stringify(beforeTelegram)===JSON.stringify(afterTelegram))+'/'+
    (JSON.stringify(beforeDigests)===JSON.stringify(afterDigests))+', old HTTP '+oldSession.status,
   restored.restored&&restored.prior_vpn_connected&&restored.prior_vpn_config_equal&&
-  restored.no_telegram_operators&&restored.adapter_stopped&&oldSession.status===401&&
+  restored.no_telegram_operators&&restored.telegram_disabled&&restored.adapter_stopped&&oldSession.status===401&&
   JSON.stringify(beforeSupport)===JSON.stringify(afterSupport)&&
   JSON.stringify(beforeOperator)===JSON.stringify(afterOperator)&&
   JSON.stringify(beforeCustomer)===JSON.stringify(afterCustomer)&&

@@ -422,7 +422,26 @@ func (s *Service) receiveCrypto(ctx context.Context, raw []byte, provider crypto
 	}
 	c, err := s.cryptoCheckout(ctx, order, provider)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil
+		if merchantID == "" || key == "" {
+			return unavailable()
+		}
+		body, _ := json.Marshal(map[string]string{"order_id": order.String()})
+		legacy := cryptoRow{provider: provider, order: order, merchant: merchantID, id: &invoice}
+		payment, _, e := s.cryptoRequest(ctx, legacy, "/info", body)
+		if e != nil {
+			return e
+		}
+		gross, e := cryptoUSD(payment.Amount)
+		at, timeErr := time.Parse(time.RFC3339Nano, payment.Updated)
+		created, createdErr := time.Parse(time.RFC3339Nano, payment.Created)
+		actual, actualOK := cryptoNumber(payment.PaymentAmount)
+		payer, payerOK := cryptoNumber(payment.PayerAmount)
+		merchant, merchantOK := cryptoNumber(payment.MerchantAmount)
+		if e != nil || timeErr != nil || createdErr != nil || at.Before(created) || gross <= 0 || payment.ID != invoice.String() || payment.Order != order.String() || payment.Currency != "USD" || payment.Status != "paid" && payment.Status != "paid_over" || payment.PaymentStatus != payment.Status || payment.Final == nil || !*payment.Final || !actualOK || !payerOK || !merchantOK || actual.Sign() <= 0 || payer.Sign() <= 0 || merchant.Sign() < 0 || actual.Cmp(payer) < 0 || !cryptoTicker.MatchString(payment.PayerCurrency) || at.After(s.now().Add(5*time.Minute)) {
+			return failure(409, "PAYMENT_IDENTITY_CONFLICT")
+		}
+		proof := map[string]any{"invoice_id": payment.ID, "order_id": payment.Order, "merchant_id": merchantID, "status": payment.Status, "payment_status": payment.PaymentStatus, "is_final": *payment.Final, "amount": payment.Amount, "currency": payment.Currency, "payment_amount": payment.PaymentAmount, "payer_amount": payment.PayerAmount, "merchant_amount": payment.MerchantAmount, "payer_currency": payment.PayerCurrency, "created_at": payment.Created, "updated_at": payment.Updated}
+		return s.retainLegacyReceipt(ctx, legacyReceipt{provider: string(provider), kind: "paid", sourceID: invoice.String(), reference: order.String(), amount: &gross, currency: "USD", at: at, proof: proof})
 	}
 	if err != nil {
 		return unavailable()

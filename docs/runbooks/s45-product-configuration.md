@@ -3,8 +3,9 @@
 Владелец [#47](https://github.com/ekho/3xui-shop/issues/47), контракт
 `2026-10-10-s45-product-config-v1`. Это перечень **используемых** настроек,
 не новая платформа настроек. Target — один Go backend HTTP/River/Telegram,
-отдельный frontend/Caddy. Python остаётся legacy до #54; не запускайте двух
-исполнителей одной операции. Production этим документом не разрешается.
+отдельный frontend/Caddy. С47 (#54) удаляет Python runtime и транспортный адаптер;
+Go-процесс удерживает единую PostgreSQL-блокировку исполнителя. Production этим
+документом не разрешается.
 
 ## Сохранить и применить
 
@@ -55,7 +56,6 @@ File contents читаются при запуске и trim; доступ фа�
 | `LISTEN_ADDRESS` | Host bind; default `127.0.0.1:8080`, Compose — `0.0.0.0:8080`, наружу только проверенный gateway. |
 | `TRUSTED_PROXY_CIDRS` | Optional comma-separated CIDRs доверенного proxy; Compose использует точный gateway `/32`. |
 | `BOT_OPERATOR_IDS` | Optional comma-separated positive Telegram actor IDs для operator boundaries; не заменяет web operator grants. |
-| `LEGACY_BOT_API_ENABLED`, `BOT_ADAPTER_TOKEN_FILE` | Transitional API default true. При операторах требует token длиной ≥32. Native deployment задаёт false; не исполнять native и adapter одновременно. |
 
 `migrate`/`reconcile` используют существующие Config. Standalone catalogue,
 operator/infrastructure grants и legacy imports читают `DATABASE_URL_FILE` по
@@ -75,7 +75,7 @@ operator/infrastructure grants и legacy imports читают `DATABASE_URL_FILE
 | `OPERATIONS_EMAIL_FILE` | Optional один private operator email без display name/newlines. Plaintext `OPERATIONS_EMAIL` запрещён даже пустой; адрес не логируется. |
 | `SMTP_ADDRESS`, `SMTP_USER`, `SMTP_FROM`, `SMTP_PASSWORD_FILE`, `SMTP_CA_FILE` | Existing TLS SMTP settings для outbox/operations. Password нужен при SMTP_USER, CA optional для своего trust root. Timeout/недоставка не разрешают менять права/данные. |
 
-В Compose disabled optional bot/adapter token/email files используют `/dev/null` и не
+В Compose disabled optional bot token/email files используют `/dev/null` и не
 читаются отключённым каналом. При включении задайте реальный file; пустой
 mount не считается credentials. Secrets **не** выдаются в `/config.json`.
 Readiness PG+Redis+River, graceful stop 75s и logs/email best-effort —
@@ -131,8 +131,8 @@ RUB/USD/XTR цену. Отсутствующая цена не конверти�
 | `TERMS_URL`, `PRIVACY_URL`, `SUPPORT_URL` | Required ≤2048 bytes, HTTPS без user/password; support допускает mailto, Telegram links не заменяют browser support. |
 | `WEB_PUBLIC_CONFIG_DIR` | Generator output, default `/run/web-public`; writable private tmpfs при read-only image. |
 | `CABINET_HOST` | Caddy host, фактический TLS certificate соответствует ему. Domain не build-time константа. |
-| `CABINET_MAINTENANCE` | Transitional gateway stop-traffic flag; это не persisted business maintenance С42, не drain/backup. |
-| `PUBLIC_CERT_FILE`, `PUBLIC_KEY_FILE`, `ADAPTER_CERT_FILE`, `ADAPTER_KEY_FILE` | TLS mounts gateway. Private keys вне env/Git; adapter listener остаётся закрытым от public routes. |
+| `CABINET_MAINTENANCE` | Gateway stop-traffic flag. Подписанные PSP callbacks проходят к backend и при true; это не persisted business maintenance С42, не drain/backup. |
+| `PUBLIC_CERT_FILE`, `PUBLIC_KEY_FILE` | TLS mounts gateway. Private keys вне env/Git; `/internal/*` всегда возвращает 404. |
 
 `/config.json` содержит только allowlist public fields: versions/URLs и optional
 productName. Нет DB/SMTP/panel/token/recipient. Caddy и browser не кешируют config;
@@ -145,8 +145,9 @@ dev/preview; поставляемый Caddy использует runtime generat
 `APP_RUNTIME_UID`, `APP_RUNTIME_GID` (10001), `APP_NETWORK_SUBNET`,
 `APP_GATEWAY_IP`, `PG_USER`, `BASE_DATABASE`, `PG_PASSWORD_FILE` задают существующую
 Compose инфраструктуру. Заранее проверьте UID/file access и свободную сеть.
-`LOCAL_STATE_DIR`, `SMTP_AUTH_FILE`, `WEB_TRIAL_API_CA_FILE` нужны соответствующим
-local/legacy overlays; не подключайте их к чужим ресурсам.
+`LOCAL_STATE_DIR`, `SMTP_AUTH_FILE` нужны synthetic local overlays; не подключайте
+их к чужим ресурсам. `TEST_OPERATIONS_IMAGE` выбирает собственный operations image
+для проверок populated backup/restore.
 `BACKUP` сохраняет PostgreSQL/attachments, **не env/secrets/certs/Redis/panel**:
 сохраняйте приватные deployment files отдельно и сверяйте с manifest revision.
 `RESTORE_DATABASE_URL_FILE` и CLI operator-file остаются с absolute/canonical/
@@ -160,29 +161,17 @@ Connected tests: `TEST_DATABASE_URL_FILE`, `TEST_REDIS_URL_FILE`,
 этого project. Test/UI environment и faults не являются product settings.
 `E2E_PORT`, `E2E_MODE`, `TEST_ORIGIN`, `RUN_BROWSER_TESTS` — проверочные inputs.
 
-## Legacy Python: перечень для переноса, не включение Р7
+## Перенос и переключение
 
-Источник `app/config.py`, `.env.example`/`docker-compose.yml` до #54. Python —
-Telegram-only программа: без bot token она не запускается. Web-only v2 **не**
-запускает её. Если задан `_FILE`, он имеет приоритет и обязан читаться/быть
-непустым UTF-8; bad file не заменяется plaintext. Без `_FILE` остаётся старый
-env fallback только для совместимости. В deployment секреты задавайте файлами.
+Полный exporter запускается как `server export-legacy` без runtime configuration,
+HTTP, Redis или Telegram; importer остаётся защищённой offline CLI-командой.
+[С46](../../deploy/data-migration/README.md) описывает source contract, [С47](../../deploy/cutover/README.md)
+описывает владельцев, staged maintenance и rollback с актуальными данными.
+`server legacy-payments --operator-file ...` читает безопасный журнал подтверждённых
+поздних платежей через проверку operator-role; его вывод хранится приватно.
+Старые provider callback paths сохранены. `/internal/v1` удалён вместе с адаптером.
 
-| Используемые legacy настройки | Перенос / состояние |
-| --- | --- |
-| `BOT_ADMINS`, `BOT_DEV_ID`, `BOT_SUPPORT_ID`, `BOT_DOMAIN`, `BOT_PORT`, `BOT_USE_WEBHOOK`, `TELEGRAM_API_URL`, `TELEGRAM_API_IS_LOCAL`, `BOT_TOKEN_FILE`, `WEBHOOK_SECRET_FILE` | Legacy actors/HTTP/webhook/self-hosted API. Native main — polling в общем Go lifecycle; old modes не включаются автоматически. Domain задаёт оператор. |
-| `SUPPORT_BOT_TOKEN_FILE`, `SUPPORT_GROUP_ID`, `BOT_TIMEZONE`, `AUDIT_RETENTION_DAYS` | Legacy support/schedules; native switches/timezone выше, не два исполнителя. |
-| `SHOP_APPROVAL_REQUIRED`, `SHOP_EMAIL`, `SHOP_CURRENCY`, `SHOP_TRIAL_ENABLED`, `SHOP_TRIAL_PERIOD`, `SHOP_TRIAL_TRAFFIC_GB`, `SHOP_BONUS_DEVICES_COUNT` | Legacy currency/buttons/approval/trial defaults отличаются от v2. SHOP_EMAIL deployment-owned без product-domain default, обязателен и проверяется при YooKassa-on. Сверять фактические значения и grants до переноса. |
-| `SHOP_REFERRED_TRIAL_ENABLED`, `SHOP_REFERRED_TRIAL_PERIOD`, `SHOP_REFERRER_REWARD_ENABLED`, `SHOP_REFERRED_REWARD_TYPE`, `SHOP_REFERRER_LEVEL_ONE_PERIOD`, `SHOP_REFERRER_LEVEL_TWO_PERIOD`, `SHOP_REFERRER_LEVEL_ONE_RATE`, `SHOP_REFERRER_LEVEL_TWO_RATE` | Пока только legacy. Фактически reader называется **SHOP_REFERRED_REWARD_TYPE**; иначе написанный REFERRER alias не читается. Р7 #50–#52 уточняет данные/операции/параметры, здесь не вводится Go referral/promo flags. |
-| `SHOP_PAYMENT_STARS_ENABLED`, `SHOP_PAYMENT_CRYPTOMUS_ENABLED`, `SHOP_PAYMENT_HELEKET_ENABLED`, `SHOP_PAYMENT_YOOKASSA_ENABLED`, `SHOP_PAYMENT_YOOMONEY_ENABLED`, `SHOP_PAYMENT_MANUAL_ENABLED` | Legacy Stars default true и fallback на Stars при всех выключенных, в Go такого fallback нет. Переносит owning payment сценарий/С46. |
-| `XUI_USERNAME`, `XUI_PASSWORD_FILE`, `XUI_TOKEN_FILE` | Legacy panel auth; base/subscription URLs уже в server DB, прежние XUI_SUBSCRIPTION_PORT/PATH больше не читаются. |
-| `CRYPTOMUS_API_KEY_FILE`, `CRYPTOMUS_MERCHANT_ID_FILE`, `HELEKET_API_KEY_FILE`, `HELEKET_MERCHANT_ID_FILE`, `YOOKASSA_TOKEN_FILE`, `YOOKASSA_SHOP_ID`, `YOOMONEY_NOTIFICATION_SECRET_FILE`, `YOOMONEY_WALLET_ID`, `MANUAL_CARD_DETAILS_FILE` | Legacy providers, string credentials через file reader; numeric shop ID typed. Go merchant IDs public env, не переносить secret bytes в Git. |
-| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD_FILE`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB_NAME`, `REDIS_USERNAME`, `REDIS_PASSWORD_FILE` | Legacy SQLite/default Redis либо явно заданные DSNs. Target v2 — DATABASE/REDIS URL files, не reuse default legacy DB. |
-| `LOG_LEVEL`, `LOG_FORMAT`, `LOG_ARCHIVE_FORMAT` | Legacy logging/archive; Go безопасные structured lifecycle states не принимают произвольные format/env dumps. |
-| `WEB_TRIAL_API_URL`, `WEB_TRIAL_API_TOKEN_FILE`, `WEB_TRIAL_API_CA_FILE`, `BOT_OPERATOR_IDS` | Transitional adapter only; HTTPS/file-only token и один active executor. Удаление у #54. |
-
-Реферальные данные/бонусы/промо и неизвестные legacy trial/payment facts не
-объявляются перенесёнными этой сверкой. С46/import и С47/cutover подтверждают
-их отдельно. С42 [maintenance](s42-maintenance.md) сохраняет права/audit/replay;
-С43 [backup](s43-backup-restore.md) сохраняет restore guards;
-С44 [process operations](s44-process-operations.md) сохраняет readiness/drain.
+Исторический перечень Python-настроек доступен в [исходной версии до С47](https://github.com/ekho/3xui-shop/blob/e53746c4a13d4209438012a33390ec84eb38539c/docs/runbooks/s45-product-configuration.md).
+Его имена не включают старый runtime и не подменяют нынешние typed settings.
+Сохраняйте реальные bot IDs, support group/topics, DB/mail/code keys, panel identities,
+provider credentials и публичные URL; сопоставляйте их с текущим владельцем.

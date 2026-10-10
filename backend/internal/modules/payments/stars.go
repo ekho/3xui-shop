@@ -115,6 +115,9 @@ func (s *Service) starsOrderTx(ctx context.Context, tx pgx.Tx, in StarsPaymentIn
 // RecordStarsPayment is reachable only through the trusted Telegram adapter.
 // Current sales/identity errors retain the charge and prevent automatic issue.
 func (s *Service) RecordStarsPayment(ctx context.Context, in StarsPaymentInput) error {
+	if strings.HasPrefix(in.Payload, "subscription:") {
+		return s.recordLegacyStars(ctx, in, false)
+	}
 	if !validStarsPaymentBase(in) {
 		return failure(409, "STARS_UNSUPPORTED_PAYMENT")
 	}

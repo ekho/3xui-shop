@@ -60,7 +60,7 @@ def prepare():
     configured = json.loads(compose('config', '--format', 'json'))
     env = configured['services']['backend']['environment']
     assert env['SHOP_PAYMENT_' + PREFIX + '_ENABLED'] == 'true' and env[PREFIX + '_MERCHANT_ID'] == MERCHANT
-    assert env['LEGACY_BOT_API_ENABLED'] == 'false' and env['TELEGRAM_ENABLED'] == 'false'
+    assert env['TELEGRAM_ENABLED'] == 'false'
     assert configured['services'][PROVIDER + '-stub']['networks']['default']['aliases'] == [API_HOST]
     print('PASS: own file secrets, TLS/DNS API stub, no host trust or external provider', flush=True)
 

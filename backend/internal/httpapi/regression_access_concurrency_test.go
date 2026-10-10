@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
 	"github.com/riverqueue/river"
@@ -114,7 +115,7 @@ func TestRegressionAccessConcurrentOwnership(t *testing.T) {
 			err error
 		}, 1)
 		trial := make(chan struct {
-			result wire.DecisionResult
+			result subscriptions.DecisionResult
 			err    error
 		}, 1)
 		go func() {
@@ -129,7 +130,7 @@ func TestRegressionAccessConcurrentOwnership(t *testing.T) {
 			<-start
 			result, err := s.decideTrialRequest(ctx, request.RequestId, decision(101, "approve"))
 			trial <- struct {
-				result wire.DecisionResult
+				result subscriptions.DecisionResult
 				err    error
 			}{result, err}
 		}()

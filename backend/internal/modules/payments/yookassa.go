@@ -124,9 +124,14 @@ func validKassaURL(raw string) bool {
 }
 func (s *Service) kassaRequest(ctx context.Context, c kassaRow, method, path string, body []byte) (kassaPayment, int, error) {
 	var out kassaPayment
-	req, err := http.NewRequestWithContext(ctx, method, "https://api.yookassa.ru/v3/payments"+path, bytes.NewReader(body))
+	status, err := s.kassaAPIRequest(ctx, c, method, "/payments"+path, body, &out)
+	return out, status, err
+}
+
+func (s *Service) kassaAPIRequest(ctx context.Context, c kassaRow, method, path string, body []byte, out any) (int, error) {
+	req, err := http.NewRequestWithContext(ctx, method, "https://api.yookassa.ru/v3"+path, bytes.NewReader(body))
 	if err != nil {
-		return out, 0, unavailable()
+		return 0, unavailable()
 	}
 	req.SetBasicAuth(c.shop, s.config().YooKassaToken)
 	if method == "POST" {
@@ -135,17 +140,17 @@ func (s *Service) kassaRequest(ctx context.Context, c kassaRow, method, path str
 	}
 	r, err := s.http.Do(req)
 	if err != nil {
-		return out, 0, unavailable()
+		return 0, unavailable()
 	}
 	defer r.Body.Close()
 	if r.StatusCode != 200 {
-		return out, r.StatusCode, unavailable()
+		return r.StatusCode, unavailable()
 	}
 	data, err := io.ReadAll(io.LimitReader(r.Body, 65537))
-	if err != nil || len(data) == 0 || len(data) > 65536 || !utf8.Valid(data) || json.Unmarshal(data, &out) != nil {
-		return out, r.StatusCode, unavailable()
+	if err != nil || len(data) == 0 || len(data) > 65536 || !utf8.Valid(data) || json.Unmarshal(data, out) != nil {
+		return r.StatusCode, unavailable()
 	}
-	return out, r.StatusCode, nil
+	return r.StatusCode, nil
 }
 func (s *Service) kassaReview(ctx context.Context, order uuid.UUID, reason string, observation []byte) error {
 	tx, err := s.pool.Begin(ctx)
@@ -260,6 +265,36 @@ func (s *Service) ReceiveYooKassa(ctx context.Context, raw string) error {
 	var order uuid.UUID
 	err = s.pool.QueryRow(ctx, "SELECT order_id FROM yookassa_checkouts WHERE payment_id=$1", id).Scan(&order)
 	if errors.Is(err, pgx.ErrNoRows) {
+		config := s.config()
+		if config.YooKassaShopID == "" || config.YooKassaToken == "" {
+			return unavailable()
+		}
+		legacy := kassaRow{shop: config.YooKassaShopID, test: config.YooKassaTestMode, id: &id}
+		payment, _, e := s.kassaRequest(ctx, legacy, "GET", "/"+id.String(), nil)
+		if e != nil {
+			return e
+		}
+		gross, e := minorUnits(payment.Amount.Value)
+		captured, timeErr := time.Parse(time.RFC3339Nano, payment.Captured)
+		created, createdErr := time.Parse(time.RFC3339Nano, payment.Created)
+		if e != nil || timeErr != nil || createdErr != nil || captured.Before(created) || gross <= 0 || payment.ID != id.String() || payment.Recipient.AccountID != legacy.shop || payment.Test == nil || *payment.Test != legacy.test || payment.Paid == nil || !*payment.Paid || payment.Status != "succeeded" || payment.Amount.Currency != "RUB" || captured.After(s.now().Add(5*time.Minute)) {
+			return failure(409, "PAYMENT_IDENTITY_CONFLICT")
+		}
+		var refund int64
+		if payment.Refunded != nil {
+			refund, e = minorUnits(payment.Refunded.Value)
+			if e != nil || payment.Refunded.Currency != "RUB" || refund > gross {
+				return failure(409, "PAYMENT_IDENTITY_CONFLICT")
+			}
+		}
+		proof := map[string]any{"id": payment.ID, "status": payment.Status, "paid": *payment.Paid, "shop_id": payment.Recipient.AccountID, "test": *payment.Test, "amount": payment.Amount, "created_at": payment.Created, "captured_at": payment.Captured}
+		if err = s.retainLegacyReceipt(ctx, legacyReceipt{provider: "yookassa", kind: "paid", sourceID: id.String(), reference: id.String(), amount: &gross, currency: "RUB", at: captured, proof: proof}); err != nil {
+			return err
+		}
+		if refund > 0 {
+			proof["refunded_amount"] = payment.Refunded
+			return s.retainLegacyReceipt(ctx, legacyReceipt{provider: "yookassa", kind: "refund_observed", sourceID: id.String(), reference: id.String(), amount: &refund, currency: "RUB", at: captured, proof: proof})
+		}
 		return nil
 	}
 	if err != nil {

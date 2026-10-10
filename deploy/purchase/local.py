@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import secrets
 import sys
+import subprocess
 import time
 from urllib.error import HTTPError
 from urllib.parse import quote, urlencode, urlsplit, urlunsplit
@@ -67,8 +68,7 @@ def prepare():
                   YOOMONEY_NOTIFICATION_SECRET_FILE=str(secret))
     local.write('public.env', '\n'.join(k + '=' + v for k, v in config.items()) + '\n')
     configured = json.loads(compose('config', '--format', 'json'))
-    if local.PROFILE == 'native' and configured['services']['backend']['environment'].get('LEGACY_BOT_API_ENABLED') != 'false':
-        raise RuntimeError('native purchase requires disabled legacy bot API')
+    assert configured['services']['backend']['environment']['TELEGRAM_ENABLED'] == 'false'
     print('PASS: owned localhost payment overlay; disposable secret, no provider requests')
 
 
@@ -201,6 +201,27 @@ def create_order(opener, login, plan, manual=False):
     return value
 
 
+def panel_traffic_fixture(row, up, down, memberships=0, *, require_disabled=False):
+    # SQLite WAL must stay in the Docker VM; a Mac connection can see stale state.
+    helper = STATE / 'paneldb-fixture'
+    STATE.mkdir(mode=0o700, parents=True, exist_ok=True)
+    architecture = local.command(['docker', 'version', '--format', '{{.Server.Arch}}']).decode().strip()
+    assert architecture in ('arm64', 'amd64'), 'unsupported owned Docker architecture'
+    build = subprocess.run(['go', 'build', '-o', str(helper), './tests/fixtures/paneldb'],
+                           cwd=ROOT / 'backend', capture_output=True, timeout=120,
+                           env={**os.environ, 'CGO_ENABLED': '0', 'GOOS': 'linux', 'GOARCH': architecture})
+    assert build.returncode == 0, 'panel fixture build failed'
+    data = {key: row[key] for key in ('panel_key', 'vpn_id', 'sub_id')}
+    data.update(up=up, down=down, memberships=memberships, require_disabled=require_disabled)
+    assert local.command(['docker', 'run', '--rm', '--pull', 'never', '--network', 'none',
+        '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
+        '--user', str(os.getuid()) + ':' + str(os.getgid()), '-i',
+        '--mount', 'type=bind,source=' + str(local.STATE / 'panel-db') + ',target=/panel',
+        '--mount', 'type=bind,source=' + str(helper) + ',target=/paneldb,readonly',
+        '--entrypoint', '/paneldb', 'cabinet-backend:local'],
+        stdin=json.dumps(data).encode()).strip() == b'FIXTURE_OK'
+
+
 def exhaust_counters(account, total, memberships):
     """Synthetic exhausted access in this owned panel's Docker VM, with its writer stopped."""
     assert local.PROFILE == 'native' and type(total) is int and total > 0
@@ -208,23 +229,7 @@ def exhaust_counters(account, total, memberships):
     row = account_row(account)
     compose('stop', 'panel')
     try:
-        # SQLite WAL must stay in the Docker VM; a Mac connection can see stale state.
-        script = '''import json,sqlite3,sys
-row,total,memberships=json.load(sys.stdin)
-assert total>0
-with sqlite3.connect('/panel/x-ui.db') as db:
-    assert db.execute('SELECT count(*) FROM clients WHERE email=? AND uuid=? AND sub_id=? AND enable=0',
-        (row['panel_key'],row['vpn_id'],row['sub_id'])).fetchone()[0]==1
-    changed=db.execute('UPDATE client_traffics SET up=?,down=0 WHERE email=?',
-        (total+1,row['panel_key'])).rowcount
-    assert changed==memberships and changed>0
-'''
-        image = (ROOT / 'deploy/acceptance/Dockerfile.bot').read_text().splitlines()[0].split()[1]
-        local.command(['docker', 'run', '--rm', '--pull', 'missing', '--network', 'none',
-            '--read-only', '--user', str(os.getuid()) + ':' + str(os.getgid()), '-i',
-            '--mount', 'type=bind,source=' + str(local.STATE / 'panel-db') + ',target=/panel',
-            '--entrypoint', 'python', image, '-c', script],
-            stdin=json.dumps([row, total, memberships]).encode())
+        panel_traffic_fixture(row, total + 1, 0, memberships, require_disabled=True)
     finally:
         compose('up', '--no-build', '--pull', 'never', '--no-deps', '-d', 'panel')
     def panel_ready():

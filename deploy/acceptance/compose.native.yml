@@ -8,14 +8,12 @@ services:
   backend:
     environment:
       <<: *local-payment
-      LEGACY_BOT_API_ENABLED: 'false'
       TELEGRAM_ENABLED: '${TELEGRAM_ENABLED:-false}'
       BOT_TOKEN_FILE: /run/secrets/bot_token
     secrets: [bot_token, native_operator_account, local_yoomoney_notification]
   migrate:
     environment:
       <<: *local-payment
-      LEGACY_BOT_API_ENABLED: 'false'
     secrets: [local_yoomoney_notification]
   mailpit:
     ports: ['127.0.0.1:59447:1025']

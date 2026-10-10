@@ -37,8 +37,8 @@ type Config struct {
 	Audit                 auditreports.Config
 }
 type HTTPConfig struct {
-	CabinetOrigin, AdapterToken string
-	TrustedProxyCIDRs           []string
+	CabinetOrigin     string
+	TrustedProxyCIDRs []string
 }
 
 func SecretFile(name string) (string, error) {
@@ -209,19 +209,6 @@ func LoadConfig() (Config, error) {
 				return c, errors.New("invalid BOT_OPERATOR_IDS")
 			}
 			c.Accounts.Operators = append(c.Accounts.Operators, id)
-		}
-	}
-	legacyBotAPIEnabled := true
-	if value := os.Getenv("LEGACY_BOT_API_ENABLED"); value != "" {
-		legacyBotAPIEnabled, err = strconv.ParseBool(value)
-		if err != nil {
-			return c, errors.New("invalid LEGACY_BOT_API_ENABLED")
-		}
-	}
-	if len(c.Accounts.Operators) > 0 && legacyBotAPIEnabled {
-		c.HTTP.AdapterToken, err = SecretFile("BOT_ADAPTER_TOKEN")
-		if err != nil || len(c.HTTP.AdapterToken) < 32 {
-			return c, errors.New("invalid BOT_ADAPTER_TOKEN_FILE")
 		}
 	}
 	if c.Subscriptions.TrialEnabled && c.Subscriptions.PanelID == "" {

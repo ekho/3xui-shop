@@ -106,7 +106,7 @@ func TestAccountSecurityAccountSecurityFlow(t *testing.T) {
 	email := "security-flow@example.test"
 	password := "fixture password with Unicode ✨"
 	first, _, trial := f.signup(t, email)
-	f.python(t, trial.RequestId)
+	f.decideTrial(t, trial.RequestId)
 	if err := f.workers.Start(ctx); err != nil {
 		t.Fatal(err)
 	}

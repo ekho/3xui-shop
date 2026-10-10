@@ -1,5 +1,5 @@
 """Local wiring check with disposable credentials; never starts a Telegram poller.
-Prerequisite: build the three local images with compose.acceptance.yml first.
+Prerequisite: build the two local images with compose.acceptance.yml first.
 """
 import base64
 import hashlib
@@ -49,7 +49,7 @@ def run():
         assert subnet, 'No free owned smoke subnet'
         # Secrets stay in mode0600 files. No command line contains their values.
         files={}
-        values={'pg-password':secrets.token_urlsafe(24),'redis-url':'redis://redis:6379/0','mail-key':base64.b64encode(secrets.token_bytes(32)).decode(),'code-key':base64.b64encode(secrets.token_bytes(32)).decode(),'adapter-token':secrets.token_urlsafe(32),'smtp-password':secrets.token_urlsafe(24),'panel-token':secrets.token_urlsafe(32)}
+        values={'pg-password':secrets.token_urlsafe(24),'redis-url':'redis://redis:6379/0','mail-key':base64.b64encode(secrets.token_bytes(32)).decode(),'code-key':base64.b64encode(secrets.token_bytes(32)).decode(),'smtp-password':secrets.token_urlsafe(24),'panel-token':secrets.token_urlsafe(32)}
         values['database-url']='postgres://cabinet:'+values['pg-password']+'@postgres:5432/cabinet?sslmode=disable'
         REDACTIONS.extend(values.values())
         for name,value in values.items():
@@ -58,13 +58,13 @@ def run():
         command(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=cabinet.example.test','-addext','subjectAltName=DNS:cabinet.example.test,DNS:gateway,IP:127.0.0.1','-keyout',str(key),'-out',str(cert)])
         key.chmod(0o600)
         data=(ROOT/'deploy/acceptance/.env.example').read_text()
-        mapping={'PG_PASSWORD_FILE':'pg-password','DATABASE_URL_FILE':'database-url','REDIS_URL_FILE':'redis-url','MAIL_KEY_FILE':'mail-key','CODE_KEY_FILE':'code-key','BOT_ADAPTER_TOKEN_FILE':'adapter-token','SMTP_PASSWORD_FILE':'smtp-password','PANEL_TOKEN_FILE':'panel-token'}
+        mapping={'PG_PASSWORD_FILE':'pg-password','DATABASE_URL_FILE':'database-url','REDIS_URL_FILE':'redis-url','MAIL_KEY_FILE':'mail-key','CODE_KEY_FILE':'code-key','SMTP_PASSWORD_FILE':'smtp-password','PANEL_TOKEN_FILE':'panel-token'}
         lines=[]
         for line in data.splitlines():
             name=line.split('=',1)[0]
             if name in mapping:line=name+'='+files[mapping[name]]
-            elif name.endswith('_CA_FILE') or name in ('PUBLIC_CERT_FILE','ADAPTER_CERT_FILE'):line=name+'='+str(cert)
-            elif name in ('PUBLIC_KEY_FILE','ADAPTER_KEY_FILE'):line=name+'='+str(key)
+            elif name.endswith('_CA_FILE') or name == 'PUBLIC_CERT_FILE':line=name+'='+str(cert)
+            elif name == 'PUBLIC_KEY_FILE':line=name+'='+str(key)
             elif name=='APP_RUNTIME_UID':line=name+'='+str(os.getuid())
             elif name=='APP_RUNTIME_GID':line=name+'='+str(os.getgid())
             elif name=='APP_NETWORK_SUBNET':line=name+'='+subnet
@@ -159,12 +159,12 @@ def run():
             assert get('/cabinet')[2]==html and all(hashlib.sha256(get(p)[2]).digest()==digest for p,digest in assets.items())
             browser_config(replacement['PRODUCT_NAME'])
             print('PASS: two public deployments, same web image/HTML/assets, no-store and ready HTTP/River; Telegram off without token',flush=True)
-            denied=subprocess.run(compose+['run','--rm','--no-deps','-e','TELEGRAM_ENABLED=true','-e','BOT_TOKEN_FILE=',
-                                          '-e','LEGACY_BOT_API_ENABLED=false','backend','serve'],cwd=ROOT,env=compose_environment(compose),capture_output=True,timeout=30)
-            assert denied.returncode==1 and b'SERVICE_UNAVAILABLE' in denied.stderr, 'Telegram-on without token did not refuse startup'
+            denied=subprocess.run(compose+['run','--rm','--no-deps','backend','serve'],
+                                  cwd=ROOT,env=compose_environment(compose),capture_output=True,timeout=30)
+            assert denied.returncode==1 and b'SERVICE_UNAVAILABLE' in denied.stderr, 'Second serve did not refuse startup'
             assert all(value.encode() not in denied.stdout+denied.stderr for value in values.values()), 'Startup error disclosed fixture credentials'
             assert get('/readyz')[0]==200, 'Denied second runtime affected the original process'
-            print('PASS: real serve rejects Telegram-on without token and leaves original runtime ready',flush=True)
+            print('PASS: second real serve refuses startup and leaves original runtime ready',flush=True)
             assert get('/internal/v1/telegram/jobs/claim')[0]==404
             status,headers,_=get('/api/v1/me')
             assert status==401
@@ -172,21 +172,32 @@ def run():
             assert "frame-ancestors 'none'" in one_header(headers,'Content-Security-Policy')
             assert one_header(headers,'X-Content-Type-Options')=='nosniff'
             assert one_header(headers,'Cache-Control')=='no-store'
-            private="""import json,os,ssl,urllib.request
-from pathlib import Path
-ctx=ssl.create_default_context(cafile=os.environ['WEB_TRIAL_API_CA_FILE'])
-url=os.environ['WEB_TRIAL_API_URL']
-request=urllib.request.Request(url+'/internal/v1/telegram/jobs/claim',data=b'{"limit":1}',headers={'Content-Type':'application/json','Authorization':'Bearer '+Path(os.environ['WEB_TRIAL_API_TOKEN_FILE']).read_text().strip()})
-with urllib.request.urlopen(request,context=ctx,timeout=5) as r:assert r.status==200 and json.load(r)=={'jobs':[]}
-"""
-            command(compose+['run','--rm','--no-deps','--entrypoint','python','bot','-c',private])
+            for legacy_path in ('/internal/v1/trial-requests/unknown/decision', '/internal/v1/trial-requests/unknown/reconsider',
+                                '/internal/v1/trial-operations/unknown/reconcile', '/internal/v1/telegram/jobs/claim',
+                                '/internal/v1/telegram/jobs/unknown/result'):
+                assert get(legacy_path)[0] == 404
+            command(compose+['exec','-T','gateway','wget','-qO-','http://backend:8080/readyz'])
             command(compose+['run','--rm','--no-deps','migrate'])
             command(compose+['run','--rm','--no-deps','migrate'])
+            replacement['CABINET_MAINTENANCE']='true'
+            envfile.write_text('\n'.join(name+'='+value for name,value in replacement.items())+'\n')
+            command(compose+['up','--pull','never','--no-build','--no-deps','-d','gateway'])
+            port=int(command(compose+['port','gateway','8443']).decode().strip().rsplit(':',1)[1])
+            assert get('/cabinet')[0]==503, 'gateway maintenance left admission open'
+            for provider in ('yoomoney','yookassa','cryptomus','heleket'):
+                for path in ('/'+provider, '/webhooks/'+provider):
+                    assert get(path)[0]==405, 'gateway maintenance blocked provider callback route'
+            assert get('/internal/v1/telegram/jobs/claim')[0]==404
+            print('PASS: gateway maintenance closes cabinet and keeps eight provider routes with their method/auth boundary',flush=True)
             # Bounded rollback closes writers' ingress and keeps PG + backend queues.
             command(compose+['stop','gateway'])
             running=command(compose+['ps','--services','--status','running']).decode().splitlines()
             assert 'backend' in running and 'postgres' in running and 'redis' in running and 'gateway' not in running
             command(compose+['stop','backend'])
+            denied=subprocess.run(compose+['run','--rm','--no-deps','-e','TELEGRAM_ENABLED=true','-e','BOT_TOKEN_FILE=',
+                                          'backend','serve'],cwd=ROOT,env=compose_environment(compose),capture_output=True,timeout=30)
+            assert denied.returncode==1 and b'SERVICE_UNAVAILABLE' in denied.stderr, 'Telegram-on without token did not refuse startup'
+            assert all(value.encode() not in denied.stdout+denied.stderr for value in values.values()), 'Startup error disclosed fixture credentials'
             def sql(query):
                 return command(compose+['exec','-T','postgres','psql','-U','cabinet','-d','cabinet','-At','-v','ON_ERROR_STOP=1','-c',query]).decode().strip()
             # A nonexistent operation finishes without touching a panel; mail must stay untouched.
@@ -199,17 +210,11 @@ with urllib.request.urlopen(request,context=ctx,timeout=5) as r:assert r.status=
                 assert time.monotonic()<deadline, 'restore runtime did not process provision queue'
                 time.sleep(.2)
             assert sql("SELECT state||':'||attempt FROM river_job WHERE kind='mail_delivery'")=='available:0', 'restore runtime processed mail'
-            no_http="""import socket
-try:
-    connection=socket.create_connection(('reconcile',8080),timeout=2)
-except ConnectionRefusedError:
-    pass
-else:
-    connection.close()
-    raise AssertionError('restore runtime opened HTTP')
-"""
-            command(compose+['run','--rm','--no-deps','--entrypoint','python','bot','-c',no_http])
-            print('PASS: local HTTPS, runtime public config, public/private routing, secret-file access, repeated migrations, bounded rollback, provision-only restore runtime')
+            no_http = subprocess.run(compose+['run','--rm','--no-deps','--entrypoint','wget','gateway',
+                                               '-qO-','-T','2','http://reconcile:8080/healthz'],
+                                     cwd=ROOT, env=compose_environment(compose), capture_output=True, timeout=30)
+            assert no_http.returncode != 0, 'restore runtime opened HTTP'
+            print('PASS: local HTTPS, runtime public config, retired-adapter routing, secret-file access, repeated migrations, bounded rollback, provision-only restore runtime')
         except Exception:
             details=command(compose+['logs','--no-color','--tail','25','migrate','backend','gateway','reconcile']).decode(errors='replace')
             for value in REDACTIONS:details=details.replace(value,'[redacted]')

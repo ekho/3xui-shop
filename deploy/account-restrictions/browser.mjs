@@ -94,9 +94,9 @@ let browser,step='startup';
 try{
  browser=await chromium.launch({args:['--ignore-certificate-errors-spki-list='+pin]});
  const transport=bridge('transport');
- check('Account restriction owned runtime boundary','owned project, no Telegram operator routing; Docker VPN baseline observed',
-  'project='+transport.project+', no Telegram operators='+transport.no_telegram_operators+', bot/reconcile stopped='+transport.bot_stopped+'/'+transport.reconcile_stopped+', VPN connected='+transport.vpn_connected,
-  transport.project===ownedProject&&transport.no_telegram_operators&&transport.bot_stopped&&transport.reconcile_stopped);
+ check('Account restriction owned runtime boundary','owned project, empty Telegram operators, native Telegram disabled; Docker VPN baseline observed',
+  'project='+transport.project+', no Telegram operators='+transport.no_telegram_operators+', Telegram disabled='+transport.telegram_disabled+', bot/reconcile stopped='+transport.bot_stopped+'/'+transport.reconcile_stopped+', VPN connected='+transport.vpn_connected,
+  transport.project===ownedProject&&transport.no_telegram_operators&&transport.telegram_disabled&&transport.bot_stopped&&transport.reconcile_stopped);
  step='fresh web registration';
  const operator=await register(browser),client=await register(browser,'ru'),other=await register(browser);
  const anonymous=await browser.newContext();
@@ -323,9 +323,9 @@ try{
    'HTTP '+settle.status+', restricted='+bridge('state',{account:other.id}).restricted,
    settle.status===200&&!bridge('state',{account:other.id}).restricted);
  }
- check('AC8 runtime postflight','no Telegram operator routing and Docker VPN state retained',
-  'no Telegram operators='+bridge('transport').no_telegram_operators+', bot stopped='+bridge('transport').bot_stopped+', VPN baseline equal='+(bridge('transport').vpn_connected===transport.vpn_connected)+', VPN config digest equal='+(bridge('transport').vpn_config_digest===transport.vpn_config_digest),
-  bridge('transport').no_telegram_operators&&bridge('transport').bot_stopped&&bridge('transport').reconcile_stopped&&
+ check('AC8 runtime postflight','empty Telegram operators, native Telegram disabled and Docker VPN state retained',
+  'no Telegram operators='+bridge('transport').no_telegram_operators+', Telegram disabled='+bridge('transport').telegram_disabled+', bot stopped='+bridge('transport').bot_stopped+', VPN baseline equal='+(bridge('transport').vpn_connected===transport.vpn_connected)+', VPN config digest equal='+(bridge('transport').vpn_config_digest===transport.vpn_config_digest),
+  bridge('transport').no_telegram_operators&&bridge('transport').telegram_disabled&&bridge('transport').bot_stopped&&bridge('transport').reconcile_stopped&&
   bridge('transport').vpn_connected===transport.vpn_connected&&bridge('transport').vpn_config_digest===transport.vpn_config_digest);
 }catch(error){
  const category=error?.message?.includes('mail token timeout')?'mail token timeout':

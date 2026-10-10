@@ -97,8 +97,8 @@ func testCryptoHTTPAuthoritativeStatus(t *testing.T, provider string) {
 	// Same values/field order, whitespace and Unicode escaping changed in transit.
 	pretty := bytes.ReplaceAll(body, []byte("<タグ>"), []byte(`<\u30bf\u30b0>`))
 	pretty = bytes.ReplaceAll(pretty, []byte(`,"`), []byte(",\n  \""))
-	if code := request(pretty, "/webhooks/"+provider); code != 200 || f.infos != before {
-		t.Fatal("valid ordered/PHP slash/unicode signature rejected or unknown order called API", code)
+	if code := request(pretty, "/webhooks/"+provider); code != 503 || f.infos != before {
+		t.Fatal("unknown signed order did not verify against provider identity", code)
 	}
 	for _, raw := range []string{`{}`, `[]`, string(body) + string(body), `{"type":"payment","type":"payment"}`, `{"type":"payment","object":{"x":1,"x":2}}`, strings.Repeat("a", 16385)} {
 		if code := request([]byte(raw), "/webhooks/"+provider); code != 400 {
@@ -227,7 +227,7 @@ func cryptoOrderFixture(t *testing.T, provider string, input func(*regressionFix
 			return
 		}
 		var input map[string]any
-		if json.Unmarshal(data, &input) != nil || input["order_id"] != order.OrderId.String() {
+		if json.Unmarshal(data, &input) != nil || input["order_id"] != f.payment["order_id"] {
 			w.WriteHeader(422)
 			return
 		}

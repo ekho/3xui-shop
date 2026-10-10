@@ -2,28 +2,29 @@
 
 С02 добавляет восстановление/смену пароля, смену email с подтверждением обоих
 адресов, завершение других сеансов и выход. Account/VPN/Grant/Operation и лимиты
-не меняются. Это инструкция для будущего тестового запуска; production и
-переключение legacy-обработчиков бота в этот этап не входят.
+не меняются. Текущий native стенд задаёт [С01](s01-test-rollout.md), полную
+копию — [С43](s43-backup-restore.md), совместимый artifact rollback и передачу
+writer — [С47](../../deploy/cutover/README.md). Production в эту приёмку не входит.
 
 ## Окно обслуживания и rollout
 
-1. Закрыть ingress кабинета, остановить bot writers, backend и mail workers.
+1. Закрыть business admission, остановить единственный Go runtime и остальные writers.
    Xray продолжает обслуживать существующих клиентов. Сохранить согласованный
    PostgreSQL dump, версию приложения и файлы `MAIL_KEY`, `CODE_KEY`, остальных
    исходных секретов. Не печатать URL подключения или содержимое ключей.
-2. Запустить additive `migrate`, затем повторный `migrate`; проверить schema6.
+2. Запустить additive `migrate`, затем повторный `migrate`; проверить текущий embedded migration set.
    Обычное обновление сохраняет сессии и mail/job IDs. Maintenance SQL ниже
    требуется **после восстановления БД**, а не при обычном rollout.
 3. Запустить совместимые backend/web сборки при закрытом ingress. Проверить
    внутренний health, login, reset, почту и API/schema. Открыть ingress после
-   успешного smoke. Telegram worker для С02 не требуется; legacy handlers
-   остаются у своего владельца.
+   успешного smoke. Telegram для С02 не требуется; при его включении владельцем
+   является тот же Go процесс.
 
 В поставляемом Compose `CABINET_MAINTENANCE=true` возвращает503 на всех путях
 публичного кабинета, включая формы и health. Пересоздать gateway с новым
-значением; `--no-deps` не запускает backend. Private adapter и native panel
-routes сами не закрываются этим флагом: bot и остальные writers должны быть
-остановлены отдельно. Во внешнем deployment допустимо закрыть ingress его
+значением; `--no-deps` не запускает backend. Восемь точных money callback paths
+сохраняют доступ по С47, native panel routes тоже не закрываются этим флагом:
+владельцы записей должны быть остановлены отдельно. Во внешнем deployment допустимо закрыть ingress его
 собственным reverse proxy. Ошибка проверки оставляет ingress закрытым.
 
 ## Restore: обязательная очистка до reconcile и serve
@@ -66,8 +67,8 @@ Backup не содержит смены пароля/email, сделанной �
 ## Проверка на собственном стенде
 
 ```sh
-go -C backend test ./internal/platform -run '^TestAccountSecurityRestore$' -count=1
-LOCAL_PROFILE=legacy python3 deploy/acceptance/local.py restore
+go -C backend test ./internal/httpapi -run '^TestRegressionAccountSecurityRestore$' -count=1
+python3 deploy/acceptance/local.py restore
 ```
 
 Go проверяет maintenance дважды на изолированной БД с sessions, reset,
@@ -81,13 +82,16 @@ Docker. Credentials и proofs остаются в памяти, dump — private
 
 ## Откат и границы приёмки
 
-При совместимом откате сборки сохранять additive schema и исходные keys; не
-делать destructive Goose Down. При несовместимом откате держать ingress
-закрытым, восстановить согласованные DB/build, выполнить migrate и maintenance
-SQL, затем reconcile/smoke и новый login. Не запускать одновременно двух
-владельцев выдачи и не создавать новую operation вместо сверки прежней.
+При совместимом откате сборки сохранять current PostgreSQL, additive schema и
+исходные keys; не делать destructive Goose Down. Несовместимый артефакт отклонить
+до остановки текущего процесса по [С47](../../deploy/cutover/README.md).
+Аварийное восстановление БД отдельно проходит [С43](s43-backup-restore.md) в новой
+БД со сверкой и replay financial facts после backup, затем maintenance SQL,
+reconcile/smoke и новый login. Не запускать одновременно двух владельцев выдачи
+и не создавать новую operation вместо сверки прежней.
 
 Локальная проверка не доказывает внешнюю доставляемость SMTP или стоимость
 Argon2 на целевом сервере. Эти ресурсы предоставляет пользователь до external
-acceptance. Приёмка С01 остаётся OPEN; tunnel check установленного Happ запрещён.
-Локальные результаты и точные ревизии — в [матрице С02](../evidence/s02-acceptance.md).
+acceptance; установленный Happ не используется.
+Исторические результаты периода С02 — в [матрице С02](../evidence/s02-acceptance.md);
+текущие gates и ограничения задают С01/С43/С47.

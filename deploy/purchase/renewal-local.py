@@ -64,7 +64,7 @@ def prepare():
     purchase.prepare()
     configured = json.loads(compose('config', '--format', 'json'))
     env = configured['services']['backend']['environment']
-    assert env['LEGACY_BOT_API_ENABLED'] == 'false' and env['TELEGRAM_ENABLED'] == 'false'
+    assert env['TELEGRAM_ENABLED'] == 'false'
     assert configured['services']['panel']['image'] == 'ghcr.io/mhsanaei/3x-ui:3.7.0@sha256:3b3131f1876e6bf35063a9ec4dd1c594e4525180bfc2e1c477dcc8a3c9550ca1'
     purchase.private('image-source.json', {'revision': revision})
     print('PASS: own c16 identity, local pinned3.7.0, file credentials and synthetic YooMoney')

@@ -3,6 +3,8 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"example.com/cabinet/backend/internal/modules/notifications"
+	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
 	"strings"
@@ -11,13 +13,9 @@ import (
 	"time"
 )
 
-func sentInput(t *testing.T, j wire.TelegramJob, chat int64) wire.TelegramResultInput {
-	t.Helper()
-	var result wire.TelegramResult
-	if result.FromTelegramSent(wire.TelegramSent{Kind: "sent", ChatId: chat, MessageId: 11}) != nil {
-		t.Fatal("sent fixture")
-	}
-	return wire.TelegramResultInput{LeaseToken: j.LeaseToken, Result: result}
+func sentInput(j notifications.TelegramJob, chat int64) json.RawMessage {
+	raw, _ := json.Marshal(notifications.TelegramSent{Kind: "sent", ChatId: chat, MessageId: 11})
+	return raw
 }
 func TestRegressionTelegramLease(t *testing.T) {
 	s, e := fixture(t)
@@ -27,46 +25,49 @@ func TestRegressionTelegramLease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := s.claimTelegramJobs(ctx, wire.ClaimInput{Limit: 1})
-	if err != nil || len(out.Jobs) != 1 {
+	out, err := s.notifications.ClaimTelegramJobs(ctx, 1)
+	if err != nil || len(out) != 1 {
 		t.Fatal("claim", err)
 	}
-	j := out.Jobs[0]
+	j := out[0]
 	var leased time.Time
-	if err = e.Pool.QueryRow(ctx, `SELECT lease_expires_at-interval '60 seconds' FROM telegram_deliveries WHERE id=$1`, j.JobId).Scan(&leased); err != nil || !j.LeaseExpiresAt.Equal(leased.Add(time.Minute)) {
+	if err = e.Pool.QueryRow(ctx, `SELECT lease_expires_at-interval '60 seconds' FROM telegram_deliveries WHERE id=$1`, j.JobID).Scan(&leased); err != nil || !j.LeaseExpiresAt.Equal(leased.Add(time.Minute)) {
 		t.Fatal("lease not exactly60", err)
 	}
-	if j.Payload.RequestId != r.RequestId || j.ChatId != 101 || j.LeaseToken == "" {
+	var payload subscriptions.TelegramPayload
+	if json.Unmarshal(j.Payload, &payload) != nil || payload.RequestId != r.RequestId || j.ChatID != 101 || j.LeaseToken == "" {
 		t.Fatal("wrong payload")
 	}
 	raw, _ := json.Marshal(j)
 	if strings.Contains(string(raw), "vpn_id") || strings.Contains(string(raw), "sub_id") {
 		t.Fatal("private panel credential in delivery")
 	}
-	bad := sentInput(t, j, 999)
-	if status(s.completeTelegramJob(ctx, j.JobId, bad)) != 409 {
+	bad := sentInput(j, 999)
+	if status(notificationError(s.notifications.CompleteTelegramJob(ctx, j.JobID, j.LeaseToken, bad))) != 409 {
 		t.Fatal("wrong chat accepted")
 	}
-	bad = sentInput(t, j, j.ChatId)
-	bad.LeaseToken = "wrong"
-	if status(s.completeTelegramJob(ctx, j.JobId, bad)) != 409 {
+	bad = sentInput(j, j.ChatID)
+	wrong := j.LeaseToken
+	j.LeaseToken = "wrong"
+	if status(notificationError(s.notifications.CompleteTelegramJob(ctx, j.JobID, j.LeaseToken, bad))) != 409 {
 		t.Fatal("wrong lease accepted")
 	}
-	if _, err = e.Pool.Exec(ctx, `UPDATE telegram_deliveries SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1`, j.JobId); err != nil {
+	j.LeaseToken = wrong
+	if _, err = e.Pool.Exec(ctx, `UPDATE telegram_deliveries SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1`, j.JobID); err != nil {
 		t.Fatal(err)
 	}
-	if status(s.completeTelegramJob(ctx, j.JobId, sentInput(t, j, j.ChatId))) != 409 {
+	if status(notificationError(s.notifications.CompleteTelegramJob(ctx, j.JobID, j.LeaseToken, sentInput(j, j.ChatID)))) != 409 {
 		t.Fatal("expired ack accepted")
 	}
-	again, err := s.claimTelegramJobs(ctx, wire.ClaimInput{Limit: 1})
-	if err != nil || len(again.Jobs) != 1 || again.Jobs[0].JobId != j.JobId || again.Jobs[0].LeaseToken == j.LeaseToken {
+	again, err := s.notifications.ClaimTelegramJobs(ctx, 1)
+	if err != nil || len(again) != 1 || again[0].JobID != j.JobID || again[0].LeaseToken == j.LeaseToken {
 		t.Fatal("lost ack was not reclaimed", err)
 	}
-	j = again.Jobs[0]
-	if err = s.completeTelegramJob(ctx, j.JobId, sentInput(t, j, j.ChatId)); err != nil {
+	j = again[0]
+	if err = notificationError(s.notifications.CompleteTelegramJob(ctx, j.JobID, j.LeaseToken, sentInput(j, j.ChatID))); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.completeTelegramJob(ctx, j.JobId, sentInput(t, j, j.ChatId)); err != nil {
+	if err = notificationError(s.notifications.CompleteTelegramJob(ctx, j.JobID, j.LeaseToken, sentInput(j, j.ChatID))); err != nil {
 		t.Fatal("same terminal ack not idempotent", err)
 	}
 	decisionIn := decision(101, "approve")
@@ -78,8 +79,11 @@ func TestRegressionTelegramLease(t *testing.T) {
 	if err != nil || a.OperationId == nil || b.OperationId == nil || *a.OperationId != *b.OperationId || count(t, e, "trial_grants") != 1 {
 		t.Fatal("duplicate card duplicated grant", err)
 	}
-	out, err = s.claimTelegramJobs(ctx, wire.ClaimInput{Limit: 1})
-	if err != nil || len(out.Jobs) != 1 || out.Jobs[0].Payload.Status == "pending" {
+	out, err = s.notifications.ClaimTelegramJobs(ctx, 1)
+	if err != nil || len(out) != 1 {
+		t.Fatal("stale approval card claim", err)
+	}
+	if err = json.Unmarshal(out[0].Payload, &payload); err != nil || payload.Status == "pending" {
 		t.Fatal("stale approval card payload", err)
 	}
 }
@@ -92,13 +96,13 @@ func TestRegressionTelegramLeaseConcurrent(t *testing.T) {
 		t.Fatal(err)
 	}
 	var wg sync.WaitGroup
-	results := make(chan wire.ClaimResult, 5)
+	results := make(chan []notifications.TelegramJob, 5)
 	errs := make(chan error, 5)
 	for range 5 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			out, err := s.claimTelegramJobs(ctx, wire.ClaimInput{Limit: 1})
+			out, err := s.notifications.ClaimTelegramJobs(ctx, 1)
 			results <- out
 			errs <- err
 		}()
@@ -113,14 +117,14 @@ func TestRegressionTelegramLeaseConcurrent(t *testing.T) {
 	}
 	seen := map[uuid.UUID]bool{}
 	for out := range results {
-		if len(out.Jobs) > 1 {
+		if len(out) > 1 {
 			t.Fatal("batch >1")
 		}
-		for _, j := range out.Jobs {
-			if seen[j.JobId] {
+		for _, j := range out {
+			if seen[j.JobID] {
 				t.Fatal("duplicate live lease")
 			}
-			seen[j.JobId] = true
+			seen[j.JobID] = true
 		}
 	}
 	if len(seen) != 2 {

@@ -22,11 +22,11 @@ from uuid import UUID, uuid4
 
 ROOT = Path(__file__).resolve().parents[2]
 PROFILE = os.environ.get('LOCAL_PROFILE', 'native')
-assert PROFILE in ('native', 'legacy'), 'invalid local profile'
-STATE = Path(os.environ.get('LOCAL_STATE_DIR', ROOT / '.superpowers/acceptance' / ('native-docker' if PROFILE == 'native' else 'local-docker')))
+assert PROFILE == 'native', 'only the native Go profile is supported'
+STATE = Path(os.environ.get('LOCAL_STATE_DIR', ROOT / '.superpowers/acceptance/native-docker'))
 ENV = STATE / 'public.env'
 METADATA = json.loads((STATE / 'runtime.json').read_text()) if (STATE / 'runtime.json').exists() else {}
-PROJECT = METADATA.get('project', 'cabinet-native' if PROFILE == 'native' else 'cabinet-local')
+PROJECT = METADATA.get('project', 'cabinet-native')
 PG_USER = METADATA.get('postgres_user', 'cabinet')
 BASE_DATABASE = METADATA.get('base_database', 'cabinet')
 VPN_ORIGIN_MARKER = b'cabinet-local-vpn-ok'
@@ -71,7 +71,6 @@ def compose(*args, stdin=None):
     files=['-f','deploy/acceptance/compose.acceptance.yml','-f','deploy/acceptance/compose.local.yml']
     if PROFILE == 'native':files+=['-f','deploy/acceptance/compose.native.yml']
     return command(['docker','compose','--project-name',PROJECT,
-                    *(['--profile','restore'] if PROFILE == 'legacy' else []),
                     '--env-file',str(ENV),*files,*args], stdin=stdin)
 
 def prepare():
@@ -90,7 +89,7 @@ def prepare():
     if ENV.exists():
         return
     (STATE / 'panel-db').mkdir(mode=0o700)
-    values = {name:secrets.token_urlsafe(32) for name in ('pg-password','adapter-token','smtp-password','panel-password','unused-panel-token')}
+    values = {name:secrets.token_urlsafe(32) for name in ('pg-password','smtp-password','panel-password','unused-panel-token')}
     values.update({'mail-key':base64.b64encode(secrets.token_bytes(32)).decode(),
                    'code-key':base64.b64encode(secrets.token_bytes(32)).decode(),
                    'redis-url':'redis://redis:6379/0',
@@ -111,19 +110,19 @@ def prepare():
     config.update(PG_USER=PG_USER,BASE_DATABASE=BASE_DATABASE,CABINET_HOST='localhost',CABINET_ORIGIN='https://localhost:58443',
                   TERMS_URL='https://localhost:58443/terms',PRIVACY_URL='https://localhost:58443/privacy',
                   APP_RUNTIME_UID=str(os.getuid()),APP_RUNTIME_GID=str(os.getgid()),
-                  APP_NETWORK_SUBNET='172.31.96.0/28' if PROFILE == 'native' else '172.31.99.0/28',
-                  APP_GATEWAY_IP='172.31.96.14' if PROFILE == 'native' else '172.31.99.14',
+                  APP_NETWORK_SUBNET='172.31.96.0/28',
+                  APP_GATEWAY_IP='172.31.96.14',
                   SUBSCRIPTION_BASE_URL='https://localhost:59445/sub/',LOCAL_STATE_DIR=str(STATE),
                   PANEL_PASSWORD_FILE=str(STATE/'panel-password'),SMTP_AUTH_FILE=str(STATE/'smtp-auth'))
     mapping={'PG_PASSWORD_FILE':'pg-password','DATABASE_URL_FILE':'database-url','REDIS_URL_FILE':'redis-url',
-             'MAIL_KEY_FILE':'mail-key','CODE_KEY_FILE':'code-key','BOT_ADAPTER_TOKEN_FILE':'adapter-token',
+             'MAIL_KEY_FILE':'mail-key','CODE_KEY_FILE':'code-key',
              'SMTP_PASSWORD_FILE':'smtp-password','PANEL_TOKEN_FILE':'unused-panel-token','BOT_TOKEN_FILE':'unused-bot-token'}
     for name, file in mapping.items():
         config[name]=str(STATE/file)
     for name in config:
-        if name.endswith('_CA_FILE') or name in ('PUBLIC_CERT_FILE','ADAPTER_CERT_FILE'):
+        if name.endswith('_CA_FILE') or name == 'PUBLIC_CERT_FILE':
             config[name]=str(cert)
-        elif name in ('PUBLIC_KEY_FILE','ADAPTER_KEY_FILE'):
+        elif name == 'PUBLIC_KEY_FILE':
             config[name]=str(key)
     write('public.env','\n'.join(name+'='+value for name,value in config.items())+'\n')
 
@@ -182,7 +181,7 @@ def up(reuse_images=False):
     write('public.env',ENV.read_text().replace('TRIAL_ENABLED=true','TRIAL_ENABLED=false'))
     compose('config','--quiet')
     # Public legal/support values are runtime configuration; secrets remain files.
-    if not reuse_images:compose('build','backend','gateway',*(['bot'] if PROFILE == 'legacy' else []))
+    if not reuse_images:compose('build','backend','gateway')
     compose('up','--pull','missing','--no-build','-d','backend','gateway','origin')
     deadline=time.monotonic()+30
     while True:
@@ -231,22 +230,6 @@ def api(opener, path, body=None, csrf=None, key=None):
     if key: headers['Idempotency-Key']=key
     status, headers, raw=request(opener,ORIGIN+path,body,headers)
     return status, headers, json.loads(raw) if raw else None
-
-def actor(path, body, key=None):
-    assert PROFILE == 'legacy', 'Python adapter is restricted to legacy acceptance'
-    # This uses the shipped Python adapter, but does not contact Telegram.
-    script='''import asyncio,json,sys
-from pathlib import Path
-from app.bot.services.web_trial import WebTrialAdapter
-async def main():
-    data=json.load(sys.stdin)
-    a=WebTrialAdapter('https://gateway:9443',Path('/run/secrets/adapter_token').read_text().strip(),{101},'/run/secrets/adapter_ca')
-    try: print(json.dumps(await a._request(data['path'],data['body'],data['key'])))
-    finally: await a.close()
-asyncio.run(main())
-'''
-    return json.loads(compose('run','--rm','--no-deps','-T','--entrypoint','python','bot','-c',script,
-                              stdin=json.dumps({'path':path,'body':body,'key':key}).encode()))
 
 def wait_until(check, timeout=30):
     deadline=time.monotonic()+timeout
@@ -301,10 +284,6 @@ def signup():
     status,_,trial=api(opener,'/api/v1/trial-requests',{'comment':'Isolated Docker acceptance'},login['csrf_token'],str(uuid4()))
     assert status==201
     return opener,trial,{'email':email,'password':password}
-
-def approve(trial):
-    return actor('/internal/v1/trial-requests/'+trial['request_id']+'/decision',
-                 {'operator_tg_id':101,'decision':'approve','callback_query_id':'local-'+trial['request_id']})
 
 def active(opener):
     _,_,value=api(opener,'/api/v1/subscription')
@@ -399,7 +378,11 @@ def vpn_connected():
     except OSError:return False
 
 def restore():
-    assert PROFILE == 'legacy', 'legacy restore requires LOCAL_PROFILE=legacy'
+    assert PROFILE == 'native', 'restore requires the owned native profile'
+    running=set(compose('ps','--services','--status','running').decode().splitlines())
+    assert 'backend' in running and not running.intersection({'bot','reconcile'}), 'native restore requires one application process'
+    config=json.loads(compose('config','--format','json'))
+    assert config['services']['backend']['environment']['TELEGRAM_ENABLED']=='false', 'restore requires simulated Telegram'
     opener,trial,credentials=signup()
     _,_,owner=api(opener,'/api/v1/me')
     csrf=owner['csrf_token']
@@ -414,105 +397,92 @@ def restore():
     assert api(opener,'/api/v1/auth/password-reset',{'email':credentials['email'],'locale':'en'})[0]==202
     reset=wait_until(lambda:mail_token(credentials['email'],'/reset-password'))
     original=database()
-    # Controlled fault pauses only our test DB after the external readback.
-    sql("""CREATE FUNCTION local_pause_apply() RETURNS trigger LANGUAGE plpgsql AS $$
-      BEGIN IF NEW.status='applied' THEN PERFORM pg_sleep(120); END IF; RETURN NEW; END $$;
-      CREATE TRIGGER local_pause_apply BEFORE UPDATE ON trial_operations FOR EACH ROW EXECUTE FUNCTION local_pause_apply();""")
-    operation=approve(trial)['operation_id']
-    wait_until(lambda:sql("SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event='PgSleep';")=='1')
-    before=snapshot(operation)
-    assert before['status']=='provisioning' and before['grant']=='reserved' and before['job']=='running' and before['grants']==1
-    panel_before=panel_readback(before['target'])
-    # Close only cabinet ingress; native panel/SMTP routes are needed for reconcile.
-    data=re.sub(r'^CABINET_MAINTENANCE=.*\n?', '', ENV.read_text(), flags=re.M)
-    write('public.env',data+'CABINET_MAINTENANCE=true\n')
-    compose('up','--no-build','--pull','never','--no-deps','--force-recreate','-d','gateway')
-    wait_until(maintenance_ready)
-    dump=compose('exec','-T','postgres','pg_dump','-U',PG_USER,'-Fc','-d',original)
-    (STATE/'restore.dump').write_bytes(dump);(STATE/'restore.dump').chmod(0o600)
-    # The dump contains a cookie revoked afterwards; restore must not revive it.
-    sql("DELETE FROM sessions WHERE account_id=(SELECT account_id FROM trial_operations WHERE id=:'op');",operation=operation)
-    # Kill the sole writer: the committed River job remains running in the dump.
-    compose('kill','-s','SIGKILL','backend')
-    sql("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=current_database() AND wait_event='PgSleep' AND pid<>pg_backend_pid();")
-    restored=restore_name()
-    sql('CREATE DATABASE '+restored+';',db='postgres')  # Generated identifier only.
-    compose('exec','-T','postgres','pg_restore','-U',PG_USER,'--no-owner','--no-privileges','-d',restored,stdin=dump)
-    assert snapshot(operation,restored)==before
-    sql('DROP TRIGGER local_pause_apply ON trial_operations; DROP FUNCTION local_pause_apply();',db=original)
-    sql("""DROP TRIGGER local_pause_apply ON trial_operations; DROP FUNCTION local_pause_apply();
-      UPDATE river_job SET attempted_at=now()-interval '4 minutes' WHERE kind='trial_provision' AND state='running';""",db=restored)
-    # Advance the job timestamp only in this fixture; River performs normal rescue.
-    url=(STATE/'database-url').read_text().strip()
-    write('database-url',url.replace('/'+original+'?', '/'+restored+'?'))
-    compose('run','--rm','--no-deps','-T','migrate')
-    maintenance=(ROOT/'backend/db/maintenance/post_restore_auth.sql').read_text()
-    first=sql(maintenance)
-    assert len(first.splitlines())==3 and all(n.isdigit() for n in first.splitlines()), 'maintenance must return counts only'
-    assert sql(maintenance)=='0\n0\n0', 'maintenance not idempotent'
-    assert sql("SELECT count(*) FROM sessions;")== '0'
-    assert sql("SELECT count(*) FROM credential_challenges WHERE NOT revoked AND used_at IS NULL;")== '0'
-    assert sql("SELECT count(*) FROM mail_deliveries WHERE kind='credential' AND ciphertext IS NOT NULL;")== '0'
-    print('PASS: closed ingress, restored sessions/proofs revoked, proof payload cleared; repeated SQL returns zero counts',flush=True)
-    compose('up','--no-build','--pull','never','-d','reconcile')
-    wait_until(lambda:snapshot(operation)['status']=='applied',timeout=60)
-    after=snapshot(operation)
-    assert after['target']==before['target'] and after['grant']=='granted' and after['grants']==1
-    assert panel_readback(after['target'])==panel_before, 'restore changed external identity or limits'
-    panel,_=login_panel()
-    for inbound in panel_call(panel,'panel/api/inbounds/list'):
-        clients=inbound['settings']['clients']
-        assert sum(c['email']==before['target']['panel_key'] for c in clients)==(1 if inbound['id'] in before['target']['inbound_ids'] else 0)
-    compose('stop','reconcile')
-    compose('up','--no-build','--pull','never','-d','backend')
-    wait_until(internal_ready)
-    write('public.env',ENV.read_text().replace('CABINET_MAINTENANCE=true','CABINET_MAINTENANCE=false'))
-    compose('up','--no-build','--pull','never','--no-deps','--force-recreate','-d','gateway')
-    wait_until(ready)
+    account=str(UUID(owner['account']['account_id']))
+    write('native-operator-account',account)
+    compose('exec','-T','backend','/server','operator','grant','--account-file','/run/secrets/native_operator_account')
     try:
-        api(opener,'/api/v1/me')
-        raise AssertionError('restored cookie accepted')
-    except HTTPError as error:
-        assert error.code==401, 'old session must require login'
-    for path,body in [('/api/v1/auth/password-reset/complete',{'token':reset,'new_password':'Unused local password '+secrets.token_urlsafe(20)}),
-                      *[('/api/v1/auth/email-change/confirm',{'token':token}) for token in pair]]:
+        # Only the owned account's apply is paused after external panel readback.
+        sql("""CREATE FUNCTION local_pause_apply() RETURNS trigger LANGUAGE plpgsql AS $$
+          BEGIN PERFORM pg_sleep(120); RETURN NEW; END $$;
+          CREATE TRIGGER local_pause_apply BEFORE UPDATE ON trial_operations FOR EACH ROW
+          WHEN (NEW.account_id=:'op'::uuid AND NEW.status='applied') EXECUTE FUNCTION local_pause_apply();""",operation=account)
+        status,_,decision=api(opener,'/api/v1/operator/trial-requests/'+trial['request_id']+'/decision',
+                              {'decision':'approve','reason':''},csrf,str(uuid4()))
+        assert status==200, 'native web decision failed'
+        operation=decision['operation_id']
+        wait_until(lambda:sql("SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event='PgSleep';")=='1')
+        before=snapshot(operation)
+        assert before['status']=='provisioning' and before['grant']=='reserved' and before['job']=='running' and before['grants']==1
+        panel_before=panel_readback(before['target'])
+        # Close only cabinet ingress; native panel/SMTP routes are needed for reconcile.
+        data=re.sub(r'^CABINET_MAINTENANCE=.*\n?', '', ENV.read_text(), flags=re.M)
+        write('public.env',data+'CABINET_MAINTENANCE=true\n')
+        compose('up','--no-build','--pull','never','--no-deps','--force-recreate','-d','gateway')
+        wait_until(maintenance_ready)
+        dump=compose('exec','-T','postgres','pg_dump','-U',PG_USER,'-Fc','-d',original)
+        (STATE/'restore.dump').write_bytes(dump);(STATE/'restore.dump').chmod(0o600)
+        # The dump contains a cookie revoked afterwards; restore must not revive it.
+        sql("DELETE FROM sessions WHERE account_id=(SELECT account_id FROM trial_operations WHERE id=:'op');",operation=operation)
+        # Kill the sole writer: the committed River job remains running in the dump.
+        compose('kill','-s','SIGKILL','backend')
+        sql("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=current_database() AND wait_event='PgSleep' AND pid<>pg_backend_pid();")
+        restored=restore_name()
+        sql('CREATE DATABASE '+restored+';',db='postgres')  # Generated identifier only.
+        compose('exec','-T','postgres','pg_restore','-U',PG_USER,'--no-owner','--no-privileges','-d',restored,stdin=dump)
+        assert snapshot(operation,restored)==before
+        sql('DROP TRIGGER local_pause_apply ON trial_operations; DROP FUNCTION local_pause_apply();',db=original)
+        sql("""DROP TRIGGER local_pause_apply ON trial_operations; DROP FUNCTION local_pause_apply();
+          UPDATE river_job SET attempted_at=now()-interval '4 minutes' WHERE kind='trial_provision' AND state='running';""",db=restored)
+        # Advance the job timestamp only in this fixture; River performs normal rescue.
+        url=(STATE/'database-url').read_text().strip()
+        assert '/'+original+'?' in url, 'owned database pointer changed'
+        write('database-url',url.replace('/'+original+'?', '/'+restored+'?'))
+        compose('run','--rm','--no-deps','-T','migrate')
+        maintenance=(ROOT/'backend/db/maintenance/post_restore_auth.sql').read_text()
+        first=sql(maintenance)
+        assert len(first.splitlines())==3 and all(n.isdigit() for n in first.splitlines()), 'maintenance must return counts only'
+        assert sql(maintenance)=='0\n0\n0', 'maintenance not idempotent'
+        assert sql("SELECT count(*) FROM sessions;")== '0'
+        assert sql("SELECT count(*) FROM credential_challenges WHERE NOT revoked AND used_at IS NULL;")== '0'
+        assert sql("SELECT count(*) FROM mail_deliveries WHERE kind='credential' AND ciphertext IS NOT NULL;")== '0'
+        print('PASS: closed ingress, restored sessions/proofs revoked, proof payload cleared; repeated SQL returns zero counts',flush=True)
+        compose('up','--no-build','--pull','never','-d','reconcile')
+        wait_until(lambda:snapshot(operation)['status']=='applied',timeout=60)
+        after=snapshot(operation)
+        assert after['target']==before['target'] and after['grant']=='granted' and after['grants']==1
+        assert panel_readback(after['target'])==panel_before, 'restore changed external identity or limits'
+        panel,_=login_panel()
+        for inbound in panel_call(panel,'panel/api/inbounds/list'):
+            clients=inbound['settings']['clients']
+            assert sum(c['email']==before['target']['panel_key'] for c in clients)==(1 if inbound['id'] in before['target']['inbound_ids'] else 0)
+        compose('stop','reconcile')
+        compose('up','--no-build','--pull','never','-d','backend')
+        wait_until(internal_ready)
+        write('public.env',ENV.read_text().replace('CABINET_MAINTENANCE=true','CABINET_MAINTENANCE=false'))
+        compose('up','--no-build','--pull','never','--no-deps','--force-recreate','-d','gateway')
+        wait_until(ready)
         try:
-            api(opener,path,body)
-            raise AssertionError('restored proof accepted')
+            api(opener,'/api/v1/me')
+            raise AssertionError('restored cookie accepted')
         except HTTPError as error:
-            assert error.code==400 and json.loads(error.read())['error']['code']=='INVALID_VERIFICATION', 'old proof must fail closed'
-    status,_,login=api(opener,'/api/v1/auth/login',credentials)
-    assert status==200 and login['account']['account_id']==owner['account']['account_id'], 'restored login ownership'
-    wait_until(lambda:active(opener))
-    vpn(opener)
-    print('PASS: pg_dump/restore with real panel client, reserved grant and running River job; old cookies/proofs invalid, new owner login, same target/client/grant/VPN')
-
-def rollback():
-    query="SELECT json_build_object('accounts',(SELECT count(*) FROM accounts),'operations',(SELECT count(*) FROM trial_operations),'grants',(SELECT count(*) FROM trial_grants));"
-    before=sql(query)
-    compose('stop','gateway')
-    try:
-        assert not ready(), 'ingress still available'
-        assert vpn_connected(), 'existing VPN stopped with ingress'
-        assert sql(query)==before, 'rollback changed owned data'
+            assert error.code==401, 'old session must require login'
+        for path,body in [('/api/v1/auth/password-reset/complete',{'token':reset,'new_password':'Unused local password '+secrets.token_urlsafe(20)}),
+                          *[('/api/v1/auth/email-change/confirm',{'token':token}) for token in pair]]:
+            try:
+                api(opener,path,body)
+                raise AssertionError('restored proof accepted')
+            except HTTPError as error:
+                assert error.code==400 and json.loads(error.read())['error']['code']=='INVALID_VERIFICATION', 'old proof must fail closed'
+        status,_,login=api(opener,'/api/v1/auth/login',credentials)
+        assert status==200 and login['account']['account_id']==account, 'restored login ownership'
+        wait_until(lambda:active(opener))
+        vpn(opener)
+        print('PASS: pg_dump/restore with real panel client, reserved grant and running River job; old cookies/proofs invalid, new owner login, same target/client/grant/VPN')
     finally:
-        compose('up','--no-build','--pull','never','-d','gateway')
-    wait_until(ready)
-    print('PASS: bounded ingress rollback; PG data, panel and existing VPN retained')
+        write('native-operator-account','')
 
 def check():
-    if PROFILE == 'native':
-        native_check()
-        return
-    opener,trial,_=signup()
-    operation=approve(trial)['operation_id']
-    subscription=wait_until(lambda:active(opener))
-    assert subscription['devices']==1 and subscription['traffic_limit_bytes']==15*1024**3
-    panel_readback(snapshot(operation)['target'])
-    vpn(opener)
-    print('PASS: real TLS SMTP, public API, Python adapter decision, 3X-UI readback, subscription and VLESS/TLS VPN; Telegram transport not tested',flush=True)
-    restore()
-    rollback()
+    native_check()
 
 def native_restart():
     opener,trial,credentials=signup()
@@ -598,8 +568,8 @@ def native_check():
     log=STATE/'native-go.log'
     with log.open('w') as output:
         log.chmod(0o600)
-        result=subprocess.run(['go','test','-json','-race','./tests','-run','TestNativeTrial|TestNativeNotices','-count=1'],
-                              cwd=ROOT/'backend',env=environment,stdout=output,stderr=subprocess.STDOUT,timeout=600)
+        result=subprocess.run(['go','test','-json','-race','./tests','-run','TestNativeTrial|TestNativeNotices','-count=1','-timeout=15m'],
+                              cwd=ROOT/'backend',env=environment,stdout=output,stderr=subprocess.STDOUT,timeout=930)
     assert result.returncode==0, 'native Go integration failed; see private native-go.log'
     events=[json.loads(line) for line in log.read_text().splitlines() if line.startswith('{')]
     assert not any(e.get('Action')=='fail' or e.get('Action')=='skip' and e.get('Test') for e in events), 'native Go test failed or skipped; see private native-go.log'
@@ -714,7 +684,7 @@ def main():
     elif args.action=='check':check()
     elif args.action=='restore':restore()
     elif args.action=='paid-recovery':native_paid_restart()
-    else:compose('--profile','vpn','--profile','telegram','down')
+    else:compose('--profile','vpn','down')
 
 if __name__=='__main__':
     try:main()

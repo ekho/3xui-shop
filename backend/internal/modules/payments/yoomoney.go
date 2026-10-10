@@ -3,6 +3,7 @@ package payments
 import (
 	"context"
 	"crypto/hmac"
+	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
@@ -48,6 +49,23 @@ func verifyYooMoneySignature(fields url.Values, secret []byte) bool {
 	return subtle.ConstantTimeCompare(got, want) == 1
 }
 
+func verifyLegacyYooMoneySHA1(fields url.Values, secret []byte) bool {
+	if fields.Get("sign") != "" || len(secret) == 0 {
+		return false
+	}
+	sign := fields.Get("sha1_hash")
+	if len(sign) != 40 {
+		return false
+	}
+	want, err := hex.DecodeString(sign)
+	if err != nil {
+		return false
+	}
+	parts := []string{fields.Get("notification_type"), fields.Get("operation_id"), fields.Get("amount"), fields.Get("currency"), fields.Get("datetime"), fields.Get("sender"), fields.Get("codepro"), string(secret), fields.Get("label")}
+	got := sha1.Sum([]byte(strings.Join(parts, "&"))) // Old YooMoney wire contract, not a general hash choice.
+	return subtle.ConstantTimeCompare(got[:], want) == 1
+}
+
 func minorUnits(text string) (int64, error) {
 	parts := strings.Split(text, ".")
 	if len(parts) > 2 || len(parts[0]) == 0 || len(parts[0]) > 17 {
@@ -85,7 +103,8 @@ func (s *Service) ReceiveYooMoney(ctx context.Context, fields url.Values) error 
 			return failure(400, "INVALID_INPUT")
 		}
 	}
-	if !verifyYooMoneySignature(fields, s.config().YooMoneyNotificationSecret) {
+	legacySHA1 := fields.Get("sign") == ""
+	if !verifyYooMoneySignature(fields, s.config().YooMoneyNotificationSecret) && (!legacySHA1 || !verifyLegacyYooMoneySHA1(fields, s.config().YooMoneyNotificationSecret)) {
 		return failure(403, "INVALID_CREDENTIALS")
 	}
 	if fields.Get("test_notification") == "true" {
@@ -96,25 +115,30 @@ func (s *Service) ReceiveYooMoney(ctx context.Context, fields url.Values) error 
 	if len(id) < 1 || len(id) > 128 || len(label) == 0 || len(id) != len(strings.TrimSpace(id)) {
 		return failure(400, "INVALID_INPUT")
 	}
-	orderID, err := uuid.Parse(label)
-	if err != nil {
-		return nil
-	} // Authenticated notification for an older or unknown label.
+	if len(label) > 128 || len(label) != len(strings.TrimSpace(label)) {
+		return failure(400, "INVALID_INPUT")
+	}
 	net, err := minorUnits(fields.Get("amount"))
 	if err != nil {
 		return err
 	}
-	gross, err := minorUnits(fields.Get("withdraw_amount"))
-	if err != nil {
-		return err
+	var gross int64
+	if !legacySHA1 {
+		gross, err = minorUnits(fields.Get("withdraw_amount"))
+		if err != nil {
+			return err
+		}
 	}
 	codepro, err := strconv.ParseBool(fields.Get("codepro"))
 	if err != nil {
 		return failure(400, "INVALID_INPUT")
 	}
-	unaccepted, err := strconv.ParseBool(fields.Get("unaccepted"))
-	if err != nil {
-		return failure(400, "INVALID_INPUT")
+	var unaccepted bool
+	if !legacySHA1 {
+		unaccepted, err = strconv.ParseBool(fields.Get("unaccepted"))
+		if err != nil {
+			return failure(400, "INVALID_INPUT")
+		}
 	}
 	occurred, err := time.Parse(time.RFC3339, fields.Get("datetime"))
 	if err != nil {
@@ -124,6 +148,29 @@ func (s *Service) ReceiveYooMoney(ctx context.Context, fields url.Values) error 
 	typ, currency := fields.Get("notification_type"), fields.Get("currency")
 	if len(typ) < 1 || len(typ) > 64 || len(currency) < 1 || len(currency) > 16 {
 		return failure(400, "INVALID_INPUT")
+	}
+	orderID, parseErr := uuid.Parse(label)
+	var native bool
+	if parseErr == nil && !legacySHA1 {
+		err = s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE id=$1)", orderID).Scan(&native)
+		if err != nil {
+			return unavailable()
+		}
+	}
+	if !native {
+		if typ != "p2p-incoming" && typ != "card-incoming" || currency != "643" || codepro || !legacySHA1 && (unaccepted || gross <= 0 || net > gross) || net <= 0 || occurred.After(s.now().Add(5*time.Minute)) {
+			return failure(400, "INVALID_INPUT")
+		}
+		amount := gross
+		if legacySHA1 {
+			amount = net // withdraw_amount was outside the old SHA-1 signature.
+		}
+		proof := map[string]any{"operation_id": id, "label": label, "amount": fields.Get("amount"), "currency": currency, "datetime": fields.Get("datetime"), "notification_type": typ, "codepro": codepro, "sender": fields.Get("sender"), "signature": fields.Get("sign"), "sha1_hash": fields.Get("sha1_hash")}
+		if !legacySHA1 {
+			proof["withdraw_amount"] = fields.Get("withdraw_amount")
+			proof["unaccepted"] = unaccepted
+		}
+		return s.retainLegacyReceipt(ctx, legacyReceipt{provider: "yoomoney", kind: "paid", sourceID: id, reference: label, amount: &amount, currency: "RUB", at: occurred, proof: proof})
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {

@@ -54,7 +54,7 @@ def prepare():
     configured = json.loads(compose('config', '--format', 'json'))
     env = configured['services']['backend']['environment']
     assert env['SHOP_PAYMENT_YOOKASSA_ENABLED'] == 'true' and env['YOOKASSA_TEST_MODE'] == 'true'
-    assert env['LEGACY_BOT_API_ENABLED'] == 'false' and env['TELEGRAM_ENABLED'] == 'false'
+    assert env['TELEGRAM_ENABLED'] == 'false'
     assert configured['services']['yookassa-stub']['networks']['default']['aliases'] == ['api.yookassa.ru']
     print('PASS: own TLS/DNS stub overlay; file secrets, no host trust or external provider')
 
