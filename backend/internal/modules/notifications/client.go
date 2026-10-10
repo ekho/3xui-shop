@@ -21,6 +21,8 @@ type ClientNotice struct {
 	NoticeActionID, PriorDeliveryID uuid.UUID
 	TelegramID, CredentialVersion   int64
 	Locale, EventKey, Route         string
+	VPNAlertCode                    string
+	VPNAlertAccountID               uuid.UUID
 }
 type ClientJob struct {
 	ClientNotice
@@ -63,6 +65,11 @@ func (s *Service) EnqueueClientTx(ctx context.Context, tx pgx.Tx, n ClientNotice
 	if n.NoticeActionID != uuid.Nil && (n.ReminderID != uuid.Nil || n.Route != "cabinet" || n.EventKey != "notice:"+n.NoticeActionID.String()) || n.NoticeActionID == uuid.Nil && n.PriorDeliveryID != uuid.Nil {
 		return failure(400, "INVALID_INPUT")
 	}
+	if n.VPNAlertCode != "" || n.VPNAlertAccountID != uuid.Nil {
+		if groupAlertText(n.VPNAlertCode, n.Locale, n.VPNAlertAccountID) == "" || n.Route != "cabinet" || n.ReminderID != uuid.Nil || n.NoticeActionID != uuid.Nil || n.PriorDeliveryID != uuid.Nil || n.EventKey != "vpn-reconcile:"+n.VPNAlertAccountID.String()+":"+n.VPNAlertCode+":"+created.UTC().Format("2006-01-02") {
+			return failure(400, "INVALID_INPUT")
+		}
+	}
 	// Legacy/operator identities are int64 facts; an undeliverable ID must not abort their business transaction.
 	if n.TelegramID > 1<<52-1 {
 		return nil
@@ -72,9 +79,13 @@ func (s *Service) EnqueueClientTx(ctx context.Context, tx pgx.Tx, n ClientNotice
 	if n.ReminderID != uuid.Nil {
 		reminder = &n.ReminderID
 	}
-	_, err := tx.Exec(ctx, `INSERT INTO client_telegram_deliveries(id,account_id,telegram_id,credential_version,locale,event_key,route,created_at,reminder_id,notice_action_id,prior_delivery_id)
- VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(account_id,event_key) DO NOTHING`,
-		uuid.New(), n.AccountID, n.TelegramID, n.CredentialVersion, n.Locale, n.EventKey, n.Route, created, reminder, nullableUUID(n.NoticeActionID), nullableUUID(n.PriorDeliveryID))
+	var alert *string
+	if n.VPNAlertCode != "" {
+		alert = &n.VPNAlertCode
+	}
+	_, err := tx.Exec(ctx, `INSERT INTO client_telegram_deliveries(id,account_id,telegram_id,credential_version,locale,event_key,route,created_at,reminder_id,notice_action_id,prior_delivery_id,vpn_alert_code,vpn_alert_account_id)
+ VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT(account_id,event_key) DO NOTHING`,
+		uuid.New(), n.AccountID, n.TelegramID, n.CredentialVersion, n.Locale, n.EventKey, n.Route, created, reminder, nullableUUID(n.NoticeActionID), nullableUUID(n.PriorDeliveryID), alert, nullableUUID(n.VPNAlertAccountID))
 	if err != nil {
 		return unavailable()
 	}
@@ -92,8 +103,8 @@ func (s *Service) ClaimClient(ctx context.Context) (*ClientJob, error) {
  AND (notice_action_id IS NULL OR attempts<5 OR EXISTS(SELECT 1 FROM notice_actions a WHERE a.id=notice_action_id AND a.telegram_state='unknown'))
  AND (lease_expires_at IS NULL OR lease_expires_at<=clock_timestamp()) ORDER BY sequence LIMIT 1 FOR UPDATE SKIP LOCKED)
  UPDATE client_telegram_deliveries SET lease_hash=$1,lease_expires_at=clock_timestamp()+interval '60 seconds',attempts=attempts+1
- WHERE id=(SELECT id FROM candidate) RETURNING id,account_id,telegram_id,credential_version,locale,event_key,route,lease_expires_at,COALESCE(reminder_id,'00000000-0000-0000-0000-000000000000'::uuid),COALESCE(notice_action_id,'00000000-0000-0000-0000-000000000000'::uuid),COALESCE(prior_delivery_id,'00000000-0000-0000-0000-000000000000'::uuid)`, digest(token)).
-		Scan(&j.ID, &j.AccountID, &j.TelegramID, &j.CredentialVersion, &j.Locale, &j.EventKey, &j.Route, &j.LeaseExpiresAt, &j.ReminderID, &j.NoticeActionID, &j.PriorDeliveryID)
+ WHERE id=(SELECT id FROM candidate) RETURNING id,account_id,telegram_id,credential_version,locale,event_key,route,lease_expires_at,COALESCE(reminder_id,'00000000-0000-0000-0000-000000000000'::uuid),COALESCE(notice_action_id,'00000000-0000-0000-0000-000000000000'::uuid),COALESCE(prior_delivery_id,'00000000-0000-0000-0000-000000000000'::uuid),COALESCE(vpn_alert_code,''),COALESCE(vpn_alert_account_id,'00000000-0000-0000-0000-000000000000'::uuid)`, digest(token)).
+		Scan(&j.ID, &j.AccountID, &j.TelegramID, &j.CredentialVersion, &j.Locale, &j.EventKey, &j.Route, &j.LeaseExpiresAt, &j.ReminderID, &j.NoticeActionID, &j.PriorDeliveryID, &j.VPNAlertCode, &j.VPNAlertAccountID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -115,6 +126,12 @@ func (s *Service) ClaimClient(ctx context.Context) (*ClientJob, error) {
 		}
 		j.ReminderText = reminderMessage(r, j.Locale)
 	}
+	if j.VPNAlertCode != "" {
+		j.ReminderText = groupAlertText(j.VPNAlertCode, j.Locale, j.VPNAlertAccountID)
+		if j.ReminderText == "" {
+			return nil, unavailable()
+		}
+	}
 	return &j, nil
 }
 func lockClient(ctx context.Context, tx pgx.Tx, j ClientJob) (string, error) {
@@ -126,8 +143,8 @@ func lockClient(ctx context.Context, tx pgx.Tx, j ClientJob) (string, error) {
 	var state string
 	var valid bool
 	err := tx.QueryRow(ctx, `SELECT account_id,telegram_id,credential_version,locale,event_key,route,COALESCE(reminder_id,'00000000-0000-0000-0000-000000000000'::uuid),COALESCE(notice_action_id,'00000000-0000-0000-0000-000000000000'::uuid),COALESCE(prior_delivery_id,'00000000-0000-0000-0000-000000000000'::uuid),lease_hash,state,
- lease_expires_at>clock_timestamp()+interval '10 seconds' FROM client_telegram_deliveries WHERE id=$1 FOR UPDATE`, j.ID).
-		Scan(&n.AccountID, &n.TelegramID, &n.CredentialVersion, &n.Locale, &n.EventKey, &n.Route, &n.ReminderID, &n.NoticeActionID, &n.PriorDeliveryID, &hash, &state, &valid)
+ lease_expires_at>clock_timestamp()+interval '10 seconds',COALESCE(vpn_alert_code,''),COALESCE(vpn_alert_account_id,'00000000-0000-0000-0000-000000000000'::uuid) FROM client_telegram_deliveries WHERE id=$1 FOR UPDATE`, j.ID).
+		Scan(&n.AccountID, &n.TelegramID, &n.CredentialVersion, &n.Locale, &n.EventKey, &n.Route, &n.ReminderID, &n.NoticeActionID, &n.PriorDeliveryID, &hash, &state, &valid, &n.VPNAlertCode, &n.VPNAlertAccountID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", failure(409, "REQUEST_STATE_CONFLICT")
 	}
@@ -198,12 +215,16 @@ func (s *Service) DeliverClient(parent context.Context, j ClientJob, send func()
 		}
 		return s.notices.deliver(parent, j, send)
 	}
-	if s.clientGuard == nil || send == nil {
+	guard := s.clientGuard
+	if j.VPNAlertCode != "" {
+		guard = s.infrastructureGuard
+	}
+	if guard == nil || send == nil {
 		return unavailable()
 	}
 	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
-	valid, err := s.clientGuard(ctx, j.AccountID, j.TelegramID, j.CredentialVersion, func(tx pgx.Tx) error {
+	valid, err := guard(ctx, j.AccountID, j.TelegramID, j.CredentialVersion, func(tx pgx.Tx) error {
 		state, err := lockClient(ctx, tx, j)
 		if err != nil {
 			return err

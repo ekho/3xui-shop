@@ -119,6 +119,13 @@ func statisticsAccountActivity(a accounts.Snapshot, b statisticsBaseline, snapsh
 	if limit > 0 {
 		limit++
 	}
+	if b.AccessKind == "group_reconcile" {
+		var group AccessTarget
+		if json.Unmarshal(b.AccessTarget, &group) != nil {
+			return false, false
+		}
+		limit = group.PreviousLimitIP
+	}
 	if !exists || v.PanelKey != a.PanelKey || v.VPNID != a.VpnID || v.SubID != a.SubID || v.ExpiryTimeMS != target.ExpiryTimeMS || v.LimitIP != limit || v.TrafficLimitBytes != target.TrafficLimitBytes || v.UsedTraffic == nil || *v.UsedTraffic < 0 || target.Banned && v.Enabled {
 		return false, false
 	}
@@ -158,11 +165,11 @@ func statisticsAccountActivity(a accounts.Snapshot, b statisticsBaseline, snapsh
 }
 
 func (s *Service) statisticsBaselinesTx(ctx context.Context, tx pgx.Tx, ids []uuid.UUID) (map[uuid.UUID]statisticsBaseline, error) {
-	rows, err := tx.Query(ctx, `SELECT selected.account_id,access.id,access.target,trial.id,COALESCE(trial.status,''),trial.target,
+	rows, err := tx.Query(ctx, `SELECT selected.account_id,access.id,access.target,COALESCE(access.kind,''),trial.id,COALESCE(trial.status,''),trial.target,
  EXISTS(SELECT 1 FROM access_operations WHERE account_id=selected.account_id AND status IN ('pending','provisioning','needs_review'))
  OR EXISTS(SELECT 1 FROM trial_operations WHERE account_id=selected.account_id AND status IN ('pending','provisioning','needs_review'))
  FROM unnest($1::uuid[]) selected(account_id)
- LEFT JOIN LATERAL (SELECT id,target FROM access_operations WHERE account_id=selected.account_id AND status='applied' ORDER BY updated_at DESC,sequence DESC LIMIT 1) access ON true
+ LEFT JOIN LATERAL (SELECT id,target,kind FROM access_operations WHERE account_id=selected.account_id AND status='applied' ORDER BY updated_at DESC,sequence DESC LIMIT 1) access ON true
  LEFT JOIN LATERAL (SELECT id,status,target FROM trial_operations WHERE account_id=selected.account_id ORDER BY created_at DESC,id DESC LIMIT 1) trial ON true`, ids)
 	if err != nil {
 		return nil, unavailable()
@@ -171,7 +178,7 @@ func (s *Service) statisticsBaselinesTx(ctx context.Context, tx pgx.Tx, ids []uu
 	for rows.Next() {
 		var id uuid.UUID
 		var b statisticsBaseline
-		if rows.Scan(&id, &b.AccessID, &b.AccessTarget, &b.TrialID, &b.TrialStatus, &b.TrialTarget, &b.Unresolved) != nil {
+		if rows.Scan(&id, &b.AccessID, &b.AccessTarget, &b.AccessKind, &b.TrialID, &b.TrialStatus, &b.TrialTarget, &b.Unresolved) != nil {
 			rows.Close()
 			return nil, unavailable()
 		}

@@ -78,8 +78,10 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	if err != nil {
 		return unavailable()
 	}
+	group := op.Kind == "group_reconcile"
 	var t AccessTarget
 	targetErr := json.Unmarshal(op.Target, &t)
+	banOnly := group && t.Banned && len(t.InboundIDs) == 0
 	// Concrete lookup uses this session; finish SQL before its Ping watchdog.
 	p, panelErr := s.panelFor(ctx, t.PanelID, c)
 	if p != nil {
@@ -116,6 +118,9 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 					return unavailable()
 				}
 			}
+			if group && s.groupFailureTx(other, tx, op.AccountID, "operation_needs_review", &id) != nil {
+				return unavailable()
+			}
 			return tx.Commit(other)
 		}
 		n, e := store.New(s.pool).AccessRetry(other, store.AccessRetryParams{ID: id, LeaseHash: lease, UpdatedAt: stamp(s.now())})
@@ -124,7 +129,7 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		}
 		return unavailable()
 	}
-	if targetErr != nil || t.OperationID != id || t.PanelID == "" || t.PanelKey == "" || t.VPNID == uuid.Nil || t.SubID == "" || t.DeviceCount < 0 || t.DeviceCount >= math.MaxInt64 || t.TrafficLimitBytes < 0 || t.ExpiryTimeMS < 0 || len(t.InboundIDs) == 0 {
+	if targetErr != nil || t.OperationID != id || t.PanelID == "" || t.PanelKey == "" || t.VPNID == uuid.Nil || t.SubID == "" || t.DeviceCount < 0 || t.DeviceCount >= math.MaxInt64 || t.TrafficLimitBytes < 0 || t.ExpiryTimeMS < 0 || len(t.InboundIDs) == 0 && !banOnly || group && (t.Reset || t.Missing || t.NoClientIntent || t.Enable || t.RestoreEnabled || t.ExpiryTimeMS != t.PreviousExpiryMS || t.TrafficLimitBytes != t.PreviousTrafficLimitBytes || t.Banned != t.PreviousBanned) {
 		return cleanup("invalid_target", true)
 	}
 	if op.Kind == "monthly_reset" && !op.WriteStarted && !op.ResetStarted {
@@ -146,7 +151,7 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		stop()
 		return s.finishMonthlyWithoutWrite(ctx, op, lease, "eligibility_changed")
 	}
-	if err != nil || a.PanelKey != t.PanelKey || a.VpnID != t.VPNID || a.SubID != t.SubID || a.VpnBanned != expectedBan || stringValue(a.AssignedPanelID) != t.PanelID && (!t.Missing || a.AssignedPanelID != nil) {
+	if err != nil || a.PanelKey != t.PanelKey || a.VpnID != t.VPNID || a.SubID != t.SubID || a.VpnBanned != expectedBan || group && stringValue(a.AccessProfile) != t.Profile || stringValue(a.AssignedPanelID) != t.PanelID && (!t.Missing || a.AssignedPanelID != nil) {
 		return cleanup("identity_changed", true)
 	}
 	if op.Kind == "purchase" {
@@ -161,26 +166,40 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	if op.Kind == "purchase" {
 		executor = nil
 	}
-	if executor == nil && op.Kind != "monthly_reset" && op.Kind != "purchase" {
+	if executor == nil && op.Kind != "monthly_reset" && op.Kind != "purchase" && !group {
 		executor = op.OperatorAccountID // Operations written before migration 13.
 	}
-	if executor == nil && op.Kind != "monthly_reset" && op.Kind != "purchase" {
+	if executor == nil && op.Kind != "monthly_reset" && op.Kind != "purchase" && !group {
 		return cleanup("actor_missing", true)
 	}
 	if executor != nil && s.accounts.RequireOperator(ctx, *executor) != nil {
 		return cleanup("actor_revoked", true)
 	}
+	if group && executor != nil && s.accounts.RequireInfrastructure(ctx, *executor) != nil {
+		return cleanup("actor_revoked", true)
+	}
 	if panelErr != nil {
 		return cleanup("panel_unavailable", true)
 	}
-	if t.Profile == "regular" || t.Profile == "euru" || t.Profile == "unlimited" {
+	if !banOnly && (t.Profile == "regular" || t.Profile == "euru" || t.Profile == "unlimited") {
 		selected, e := p.ProfileInboundIDs(ctx, t.Profile)
 		if e != nil {
 			return cleanup("profile_changed", true)
 		}
-		attach, detach, e := p.MembershipDiff(ctx, t.InboundIDs, selected)
-		if e != nil || len(attach) > 0 || len(detach) > 0 {
-			return cleanup("profile_changed", true)
+		switch op.Kind {
+		case "purchase", "assign_plan", "starter_trial", "set_profile", "monthly_reset", "group_reconcile":
+			// These operations captured the exact enabled profile, not incidental memberships.
+			if !slices.Equal(t.InboundIDs, selected) {
+				return cleanup("profile_changed", true)
+			}
+		default:
+			attach, detach, e := p.MembershipDiff(ctx, t.InboundIDs, selected)
+			if e != nil || len(attach) > 0 || len(detach) > 0 {
+				return cleanup("profile_changed", true)
+			}
+			if _, _, e = p.MembershipDiff(ctx, nil, t.InboundIDs); e != nil {
+				return cleanup("profile_changed", true)
+			}
 		}
 	}
 	view, err := p.GetClient(ctx, t.PanelKey)
@@ -203,11 +222,14 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		if executor != nil && s.accounts.RequireOperator(ctx, *executor) != nil {
 			return false
 		}
+		if group && executor != nil && s.accounts.RequireInfrastructure(ctx, *executor) != nil {
+			return false
+		}
 		if op.Kind == "purchase" && s.checkPurchase(ctx, nil, op.PurchaseOrderID, op.AccountID, op.ID) != "" {
 			return false
 		}
 		current, e := s.accountByID(ctx, op.AccountID)
-		if e != nil || current.PanelKey != t.PanelKey || current.VpnID != t.VPNID || current.SubID != t.SubID || current.VpnBanned != expectedBan || stringValue(current.AssignedPanelID) != t.PanelID && (!t.Missing || current.AssignedPanelID != nil) || op.Kind == "purchase" && current.Restricted || op.Kind == "monthly_reset" && (!(current.AccessProfile != nil) || stringValue(current.AccessProfile) != "unlimited") {
+		if e != nil || current.PanelKey != t.PanelKey || current.VpnID != t.VPNID || current.SubID != t.SubID || current.VpnBanned != expectedBan || group && stringValue(current.AccessProfile) != t.Profile || stringValue(current.AssignedPanelID) != t.PanelID && (!t.Missing || current.AssignedPanelID != nil) || op.Kind == "purchase" && current.Restricted || op.Kind == "monthly_reset" && (!(current.AccessProfile != nil) || stringValue(current.AccessProfile) != "unlimited") {
 			return false
 		}
 		n, e := store.New(s.pool).MarkAccessWrite(ctx, store.MarkAccessWriteParams{ID: id, LeaseHash: lease, UpdatedAt: stamp(s.now())})
@@ -252,11 +274,21 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	if limit > 0 {
 		limit++
 	}
+	if group {
+		limit = t.PreviousLimitIP
+	}
 	if view.ExpiryTimeMS != t.ExpiryTimeMS || view.LimitIP != limit || view.TrafficLimitBytes != t.TrafficLimitBytes || t.Banned && view.Enabled || (t.RestoreEnabled || t.Enable) && !view.Enabled {
 		if !markWrite() {
 			return cleanup("write_unavailable", true)
 		}
-		_ = p.UpdateAccess(ctx, view, t)
+		if group {
+			if view.ExpiryTimeMS != t.ExpiryTimeMS || view.LimitIP != limit || view.TrafficLimitBytes != t.TrafficLimitBytes {
+				return cleanup("baseline_changed", true)
+			}
+			_ = p.DisableAccess(ctx, t.PanelKey)
+		} else {
+			_ = p.UpdateAccess(ctx, view, t)
+		}
 		view, err = p.GetClient(ctx, t.PanelKey)
 		if err != nil || view == nil || view.VPNID != t.VPNID || view.SubID != t.SubID || view.ExpiryTimeMS != t.ExpiryTimeMS || view.LimitIP != limit || view.TrafficLimitBytes != t.TrafficLimitBytes || (t.RestoreEnabled || t.Enable) && !view.Enabled {
 			return cleanup("update_unconfirmed", true)
@@ -265,12 +297,15 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 			return cleanup("step_unrecorded", true)
 		}
 	}
-	attach, detach, err := p.MembershipDiff(ctx, view.InboundIDs, t.InboundIDs)
+	attach, detach, err := []int64{}, []int64{}, error(nil)
+	if !banOnly {
+		attach, detach, err = p.MembershipDiff(ctx, view.InboundIDs, t.InboundIDs)
+	}
 	if err != nil {
 		return cleanup("membership_unknown", true)
 	}
 	if len(attach) > 0 || len(detach) > 0 {
-		if op.WriteStarted && op.Attempts > 1 {
+		if op.WriteStarted && op.Attempts > 1 && !group {
 			return cleanup("membership_partial", true)
 		}
 		if !markWrite() {
@@ -356,7 +391,9 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	if err != nil || view == nil || view.VPNID != t.VPNID || view.SubID != t.SubID || view.ExpiryTimeMS != t.ExpiryTimeMS || view.LimitIP != limit || view.TrafficLimitBytes != t.TrafficLimitBytes || t.Banned && view.Enabled || (t.RestoreEnabled || t.Enable) && !view.Enabled {
 		return cleanup("readback_mismatch", true)
 	}
-	attach, detach, err = p.MembershipDiff(ctx, view.InboundIDs, t.InboundIDs)
+	if !banOnly {
+		attach, detach, err = p.MembershipDiff(ctx, view.InboundIDs, t.InboundIDs)
+	}
 	if err != nil || len(attach) > 0 || len(detach) > 0 {
 		return cleanup("membership_mismatch", true)
 	}
@@ -371,7 +408,7 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	defer tx.Rollback(ctx)
 	final := store.New(tx)
 	a, err = s.lockAccount(ctx, tx, op.AccountID)
-	if err != nil || a.PanelKey != t.PanelKey || a.VpnID != t.VPNID || a.SubID != t.SubID || a.VpnBanned != expectedBan || stringValue(a.AssignedPanelID) != t.PanelID && (!t.Missing || a.AssignedPanelID != nil) {
+	if err != nil || a.PanelKey != t.PanelKey || a.VpnID != t.VPNID || a.SubID != t.SubID || a.VpnBanned != expectedBan || group && stringValue(a.AccessProfile) != t.Profile || stringValue(a.AssignedPanelID) != t.PanelID && (!t.Missing || a.AssignedPanelID != nil) {
 		tx.Rollback(ctx)
 		return cleanup("identity_changed", true)
 	}
@@ -400,7 +437,10 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		tx.Rollback(ctx)
 		return cleanup("reservation_release_failed", true)
 	}
-	if err = s.accounts.SetAccessMetadata(ctx, tx, a.ID, t.Profile, t.Banned); err != nil {
+	if !group {
+		err = s.accounts.SetAccessMetadata(ctx, tx, a.ID, t.Profile, t.Banned)
+	}
+	if err != nil {
 		tx.Rollback(ctx)
 		return cleanup("profile_save_failed", true)
 	}
@@ -410,7 +450,10 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 			return cleanup("purchase_status_failed", true)
 		}
 	}
-	if op.Kind == "monthly_reset" {
+	if group {
+		system := true
+		err = auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), CreatedAt: s.now(), Action: "group_reconcile_applied", AccountID: a.ID, AccessOperationID: &id, SystemActor: &system})
+	} else if op.Kind == "monthly_reset" {
 		err = monthlyAudit(ctx, tx, a.ID, op.MonthlyPeriod.String, "monthly_reset_applied", &id, s.now())
 	} else {
 		err = auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), CreatedAt: s.now(), Action: "access_applied", AccountID: a.ID, OperatorAccountID: op.OperatorAccountID, Reason: &op.Reason, AccessOperationID: &id})

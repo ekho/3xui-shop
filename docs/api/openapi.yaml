@@ -16869,7 +16869,8 @@
               "set_profile",
               "set_vpn_ban",
               "monthly_reset",
-              "purchase"
+              "purchase",
+              "group_reconcile"
             ]
           },
           "status": {

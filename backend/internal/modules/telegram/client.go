@@ -129,6 +129,9 @@ func (c *Client) deliver(parent context.Context, j notifications.ClientJob) erro
 		k := &botapi.InlineKeyboard{Rows: [][]botapi.Button{{{
 			Text: label, WebApp: &botapi.WebAppInfo{URL: c.route(path, j.Locale)},
 		}}, {{Text: clientText(j.Locale, "Закрыть", "Close"), Data: closeData}}}}
+		if j.VPNAlertCode != "" {
+			k.Rows = k.Rows[1:]
+		}
 		text := j.ReminderText
 		if text == "" {
 			text = clientText(j.Locale, "В кабинете есть обновление.", "There is an update in your cabinet.")

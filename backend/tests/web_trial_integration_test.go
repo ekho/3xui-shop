@@ -48,6 +48,11 @@ type panel struct {
 	bulkUnavailable           int
 	loseReply                 bool
 	blocked, release          chan struct{}
+	inbounds                  []map[string]any
+	memberships               map[string][]int64
+	groupWrites               []string
+	usedTraffic               int64
+	offline                   bool
 }
 
 func (p *panel) serve(w http.ResponseWriter, r *http.Request) {
@@ -56,12 +61,20 @@ func (p *panel) serve(w http.ResponseWriter, r *http.Request) {
 	p.requests++
 	w.Header().Set("Content-Type", "application/json")
 	reply := func(ok bool, obj any) { json.NewEncoder(w).Encode(map[string]any{"success": ok, "obj": obj}) }
+	if p.offline {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
 	switch {
 	case r.Method == "GET" && r.URL.Path == "/panel/api/clients/list":
 		p.bulkUnavailable++
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	case r.Method == "GET" && r.URL.Path == "/panel/api/inbounds/list":
-		reply(true, []map[string]any{{"id": 1, "enable": true, "tag": "regular-tcp"}, {"id": 91, "enable": true, "tag": "unknown"}})
+		rows := p.inbounds
+		if rows == nil {
+			rows = []map[string]any{{"id": 1, "enable": true, "tag": "regular-tcp"}, {"id": 91, "enable": true, "tag": "unknown"}}
+		}
+		reply(true, rows)
 	case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/panel/api/clients/get/"):
 		key := strings.TrimPrefix(r.URL.Path, "/panel/api/clients/get/")
 		c := p.clients[key]
@@ -83,7 +96,11 @@ func (p *panel) serve(w http.ResponseWriter, r *http.Request) {
 			record[key] = value
 		}
 		record["uuid"], record["id"] = c["id"], 1
-		reply(true, map[string]any{"client": record, "inboundIds": []int{1}, "usedTraffic": 0})
+		ids := p.memberships[key]
+		if ids == nil {
+			ids = []int64{1}
+		}
+		reply(true, map[string]any{"client": record, "inboundIds": ids, "usedTraffic": p.usedTraffic})
 	case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/panel/api/clients/traffic/"):
 		key := strings.TrimPrefix(r.URL.Path, "/panel/api/clients/traffic/")
 		c := p.clients[key]
@@ -94,7 +111,49 @@ func (p *panel) serve(w http.ResponseWriter, r *http.Request) {
 			reply(false, nil)
 			return
 		}
-		reply(true, map[string]any{"email": email, "uuid": id, "subId": subID, "up": int64(0), "down": int64(0)})
+		reply(true, map[string]any{"email": email, "uuid": id, "subId": subID, "up": p.usedTraffic, "down": int64(0)})
+	case r.Method == "POST" && strings.HasPrefix(r.URL.Path, "/panel/api/clients/") && (strings.HasSuffix(r.URL.Path, "/attach") || strings.HasSuffix(r.URL.Path, "/detach")):
+		parts := strings.Split(r.URL.Path, "/")
+		key, action := parts[len(parts)-2], parts[len(parts)-1]
+		var body struct {
+			InboundIDs []int64 `json:"inboundIds"`
+		}
+		if json.NewDecoder(r.Body).Decode(&body) != nil || p.clients[key] == nil || p.memberships[key] == nil {
+			p.forbidden++
+			reply(false, nil)
+			return
+		}
+		ids := p.memberships[key]
+		for _, id := range body.InboundIDs {
+			found := false
+			for i := 0; i < len(ids); i++ {
+				if ids[i] == id {
+					found = true
+					if action == "detach" {
+						ids = append(ids[:i], ids[i+1:]...)
+						i--
+					}
+				}
+			}
+			if action == "attach" && !found {
+				ids = append(ids, id)
+			}
+		}
+		p.memberships[key] = ids
+		p.groupWrites = append(p.groupWrites, action)
+		reply(true, nil)
+	case r.Method == "POST" && r.URL.Path == "/panel/api/clients/bulkDisable":
+		var body struct {
+			Emails []string `json:"emails"`
+		}
+		if json.NewDecoder(r.Body).Decode(&body) != nil || len(body.Emails) != 1 || p.clients[body.Emails[0]] == nil {
+			p.forbidden++
+			reply(false, nil)
+			return
+		}
+		p.clients[body.Emails[0]]["enable"] = false
+		p.groupWrites = append(p.groupWrites, "disable")
+		reply(true, nil)
 	case r.Method == "POST" && strings.HasPrefix(r.URL.Path, "/panel/api/clients/resetTraffic/"):
 		key := strings.TrimPrefix(r.URL.Path, "/panel/api/clients/resetTraffic/")
 		c := p.clients[key]

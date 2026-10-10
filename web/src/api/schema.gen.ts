@@ -2593,7 +2593,7 @@ export interface components {
             /** Format: uuid */
             account_id: string;
             /** @enum {string} */
-            kind: "compensate" | "assign_plan" | "starter_trial" | "reset_traffic" | "set_profile" | "set_vpn_ban" | "monthly_reset" | "purchase";
+            kind: "compensate" | "assign_plan" | "starter_trial" | "reset_traffic" | "set_profile" | "set_vpn_ban" | "monthly_reset" | "purchase" | "group_reconcile";
             /** @enum {string} */
             status: "pending" | "provisioning" | "applied" | "needs_review" | "skipped";
             /** Format: date-time */

@@ -27,6 +27,9 @@ func (s *Service) ReadAccess(ctx context.Context, op AccessState) (AccessTarget,
 	if limit > 0 {
 		limit++
 	}
+	if op.Kind == "group_reconcile" {
+		limit = target.PreviousLimitIP
+	}
 	if v == nil || v.VPNID != target.VPNID || v.SubID != target.SubID || v.ExpiryTimeMS != target.ExpiryTimeMS || v.LimitIP != limit || v.TrafficLimitBytes != target.TrafficLimitBytes || target.Banned && v.Enabled {
 		return target, nil, 0, 0, ErrIdentity
 	}

@@ -47,13 +47,14 @@ type TelegramFailed struct {
 	Kind string `json:"kind"`
 }
 type Service struct {
-	pool        *pgxpool.Pool
-	reminders   *ReminderService
-	notices     *NoticeService
-	clientGuard ClientGuard
-	operators   func() []int64
-	allowed     func(int64) bool
-	card        func(context.Context, pgx.Tx, uuid.UUID, int64) (json.RawMessage, error)
+	pool                *pgxpool.Pool
+	reminders           *ReminderService
+	notices             *NoticeService
+	clientGuard         ClientGuard
+	infrastructureGuard ClientGuard
+	operators           func() []int64
+	allowed             func(int64) bool
+	card                func(context.Context, pgx.Tx, uuid.UUID, int64) (json.RawMessage, error)
 }
 
 func New(pool *pgxpool.Pool, operators func() []int64, allowed func(int64) bool, card func(context.Context, pgx.Tx, uuid.UUID, int64) (json.RawMessage, error), guard ClientGuard) *Service {

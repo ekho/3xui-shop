@@ -259,6 +259,9 @@ func run() (runErr error) {
 		}()
 	}
 	startScheduler("scheduler_monthly", svc.VPN.RunMonthlyResetScheduler)
+	if cfg.HTTP.AdapterToken == "" {
+		startScheduler("scheduler_vpn_groups", svc.VPN.RunGroupReconciliationScheduler)
+	}
 	startScheduler("scheduler_stars", svc.Payments.RunStarsSubscriptionScheduler)
 	startScheduler("scheduler_reminders", svc.Reminders.RunScheduler)
 	startScheduler("scheduler_audit", func(ctx context.Context) error { return svc.AuditReports.RunScheduler(ctx, auditMirror) })
