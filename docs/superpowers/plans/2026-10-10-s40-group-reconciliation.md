@@ -64,7 +64,7 @@ through existing full behavior suite, no second expensive fixture stage.
   alert delivery/revocation, profile mutation and stable keys/targets.
 - [x] Exercise new attach/detach on owned real TLS 3X-UI3.7.0 with two synthetic
   clients, unknown membership, nonzero traffic and no-op restart; reuse CI stage.
-- [ ] Generate contracts; full Go race + vet, existing Python/web tests.
+- [x] Generate contracts; full Go race + vet, existing Python/web tests.
 - [x] Independent read-only review; fix material findings and retain evidence.
 - [ ] Create/attach PR into v2, wait exact HEAD gates and migration38 ancestor,
   manual merge, cleanup own fixtures, close43 and Project Done, root handoff.
