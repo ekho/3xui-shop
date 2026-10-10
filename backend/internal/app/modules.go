@@ -9,6 +9,7 @@ import (
 	"example.com/cabinet/backend/internal/modules/campaigns"
 	"example.com/cabinet/backend/internal/modules/catalogue"
 	"example.com/cabinet/backend/internal/modules/notifications"
+	"example.com/cabinet/backend/internal/modules/operations"
 	"example.com/cabinet/backend/internal/modules/payments"
 	"example.com/cabinet/backend/internal/modules/subscriptions"
 	"example.com/cabinet/backend/internal/modules/support"
@@ -37,6 +38,7 @@ type Modules struct {
 	Reminders     *notifications.ReminderService
 	Notices       *notifications.NoticeService
 	AuditReports  *auditreports.Service
+	Maintenance   *operations.Maintenance
 }
 
 func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[pgx.Tx], cfg *Config) *Modules {
@@ -70,6 +72,7 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 		return campaignOwner.CaptureRegistrationTx(ctx, tx, id, channel, code)
 	}
 	owner = accounts.New(pool, limiter, mailOwner, accountConfig)
+	maintenanceOwner := operations.New(pool, owner, now)
 	catalogueOwner := catalogue.New(pool, owner, now)
 	var subscriptionOwner *subscriptions.Service
 	notificationsOwner := notifications.New(pool, func() []int64 { return cfg.Accounts.Operators }, owner.OperatorAllowed, func(ctx context.Context, tx pgx.Tx, request uuid.UUID, chat int64) (json.RawMessage, error) {
@@ -93,12 +96,14 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 	}})
 	subscriptionOwner = subscriptions.New(pool, owner, catalogueOwner, vpnOwner, notificationsOwner, func() subscriptions.Config {
 		c := cfg.Subscriptions
+		c.Admission = maintenanceOwner.AllowNew
 		c.Operators = cfg.Accounts.Operators
 		c.RequireStarsCancellation = accountConfig.RequireStarsCancellation
 		return c
 	}, now)
 	paymentsOwner = payments.New(pool, owner, catalogueOwner, subscriptionOwner, vpnOwner, func() *river.Client[pgx.Tx] { return queue }, func() payments.Config {
 		c := cfg.Payments
+		c.Admission = maintenanceOwner.AllowNew
 		c.CabinetOrigin, c.PanelID = cfg.HTTP.CabinetOrigin, cfg.Subscriptions.PanelID
 		return c
 	}, now, notificationsOwner)
@@ -113,5 +118,5 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 	}, LegacyTargetTx: owner.LegacyAuditTargetTx, LegacyLinksTx: owner.LegacyAuditLinksTx}, cfg.Audit)
 	remindersOwner := notifications.NewReminders(pool, notifications.ReminderPorts{AudienceTx: owner.ReminderAudienceTx, RecipientTx: owner.ReminderRecipientTx, AccessTx: vpnOwner.ReminderAccessTx, PeriodTx: vpnOwner.ReminderPeriodTx, StarsTx: paymentsOwner.ReminderPolicyTx, MailGuard: owner.WithMailGuard}, mailOwner, notificationsOwner, now)
 	noticesOwner := notifications.NewNotices(pool, notifications.NoticePorts{AudienceTx: owner.ReminderAudienceTx, RecipientTx: owner.NoticeRecipientTx, LockOperatorTx: owner.LockNoticeOperatorTx, LockPairTx: owner.LockNoticePairTx, DeliveryGuard: owner.WithNoticeDelivery, RequireOperator: owner.RequireOperator}, mailOwner, notificationsOwner, now)
-	return &Modules{Accounts: owner, Catalogue: catalogueOwner, Campaigns: campaignOwner, Subscriptions: subscriptionOwner, VPN: vpnOwner, Payments: paymentsOwner, Support: supportOwner, Notifications: notificationsOwner, MailDelivery: mailOwner, Reminders: remindersOwner, Notices: noticesOwner, AuditReports: reportsOwner}
+	return &Modules{Accounts: owner, Catalogue: catalogueOwner, Campaigns: campaignOwner, Subscriptions: subscriptionOwner, VPN: vpnOwner, Payments: paymentsOwner, Support: supportOwner, Notifications: notificationsOwner, MailDelivery: mailOwner, Reminders: remindersOwner, Notices: noticesOwner, AuditReports: reportsOwner, Maintenance: maintenanceOwner}
 }
