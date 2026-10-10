@@ -1,5 +1,7 @@
 # 3xui-mole
 
+![3xui-mole](docs/assets/3xui-mole-banner.png)
+
 [English](README.md)
 
 Веб-кабинет и Telegram-интерфейс для управления подпиской через 3X-UI.
