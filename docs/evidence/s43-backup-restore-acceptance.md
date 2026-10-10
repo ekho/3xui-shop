@@ -170,7 +170,8 @@ Shared images сохранены.
 Исходная implementation и full local Go verification прошли; локальный commit
 `69bf87505f45aacde47f70e32075b5a7c77375a7` сохранён. Изменённый общий fixture
 требует focused checks и delta review; delivery и acceptance остаются pending
-до CI окончательного HEAD, merge в `v2` и разрешённой preview-публикации.
+до CI окончательного HEAD и merge в `v2`. Разрешённая автоматическая
+preview-публикация идёт отдельно и не добавляет gate к исходному DoD.
 Исторический funding failure сохраняет неизвестную причину; финансовое
 поведение и исходный assertion не меняются в backup scope.
 
@@ -196,6 +197,31 @@ Compose-only и двумя согласованными входами прош�
 test, включая downgrade, replay, reservation, running job и повторный login.
 Неизменённые дорогие полные локальные Go/web/Python scopes не повторялись;
 окончательный HEAD требует полного CI.
+
+## Operations image в контейнерном BuildKit
+
+CI source `900a7be53405226dfa8cc0e5aca5fc4967d95d2c`,
+[run 38008342103](https://github.com/ekho/3xui-shop/actions/runs/38008342103),
+прошёл static/generated, connected consumers, container readiness и native
+acceptance. Backup rehearsal остановился на первом `docker run` с exit 125;
+сама backup-проверка ещё не началась. Все три независимых cleanup прошли.
+Три отдельные PR image checks также прошли.
+
+CI выбирает `docker-container` builder, а operations build не задавал export.
+На отдельном собственном builder минимальный `docker build` с тем же
+`docker-container` driver успешен, но image отсутствует в local Docker;
+`--load` делает его доступным.
+Это соответствует [документации Docker](https://docs.docker.com/build/builders/drivers/docker-container/).
+В producer и команде runbook добавлен только `--load`;
+scratch builder/image/context удалены.
+
+На source `900a7be` с исправленным producer полный native `up` / `check`
+через отдельный `docker-container` builder прошёл за 579.8 секунды. Проверены
+реальные pg_dump/pg_restore, данные/вложения, URL/schema guards, concurrent
+writer, права/повторы, повреждённые пакеты, quarantine и correlated audit.
+Собственные fixture containers/network/volume, operations image, builder и
+private files удалены; остаток fixture resources — ноль. Полный CI
+окончательного HEAD после интеграции доставленной #44 ещё требуется.
 
 ## Границы
 

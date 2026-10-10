@@ -95,7 +95,7 @@ def check():
     (STATE / 'result.json').unlink(missing_ok=True)
     runtime = metadata()
     image = runtime['project'] + '-operations:local'
-    command(['docker', 'build', '--target', 'operations', '-t', image, 'backend'], timeout=900)
+    command(['docker', 'build', '--load', '--target', 'operations', '-t', image, 'backend'], timeout=900)
     if not pg("SELECT 1 FROM pg_roles WHERE rolname='backup_operator'"):
         pg('CREATE ROLE backup_operator LOGIN CREATEDB NOSUPERUSER;')
     if not pg("SELECT 1 FROM pg_database WHERE datname='backup_source'"):

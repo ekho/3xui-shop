@@ -33,7 +33,7 @@ rehearsal. Команда не мигрирует данные молча.
 Нужны `pg_dump` и `pg_restore` того же PostgreSQL major в PATH. Для локального
 host-бинарника: `go -C backend build -o /secure/tools/server ./cmd/server`.
 Обычный scratch server image не содержит PG utilities. Операционный image
-строится отдельно: `docker build --target operations -t cabinet-operations:local backend`.
+строится отдельно: `docker build --load --target operations -t cabinet-operations:local backend`.
 Его ENTRYPOINT — тот же `/server`; задавайте OS UID/GID владельца private files.
 Не запускайте операционный image с `serve`/`reconcile`.
 
