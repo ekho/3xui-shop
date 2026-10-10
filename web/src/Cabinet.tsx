@@ -7,6 +7,7 @@ import {isMiniApp} from './telegramSDK';
 import {StarsSubscription} from './StarsSubscription';
 import {ClientReminders} from './ClientReminders';
 import {ClientNotices} from './ClientNotices';
+import {ClientPromocode} from './ClientPromocode';
 import {miniText} from './MiniApp';
 import {useMaintenance} from './Maintenance';
 
@@ -51,6 +52,7 @@ export function Cabinet({lang}:{lang:Lang}){
    {panelMessage?<div className="warning" role="alert"><p>{panelMessage}</p><button onClick={retry} disabled={busy}>{t.retry}</button></div>:null}
    {keyStatuses.has(sub.status)&&allowsKey(sub)?<Connection lang={lang} subscriptionURL={key} busy={keyBusy} onReveal={reveal} onHide={clearKey}/>:null}
   </>}
+  {account?<ClientPromocode lang={lang}/>:null}
   {account&&canLogout&&!busy&&!error?<ClientNotices key={account.account.account_id+'-'+lang} lang={lang} accountID={account.account.account_id} refreshKey={revision}/>:null}
   {account&&canLogout&&!busy&&!error?<ClientReminders lang={lang} accountID={account.account.account_id} refreshKey={revision}/>:null}
   {account&&(isMiniApp()||('telegram_linked' in account.account&&account.account.telegram_linked)||order?.payment_method==='telegram_stars')?<StarsSubscription lang={lang} refreshKey={revision}/>:null}

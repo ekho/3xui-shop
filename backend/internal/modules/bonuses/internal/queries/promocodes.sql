@@ -26,3 +26,14 @@ INSERT INTO promocode_events(id,promocode_id,actor_account_id,action,created_at,
 
 -- name: ReadPromocodeEvents :many
 SELECT * FROM promocode_events WHERE promocode_id=$1 ORDER BY created_at DESC,id DESC LIMIT 51;
+
+-- name: LockPromocodeByCode :one
+SELECT * FROM promocodes WHERE code=$1 FOR UPDATE;
+
+-- name: ActivatePromocode :one
+UPDATE promocodes SET is_activated=true,activated_account_id=$2,activated_by_tg_id=$3,
+ activated_at=$4,revision=revision+1 WHERE id=$1 RETURNING *;
+
+-- name: ReadPromocodeActivation :one
+SELECT promocode_id,after_snapshot FROM promocode_events
+ WHERE action='activate' AND actor_account_id=$1 AND after_snapshot->>'access_operation_id'=sqlc.arg(operation_id)::text;

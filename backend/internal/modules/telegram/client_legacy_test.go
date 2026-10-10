@@ -121,3 +121,34 @@ func TestClientTelegramLegacyActor(t *testing.T) {
 		})
 	}
 }
+
+func TestClientTelegramLegacyPromocodeInstruction(t *testing.T) {
+	var text, target string
+	h := &http.Client{Transport: testTransport(func(req *http.Request) (*http.Response, error) {
+		if strings.HasSuffix(req.URL.Path, "answerCallbackQuery") {
+			return jsonReply(true), nil
+		}
+		if !strings.HasSuffix(req.URL.Path, "sendMessage") {
+			t.Fatal("legacy promocode callback made an unexpected request")
+		}
+		var in struct {
+			Text   string                `json:"text"`
+			Chat   int64                 `json:"chat_id"`
+			Markup botapi.InlineKeyboard `json:"reply_markup"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+			t.Fatal(err)
+		}
+		text, target = in.Text, in.Markup.Rows[0][0].URL
+		return jsonReply(botapi.Message{ID: 43, Chat: botapi.Chat{ID: in.Chat}}), nil
+	})}
+	r := clientFixture(t, h)
+	r.clients.botID = 123456789
+	r.clients.username = "fixture_bot"
+	if err := r.handle(context.Background(), legacyCallback(t, "subscription:promocode:0:0:701:0:0:0:0")); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "/promocode КОД") || target != "https://cabinet.example.test/cabinet?lang=ru" {
+		t.Fatal("legacy promocode button did not route to native command or cabinet form")
+	}
+}

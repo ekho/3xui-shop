@@ -18,7 +18,7 @@ func miniAppRouteAllowed(path, method string) bool {
 			return true
 		}
 		switch path {
-		case "/api/v1/maintenance", "/api/v1/stars-subscription", "/api/v1/payment-methods", "/api/v1/telegram/mini-app/account", "/api/v1/auth/session", "/api/v1/me/identity", "/api/v1/subscription", "/api/v1/subscription/renewal", "/api/v1/subscription/plan-change", "/api/v1/subscription/key", "/api/v1/trial-requests/current", "/api/v1/catalogue", "/api/v1/orders/current", "/api/v1/orders/:id", "/api/v1/support", "/api/v1/support/messages/:id/attachment":
+		case "/api/v1/promocodes/activations/:id", "/api/v1/maintenance", "/api/v1/stars-subscription", "/api/v1/payment-methods", "/api/v1/telegram/mini-app/account", "/api/v1/auth/session", "/api/v1/me/identity", "/api/v1/subscription", "/api/v1/subscription/renewal", "/api/v1/subscription/plan-change", "/api/v1/subscription/key", "/api/v1/trial-requests/current", "/api/v1/catalogue", "/api/v1/orders/current", "/api/v1/orders/:id", "/api/v1/support", "/api/v1/support/messages/:id/attachment":
 			return true
 		}
 	}
@@ -27,7 +27,7 @@ func miniAppRouteAllowed(path, method string) bool {
 			return true
 		}
 		switch path {
-		case "/api/v1/stars-subscription/control", "/api/v1/orders", "/api/v1/orders/:id/stars-invoice", "/api/v1/telegram/mini-app/logout", "/api/v1/telegram/initial-email", "/api/v1/telegram/initial-email/confirm", "/api/v1/trial-requests", "/api/v1/trials/activate", "/api/v1/payment-history", "/api/v1/support/history", "/api/v1/support/messages", "/api/v1/support/read", "/api/v1/support/state", "/api/v1/orders/:id/cancel":
+		case "/api/v1/promocodes/activate", "/api/v1/stars-subscription/control", "/api/v1/orders", "/api/v1/orders/:id/stars-invoice", "/api/v1/telegram/mini-app/logout", "/api/v1/telegram/initial-email", "/api/v1/telegram/initial-email/confirm", "/api/v1/trial-requests", "/api/v1/trials/activate", "/api/v1/payment-history", "/api/v1/support/history", "/api/v1/support/messages", "/api/v1/support/read", "/api/v1/support/state", "/api/v1/orders/:id/cancel":
 			return true
 		}
 	}

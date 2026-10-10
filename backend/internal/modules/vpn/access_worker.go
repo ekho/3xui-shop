@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"math"
 	"slices"
@@ -79,6 +80,7 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		return unavailable()
 	}
 	group := op.Kind == "group_reconcile"
+	bonus := op.Kind == "compensate" && op.OperatorAccountID == nil
 	var t AccessTarget
 	targetErr := json.Unmarshal(op.Target, &t)
 	banOnly := group && t.Banned && len(t.InboundIDs) == 0
@@ -147,6 +149,9 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		expectedBan = t.PreviousBanned
 	}
 	a, err := s.accountByID(ctx, op.AccountID)
+	if bonus && err == nil && !bonusAccountEligible(a) {
+		return cleanup("bonus_guard_changed", true)
+	}
 	if op.Kind == "monthly_reset" && !op.WriteStarted && !op.ResetStarted && err == nil && (a.VpnBanned || !(a.AccessProfile != nil) || stringValue(a.AccessProfile) != "unlimited") {
 		stop()
 		return s.finishMonthlyWithoutWrite(ctx, op, lease, "eligibility_changed")
@@ -169,7 +174,7 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	if executor == nil && op.Kind != "monthly_reset" && op.Kind != "purchase" && !group {
 		executor = op.OperatorAccountID // Operations written before migration 13.
 	}
-	if executor == nil && op.Kind != "monthly_reset" && op.Kind != "purchase" && !group {
+	if executor == nil && op.Kind != "monthly_reset" && op.Kind != "purchase" && !group && !bonus {
 		return cleanup("actor_missing", true)
 	}
 	if executor != nil && s.accounts.RequireOperator(ctx, *executor) != nil {
@@ -229,6 +234,9 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 			return false
 		}
 		current, e := s.accountByID(ctx, op.AccountID)
+		if bonus && e == nil && !bonusAccountEligible(current) {
+			return false
+		}
 		if e != nil || current.PanelKey != t.PanelKey || current.VpnID != t.VPNID || current.SubID != t.SubID || current.VpnBanned != expectedBan || group && stringValue(current.AccessProfile) != t.Profile || stringValue(current.AssignedPanelID) != t.PanelID && (!t.Missing || current.AssignedPanelID != nil) || op.Kind == "purchase" && current.Restricted || op.Kind == "monthly_reset" && (!(current.AccessProfile != nil) || stringValue(current.AccessProfile) != "unlimited") {
 			return false
 		}
@@ -408,6 +416,10 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	defer tx.Rollback(ctx)
 	final := store.New(tx)
 	a, err = s.lockAccount(ctx, tx, op.AccountID)
+	if bonus && err == nil && !bonusAccountEligible(a) {
+		tx.Rollback(ctx)
+		return cleanup("bonus_guard_changed", true)
+	}
 	if err != nil || a.PanelKey != t.PanelKey || a.VpnID != t.VPNID || a.SubID != t.SubID || a.VpnBanned != expectedBan || group && stringValue(a.AccessProfile) != t.Profile || stringValue(a.AssignedPanelID) != t.PanelID && (!t.Missing || a.AssignedPanelID != nil) {
 		tx.Rollback(ctx)
 		return cleanup("identity_changed", true)
@@ -466,4 +478,9 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		return cleanup("commit_failed", true)
 	}
 	return nil
+}
+
+func bonusAccountEligible(a accounts.Snapshot) bool {
+	return !a.Restricted && !a.VpnBanned && accounts.SourceEligible(a) && a.TermsVersion != nil && a.PrivacyVersion != nil &&
+		(a.Kind != "telegram" || !a.TelegramLoginDisabled) && stringValue(a.AccessProfile) != "unlimited"
 }

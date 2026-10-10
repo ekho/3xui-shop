@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"reflect"
 
@@ -104,6 +105,18 @@ func accessOwnerSQL() string {
 	return "SELECT pg_try_advisory_xact_lock(hashtextextended('account-access:'||$1::text,0))"
 }
 func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key uuid.UUID, in AccessOperationInput) (AccessOperation, error) {
+	return s.createAccessOperation(ctx, actor, target, key, in, nil)
+}
+
+// GrantBonusDays commits the caller's retained bonus fact with the same compensation intent.
+func (s *Service) GrantBonusDays(ctx context.Context, account, key uuid.UUID, days int, reason string, persist func(context.Context, pgx.Tx, AccessOperation) error) (AccessOperation, error) {
+	if persist == nil {
+		return AccessOperation{}, failure(400, "INVALID_INPUT")
+	}
+	return s.createAccessOperation(ctx, account, account, key, AccessOperationInput{Kind: "compensate", Days: &days, Reason: reason}, persist)
+}
+
+func (s *Service) createAccessOperation(ctx context.Context, actor, target, key uuid.UUID, in AccessOperationInput, persist func(context.Context, pgx.Tx, AccessOperation) error) (AccessOperation, error) {
 	var out AccessOperation
 	if actor == uuid.Nil || target == uuid.Nil || key == uuid.Nil {
 		return out, failure(400, "INVALID_INPUT")
@@ -112,6 +125,15 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 		return out, err
 	}
 	principal := "operator-account:" + actor.String()
+	operation := "createAccessOperation"
+	operatorID := &actor
+	lock := s.lockOperatorPair
+	if persist != nil {
+		principal, operation, operatorID = "bonus-account:"+actor.String(), "grantBonusDays", nil
+		lock = func(ctx context.Context, tx pgx.Tx, actor, target uuid.UUID) (accounts.Snapshot, error) {
+			return s.lockBonusAccount(ctx, tx, target)
+		}
+	}
 	hash := bodyHash(struct {
 		Target uuid.UUID
 		Input  AccessOperationInput
@@ -127,17 +149,22 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 	}
 	defer tx.Rollback(ctx)
 	q := store.New(tx)
-	if err = q.LockIdempotency(ctx, store.LockIdempotencyParams{Principal: principal, Operation: "createAccessOperation", Key: key}); err != nil {
+	if err = q.LockIdempotency(ctx, store.LockIdempotencyParams{Principal: principal, Operation: operation, Key: key}); err != nil {
 		return out, unavailable()
 	}
-	a, err := s.lockOperatorPair(ctx, tx, actor, target)
+	a, err := lock(ctx, tx, actor, target)
 	if err != nil {
 		return out, err
 	}
-	if prior, found, e := replay[AccessOperation](ctx, q, principal, "createAccessOperation", key, hash); found || e != nil {
+	if prior, found, e := replay[AccessOperation](ctx, q, principal, operation, key, hash); found || e != nil {
 		return prior, e
 	}
-	if q.LockIdempotencySession(ctx, store.LockIdempotencySessionParams{Principal: principal, Operation: "createAccessOperation", Key: key}) != nil {
+	if persist != nil {
+		if err = s.allowNew(ctx, tx); err != nil {
+			return out, err
+		}
+	}
+	if q.LockIdempotencySession(ctx, store.LockIdempotencySessionParams{Principal: principal, Operation: operation, Key: key}) != nil {
 		return out, unavailable()
 	}
 	if err = owner.TryLock(ctx); errors.Is(err, vpn.ErrBusy) {
@@ -426,15 +453,15 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 		return out, unavailable()
 	}
 	defer tx.Rollback(ctx)
-	current, err := s.lockOperatorPair(ctx, tx, actor, target)
+	current, err := lock(ctx, tx, actor, target)
 	if err != nil {
 		return out, err
 	}
 	q = store.New(tx)
-	if q.LockIdempotency(ctx, store.LockIdempotencyParams{Principal: principal, Operation: "createAccessOperation", Key: key}) != nil {
+	if q.LockIdempotency(ctx, store.LockIdempotencyParams{Principal: principal, Operation: operation, Key: key}) != nil {
 		return out, unavailable()
 	}
-	if prior, found, e := replay[AccessOperation](ctx, q, principal, "createAccessOperation", key, hash); found || e != nil {
+	if prior, found, e := replay[AccessOperation](ctx, q, principal, operation, key, hash); found || e != nil {
 		return prior, e
 	}
 	if !reflect.DeepEqual(a, current) {
@@ -493,14 +520,14 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 				return out, unavailable()
 			}
 		}
-		if _, err = s.vpn.QueueAccessTx(ctx, tx, vpn.AccessWrite{ID: id, AccountID: target, OperatorAccountID: &actor, Kind: string(in.Kind), Reason: strings.TrimSpace(in.Reason), PlanID: planID, Revision: desired.Revision, PeriodDays: desired.PeriodDays, Desired: desiredRaw, Target: targetRaw, Immediate: true, Step: step, CreatedAt: now}); err != nil {
+		if _, err = s.vpn.QueueAccessTx(ctx, tx, vpn.AccessWrite{ID: id, AccountID: target, OperatorAccountID: operatorID, Kind: string(in.Kind), Reason: strings.TrimSpace(in.Reason), PlanID: planID, Revision: desired.Revision, PeriodDays: desired.PeriodDays, Desired: desiredRaw, Target: targetRaw, Immediate: true, Step: step, CreatedAt: now}); err != nil {
 			return out, vpnError(err)
 		}
-		out = AccessOperation{OperationId: id, AccountId: target, OperatorAccountId: &actor, Kind: AccessOperationKind(in.Kind), Status: "applied", CreatedAt: now, UpdatedAt: now, Reason: strings.TrimSpace(in.Reason), Desired: desired, CompletedSteps: []AccessOperationCompletedSteps{AccessOperationCompletedSteps(step)}}
-		if err = auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), CreatedAt: now, Action: "access_applied", AccountID: target, OperatorAccountID: &actor, Reason: &auditReason, AccessOperationID: &id}); err != nil {
+		out = AccessOperation{OperationId: id, AccountId: target, OperatorAccountId: operatorID, Kind: AccessOperationKind(in.Kind), Status: "applied", CreatedAt: now, UpdatedAt: now, Reason: strings.TrimSpace(in.Reason), Desired: desired, CompletedSteps: []AccessOperationCompletedSteps{AccessOperationCompletedSteps(step)}}
+		if err = auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), CreatedAt: now, Action: "access_applied", AccountID: target, OperatorAccountID: operatorID, Reason: &auditReason, AccessOperationID: &id}); err != nil {
 			return out, unavailable()
 		}
-		if err = s.saveIdempotency(ctx, q, principal, "createAccessOperation", key, hash, out); err != nil {
+		if err = s.saveIdempotency(ctx, q, principal, operation, key, hash, out); err != nil {
 			return out, err
 		}
 		if err = tx.Commit(ctx); err != nil {
@@ -508,17 +535,25 @@ func (s *Service) CreateAccessOperation(ctx context.Context, actor, target, key 
 		}
 		return out, nil
 	}
-	if _, err = s.vpn.QueueAccessTx(ctx, tx, vpn.AccessWrite{ID: id, AccountID: target, OperatorAccountID: &actor, Kind: string(in.Kind), Reason: strings.TrimSpace(in.Reason), PlanID: planID, Revision: desired.Revision, PeriodDays: desired.PeriodDays, Desired: desiredRaw, Target: targetRaw, CreatedAt: now}); err != nil {
+	if _, err = s.vpn.QueueAccessTx(ctx, tx, vpn.AccessWrite{ID: id, AccountID: target, OperatorAccountID: operatorID, Kind: string(in.Kind), Reason: strings.TrimSpace(in.Reason), PlanID: planID, Revision: desired.Revision, PeriodDays: desired.PeriodDays, Desired: desiredRaw, Target: targetRaw, CreatedAt: now}); err != nil {
 		if errors.Is(err, vpn.ErrBusy) || errors.Is(err, vpn.ErrPanel) {
 			return out, failure(409, "ACCESS_OPERATION_CONFLICT")
 		}
 		return out, vpnError(err)
 	}
-	if err = auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), CreatedAt: now, Action: "access_requested", AccountID: target, OperatorAccountID: &actor, Reason: &auditReason, AccessOperationID: &id}); err != nil {
+	if err = auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), CreatedAt: now, Action: "access_requested", AccountID: target, OperatorAccountID: operatorID, Reason: &auditReason, AccessOperationID: &id}); err != nil {
 		return out, unavailable()
 	}
-	out = AccessOperation{OperationId: id, AccountId: target, OperatorAccountId: &actor, Kind: AccessOperationKind(in.Kind), Status: "pending", CreatedAt: now, UpdatedAt: now, Reason: strings.TrimSpace(in.Reason), Desired: desired, CompletedSteps: []AccessOperationCompletedSteps{"prepared"}}
-	if err = s.saveIdempotency(ctx, q, principal, "createAccessOperation", key, hash, out); err != nil {
+	out = AccessOperation{OperationId: id, AccountId: target, OperatorAccountId: operatorID, Kind: AccessOperationKind(in.Kind), Status: "pending", CreatedAt: now, UpdatedAt: now, Reason: strings.TrimSpace(in.Reason), Desired: desired, CompletedSteps: []AccessOperationCompletedSteps{"prepared"}}
+	if persist != nil {
+		if err = s.allowNew(ctx, tx); err != nil {
+			return out, err
+		}
+		if err = persist(ctx, tx, out); err != nil {
+			return out, err
+		}
+	}
+	if err = s.saveIdempotency(ctx, q, principal, operation, key, hash, out); err != nil {
 		return out, err
 	}
 	if err = tx.Commit(ctx); err != nil {
