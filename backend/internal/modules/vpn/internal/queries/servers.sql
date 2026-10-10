@@ -33,3 +33,8 @@ INSERT INTO vpn_server_reservations(account_id,server_id,access_operation_id) VA
 
 -- name: ReleaseServerReservation :exec
 DELETE FROM vpn_server_reservations WHERE account_id=$1 AND server_id=$2;
+
+-- name: ManagedServerBusy :one
+SELECT EXISTS(SELECT 1 FROM vpn_server_reservations WHERE server_id=$1)
+ OR EXISTS(SELECT 1 FROM trial_operations WHERE (panel_id=$1 OR target->>'panel_id'=$1) AND status IN ('pending','provisioning','needs_review'))
+ OR EXISTS(SELECT 1 FROM access_operations WHERE target->>'panel_id'=$1 AND status IN ('pending','provisioning','needs_review'));

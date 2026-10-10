@@ -1,0 +1,23 @@
+{
+ admin off
+ auto_https off
+ persist_config off
+}
+https://localhost:9444 {
+ tls /run/secrets/public_cert /run/secrets/public_key
+ handle /sub/* {
+  reverse_proxy panel:2096
+ }
+ handle {
+  reverse_proxy panel:2053
+ }
+}
+https://localhost:9449 {
+ tls /run/secrets/public_cert /run/secrets/public_key
+ handle /sub/* {
+  reverse_proxy panel-second:2096
+ }
+ handle {
+  reverse_proxy panel-second:2053
+ }
+}

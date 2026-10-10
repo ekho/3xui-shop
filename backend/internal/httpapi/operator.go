@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"errors"
+	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/wire"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
@@ -25,7 +27,17 @@ func (a *API) GetOperatorSession(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(200, wire.OperatorSession{Account: account.Account, CsrfToken: account.CsrfToken})
+	allowed := false
+	err = a.accounts.RequireInfrastructure(c.Request().Context(), account.Account.AccountId)
+	if err == nil {
+		allowed = true
+	} else {
+		var domain *accounts.Error
+		if !errors.As(err, &domain) || domain.Status != 403 {
+			return accountError(err)
+		}
+	}
+	return c.JSON(200, wire.OperatorSession{Account: account.Account, CsrfToken: account.CsrfToken, CanManageServers: &allowed})
 }
 func (a *API) SearchOperatorClients(c *echo.Context) error {
 	account, err := a.operatorAuth(c, true)

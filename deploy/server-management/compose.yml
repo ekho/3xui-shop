@@ -1,0 +1,29 @@
+name: cabinet-server-management
+services:
+  panel:
+    extends: {file: ../acceptance/compose.local.yml, service: panel}
+    volumes: ['${LOCAL_STATE_DIR:?required}/panel-db:/etc/x-ui']
+  panel-second:
+    extends: {file: ../acceptance/compose.local.yml, service: panel}
+    volumes: ['${LOCAL_STATE_DIR:?required}/panel-second-db:/etc/x-ui']
+  gateway:
+    image: cabinet-server-management-gateway:local
+    build: {context: ../../web}
+    user: '${APP_RUNTIME_UID:-10001}:${APP_RUNTIME_GID:-10001}'
+    entrypoint: [/usr/bin/caddy]
+    command: [run, --config, /etc/caddy/Caddyfile, --adapter, caddyfile]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ['/tmp:mode=1777']
+    volumes: ['./Caddyfile:/etc/caddy/Caddyfile:ro']
+    secrets: [public_cert, public_key]
+    ports: ['127.0.0.1:61444:9444', '127.0.0.1:61449:9449']
+    depends_on: [panel, panel-second]
+secrets:
+  public_cert: {file: '${LOCAL_STATE_DIR:?required}/cert.pem'}
+  public_key: {file: '${LOCAL_STATE_DIR:?required}/key.pem'}
+networks:
+  default:
+    ipam:
+      config: [{subnet: '172.31.112.0/28'}]
