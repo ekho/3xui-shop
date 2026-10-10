@@ -101,6 +101,10 @@ jobs:
           python deploy/server-management/local.py up
           python deploy/server-management/local.py check
           RUN_BROWSER_TESTS=1 go -C backend test -race ./tests -run '^(TestNativeServerManagementPrimaryRetirement|TestNativeServerManagement|TestServerManagementBrowser|TestNativeGroupReconciliationRealPanel)$' -count=1 -timeout=5m -v
+      - name: Isolated backup and restore rehearsal
+        run: |
+          python deploy/acceptance/backup_restore.py up
+          python deploy/acceptance/backup_restore.py check
       - name: Verify BuildKit mirror requests
         shell: bash
         run: python3 .github/scripts/verify_buildkit_cache.py
@@ -116,7 +120,13 @@ jobs:
                   errors = [error for error in ('timeout', 'deadline exceeded', 'unauthorized', 'denied', '429', '403', '404', 'x509') if error in line.lower()]
                   print('Docker registry fallback:', hosts, 'categories:', errors)
           PY
-      - name: Cleanup
+      - name: Cleanup backup rehearsal
+        if: always()
+        run: |
+          if [ -f .superpowers/acceptance/backup-restore/runtime.json ]; then
+            python deploy/acceptance/backup_restore.py down
+          fi
+      - name: Cleanup server management
         if: always()
         env:
           SERVER_MANAGEMENT_NATIVE_STATE: ${{ runner.temp }}/server-management-native
@@ -124,7 +134,13 @@ jobs:
           if [ -f "$SERVER_MANAGEMENT_NATIVE_STATE/public.env" ]; then
             python deploy/server-management/local.py down
           fi
+      - name: Cleanup native acceptance
+        if: always()
+        run: |
           if [ -f .superpowers/acceptance/native-docker/public.env ]; then
             python deploy/acceptance/local.py down
           fi
+      - name: Cleanup test services
+        if: always()
+        run: |
           docker compose -f deploy/acceptance/compose.test.yml down -v

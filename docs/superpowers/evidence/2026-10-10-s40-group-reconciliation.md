@@ -118,6 +118,25 @@ credential hash, integrity и свободный диск проверены. Re
 primary container сохранил данные и восстановил login/сценарий. Причина
 нижнего I/O слоя не установлена; это не заявляется как исправленный product bug.
 
+## Проверка после доставки45
+
+Actual #45/PR101 merge `ad66cfeb8bf89d8259f88ff0a8f80d0011c022b0`
+потребовал разрешить один настоящий конфликт в existing CI stage. Group test,
+backup rehearsal и четыре independent cleanup stages сохранены; код #45 не менялся.
+Независимое integration review PASS: backup CLI не запускает native schedulers,
+общий public Compose consumer совместим, schema/inventory включают migration39,
+group operations и новые outbox columns. DownTo36 guard сохранён.
+
+На объединённом рабочем дереве targeted `-race` PASS88.877s: настоящая TLS-панель
+13.59s, native group24.15s, maintenance10.41s, canonical backup/restore37.62s,
+ownership/selector guards. Fresh cmd/server SHA256
+`ebc1ea8e447145ffb1d1f90dc6fae21d569ea547a9d1d489baee0527b23439da`.
+Backup/schema/manifest/connection tests трёх packages PASS; первый отдельный DB
+запуск не получил обязательный Redis URL file, после добавления входа PASS.
+Names/generation/vet PASS. Platform run38020894575 отменён после обнаруженного
+конфликта, до полного завершения; его PASS static и три image builds не заменяют
+новый exact-head CI. Итог CI и delivery фиксируются в canonical issue43/PR.
+
 ## Эксплуатационные пределы
 
 Native scheduler работает при старте и раз в час; legacy adapter mode не запускает
