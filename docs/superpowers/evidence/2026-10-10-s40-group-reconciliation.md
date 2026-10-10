@@ -109,6 +109,15 @@ Gen/vet/typecheck/build/runtime-config PASS. Объединённый Web E2E **
 Python **112 passed**, его исходники и зависимости после этого прогона не менялись.
 Exact-head PR CI и delivery фиксируются в canonical issue43/PR после результата.
 
+Первый CI `800d8df` остановился в `check_names.py`: четыре fixture label
+содержали номер сценария. Они заменены semantic names; локальный checker и
+generated diff PASS, targeted реальный panel/race повтор PASS13.751s.
+Product source после полного Go прогона не менялся. Перед повтором собственный
+macOS bind-mounted panel получил SQLite disk I/O при чтении настройки2FA;
+credential hash, integrity и свободный диск проверены. Restart только своего
+primary container сохранил данные и восстановил login/сценарий. Причина
+нижнего I/O слоя не установлена; это не заявляется как исправленный product bug.
+
 ## Эксплуатационные пределы
 
 Native scheduler работает при старте и раз в час; legacy adapter mode не запускает

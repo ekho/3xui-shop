@@ -122,7 +122,7 @@ func TestNativeGroupReconciliationRealPanel(t *testing.T) {
 	})
 	addInbound := func(tag string, port int) int64 {
 		t.Helper()
-		obj := call("panel/api/inbounds/add", map[string]any{"enable": true, "remark": "Owned S40 acceptance", "listen": "0.0.0.0", "port": port, "protocol": "vless", "tag": tag, "settings": map[string]any{"clients": []any{}, "decryption": "none", "fallbacks": []any{}}, "streamSettings": map[string]any{"network": "tcp", "security": "none"}, "sniffing": map[string]any{"enabled": false}})
+		obj := call("panel/api/inbounds/add", map[string]any{"enable": true, "remark": "Owned group acceptance", "listen": "0.0.0.0", "port": port, "protocol": "vless", "tag": tag, "settings": map[string]any{"clients": []any{}, "decryption": "none", "fallbacks": []any{}}, "streamSettings": map[string]any{"network": "tcp", "security": "none"}, "sniffing": map[string]any{"enabled": false}})
 		var inbound struct{ ID int64 }
 		if json.Unmarshal(obj, &inbound) != nil || inbound.ID <= 0 {
 			t.Fatal("owned inbound creation unconfirmed")
@@ -130,12 +130,12 @@ func TestNativeGroupReconciliationRealPanel(t *testing.T) {
 		createdInbounds = append(createdInbounds, inbound.ID)
 		return inbound.ID
 	}
-	unknown := addInbound("local-s40-foreign-"+uuid.NewString(), 24445)
+	unknown := addInbound("local-group-foreign-"+uuid.NewString(), 24445)
 	p := vpn.NewPanelClient(f.cfg.VPN.Panel)
 	t.Cleanup(p.Close)
 	expiry := f.env.Clock().Add(30 * 24 * time.Hour).UnixMilli()
 	owned := vpn.ProvisionTarget{OperationID: uuid.New(), PanelID: f.cfg.Subscriptions.PanelID, PanelKey: identity.PanelKey, VPNID: identity.VpnID, SubID: identity.SubID, InboundIDs: []int64{originalID, unknown}, Profile: "regular", DeviceCount: 2, TrafficLimitBytes: 1234567, ExpiryTimeMS: expiry}
-	foreign := vpn.ProvisionTarget{OperationID: uuid.New(), PanelKey: "acct_s40_foreign_" + uuid.NewString(), VPNID: uuid.New(), SubID: uuid.NewString(), InboundIDs: []int64{originalID, unknown}, Profile: "regular", DeviceCount: 3, TrafficLimitBytes: 7654321, ExpiryTimeMS: expiry}
+	foreign := vpn.ProvisionTarget{OperationID: uuid.New(), PanelKey: "acct_group_foreign_" + uuid.NewString(), VPNID: uuid.New(), SubID: uuid.NewString(), InboundIDs: []int64{originalID, unknown}, Profile: "regular", DeviceCount: 3, TrafficLimitBytes: 7654321, ExpiryTimeMS: expiry}
 	createdClients = append(createdClients, owned.PanelKey)
 	call("panel/api/clients/add", map[string]any{"client": map[string]any{"email": owned.PanelKey, "id": owned.VPNID, "subId": owned.SubID, "expiryTime": expiry, "limitIp": 1, "totalGB": owned.TrafficLimitBytes, "enable": true, "flow": "xtls-rprx-vision"}, "inboundIds": owned.InboundIDs})
 	createdClients = append(createdClients, foreign.PanelKey)
@@ -148,7 +148,7 @@ func TestNativeGroupReconciliationRealPanel(t *testing.T) {
 	}
 	// Seed only the owned provider counter so an unintended reset is observable.
 	call("panel/api/clients/updateTraffic/"+owned.PanelKey, map[string]int64{"upload": 42, "download": 24})
-	newID := addInbound("local-s40-regular-"+uuid.NewString(), 24446)
+	newID := addInbound("local-group-regular-"+uuid.NewString(), 24446)
 	for _, row := range rows() {
 		if int64(row["id"].(float64)) == originalID {
 			original = row
