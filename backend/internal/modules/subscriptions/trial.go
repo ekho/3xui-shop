@@ -346,12 +346,22 @@ func (s *Service) decideTrialLocked(ctx context.Context, tx pgx.Tx, q *store.Que
 			return r, err
 		}
 		c := s.config()
-		if c.PanelID == "" || c.TrialPeriodDays <= 0 || c.TrialPeriodDays > math.MaxInt64/int64(24*time.Hour) || c.TrialTrafficGB < 0 || c.TrialTrafficGB > math.MaxInt64/(1024*1024*1024) || c.TrialDevices < 0 || c.TrialDevices == math.MaxInt64 {
-			return r, unavailable()
-		}
 		op := uuid.New()
 		operation = &op
-		if err := s.vpn.ReserveTrialTx(ctx, tx, vpn.TrialReservation{ID: op, AccountID: a.ID, RequestID: r.ID, PeriodDays: c.TrialPeriodDays, TrafficGb: c.TrialTrafficGB, Devices: c.TrialDevices, CreatedAt: s.now()}); err != nil {
+		period := c.TrialPeriodDays
+		if actor.automatic && c.ReferredTrial != nil {
+			days, err := c.ReferredTrial(ctx, tx, a, r.ID)
+			if err != nil {
+				return r, err
+			}
+			if days > 0 {
+				period = days
+			}
+		}
+		if c.PanelID == "" || period <= 0 || period > math.MaxInt64/int64(24*time.Hour) || c.TrialTrafficGB < 0 || c.TrialTrafficGB > math.MaxInt64/(1024*1024*1024) || c.TrialDevices < 0 || c.TrialDevices == math.MaxInt64 {
+			return r, unavailable()
+		}
+		if err := s.vpn.ReserveTrialTx(ctx, tx, vpn.TrialReservation{ID: op, AccountID: a.ID, RequestID: r.ID, PeriodDays: period, TrafficGb: c.TrialTrafficGB, Devices: c.TrialDevices, CreatedAt: s.now()}); err != nil {
 			return r, unavailable()
 		}
 		if err := q.ReserveGrant(ctx, store.ReserveGrantParams{AccountID: a.ID, RequestID: r.ID, OperationID: op, CreatedAt: stamp(s.now())}); err != nil {

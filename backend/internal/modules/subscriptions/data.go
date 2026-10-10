@@ -32,6 +32,11 @@ func (s *Service) RecordTrialOutcomeTx(ctx context.Context, tx pgx.Tx, request, 
 	}
 	action, kind, view := "provision_needs_review", "provision_review", "needs_review"
 	if status == "applied" {
+		if r.DecisionSource == "telegram_auto" && s.config().ReferredTrialApplied != nil {
+			if s.config().ReferredTrialApplied(ctx, tx, a.ID, request, operation) != nil {
+				return unavailable()
+			}
+		}
 		if q.GrantApplied(ctx, store.GrantAppliedParams{OperationID: operation, GrantedAt: stamp(s.now())}) != nil {
 			return unavailable()
 		}

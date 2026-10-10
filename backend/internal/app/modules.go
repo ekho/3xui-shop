@@ -119,6 +119,15 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 		c.Admission = maintenanceOwner.AllowNew
 		c.Operators = cfg.Accounts.Operators
 		c.RequireStarsCancellation = accountConfig.RequireStarsCancellation
+		c.ReferredTrial = func(ctx context.Context, tx pgx.Tx, a accounts.Snapshot, request uuid.UUID) (int64, error) {
+			days, err := bonusesOwner.ReserveTelegramTrialTx(ctx, tx, a, request, cfg.ReferredTrial)
+			var domain *bonuses.Error
+			if errors.As(err, &domain) {
+				err = &subscriptions.Error{Status: domain.Status, Code: domain.Code, Message: domain.Code}
+			}
+			return days, err
+		}
+		c.ReferredTrialApplied = bonusesOwner.RecordTelegramTrialAppliedTx
 		return c
 	}, now)
 	bonusesOwner.ConfigureSubscriptions(subscriptionOwner)
