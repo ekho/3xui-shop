@@ -128,6 +128,7 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 		return c
 	}, now, notificationsOwner)
 	campaignOwner = campaigns.New(pool, limiter, owner, subscriptionOwner, paymentsOwner, cfg.Accounts.RateNamespace, now)
+	bonusesOwner.ConfigureSubscriptions(subscriptionOwner)
 	supportOwner := support.New(pool, limiter, owner, cfg.Accounts.RateNamespace, now, notificationsOwner)
 	reportsOwner := auditreports.New(pool, auditreports.StatisticsPorts{RequireOperator: owner.RequireOperator, AccountsTx: owner.StatisticsTx, ReportCohortTx: campaignOwner.ReportCohortTx, PaymentsTx: paymentsOwner.StatisticsTx, TrialsTx: subscriptionOwner.StatisticsTx, PlansTx: catalogueOwner.StatisticsTx, VPNTx: vpnOwner.StatisticsTx}, auditreports.HistoryPorts{LockOperatorTx: owner.LockNoticeOperatorTx, AccountExistsTx: func(ctx context.Context, tx pgx.Tx, id uuid.UUID) (bool, error) {
 		_, err := owner.LookupTx(ctx, tx, id)

@@ -12,6 +12,43 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const activatePromocode = `-- name: ActivatePromocode :one
+UPDATE promocodes SET is_activated=true,activated_account_id=$2,activated_by_tg_id=$3,
+ activated_at=$4,revision=revision+1 WHERE id=$1 RETURNING id, code, duration_days, revision, created_at, deleted_at, is_activated, activated_account_id, activated_by_tg_id, activated_at, legacy_source, legacy_promocode_id
+`
+
+type ActivatePromocodeParams struct {
+	ID                 uuid.UUID
+	ActivatedAccountID *uuid.UUID
+	ActivatedByTgID    pgtype.Int8
+	ActivatedAt        pgtype.Timestamptz
+}
+
+func (q *Queries) ActivatePromocode(ctx context.Context, arg ActivatePromocodeParams) (Promocode, error) {
+	row := q.db.QueryRow(ctx, activatePromocode,
+		arg.ID,
+		arg.ActivatedAccountID,
+		arg.ActivatedByTgID,
+		arg.ActivatedAt,
+	)
+	var i Promocode
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.DurationDays,
+		&i.Revision,
+		&i.CreatedAt,
+		&i.DeletedAt,
+		&i.IsActivated,
+		&i.ActivatedAccountID,
+		&i.ActivatedByTgID,
+		&i.ActivatedAt,
+		&i.LegacySource,
+		&i.LegacyPromocodeID,
+	)
+	return i, err
+}
+
 const addPromocode = `-- name: AddPromocode :one
 INSERT INTO promocodes(id,code,duration_days,created_at) VALUES($1,$2,$3,$4) RETURNING id, code, duration_days, revision, created_at, deleted_at, is_activated, activated_account_id, activated_by_tg_id, activated_at, legacy_source, legacy_promocode_id
 `
@@ -214,6 +251,30 @@ func (q *Queries) LockPromocode(ctx context.Context, id uuid.UUID) (Promocode, e
 	return i, err
 }
 
+const lockPromocodeByCode = `-- name: LockPromocodeByCode :one
+SELECT id, code, duration_days, revision, created_at, deleted_at, is_activated, activated_account_id, activated_by_tg_id, activated_at, legacy_source, legacy_promocode_id FROM promocodes WHERE code=$1 FOR UPDATE
+`
+
+func (q *Queries) LockPromocodeByCode(ctx context.Context, code string) (Promocode, error) {
+	row := q.db.QueryRow(ctx, lockPromocodeByCode, code)
+	var i Promocode
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.DurationDays,
+		&i.Revision,
+		&i.CreatedAt,
+		&i.DeletedAt,
+		&i.IsActivated,
+		&i.ActivatedAccountID,
+		&i.ActivatedByTgID,
+		&i.ActivatedAt,
+		&i.LegacySource,
+		&i.LegacyPromocodeID,
+	)
+	return i, err
+}
+
 const readPromocode = `-- name: ReadPromocode :one
 SELECT id, code, duration_days, revision, created_at, deleted_at, is_activated, activated_account_id, activated_by_tg_id, activated_at, legacy_source, legacy_promocode_id FROM promocodes WHERE id=$1
 `
@@ -235,6 +296,28 @@ func (q *Queries) ReadPromocode(ctx context.Context, id uuid.UUID) (Promocode, e
 		&i.LegacySource,
 		&i.LegacyPromocodeID,
 	)
+	return i, err
+}
+
+const readPromocodeActivation = `-- name: ReadPromocodeActivation :one
+SELECT promocode_id,after_snapshot FROM promocode_events
+ WHERE action='activate' AND actor_account_id=$1 AND after_snapshot->>'access_operation_id'=$2::text
+`
+
+type ReadPromocodeActivationParams struct {
+	ActorAccountID *uuid.UUID
+	OperationID    string
+}
+
+type ReadPromocodeActivationRow struct {
+	PromocodeID   uuid.UUID
+	AfterSnapshot []byte
+}
+
+func (q *Queries) ReadPromocodeActivation(ctx context.Context, arg ReadPromocodeActivationParams) (ReadPromocodeActivationRow, error) {
+	row := q.db.QueryRow(ctx, readPromocodeActivation, arg.ActorAccountID, arg.OperationID)
+	var i ReadPromocodeActivationRow
+	err := row.Scan(&i.PromocodeID, &i.AfterSnapshot)
 	return i, err
 }
 

@@ -27,6 +27,7 @@ type Runtime struct {
 	clients                                                                *Client
 	servers                                                                *serverBridge
 	promocodes                                                             *promocodeBridge
+	activation                                                             *clientPromocodeBridge
 	support                                                                *supportBridge
 	now                                                                    func() time.Time
 	startupCode                                                            string
@@ -457,6 +458,16 @@ func (r *Runtime) handle(ctx context.Context, u botapi.Update) error {
 			username = r.clients.username
 		}
 		handled, err := r.promocodes.handle(ctx, u, username)
+		if handled {
+			return err
+		}
+	}
+	if r.activation != nil {
+		username := ""
+		if r.clients != nil {
+			username = r.clients.username
+		}
+		handled, err := r.activation.handle(ctx, u, username)
 		if handled {
 			return err
 		}

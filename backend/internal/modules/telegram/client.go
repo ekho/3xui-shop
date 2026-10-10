@@ -319,6 +319,12 @@ func (c *Client) callback(parent context.Context, q *botapi.Callback) (bool, err
 			return refuse()
 		}
 	}
+	if state == "promocode" {
+		if err := c.sendPromocodeInstruction(ctx, q.From.ID, lang); err != nil {
+			return true, err
+		}
+		return true, cosmetic(c.api.AnswerCallback(ctx, q.ID, "", false))
+	}
 	switch state {
 	case "show_key", "download", "platform", "download_show_qr", "how_to_connect", "redirect_to_download":
 		path = "#connection-title"
@@ -326,7 +332,7 @@ func (c *Client) callback(parent context.Context, q *botapi.Callback) (bool, err
 		path = "?platform=" + strings.TrimPrefix(state, "platform_") + "#connection-title"
 	case "support", "vpn_not_working":
 		path = "/support"
-	case "subscription", "process", "devices", "duration", "promocode", "back_to_duration", "back_to_payment":
+	case "subscription", "process", "devices", "duration", "back_to_duration", "back_to_payment":
 		path = "/catalogue"
 	case "extend":
 		path = "/renew"
