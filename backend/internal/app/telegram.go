@@ -30,6 +30,9 @@ func NewTelegram(cfg telegram.Config, modules *Modules, origin string, client *h
 		if err = runtime.ConfigureServerManagement(modules.Accounts, modules.VPN, origin); err != nil {
 			return nil, err
 		}
+		if err = runtime.ConfigurePromocodes(modules.Accounts, modules.Bonuses, origin); err != nil {
+			return nil, err
+		}
 		modules.Payments.ConfigureStars(runtime.StarsGateway())
 	}
 	return runtime, nil

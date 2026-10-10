@@ -26,6 +26,7 @@ type Runtime struct {
 	outbox                                                                 Outbox
 	clients                                                                *Client
 	servers                                                                *serverBridge
+	promocodes                                                             *promocodeBridge
 	support                                                                *supportBridge
 	now                                                                    func() time.Time
 	startupCode                                                            string
@@ -446,6 +447,16 @@ func (r *Runtime) handle(ctx context.Context, u botapi.Update) error {
 			username = r.clients.username
 		}
 		handled, err := r.servers.handle(ctx, u, username)
+		if handled {
+			return err
+		}
+	}
+	if r.promocodes != nil {
+		username := ""
+		if r.clients != nil {
+			username = r.clients.username
+		}
+		handled, err := r.promocodes.handle(ctx, u, username)
 		if handled {
 			return err
 		}

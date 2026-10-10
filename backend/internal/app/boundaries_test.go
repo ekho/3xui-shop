@@ -424,6 +424,20 @@ func TestCampaignsSQLBoundary(t *testing.T) {
 	checkSQLBoundary(t, "campaigns", owns)
 }
 
+func TestBonusesSQLBoundary(t *testing.T) {
+	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:promocodes|promocode_events)\b`)
+	owns := func(text string) bool { return pattern.MatchString(strings.ReplaceAll(text, `"`, "")) }
+	for _, sql := range []string{"SELECT * FROM promocodes", "UPDATE promocode_events SET reason=NULL", "DELETE FROM public.promocodes"} {
+		if !owns(sql) {
+			t.Fatal("bonuses ownership negative fixture escaped", sql)
+		}
+	}
+	if owns("SELECT account_id FROM audit_events") {
+		t.Fatal("foreign owner rejected")
+	}
+	checkSQLBoundary(t, "bonuses", owns)
+}
+
 func TestSharedFacadeRemoved(t *testing.T) {
 	for _, path := range []string{"../platform", "../store", "../../db/queries"} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {

@@ -206,6 +206,21 @@ export const getOperatorCampaign=(id:string,signal?:AbortSignal)=>request<Campai
 export const createCampaign=(input:CampaignCreateInput,key:string,signal?:AbortSignal)=>request<Campaign>('operator/campaigns','POST',input,signal,true,key);
 export const setCampaignState=(id:string,input:CampaignStateInput,key:string,signal?:AbortSignal)=>request<Campaign>('operator/campaigns/'+encodeURIComponent(id)+'/state','POST',input,signal,true,key);
 
+export type Promocode=components['schemas']['Promocode'];
+export type PromocodeList=components['schemas']['PromocodeList'];
+export type PromocodeDetail=components['schemas']['PromocodeDetail'];
+export type CreatePromocodeInput=components['schemas']['CreatePromocodeInput'];
+export type EditPromocodeInput=components['schemas']['EditPromocodeInput'];
+export type DeletePromocodeInput=components['schemas']['DeletePromocodeInput'];
+export type PromocodeMetadata=components['schemas']['PromocodeMetadata'];
+export type PromocodeEvent=components['schemas']['PromocodeEvent'];
+const promocodePath=(id:string)=>'operator/promocodes/'+encodeURIComponent(id);
+export const getOperatorPromocodes=(page:number,signal?:AbortSignal)=>request<PromocodeList>('operator/promocodes/search','POST',{page,per_page:50},signal,true);
+export const getOperatorPromocode=(id:string,signal?:AbortSignal)=>request<PromocodeDetail>(promocodePath(id),'GET',undefined,signal);
+export const createPromocode=(input:CreatePromocodeInput,key:string,signal?:AbortSignal)=>request<Promocode>('operator/promocodes','POST',input,signal,true,key);
+export const editPromocode=(id:string,input:EditPromocodeInput,key:string,signal?:AbortSignal)=>request<Promocode>(promocodePath(id)+'/edit','POST',input,signal,true,key);
+export const deletePromocode=(id:string,input:DeletePromocodeInput,key:string,signal?:AbortSignal)=>request<Promocode>(promocodePath(id)+'/delete','POST',input,signal,true,key);
+
 export type OperatorServerSummary=components['schemas']['OperatorServerSummary'];
 export type OperatorServerDetail=components['schemas']['OperatorServerDetail'];
 export type OperatorServers=components['schemas']['OperatorServers'];

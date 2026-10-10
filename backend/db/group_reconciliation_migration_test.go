@@ -50,7 +50,10 @@ func TestGroupReconciliationMigrationHistoryAndPayloadGuard(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, err = provider.DownTo(ctx, 38)
+			if _, err = provider.DownTo(ctx, 39); err != nil {
+				t.Fatal("reach group reconciliation migration", err)
+			}
+			_, err = provider.Down(ctx)
 			if kind == "ordinary" {
 				if err != nil {
 					t.Fatal("ordinary delivery blocked unrelated rollback", err)

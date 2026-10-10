@@ -1,10 +1,9 @@
 package bonuses
 
 import (
-	"time"
-
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"time"
 )
 
 type Service struct {

@@ -37,10 +37,10 @@ import (
 type API struct {
 	miniApp        *telegram.MiniApp
 	accounts       *accounts.Service
-	bonuses        *bonuses.Service
 	vpn            *vpn.Service
 	catalogueOwner *catalogue.Service
 	campaignsOwner *campaigns.Service
+	bonusesOwner   *bonuses.Service
 	subscriptions  *subscriptions.Service
 	payments       *payments.Service
 	supportOwner   *support.Service
@@ -66,7 +66,7 @@ func failure(status int, code string) error {
 }
 func unavailable() error { return failure(503, "SERVICE_UNAVAILABLE") }
 func newAPI(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, contract *openapi3.T) *API {
-	return &API{miniApp: modules.MiniApp, accounts: modules.Accounts, bonuses: modules.Bonuses, vpn: modules.VPN, catalogueOwner: modules.Catalogue, campaignsOwner: modules.Campaigns, subscriptions: modules.Subscriptions, payments: modules.Payments, supportOwner: modules.Support, notifications: modules.Notifications, reminders: modules.Reminders, notices: modules.Notices, auditReports: modules.AuditReports, maintenance: modules.Maintenance, pool: pool, cfg: cfg, contract: contract}
+	return &API{miniApp: modules.MiniApp, accounts: modules.Accounts, vpn: modules.VPN, catalogueOwner: modules.Catalogue, campaignsOwner: modules.Campaigns, bonusesOwner: modules.Bonuses, subscriptions: modules.Subscriptions, payments: modules.Payments, supportOwner: modules.Support, notifications: modules.Notifications, reminders: modules.Reminders, notices: modules.Notices, auditReports: modules.AuditReports, maintenance: modules.Maintenance, pool: pool, cfg: cfg, contract: contract}
 }
 
 func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, readiness ...*operations.Readiness) *echo.Echo {
@@ -175,6 +175,11 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, readiness
 	e.POST("/api/v1/operator/campaigns", a.CreateCampaign)
 	e.GET("/api/v1/operator/campaigns/:id", a.GetOperatorCampaign)
 	e.POST("/api/v1/operator/campaigns/:id/state", a.SetCampaignState)
+	e.POST("/api/v1/operator/promocodes/search", a.ListOperatorPromocodes)
+	e.POST("/api/v1/operator/promocodes", a.CreatePromocode)
+	e.GET("/api/v1/operator/promocodes/:id", a.GetOperatorPromocode)
+	e.POST("/api/v1/operator/promocodes/:id/edit", a.EditPromocode)
+	e.POST("/api/v1/operator/promocodes/:id/delete", a.DeletePromocode)
 	e.POST("/api/v1/auth/register", a.RegisterAccount)
 	e.POST("/api/v1/auth/verify-email", a.VerifyEmail)
 	e.POST("/api/v1/auth/resend-verification", a.ResendVerification)
@@ -184,6 +189,7 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, readiness
 	e.POST("/api/v1/auth/login", a.LoginAccount)
 	e.POST("/api/v1/auth/logout", a.LogoutAccount)
 	e.GET("/api/v1/me", a.GetAccount)
+	e.GET("/api/v1/referrals", a.GetReferrals)
 	e.GET("/api/v1/auth/session", a.GetSessionContext)
 	e.GET("/api/v1/me/security", a.GetAccountSecurity)
 	e.GET("/api/v1/me/identity", a.GetAccountIdentity)
@@ -208,7 +214,6 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, readiness
 	e.POST("/internal/v1/telegram/jobs/:id/result", a.CompleteTelegramJob)
 	e.GET("/api/v1/support", a.GetSupport)
 	e.GET("/api/v1/reminders", a.GetReminders)
-	e.GET("/api/v1/referrals", a.GetReferrals)
 	e.GET("/api/v1/notices", a.GetNotices)
 	e.POST("/api/v1/notices/preferences", a.SetNoticeEmailPreference)
 	e.POST("/api/v1/notices/:id/dismiss", a.DismissNotice)

@@ -15,7 +15,7 @@ func (a *API) GetReferrals(c *echo.Context) error {
 	if err = requireEmptyBody(c); err != nil {
 		return err
 	}
-	out, err := a.bonuses.ReadReferrals(c.Request().Context(), auth.Account.ID, a.cfg.CabinetOrigin)
+	out, err := a.bonusesOwner.ReadReferrals(c.Request().Context(), auth.Account.ID, a.cfg.CabinetOrigin)
 	if err != nil {
 		var domain *bonuses.Error
 		if errors.As(err, &domain) {
