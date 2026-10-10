@@ -25,6 +25,10 @@
 
 ---
 
+> Для **v2 Go backend + frontend/Caddy** используйте [полный deployment inventory](docs/runbooks/s45-product-configuration.md)
+> и [эксплуатационные процедуры](docs/runbooks/s44-process-operations.md).
+> Ниже описан сохраняемый legacy Python до #54; не запускайте его вторым исполнителем операций v2.
+
 ## 1. Требования
 
 - VPS (Linux), **Docker** + **Docker Compose v2**.

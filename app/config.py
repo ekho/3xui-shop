@@ -1,6 +1,7 @@
 import logging
 import os
 from dataclasses import dataclass
+from email.utils import parseaddr
 from logging.handlers import MemoryHandler
 from pathlib import Path
 
@@ -26,7 +27,7 @@ DEFAULT_BOT_TIMEZONE = "UTC"  # часовой пояс для календар�
 DEFAULT_AUDIT_RETENTION_DAYS = 365  # хранить события аудит-лога год; прун-джоб чистит старше
 
 DEFAULT_SHOP_APPROVAL_REQUIRED = True
-DEFAULT_SHOP_EMAIL = "support@3xui-shop.com"
+DEFAULT_SHOP_EMAIL = ""
 DEFAULT_SHOP_CURRENCY = Currency.RUB.code
 DEFAULT_SHOP_TRIAL_ENABLED = True
 DEFAULT_SHOP_TRIAL_PERIOD = 3
@@ -66,15 +67,20 @@ logger.addHandler(memory_handler)
 
 def env_or_file(env: Env, name: str, default: str | None = None, required: bool = False) -> str | None:
     """Read a STRING secret from a file via the ``<NAME>_FILE`` convention (docker compose
-    secrets mounted at /run/secrets/<name>), falling back to the plain ``<NAME>`` env var.
+    secrets mounted at /run/secrets/<name>). Use plain ``<NAME>`` only if no file is set.
 
     Only for string secrets (BOT_TOKEN, XUI_PASSWORD, *_API_KEY, WEBHOOK_SECRET, ...).
     Numeric/list vars keep typed reading via env.int/env.list to preserve subcast/validation.
     """
     path = env.str(f"{name}_FILE", default=None)
-    if path and os.path.isfile(path):
-        with open(path, encoding="utf-8") as file:
-            return file.read().strip()
+    if path is not None:
+        try:
+            value = Path(path).read_text(encoding="utf-8").strip()
+        except (OSError, UnicodeError):
+            raise ValueError(f"Cannot read {name}_FILE") from None
+        if not value:
+            raise ValueError(f"Empty {name}_FILE")
+        return value
     if required:
         return env.str(name)  # raises if missing — preserves previous required semantics
     return env.str(name, default=default)
@@ -272,8 +278,8 @@ def load_config() -> Config:
         default=DEFAULT_SHOP_PAYMENT_HELEKET_ENABLED,
     )
     if payment_heleket_enabled:
-        heleket_api_key = env.str("HELEKET_API_KEY", default=None)
-        heleket_merchant_id = env.str("HELEKET_MERCHANT_ID", default=None)
+        heleket_api_key = env_or_file(env, "HELEKET_API_KEY", default=None)
+        heleket_merchant_id = env_or_file(env, "HELEKET_MERCHANT_ID", default=None)
         if not heleket_api_key or not heleket_merchant_id:
             logger.error(
                 "HELEKET_API_KEY or HELEKET_MERCHANT_ID is not set. Payment Heleket is disabled."
@@ -284,14 +290,18 @@ def load_config() -> Config:
         "SHOP_PAYMENT_YOOKASSA_ENABLED",
         default=DEFAULT_SHOP_PAYMENT_YOOKASSA_ENABLED,
     )
+    shop_email = env.str("SHOP_EMAIL", default=DEFAULT_SHOP_EMAIL)
     if payment_yookassa_enabled:
-        yookassa_token = env.str("YOOKASSA_TOKEN", default=None)
+        yookassa_token = env_or_file(env, "YOOKASSA_TOKEN", default=None)
         yookassa_shop_id = env.int("YOOKASSA_SHOP_ID", default=None)
         if not yookassa_token or not yookassa_shop_id:
             logger.error(
                 "YOOKASSA_TOKEN or YOOKASSA_SHOP_ID is not set. Payment YooKassa is disabled."
             )
             payment_yookassa_enabled = False
+        elif (not shop_email or len(shop_email) > 254 or "@" not in shop_email
+              or any(c in shop_email for c in "\r\n\x00") or parseaddr(shop_email) != ("", shop_email)):
+            raise ValueError("Valid SHOP_EMAIL required for YooKassa")
 
     payment_yoomoney_enabled = env.bool(
         "SHOP_PAYMENT_YOOMONEY_ENABLED",
@@ -372,7 +382,7 @@ def load_config() -> Config:
             APPROVAL_REQUIRED=env.bool(
                 "SHOP_APPROVAL_REQUIRED", default=DEFAULT_SHOP_APPROVAL_REQUIRED
             ),
-            EMAIL=env.str("SHOP_EMAIL", default=DEFAULT_SHOP_EMAIL),
+            EMAIL=shop_email,
             CURRENCY=env.str(
                 "SHOP_CURRENCY",
                 default=DEFAULT_SHOP_CURRENCY,
@@ -448,11 +458,11 @@ def load_config() -> Config:
             MERCHANT_ID=env_or_file(env, "CRYPTOMUS_MERCHANT_ID", default=None),
         ),
         heleket=HeleketConfig(
-            API_KEY=env.str("HELEKET_API_KEY", default=None),
-            MERCHANT_ID=env.str("HELEKET_MERCHANT_ID", default=None),
+            API_KEY=env_or_file(env, "HELEKET_API_KEY", default=None),
+            MERCHANT_ID=env_or_file(env, "HELEKET_MERCHANT_ID", default=None),
         ),
         yookassa=YooKassaConfig(
-            TOKEN=env.str("YOOKASSA_TOKEN", default=None),
+            TOKEN=env_or_file(env, "YOOKASSA_TOKEN", default=None),
             SHOP_ID=env.int("YOOKASSA_SHOP_ID", default=None),
         ),
         yoomoney=YooMoneyConfig(
@@ -463,7 +473,7 @@ def load_config() -> Config:
             HOST=env.str("DB_HOST", default=None),
             PORT=env.int("DB_PORT", default=None),
             USERNAME=env.str("DB_USERNAME", default=None),
-            PASSWORD=env.str("DB_PASSWORD", default=None),
+            PASSWORD=env_or_file(env, "DB_PASSWORD", default=None),
             NAME=env.str("DB_NAME", default=DEFAULT_DB_NAME),
         ),
         redis=RedisConfig(
@@ -471,7 +481,7 @@ def load_config() -> Config:
             PORT=env.int("REDIS_PORT", default=DEFAULT_REDIS_PORT),
             DB_NAME=env.str("REDIS_DB_NAME", default=DEFAULT_REDIS_DB_NAME),
             USERNAME=env.str("REDIS_USERNAME", default=None),
-            PASSWORD=env.str("REDIS_PASSWORD", default=None),
+            PASSWORD=env_or_file(env, "REDIS_PASSWORD", default=None),
         ),
         logging=LoggingConfig(
             LEVEL=env.str("LOG_LEVEL", default=DEFAULT_LOG_LEVEL),

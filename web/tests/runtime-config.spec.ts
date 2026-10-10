@@ -29,6 +29,9 @@ for(const [name,response] of [
  ['malformed',{body:'{not json',contentType:'application/json'}],
  ['invalid',{json:{...config,termsURL:'javascript:alert(1)'}}],
  ['incomplete',{json:{...config,privacyVersion:''}}],
+ ['invalid-name',{json:{...config,productName:'invalid\nname'}}],
+ ['oversized-name',{json:{...config,productName:'x'.repeat(129)}}],
+ ['nontext-name',{json:{...config,productName:42}}],
 ] as const){
  test(`${name} runtime config blocks registration`,async({page})=>{
   let registration=0;
@@ -38,5 +41,22 @@ for(const [name,response] of [
   await expect(page.getByRole('alert')).toContainText('Service is not configured');
   await expect(page.getByRole('button',{name:'Продолжить'})).toHaveCount(0);
   expect(registration).toBe(0);
+ });
+}
+
+for(const lang of ['ru','en'] as const){
+ test(`deployment product name is plain accessible text (${lang})`,async({page})=>{
+  let active={...config,productName:'<Fixture & Product>'};
+  await page.route('**/config.json',route=>route.fulfill({json:active}));
+  await page.goto('/login?lang='+lang);
+  const cabinet=lang==='ru'?'Кабинет':'Account';
+  await expect(page).toHaveTitle(cabinet+' · '+active.productName);
+  const brand=page.getByRole('banner').getByRole('link',{name:active.productName+' · '+cabinet});
+  await expect(brand).toBeVisible();
+  await page.keyboard.press('Tab');await expect(brand).toBeFocused();
+  expect(await brand.locator('*').count()).toBe(0);
+  active={...active,productName:'Second deployment'};
+  await page.reload();
+  await expect(page).toHaveTitle(cabinet+' · '+active.productName);
  });
 }

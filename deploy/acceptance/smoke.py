@@ -2,22 +2,35 @@
 Prerequisite: build the three local images with compose.acceptance.yml first.
 """
 import base64
+import hashlib
 import http.client
+import ipaddress
 import json
 import os
 from pathlib import Path
 import secrets
+import re
 import socket
 import ssl
 import subprocess
 import tempfile
 import time
+from uuid import uuid4
 
 ROOT=Path(__file__).resolve().parents[2]
 COMPOSE=ROOT/'deploy/acceptance/compose.acceptance.yml'
 REDACTIONS=[]
 
+def compose_environment(args):
+    # Shell interpolation outranks --env-file; only owned fixture inputs may win.
+    names=set(re.findall(r'\$\{([A-Z_]+)',COMPOSE.read_text()))
+    env={name:value for name,value in os.environ.items() if name not in names and not name.startswith('COMPOSE_')}
+    envfile=Path(args[args.index('--env-file')+1])
+    env.update(dict(line.split('=',1) for line in envfile.read_text().splitlines() if line and not line.startswith('#')))
+    return env
+
 def command(args,**kwargs):
+    if args[:2]==['docker','compose']:kwargs['env']=compose_environment(args)
     result=subprocess.run(args,cwd=ROOT,capture_output=True,timeout=120,**kwargs)
     if result.returncode:
         detail=result.stderr.decode(errors='replace')[-4000:]
@@ -28,9 +41,15 @@ def command(args,**kwargs):
 def run():
     with tempfile.TemporaryDirectory(prefix='cabinet-smoke-') as temporary:
         folder=Path(temporary)
+        project='cabinet-smoke-'+uuid4().hex[:8]
+        ids=command(['docker','network','ls','-q']).decode().split()
+        networks=json.loads(command(['docker','network','inspect',*ids])) if ids else []
+        used=[ipaddress.ip_network(c['Subnet']) for n in networks for c in (n.get('IPAM',{}).get('Config') or []) if c.get('Subnet')]
+        subnet=next((f'172.31.{i}.0/28' for i in range(140,240) if not any(ipaddress.ip_network(f'172.31.{i}.0/28').overlaps(n) for n in used if n.version==4)),None)
+        assert subnet, 'No free owned smoke subnet'
         # Secrets stay in mode0600 files. No command line contains their values.
         files={}
-        values={'pg-password':secrets.token_urlsafe(24),'redis-url':'redis://redis:6379/0','mail-key':base64.b64encode(secrets.token_bytes(32)).decode(),'code-key':base64.b64encode(secrets.token_bytes(32)).decode(),'adapter-token':secrets.token_urlsafe(32),'smtp-password':secrets.token_urlsafe(24),'panel-token':secrets.token_urlsafe(32),'test-bot-token':'1:'+secrets.token_urlsafe(32)}
+        values={'pg-password':secrets.token_urlsafe(24),'redis-url':'redis://redis:6379/0','mail-key':base64.b64encode(secrets.token_bytes(32)).decode(),'code-key':base64.b64encode(secrets.token_bytes(32)).decode(),'adapter-token':secrets.token_urlsafe(32),'smtp-password':secrets.token_urlsafe(24),'panel-token':secrets.token_urlsafe(32)}
         values['database-url']='postgres://cabinet:'+values['pg-password']+'@postgres:5432/cabinet?sslmode=disable'
         REDACTIONS.extend(values.values())
         for name,value in values.items():
@@ -39,7 +58,7 @@ def run():
         command(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=cabinet.example.test','-addext','subjectAltName=DNS:cabinet.example.test,DNS:gateway,IP:127.0.0.1','-keyout',str(key),'-out',str(cert)])
         key.chmod(0o600)
         data=(ROOT/'deploy/acceptance/.env.example').read_text()
-        mapping={'PG_PASSWORD_FILE':'pg-password','DATABASE_URL_FILE':'database-url','REDIS_URL_FILE':'redis-url','MAIL_KEY_FILE':'mail-key','CODE_KEY_FILE':'code-key','BOT_ADAPTER_TOKEN_FILE':'adapter-token','SMTP_PASSWORD_FILE':'smtp-password','PANEL_TOKEN_FILE':'panel-token','BOT_TOKEN_FILE':'test-bot-token'}
+        mapping={'PG_PASSWORD_FILE':'pg-password','DATABASE_URL_FILE':'database-url','REDIS_URL_FILE':'redis-url','MAIL_KEY_FILE':'mail-key','CODE_KEY_FILE':'code-key','BOT_ADAPTER_TOKEN_FILE':'adapter-token','SMTP_PASSWORD_FILE':'smtp-password','PANEL_TOKEN_FILE':'panel-token'}
         lines=[]
         for line in data.splitlines():
             name=line.split('=',1)[0]
@@ -48,19 +67,23 @@ def run():
             elif name in ('PUBLIC_KEY_FILE','ADAPTER_KEY_FILE'):line=name+'='+str(key)
             elif name=='APP_RUNTIME_UID':line=name+'='+str(os.getuid())
             elif name=='APP_RUNTIME_GID':line=name+'='+str(os.getgid())
+            elif name=='APP_NETWORK_SUBNET':line=name+'='+subnet
+            elif name=='APP_GATEWAY_IP':line=name+'='+str(ipaddress.ip_network(subnet).network_address+14)
             lines.append(line)
         envfile=folder/'public.env';envfile.write_text('\n'.join(lines)+'\n');envfile.chmod(0o600)
-        compose=['docker','compose','--project-name','cabinet-smoke','--profile','restore','--env-file',str(envfile),'-f',str(COMPOSE)]
+        override=folder/'ports.yml';override.write_text("services:\n  gateway:\n    ports: !override ['127.0.0.1::8443']\n")
+        compose=['docker','compose','--project-name',project,'--profile','restore','--env-file',str(envfile),'-f',str(COMPOSE),'-f',str(override)]
         try:
             command(compose+['config','--quiet'])
             command(compose+['up','--pull','never','--no-build','-d','backend','gateway'])
+            port=int(command(compose+['port','gateway','8443']).decode().strip().rsplit(':',1)[1])
             context=ssl.create_default_context(cafile=str(cert))
             def get(path):
-                conn=http.client.HTTPSConnection('cabinet.example.test',58443,context=context,timeout=3)
+                conn=http.client.HTTPSConnection('cabinet.example.test',port,context=context,timeout=3)
                 # Keep the real hostname/SNI while routing this test-only connection to loopback.
-                conn._create_connection=lambda address,timeout,source:socket.create_connection(('127.0.0.1',58443),timeout,source)
+                conn._create_connection=lambda address,timeout,source:socket.create_connection(('127.0.0.1',port),timeout,source)
                 try:
-                    conn.request('GET',path,headers={'Host':'cabinet.example.test:58443'})
+                    conn.request('GET',path,headers={'Host':'cabinet.example.test:'+str(port)})
                     response=conn.getresponse();return response.status,response.getheaders(),response.read()
                 finally:conn.close()
             def one_header(headers,name):
@@ -101,12 +124,47 @@ def run():
             assert one_header(headers,'Cache-Control')=='no-store'
             public_values=dict(line.split('=',1) for line in lines if '=' in line)
             assert json.loads(body)=={
+                'productName':public_values['PRODUCT_NAME'],
                 'termsVersion':public_values['TERMS_VERSION'],
                 'privacyVersion':public_values['PRIVACY_VERSION'],
                 'termsURL':public_values['TERMS_URL'],
                 'privacyURL':public_values['PRIVACY_URL'],
                 'supportURL':public_values['SUPPORT_URL'],
             }, 'cabinet configuration must come from the deployment environment'
+            def browser_config(name):
+                command(['node','web/tests/runtime-deployment.mjs'],env={**os.environ,
+                    'TEST_ORIGIN':'https://cabinet.example.test:'+str(port),'EXPECTED_PRODUCT_NAME':name})
+            browser_config(public_values['PRODUCT_NAME'])
+            image=command(['docker','inspect','--format','{{.Image}}',command(compose+['ps','-q','gateway']).decode().strip()])
+            html=get('/cabinet')[2]
+            assets={p.decode():hashlib.sha256(get(p.decode())[2]).digest() for p in re.findall(rb'"(/assets/[^\"]+)"',html)}
+            assert assets, 'Built web assets missing'
+            replacement={**public_values,'PRODUCT_NAME':'Second deployment','TERMS_VERSION':'next','PRIVACY_VERSION':'next',
+                         'TERMS_URL':'https://second.example.test/terms','PRIVACY_URL':'https://second.example.test/privacy','SUPPORT_URL':'mailto:help@second.example.test'}
+            envfile.write_text('\n'.join(name+'='+value for name,value in replacement.items())+'\n')
+            command(compose+['up','--pull','never','--no-build','--no-deps','-d','backend','gateway'])
+            port=int(command(compose+['port','gateway','8443']).decode().strip().rsplit(':',1)[1])
+            deadline=time.monotonic()+20
+            while True:
+                try:
+                    changed=get('/config.json')
+                    if get('/readyz')[0]==200 and changed[0]==200:break
+                except (OSError,http.client.HTTPException):pass
+                assert time.monotonic()<deadline, 'Recreated runtime did not become ready'
+                time.sleep(.2)
+            assert json.loads(changed[2])=={'productName':replacement['PRODUCT_NAME'],'termsVersion':'next','privacyVersion':'next',
+                'termsURL':replacement['TERMS_URL'],'privacyURL':replacement['PRIVACY_URL'],'supportURL':replacement['SUPPORT_URL']}
+            assert one_header(changed[1],'Cache-Control')=='no-store'
+            assert image==command(['docker','inspect','--format','{{.Image}}',command(compose+['ps','-q','gateway']).decode().strip()])
+            assert get('/cabinet')[2]==html and all(hashlib.sha256(get(p)[2]).digest()==digest for p,digest in assets.items())
+            browser_config(replacement['PRODUCT_NAME'])
+            print('PASS: two public deployments, same web image/HTML/assets, no-store and ready HTTP/River; Telegram off without token',flush=True)
+            denied=subprocess.run(compose+['run','--rm','--no-deps','-e','TELEGRAM_ENABLED=true','-e','BOT_TOKEN_FILE=',
+                                          '-e','LEGACY_BOT_API_ENABLED=false','backend','serve'],cwd=ROOT,env=compose_environment(compose),capture_output=True,timeout=30)
+            assert denied.returncode==1 and b'SERVICE_UNAVAILABLE' in denied.stderr, 'Telegram-on without token did not refuse startup'
+            assert all(value.encode() not in denied.stdout+denied.stderr for value in values.values()), 'Startup error disclosed fixture credentials'
+            assert get('/readyz')[0]==200, 'Denied second runtime affected the original process'
+            print('PASS: real serve rejects Telegram-on without token and leaves original runtime ready',flush=True)
             assert get('/internal/v1/telegram/jobs/claim')[0]==404
             status,headers,_=get('/api/v1/me')
             assert status==401
