@@ -56,7 +56,7 @@ test('history is sorted and deduplicated with delivery and protected attachment 
  });
  await page.goto('/cabinet/support?lang=en');await expect(page.getByRole('heading',{name:'Support messages'})).toBeVisible();await expect.poll(()=>ackBody).toEqual({sequence:52});
  expect(await page.locator('[data-sequence]').evaluateAll(items=>items.map(item=>item.getAttribute('data-sequence')))).toEqual(['51','52']);await expect(page.getByText('Stored in support',{exact:true})).toBeVisible();await expect(page.getByText('Delivered to recipient cabinet',{exact:true})).toBeVisible();
- const attachment=page.getByRole('link',{name:/Download notes.txt/});await expect(attachment).toHaveAttribute('download','notes.txt');await expect(attachment).toHaveAttribute('href','/api/v1/support/messages/00000000-0000-4000-8000-000000000052/attachment');expect(await page.locator('img,object,iframe').count()).toBe(0);
+ const attachment=page.getByRole('link',{name:/Download notes.txt/});await expect(attachment).toHaveAttribute('download','notes.txt');await expect(attachment).toHaveAttribute('href','/api/v1/support/messages/00000000-0000-4000-8000-000000000052/attachment');await expect(page.getByRole('main').getByText('<img src=external.example.test>',{exact:true})).toBeVisible();await expect(page.getByRole('main').locator('img,object,iframe')).toHaveCount(0);
  await page.getByRole('button',{name:'Load older messages'}).click();expect(historyBody).toEqual({before_sequence:51});await expect(page.locator('[data-sequence]')).toHaveCount(4);expect(await page.locator('[data-sequence]').evaluateAll(items=>items.map(item=>item.getAttribute('data-sequence')))).toEqual(['49','50','51','52']);await expect(page.getByRole('button',{name:'Load older messages'})).toHaveCount(0);
 });
 
