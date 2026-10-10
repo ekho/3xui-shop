@@ -29,6 +29,7 @@ type Config struct {
 	HTTP                  HTTPConfig
 	Accounts              accounts.Config
 	Bonuses               bonuses.RewardConfig
+	ReferredTrial         bonuses.ReferredTrialConfig
 	Subscriptions         subscriptions.Config
 	VPN                   vpn.Settings
 	Payments              payments.Config
@@ -59,6 +60,10 @@ func SecretFile(name string) (string, error) {
 	return v, nil
 }
 func LoadConfig() (Config, error) {
+	referredTrial, err := readReferredTrialConfig()
+	if err != nil {
+		return Config{}, err
+	}
 	audit, err := readAuditConfig()
 	if err != nil {
 		return Config{}, err
@@ -78,6 +83,7 @@ func LoadConfig() (Config, error) {
 		Mail:            notifications.MailConfig{SMTPAddress: os.Getenv("SMTP_ADDRESS"), SMTPUser: os.Getenv("SMTP_USER"), SMTPFrom: os.Getenv("SMTP_FROM")},
 		Audit:           audit,
 		Bonuses:         rewards,
+		ReferredTrial:   referredTrial,
 	}
 	if value := os.Getenv("TRUSTED_PROXY_CIDRS"); value != "" {
 		c.HTTP.TrustedProxyCIDRs = strings.Split(value, ",")

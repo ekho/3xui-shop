@@ -21,6 +21,8 @@ type Config struct {
 	TrialEnabled                                  bool
 	TrialPeriodDays, TrialTrafficGB, TrialDevices int64
 	RequireStarsCancellation                      func(context.Context, pgx.Tx, uuid.UUID, string) error
+	ReferredTrial                                 func(context.Context, pgx.Tx, accounts.Snapshot, uuid.UUID) (int64, error)
+	ReferredTrialApplied                          func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID, uuid.UUID) error
 }
 
 func (s *Service) allowNew(ctx context.Context, tx pgx.Tx) error {
