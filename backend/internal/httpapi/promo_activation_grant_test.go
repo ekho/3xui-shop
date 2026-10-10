@@ -15,7 +15,7 @@ import (
 
 func activationCode(t *testing.T, s *regressionFixture, actor uuid.UUID, days int) bonuses.Promocode {
 	t.Helper()
-	r, err := s.bonusesOwner.CreatePromocode(context.Background(), actor, uuid.New(), bonuses.CreatePromocodeInput{DurationDays: days, Reason: "owned S21 fixture"})
+	r, err := s.bonusesOwner.CreatePromocode(context.Background(), actor, uuid.New(), bonuses.CreatePromocodeInput{DurationDays: days, Reason: "owned activation fixture"})
 	if err != nil {
 		t.Fatal("create owned code", err)
 	}

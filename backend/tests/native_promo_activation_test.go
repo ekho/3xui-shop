@@ -30,7 +30,7 @@ import (
 
 func nativePromoCreate(t *testing.T, f *fixture, actor *http.Client, csrf string, days int) bonuses.Promocode {
 	t.Helper()
-	status, raw, _ := f.send(t, actor, "POST", "/api/v1/operator/promocodes", map[string]any{"duration_days": days, "reason": "owned S21 native fixture"}, csrf, uuid.NewString(), false)
+	status, raw, _ := f.send(t, actor, "POST", "/api/v1/operator/promocodes", map[string]any{"duration_days": days, "reason": "owned activation native fixture"}, csrf, uuid.NewString(), false)
 	var out bonuses.Promocode
 	if status != 201 || json.Unmarshal(raw, &out) != nil {
 		t.Fatal("native code create", status)

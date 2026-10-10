@@ -37,6 +37,7 @@ Passed local checks (2026-10-10):
 | Module/runtime/SQL boundaries | `go test ./internal/app -run 'Boundary\|Boundaries\|SharedFacade' -count=1`: passed, 1.333s |
 | Generated contracts | Repeated `make generate` + web `api:generate` leave both combined contracts unchanged |
 | Static/build | Go vet, web typecheck, test-mode build and `git diff --check`: passed |
+| Semantic source names | Initial CI stopped on two roadmap labels in test reasons before behavior checks. Renamed those fixture reasons; `python3 deploy/acceptance/check_names.py` passes |
 
 Focused commands, with this task's private fixture URL files:
 
