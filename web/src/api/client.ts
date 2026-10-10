@@ -18,6 +18,8 @@ export type SubscriptionKey=components["schemas"]["SubscriptionKey"];
 export class ApiError extends Error {
  constructor(public status:number,public code:string,public request_id:string,public retryAfter=0){super(code);}
 }
+export type MaintenanceStatus=components['schemas']['MaintenanceStatus'];
+export type MaintenanceInput=components['schemas']['MaintenanceInput'];
 let csrf:string|undefined,miniToken:string|undefined;let miniEpoch=0;
 async function request<T>(path:string,method='GET',body?:unknown,signal?:AbortSignal,sessionWrite=false,key?:string,blob=false):Promise<T>{
  const mini=isMiniApp(),epoch=miniEpoch;
@@ -47,6 +49,10 @@ export const activateTelegramTrial=(key:string,signal?:AbortSignal)=>request<Tri
 export const getCurrentTrialRequest=(signal?:AbortSignal)=>request<CurrentTrialRequest>('trial-requests/current','GET',undefined,signal);
 export const getSubscription=(signal?:AbortSignal)=>request<Subscription>('subscription','GET',undefined,signal);
 export const getSubscriptionKey=(signal?:AbortSignal)=>request<SubscriptionKey>('subscription/key','GET',undefined,signal);
+function maintenanceStatus(value:MaintenanceStatus){if(typeof value?.enabled!=='boolean'||!Number.isSafeInteger(value.revision)||value.revision<0||(value.changed_at!==null&&(typeof value.changed_at!=='string'||!Number.isFinite(Date.parse(value.changed_at)))))throw new ApiError(503,'SERVICE_UNAVAILABLE','');return value;}
+export const getMaintenance=(signal?:AbortSignal)=>request<MaintenanceStatus>('maintenance','GET',undefined,signal).then(maintenanceStatus);
+export const getOperatorMaintenance=(signal?:AbortSignal)=>request<MaintenanceStatus>('operator/maintenance','GET',undefined,signal).then(maintenanceStatus);
+export const setOperatorMaintenance=(input:MaintenanceInput,key:string,signal?:AbortSignal)=>request<MaintenanceStatus>('operator/maintenance','POST',input,signal,true,key);
 
 export type Reminder=components['schemas']['Reminder'];
 export type ReminderResult=components['schemas']['ReminderResult'];

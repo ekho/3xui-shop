@@ -35,6 +35,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -757,10 +758,18 @@ func TestWebTrialBackupRestore(t *testing.T) {
 		t.Fatal("backup point must include a running River job", jobState, err)
 	}
 	cfg := f.env.Pool.Config().ConnConfig
-	if cfg.Host != "127.0.0.1" || cfg.Port != 55491 {
+	if cfg.Host != "127.0.0.1" {
 		t.Fatal("restore fixture requires local controlled Compose PostgreSQL")
 	}
-	lookup := exec.Command("docker", "compose", "-f", filepath.Join(f.root, "deploy/acceptance/compose.test.yml"), "ps", "-q", "postgres")
+	composeFile := os.Getenv("TEST_POSTGRES_COMPOSE_FILE")
+	if composeFile == "" {
+		composeFile = filepath.Join(f.root, "deploy/acceptance/compose.test.yml")
+	}
+	port, err := exec.Command("docker", "compose", "-f", composeFile, "port", "postgres", "5432").Output()
+	if err != nil || strings.TrimSpace(string(port)) != "127.0.0.1:"+strconv.Itoa(int(cfg.Port)) {
+		t.Fatal("restore fixture PostgreSQL port does not match selected Compose service")
+	}
+	lookup := exec.Command("docker", "compose", "-f", composeFile, "ps", "-q", "postgres")
 	id, err := lookup.Output()
 	container := strings.TrimSpace(string(id))
 	if err != nil || !regexp.MustCompile(`^[0-9a-f]{12,64}$`).MatchString(container) {
@@ -826,7 +835,7 @@ func TestWebTrialBackupRestore(t *testing.T) {
 	if err != nil || version != 36 {
 		t.Fatal("server-pool downgrade guard was not selected", version, err)
 	}
-	if _, err = provider.Down(ctx); err == nil || !strings.Contains(err.Error(), "server pool downgrade blocked") {
+	if _, err = provider.DownTo(ctx, 34); err == nil || !strings.Contains(err.Error(), "server pool downgrade blocked") {
 		t.Fatal("restored server history allowed downgrade", err)
 	}
 	if err = db.Migrate(ctx, restored); err != nil {

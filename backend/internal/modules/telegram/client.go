@@ -12,6 +12,7 @@ import (
 
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/notifications"
+	"example.com/cabinet/backend/internal/modules/operations"
 	"example.com/cabinet/backend/internal/modules/payments"
 	"example.com/cabinet/backend/internal/modules/telegram/internal/botapi"
 	"github.com/google/uuid"
@@ -24,16 +25,21 @@ type Client struct {
 	accounts         *accounts.Service
 	payments         *payments.Service
 	notices          *notifications.Service
+	maintenance      *operations.Maintenance
 }
 
 var botUsername = regexp.MustCompile(`^[A-Za-z0-9_]{5,32}$`)
 
-func NewClient(origin string, a *accounts.Service, p *payments.Service, n *notifications.Service) (*Client, error) {
+func NewClient(origin string, a *accounts.Service, p *payments.Service, n *notifications.Service, maintenance ...*operations.Maintenance) (*Client, error) {
 	u, err := url.Parse(origin)
 	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.RawPath != "" || (u.Path != "" && u.Path != "/") || a == nil || p == nil || n == nil {
 		return nil, errors.New("invalid Telegram client configuration")
 	}
-	return &Client{origin: strings.TrimSuffix(origin, "/"), accounts: a, payments: p, notices: n}, nil
+	c := &Client{origin: strings.TrimSuffix(origin, "/"), accounts: a, payments: p, notices: n}
+	if len(maintenance) > 0 {
+		c.maintenance = maintenance[0]
+	}
+	return c, nil
 }
 func (c *Client) start(ctx context.Context, api *botapi.Client, token string) error {
 	me, err := api.GetMe(ctx)
@@ -99,7 +105,16 @@ func (c *Client) send(ctx context.Context, chat int64, lang, path, source string
 	k := &botapi.InlineKeyboard{Rows: [][]botapi.Button{{b}, {{
 		Text: clientText(lang, "Поддержка", "Support"), WebApp: &botapi.WebAppInfo{URL: c.route("/support", lang)},
 	}}}}
-	_, err := c.api.SendMessage(ctx, chat, clientText(lang, "Подписка, подключение и поддержка доступны в кабинете.", "Your subscription, connection and support are available in the cabinet."), k)
+	message := clientText(lang, "Подписка, подключение и поддержка доступны в кабинете.", "Your subscription, connection and support are available in the cabinet.")
+	if c.maintenance != nil {
+		status, err := c.maintenance.Status(ctx)
+		if err != nil {
+			message = clientText(lang, "Статус обслуживания временно недоступен. Кабинет и поддержка доступны.", "Maintenance status is temporarily unavailable. Cabinet and support remain available.")
+		} else if status.Enabled {
+			message = clientText(lang, "Идут технические работы. Новые покупки и пробные подписки временно недоступны. Кабинет и поддержка доступны.", "Maintenance is in progress. New purchases and trials are temporarily unavailable. Cabinet and support remain available.")
+		}
+	}
+	_, err := c.api.SendMessage(ctx, chat, message, k)
 	return cosmetic(err)
 }
 func (c *Client) deliver(parent context.Context, j notifications.ClientJob) error {

@@ -24,6 +24,7 @@ func TestServerManagementMigrationEmptyRollbackAndHistoryGuard(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// Exercise migration 37's rollback even after newer migrations are added.
 			if _, err = provider.DownTo(ctx, 36); err != nil {
 				t.Fatalf("empty rollback: %v", err)
 			}
