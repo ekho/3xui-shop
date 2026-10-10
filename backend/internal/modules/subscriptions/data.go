@@ -18,7 +18,12 @@ func (s *Service) requireOperator(ctx context.Context, actor uuid.UUID) error {
 	return accountError(s.accounts.RequireOperator(ctx, actor))
 }
 func (s *Service) CanRequestTrial(ctx context.Context, a accounts.Snapshot) (bool, error) {
-	return s.canRequestTrial(ctx, store.New(s.pool), a)
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return false, unavailable()
+	}
+	defer tx.Rollback(ctx)
+	return s.canRequestTrial(ctx, tx, store.New(tx), a)
 }
 func (s *Service) RecordTrialOutcomeTx(ctx context.Context, tx pgx.Tx, request, operation uuid.UUID, status string) error {
 	q := store.New(tx)

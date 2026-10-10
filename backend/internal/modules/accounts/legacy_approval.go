@@ -120,6 +120,25 @@ func (s *Service) ImportLegacyApprovals(ctx context.Context, p LegacyApprovalPac
 		return result, unavailable()
 	}
 	defer tx.Rollback(ctx)
+	result, err = s.ImportLegacyApprovalsTx(ctx, tx, p, dryRun)
+	if err != nil || dryRun {
+		return result, err
+	}
+	if tx.Commit(ctx) != nil {
+		return result, unavailable()
+	}
+	return result, nil
+}
+
+// ImportLegacyApprovalsTx participates in the caller's transaction.
+func (s *Service) ImportLegacyApprovalsTx(ctx context.Context, tx pgx.Tx, p LegacyApprovalPackage, dryRun bool) (LegacyApprovalImportResult, error) {
+	var result LegacyApprovalImportResult
+	if tx == nil {
+		return result, unavailable()
+	}
+	if err := validateLegacyPackage(p); err != nil {
+		return result, err
+	}
 	q := store.New(tx)
 	type located struct {
 		user    LegacyApprovalUser
@@ -128,6 +147,7 @@ func (s *Service) ImportLegacyApprovals(ctx context.Context, p LegacyApprovalPac
 	}
 	locatedUsers := make([]located, 0, len(p.Users))
 	ids := make(map[int64]uuid.UUID, len(p.Users))
+	var err error
 	for _, u := range p.Users {
 		a, err := q.AccountByTelegramID(ctx, pgtype.Int8{Int64: u.SourceTgID, Valid: true})
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -224,11 +244,6 @@ func (s *Service) ImportLegacyApprovals(ctx context.Context, p LegacyApprovalPac
 			if err != nil || n != 1 {
 				return result, failure(409, "IMPORT_SOURCE_CONFLICT")
 			}
-		}
-	}
-	if !dryRun {
-		if err := tx.Commit(ctx); err != nil {
-			return result, unavailable()
 		}
 	}
 	return result, nil

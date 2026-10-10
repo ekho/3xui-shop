@@ -98,6 +98,25 @@ func (s *Service) ImportLegacy(ctx context.Context, p LegacyAuditPackage, dryRun
 		return out, unavailable()
 	}
 	defer tx.Rollback(ctx)
+	out, err = s.ImportLegacyTx(ctx, tx, p, dryRun)
+	if err != nil {
+		return out, err
+	}
+	if tx.Commit(ctx) != nil {
+		return LegacyAuditImportResult{}, unavailable()
+	}
+	return out, nil
+}
+
+// ImportLegacyTx participates in the caller's transaction.
+func (s *Service) ImportLegacyTx(ctx context.Context, tx pgx.Tx, p LegacyAuditPackage, dryRun bool) (LegacyAuditImportResult, error) {
+	out := LegacyAuditImportResult{}
+	if tx == nil {
+		return out, unavailable()
+	}
+	if err := ValidateLegacyAuditPackage(p); err != nil {
+		return out, err
+	}
 	q := store.New(tx)
 	events := append([]LegacyAuditInput(nil), p.Events...)
 	// Shared packages lock source IDs in one order, including overlapping batches.
@@ -148,9 +167,6 @@ func (s *Service) ImportLegacy(ctx context.Context, p LegacyAuditPackage, dryRun
 		if err != nil || q.InsertSystemAudit(ctx, store.InsertSystemAuditParams{ID: uuid.New(), CreatedAt: now, Action: "audit.legacy_imported", LegacyCount: int64(out.Inserted)}) != nil {
 			return LegacyAuditImportResult{}, unavailable()
 		}
-	}
-	if tx.Commit(ctx) != nil {
-		return LegacyAuditImportResult{}, unavailable()
 	}
 	return out, nil
 }

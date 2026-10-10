@@ -68,7 +68,7 @@ func ValidateLegacyPackage(p LegacyPackage) error {
 	}
 	legacy, tg := map[int64]bool{}, map[int64]bool{}
 	for _, u := range p.Users {
-		if u.SourceLegacyUserID <= 0 || u.SourceTgID <= 0 || legacy[u.SourceLegacyUserID] || tg[u.SourceTgID] || !validText(u.SourceInviteName, 100) || u.IsTrialUsed == nil {
+		if u.SourceLegacyUserID <= 0 || u.SourceTgID <= 0 || legacy[u.SourceLegacyUserID] || tg[u.SourceTgID] || !validText(u.SourceInviteName, 100) {
 			return bad()
 		}
 		legacy[u.SourceLegacyUserID], tg[u.SourceTgID], names[u.SourceInviteName] = true, true, true
@@ -127,6 +127,26 @@ func (s *Service) ImportLegacy(ctx context.Context, p LegacyPackage, apply bool)
 		return out, unavailable()
 	}
 	defer tx.Rollback(ctx)
+	out, err = s.ImportLegacyTx(ctx, tx, p, apply)
+	if err != nil || !apply {
+		return out, err
+	}
+	if tx.Commit(ctx) != nil {
+		return out, unavailable()
+	}
+	return out, nil
+}
+
+// ImportLegacyTx participates in the caller's transaction.
+func (s *Service) ImportLegacyTx(ctx context.Context, tx pgx.Tx, p LegacyPackage, apply bool) (ImportResult, error) {
+	out := ImportResult{Users: len(p.Users)}
+	if tx == nil {
+		return out, unavailable()
+	}
+	if err := ValidateLegacyPackage(p); err != nil {
+		return out, err
+	}
+	var err error
 	if apply {
 		// ponytail: rare CLI imports serialize; source-specific locks if import throughput matters.
 		if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('campaigns:legacy-import',0))`); err != nil {
@@ -316,9 +336,6 @@ func (s *Service) ImportLegacy(ctx context.Context, p LegacyPackage, apply bool)
 		return []any{uuid.New(), v.campaign.CampaignID, "legacy_import", now, reason, before, after}, e
 	})); err != nil {
 		return out, importWriteError(err)
-	}
-	if tx.Commit(ctx) != nil {
-		return out, unavailable()
 	}
 	return out, nil
 }

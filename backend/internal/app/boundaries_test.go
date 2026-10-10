@@ -30,7 +30,7 @@ func forbiddenImport(owner, dependency string) bool {
 	return strings.Contains(peer, "/") && !strings.HasPrefix(dependency, owner+"/")
 }
 
-var accountSQL = regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:accounts|operator_accounts|sessions|registration_challenges|credential_challenges|legacy_approval_snapshots|legacy_approval_events)\b`)
+var accountSQL = regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:accounts|operator_accounts|sessions|registration_challenges|credential_challenges|legacy_approval_snapshots|legacy_approval_events|legacy_account_imports)\b`)
 
 func ownsAccountSQL(text string) bool {
 	return accountSQL.MatchString(strings.ReplaceAll(text, `"`, ""))
@@ -41,6 +41,7 @@ func TestAccountsSQLBoundary(t *testing.T) {
 		`SELECT * FROM accounts`, `UPDATE accounts SET restricted=true`,
 		`INSERT INTO sessions VALUES ($1)`, `DELETE FROM public.operator_accounts`,
 		`WITH p AS (SELECT * FROM "public"."credential_challenges") SELECT * FROM p`,
+		`SELECT source_snapshot FROM legacy_account_imports`,
 	} {
 		if !ownsAccountSQL(sql) {
 			t.Fatal("negative fixture bypassed account ownership", sql)
@@ -276,20 +277,21 @@ func TestSubscriptionsSQLBoundary(t *testing.T) {
 }
 
 func TestVPNSQLBoundary(t *testing.T) {
-	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:trial_operations|access_operations|monthly_reset_periods)\b`)
+	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:trial_operations|access_operations|monthly_reset_periods|legacy_server_imports)\b`)
 	checkSQLBoundary(t, "vpn", func(text string) bool {
 		return pattern.MatchString(strings.ReplaceAll(text, `"`, ""))
 	})
 }
 
 func TestPaymentsSQLBoundary(t *testing.T) {
-	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:purchase_orders|purchase_receipts|purchase_refunds|legacy_payment_transactions)\b`)
+	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:purchase_orders|purchase_receipts|purchase_refunds|legacy_payment_transactions|legacy_stars_imports)\b`)
 	ownsSQL := func(text string) bool {
 		return pattern.MatchString(strings.ReplaceAll(text, `"`, ""))
 	}
 	for _, sql := range []string{
 		`SELECT * FROM purchase_orders`, `UPDATE purchase_receipts SET review_reason=$1`, `SELECT * FROM purchase_refunds`, `DELETE FROM public.purchase_refunds`,
 		`SELECT subscription FROM legacy_payment_transactions`,
+		`SELECT source_snapshot FROM legacy_stars_imports`,
 		`INSERT INTO purchase_orders VALUES ($1)`, `DELETE FROM public.purchase_receipts`,
 		`WITH p AS (SELECT * FROM "public"."purchase_orders") SELECT * FROM p`,
 	} {
@@ -425,9 +427,9 @@ func TestCampaignsSQLBoundary(t *testing.T) {
 }
 
 func TestBonusesSQLBoundary(t *testing.T) {
-	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:promocodes|promocode_events|referrals|referral_links|referrer_rewards)\b`)
+	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:promocodes|promocode_events|referrals|referral_links|referrer_rewards|legacy_bonus_imports)\b`)
 	owns := func(text string) bool { return pattern.MatchString(strings.ReplaceAll(text, `"`, "")) }
-	for _, sql := range []string{"SELECT * FROM promocodes", "UPDATE promocode_events SET reason=NULL", "DELETE FROM public.promocodes", "SELECT * FROM referrals", "SELECT code FROM referral_links", "UPDATE referrer_rewards SET rewarded_at=now()"} {
+	for _, sql := range []string{"SELECT * FROM promocodes", "UPDATE promocode_events SET reason=NULL", "DELETE FROM public.promocodes", "SELECT * FROM referrals", "SELECT code FROM referral_links", "UPDATE referrer_rewards SET rewarded_at=now()", "SELECT source_snapshot FROM legacy_bonus_imports"} {
 		if !owns(sql) {
 			t.Fatal("bonuses ownership negative fixture escaped", sql)
 		}
@@ -436,6 +438,11 @@ func TestBonusesSQLBoundary(t *testing.T) {
 		t.Fatal("foreign owner rejected")
 	}
 	checkSQLBoundary(t, "bonuses", owns)
+}
+
+func TestLegacyMigrationSQLBoundary(t *testing.T) {
+	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?legacy_migration_runs\b`)
+	checkSQLBoundary(t, "operations", func(text string) bool { return pattern.MatchString(strings.ReplaceAll(text, `"`, "")) })
 }
 
 func TestSharedFacadeRemoved(t *testing.T) {

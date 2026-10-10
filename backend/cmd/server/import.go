@@ -39,7 +39,7 @@ func decodeLegacyJSON[T any](reader io.Reader) (T, error) {
 	var out T
 	const limit = 32 << 20
 	data, err := io.ReadAll(io.LimitReader(reader, limit+1))
-	if err != nil || len(data) > limit || !utf8.Valid(data) || !validJSONUnicode(data) {
+	if err != nil || len(data) > limit || !utf8.Valid(data) || !validJSONUnicode(data) || !validLegacyTokens(data, true) {
 		return out, errors.New("IMPORT_INVALID_PACKAGE")
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
@@ -48,6 +48,68 @@ func decodeLegacyJSON[T any](reader io.Reader) (T, error) {
 		return out, errors.New("IMPORT_INVALID_PACKAGE")
 	}
 	return out, nil
+}
+
+// Reject duplicate keys and timestamp digits before Go's time decoder can truncate them.
+func validLegacyTokens(data []byte, checkTimestamps bool) bool {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var value func(string) bool
+	value = func(key string) bool {
+		token, err := decoder.Token()
+		if err != nil {
+			return false
+		}
+		if delimiter, ok := token.(json.Delim); ok {
+			switch delimiter {
+			case '{':
+				keys := map[string]bool{}
+				for decoder.More() {
+					name, err := decoder.Token()
+					field, ok := name.(string)
+					if err != nil || !ok || keys[field] {
+						return false
+					}
+					keys[field] = true
+					if !value(field) {
+						return false
+					}
+				}
+				end, err := decoder.Token()
+				return err == nil && end == json.Delim('}')
+			case '[':
+				for decoder.More() {
+					if !value("") {
+						return false
+					}
+				}
+				end, err := decoder.Token()
+				return err == nil && end == json.Delim(']')
+			}
+			return false
+		}
+		if !checkTimestamps {
+			return true
+		}
+		switch key {
+		case "created_at", "updated_at", "requested_at", "decided_at", "referred_rewarded_at", "rewarded_at":
+			if token == nil {
+				return true
+			}
+			stamp, ok := token.(string)
+			if !ok {
+				return false
+			}
+			_, err := auditreports.ParseTimestamp(stamp)
+			return err == nil
+		}
+		return true
+	}
+	if !value("") {
+		return false
+	}
+	_, err := decoder.Token()
+	return err == io.EOF
 }
 
 // encoding/json replaces unpaired UTF-16 escapes. Raw financial IDs must never
