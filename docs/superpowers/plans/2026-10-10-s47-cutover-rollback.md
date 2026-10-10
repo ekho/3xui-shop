@@ -69,9 +69,9 @@
 
 **Files:** cutover native tests, `deploy/cutover/README.md`, final evidence document.
 
-- [ ] Bind rollback to a compatible checkpoint commit and read-only artifact preflight; reject base e53746c before stopping current PID; switch distinct binaries and replay old/new callbacks after rollback.
-- [ ] Prove maintenance, current-data rollback, late money, restart, full public digest after real backup/restore and source replay together.
-- [ ] Run substantive native local scopes on final source; request independent whole-branch review and resolve findings.
+- [x] Bind rollback to a compatible checkpoint commit and read-only artifact preflight; reject base e53746c before stopping current PID; switch distinct binaries and replay old/new callbacks after rollback.
+- [x] Prove maintenance, current-data rollback, late money, restart, full public digest after real backup/restore and source replay together.
+- [x] Run substantive native local scopes on final source; request independent whole-branch review and resolve findings.
 - [ ] Conventional Commit with Co-Authored-By, SSH source/upstream/remote preflight, push; create/attach PR targeting `v2`.
 - [ ] One full principal exact-source CI and all remaining images; retries only for changed input/evidenced transient with a budget.
 - [ ] Recheck exact HEAD/target/dependencies/gates/effects; manual merge, cleanup owned fixtures, close issue, Project Done and parent handoff.

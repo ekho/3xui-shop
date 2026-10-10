@@ -64,7 +64,18 @@ SIGTERM/wait и запуск другого binary/PID. Прежний и нов
 callbacks после rollback обязаны сохранить первый proof, две review receipts,
 все native account/order/receipt/access/source facts и ноль новых jobs.
 
-Результат actual artifact profile записывается после двух commit.
+Actual profile на `ca36eaf2f5693343c8cfea952ad33ad6e6c51bbf` прошёл: 26.960s
+(29.435s race package), unsafe baseline rejected при работающем current,
+retained state stable, две поздние review receipts, ноль новых jobs.
+
+| Роль в local rehearsal | Source revision | Executable SHA256 | PID |
+| --- | --- | --- | --- |
+| Current | `ca36eaf2f5693343c8cfea952ad33ad6e6c51bbf` | `a0510944a65e01b9033ad663085c022a76eecba0b0d7899a7a0b720195e6521d` | 68798 |
+| Compatible rollback | `aa559ea45df75b162a3e3f3e73d0a46d46e435a4` | `e9284cfa2fee1996f61f0e99292525861ceb2e70ed04afc66008cff260a5728e` | 68840 |
+
+Эта таблица относится к собственным macOS executables. Последующий evidence-only
+commit и exact final CI заново собирают current SHA; их результат и gates
+фиксируются в задаче/PR без изменения runtime implementation.
 Эти commit используют одинаковую business implementation. Доказательство
 покрывает реальную замену artifact/process и late-money compatibility выбранного
 checkpoint; оно не доказывает безопасность исходного старого payment code.

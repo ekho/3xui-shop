@@ -134,6 +134,9 @@ source history и старые identities. Повтор `import-legacy` с те�
 
 ## Репетиция и удалённые потребители
 
+[Приёмка и exact local artifacts](acceptance.md) фиксирует собственные проверки,
+revision/SHA256/PID, пределы доказательства и отдельные delivery gates.
+
 [Local acceptance](../../docs/runbooks/s01-test-rollout.md) и Platform CI сохраняют
 полные Go race/static/generated/security, browser, native 3X-UI/TLS SMTP,
 server/group reconciliation и backup scopes. `TestRuntimeOwnerTwoProcessesServeReconcileAndRestart` проверяет
