@@ -9,6 +9,7 @@ import (
 	"example.com/cabinet/backend/internal/app"
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/audit_reports"
+	"example.com/cabinet/backend/internal/modules/bonuses"
 	"example.com/cabinet/backend/internal/modules/campaigns"
 	"example.com/cabinet/backend/internal/modules/catalogue"
 	"example.com/cabinet/backend/internal/modules/notifications"
@@ -36,6 +37,7 @@ import (
 type API struct {
 	miniApp        *telegram.MiniApp
 	accounts       *accounts.Service
+	bonuses        *bonuses.Service
 	vpn            *vpn.Service
 	catalogueOwner *catalogue.Service
 	campaignsOwner *campaigns.Service
@@ -64,7 +66,7 @@ func failure(status int, code string) error {
 }
 func unavailable() error { return failure(503, "SERVICE_UNAVAILABLE") }
 func newAPI(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, contract *openapi3.T) *API {
-	return &API{miniApp: modules.MiniApp, accounts: modules.Accounts, vpn: modules.VPN, catalogueOwner: modules.Catalogue, campaignsOwner: modules.Campaigns, subscriptions: modules.Subscriptions, payments: modules.Payments, supportOwner: modules.Support, notifications: modules.Notifications, reminders: modules.Reminders, notices: modules.Notices, auditReports: modules.AuditReports, maintenance: modules.Maintenance, pool: pool, cfg: cfg, contract: contract}
+	return &API{miniApp: modules.MiniApp, accounts: modules.Accounts, bonuses: modules.Bonuses, vpn: modules.VPN, catalogueOwner: modules.Catalogue, campaignsOwner: modules.Campaigns, subscriptions: modules.Subscriptions, payments: modules.Payments, supportOwner: modules.Support, notifications: modules.Notifications, reminders: modules.Reminders, notices: modules.Notices, auditReports: modules.AuditReports, maintenance: modules.Maintenance, pool: pool, cfg: cfg, contract: contract}
 }
 
 func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, readiness ...*operations.Readiness) *echo.Echo {
@@ -206,6 +208,7 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, readiness
 	e.POST("/internal/v1/telegram/jobs/:id/result", a.CompleteTelegramJob)
 	e.GET("/api/v1/support", a.GetSupport)
 	e.GET("/api/v1/reminders", a.GetReminders)
+	e.GET("/api/v1/referrals", a.GetReferrals)
 	e.GET("/api/v1/notices", a.GetNotices)
 	e.POST("/api/v1/notices/preferences", a.SetNoticeEmailPreference)
 	e.POST("/api/v1/notices/:id/dismiss", a.DismissNotice)

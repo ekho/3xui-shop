@@ -20,6 +20,7 @@ func NewTelegram(cfg telegram.Config, modules *Modules, origin string, client *h
 		if err != nil {
 			return nil, err
 		}
+		channel.ConfigureReferrals(modules.Bonuses)
 	}
 	runtime, err := telegram.New(cfg, client, bridge, bridge, channel)
 	if err != nil {
