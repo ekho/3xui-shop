@@ -17,6 +17,7 @@ x-backend: &backend
     CODE_KEY_FILE: /run/secrets/code_key
     BOT_ADAPTER_TOKEN_FILE: /run/secrets/adapter_token
     BOT_OPERATOR_IDS: '${BOT_OPERATOR_IDS:-}'
+    LEGACY_BOT_API_ENABLED: '${LEGACY_BOT_API_ENABLED:-true}'
     SMTP_ADDRESS: '${SMTP_ADDRESS:?required}'
     SMTP_USER: '${SMTP_USER:?required}'
     SMTP_FROM: '${SMTP_FROM:?required}'
@@ -28,6 +29,10 @@ x-backend: &backend
     PANEL_CA_FILE: /run/secrets/panel_ca
     SUBSCRIPTION_BASE_URL: '${SUBSCRIPTION_BASE_URL:?required}'
     ACCESS_RESET_TIMEZONE: '${ACCESS_RESET_TIMEZONE:-UTC}'
+    AUDIT_RETENTION_DAYS: '${AUDIT_RETENTION_DAYS:-365}'
+    AUDIT_RETENTION_TIMEZONE: '${AUDIT_RETENTION_TIMEZONE:-}'
+    BOT_TIMEZONE: '${BOT_TIMEZONE:-UTC}'
+    SHOP_PAYMENT_STARS_ENABLED: '${SHOP_PAYMENT_STARS_ENABLED:-false}'
     PANEL_DUPLICATE_GUARD_VERIFIED: '${PANEL_DUPLICATE_GUARD_VERIFIED:-false}'
     TRIAL_ENABLED: '${TRIAL_ENABLED:-false}'
     TRIAL_PERIOD: '${TRIAL_PERIOD:-3}'
@@ -72,8 +77,14 @@ services:
       <<: *backend-env
       LISTEN_ADDRESS: 0.0.0.0:8080
       TRUSTED_PROXY_CIDRS: '${APP_GATEWAY_IP:-172.31.98.14}/32'
+      TELEGRAM_ENABLED: '${TELEGRAM_ENABLED:-false}'
+      BOT_TOKEN_FILE: /run/secrets/bot_token
+      SUPPORT_TELEGRAM_ENABLED: '${SUPPORT_TELEGRAM_ENABLED:-false}'
+      SUPPORT_BOT_TOKEN_FILE: /run/secrets/support_bot_token
+      SUPPORT_GROUP_ID: '${SUPPORT_GROUP_ID:-}'
+      AUDIT_MIRROR_ENABLED: '${AUDIT_MIRROR_ENABLED:-false}'
       OPERATIONS_EMAIL_FILE: '${OPERATIONS_EMAIL_FILE:+/run/secrets/operations_email}'
-    secrets: [database_url, redis_url, mail_key, code_key, adapter_token, smtp_password, smtp_ca, panel_token, panel_ca, operations_email]
+    secrets: [database_url, redis_url, mail_key, code_key, adapter_token, smtp_password, smtp_ca, panel_token, panel_ca, operations_email, bot_token, support_bot_token]
     depends_on:
       migrate: {condition: service_completed_successfully}
   reconcile:
@@ -100,6 +111,7 @@ services:
       TERMS_URL: '${TERMS_URL:?required}'
       PRIVACY_URL: '${PRIVACY_URL:?required}'
       SUPPORT_URL: '${SUPPORT_URL:?required}'
+      PRODUCT_NAME: '${PRODUCT_NAME:-}'
     command: [caddy, run, --config, /etc/caddy/Caddyfile, --adapter, caddyfile]
     ports: ['127.0.0.1:58443:8443']
     volumes: ['./Caddyfile:/etc/caddy/Caddyfile:ro']
@@ -136,7 +148,7 @@ secrets:
   redis_url: {file: '${REDIS_URL_FILE:?required}'}
   mail_key: {file: '${MAIL_KEY_FILE:?required}'}
   code_key: {file: '${CODE_KEY_FILE:?required}'}
-  adapter_token: {file: '${BOT_ADAPTER_TOKEN_FILE:?required}'}
+  adapter_token: {file: '${BOT_ADAPTER_TOKEN_FILE:-/dev/null}'}
   smtp_password: {file: '${SMTP_PASSWORD_FILE:?required}'}
   smtp_ca: {file: '${SMTP_CA_FILE:?required}'}
   panel_token: {file: '${PANEL_TOKEN_FILE:?required}'}
@@ -147,4 +159,5 @@ secrets:
   adapter_key: {file: '${ADAPTER_KEY_FILE:?required}'}
   adapter_ca: {file: '${WEB_TRIAL_API_CA_FILE:?required}'}
   bot_token: {file: '${BOT_TOKEN_FILE:-/dev/null}'}
+  support_bot_token: {file: '${SUPPORT_BOT_TOKEN_FILE:-/dev/null}'}
   operations_email: {file: '${OPERATIONS_EMAIL_FILE:-/dev/null}'}
