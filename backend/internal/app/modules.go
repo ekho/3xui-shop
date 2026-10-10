@@ -6,6 +6,7 @@ import (
 	"errors"
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/audit_reports"
+	"example.com/cabinet/backend/internal/modules/bonuses"
 	"example.com/cabinet/backend/internal/modules/campaigns"
 	"example.com/cabinet/backend/internal/modules/catalogue"
 	"example.com/cabinet/backend/internal/modules/notifications"
@@ -29,6 +30,7 @@ type Modules struct {
 	Accounts      *accounts.Service
 	Catalogue     *catalogue.Service
 	Campaigns     *campaigns.Service
+	Bonuses       *bonuses.Service
 	Subscriptions *subscriptions.Service
 	VPN           *vpn.Service
 	Payments      *payments.Service
@@ -121,6 +123,7 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 		return c
 	}, now, notificationsOwner)
 	campaignOwner = campaigns.New(pool, limiter, owner, subscriptionOwner, paymentsOwner, cfg.Accounts.RateNamespace, now)
+	bonusOwner := bonuses.New(pool, owner, now)
 	supportOwner := support.New(pool, limiter, owner, cfg.Accounts.RateNamespace, now, notificationsOwner)
 	reportsOwner := auditreports.New(pool, auditreports.StatisticsPorts{RequireOperator: owner.RequireOperator, AccountsTx: owner.StatisticsTx, ReportCohortTx: campaignOwner.ReportCohortTx, PaymentsTx: paymentsOwner.StatisticsTx, TrialsTx: subscriptionOwner.StatisticsTx, PlansTx: catalogueOwner.StatisticsTx, VPNTx: vpnOwner.StatisticsTx}, auditreports.HistoryPorts{LockOperatorTx: owner.LockNoticeOperatorTx, AccountExistsTx: func(ctx context.Context, tx pgx.Tx, id uuid.UUID) (bool, error) {
 		_, err := owner.LookupTx(ctx, tx, id)
@@ -131,5 +134,5 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 	}, LegacyTargetTx: owner.LegacyAuditTargetTx, LegacyLinksTx: owner.LegacyAuditLinksTx}, cfg.Audit)
 	remindersOwner := notifications.NewReminders(pool, notifications.ReminderPorts{AudienceTx: owner.ReminderAudienceTx, RecipientTx: owner.ReminderRecipientTx, AccessTx: vpnOwner.ReminderAccessTx, PeriodTx: vpnOwner.ReminderPeriodTx, StarsTx: paymentsOwner.ReminderPolicyTx, MailGuard: owner.WithMailGuard}, mailOwner, notificationsOwner, now)
 	noticesOwner := notifications.NewNotices(pool, notifications.NoticePorts{AudienceTx: owner.ReminderAudienceTx, RecipientTx: owner.NoticeRecipientTx, LockOperatorTx: owner.LockNoticeOperatorTx, LockPairTx: owner.LockNoticePairTx, DeliveryGuard: owner.WithNoticeDelivery, RequireOperator: owner.RequireOperator}, mailOwner, notificationsOwner, now)
-	return &Modules{Accounts: owner, Catalogue: catalogueOwner, Campaigns: campaignOwner, Subscriptions: subscriptionOwner, VPN: vpnOwner, Payments: paymentsOwner, Support: supportOwner, Notifications: notificationsOwner, MailDelivery: mailOwner, Reminders: remindersOwner, Notices: noticesOwner, AuditReports: reportsOwner, Maintenance: maintenanceOwner}
+	return &Modules{Accounts: owner, Catalogue: catalogueOwner, Campaigns: campaignOwner, Bonuses: bonusOwner, Subscriptions: subscriptionOwner, VPN: vpnOwner, Payments: paymentsOwner, Support: supportOwner, Notifications: notificationsOwner, MailDelivery: mailOwner, Reminders: remindersOwner, Notices: noticesOwner, AuditReports: reportsOwner, Maintenance: maintenanceOwner}
 }

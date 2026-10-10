@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"example.com/cabinet/backend/internal/modules/accounts"
+	"example.com/cabinet/backend/internal/modules/bonuses"
 	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/payments"
 	"example.com/cabinet/backend/internal/modules/telegram"
@@ -24,7 +25,7 @@ func TestNewTelegramTrialOnlyWithoutCabinetOrigin(t *testing.T) {
 func TestNewTelegramFullModeValidatesOrigin(t *testing.T) {
 	cfg := telegram.Config{Enabled: true, Token: "123456789:abcdefghijklmnopqrstuvwxyz012345678", Operators: []int64{101}}
 	// Construction only: no domain action is invoked against these ports.
-	modules := &Modules{Accounts: &accounts.Service{}, Payments: &payments.Service{}, Notifications: &notifications.Service{}, VPN: &vpn.Service{}}
+	modules := &Modules{Accounts: &accounts.Service{}, Bonuses: &bonuses.Service{}, Payments: &payments.Service{}, Notifications: &notifications.Service{}, VPN: &vpn.Service{}}
 	if runtime, err := NewTelegram(cfg, modules, "https://cabinet.example.test", nil); err != nil || runtime == nil {
 		t.Fatalf("full mode valid origin: runtime=%v err=%v", runtime != nil, err)
 	}
