@@ -38,6 +38,7 @@ Passed local checks (2026-10-10):
 | Generated contracts | Repeated `make generate` + web `api:generate` leave both combined contracts unchanged |
 | Static/build | Go vet, web typecheck, test-mode build and `git diff --check`: passed |
 | Semantic source names | Initial CI stopped on two roadmap labels in test reasons before behavior checks. Renamed those fixture reasons; `python3 deploy/acceptance/check_names.py` passes |
+| Automatic Telegram trial integration | Full CI exposed an obsolete whole-page zero-textbox assertion; the same native browser test reproduced it locally. Both native and RU/EN mock checks now assert that the support-comment field is absent and the promocode field is visible. Native real HTTP/River browser check passes with `-race`, 11.583s; the connected promo/trial browser set passes all 13 checks |
 
 Focused commands, with this task's private fixture URL files:
 
@@ -50,6 +51,8 @@ RUN_BROWSER_TESTS=1 go -C backend test -race ./tests -run '^TestNativePromoActiv
 go -C backend test -race ./tests -run '^(TestNativePromoActivationSharedOwnerRestart|TestNativeReferralsFlow)$' -count=1 -timeout=3m
 RUN_BROWSER_TESTS=1 go -C backend test -race ./tests -run '^(TestNativePromoActivationBrowser|TestNativeReferralsBrowser)$' -count=1 -timeout=3m
 E2E_PORT=4189 npm --prefix web run test:e2e -- tests/promo-activation.spec.ts
+RUN_BROWSER_TESTS=1 go -C backend test -race ./tests -run '^TestNativeTrialTelegramActivationBrowser$' -count=1 -timeout=2m
+E2E_PORT=4189 npm --prefix web run test:e2e -- tests/promo-activation.spec.ts tests/telegram-trial.spec.ts
 ```
 
 Independent source review of `a21b9757c68efd59a1e335ad60f9d1bfc71889d4`
