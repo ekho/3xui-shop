@@ -175,6 +175,8 @@ func New(modules *app.Modules, pool *pgxpool.Pool, cfg app.HTTPConfig, readiness
 	e.POST("/api/v1/operator/campaigns", a.CreateCampaign)
 	e.GET("/api/v1/operator/campaigns/:id", a.GetOperatorCampaign)
 	e.POST("/api/v1/operator/campaigns/:id/state", a.SetCampaignState)
+	e.POST("/api/v1/promocodes/activate", a.ActivatePromocode)
+	e.GET("/api/v1/promocodes/activations/:id", a.GetPromocodeActivation)
 	e.POST("/api/v1/operator/promocodes/search", a.ListOperatorPromocodes)
 	e.POST("/api/v1/operator/promocodes", a.CreatePromocode)
 	e.GET("/api/v1/operator/promocodes/:id", a.GetOperatorPromocode)

@@ -60,3 +60,19 @@ native process/3X-UI3.7.0, backup/restore всего public schema и три Ima
 Локально новый reward fact не проверялся отдельным dump/restore roundtrip.
 Production, live payment/Telegram/3X-UI, денежный баланс/payout, полный import
 и расширенный Telegram trial не входят в эту приёмку.
+
+## Совместимость с активацией промокодов
+
+После merge #49 в `v2` возник реальный конфликт двух общих файлов. Интегрирован
+target `6eb84888e7cdabe5ee3a8fccb385332a5675f220`: сохранены активация промокода,
+reward funding/source guards и один ранний `ConfigureSubscriptions`. Общие
+`access_operations.go`/`bonus_days.go` совпадают с target; миграция42 не менялась.
+
+На объединённом дереве `470315eddef33c31b047545b2882deb9cd14a181` прошли:
+семь native сценариев `-race`45.566s, включая прежние пять referral сценариев,
+promo restart и Chromium с настоящим HTTP backend; 35 основных/56 с подслучаями
+HTTP/bonuses/app/db проверок `-race` без failures/skips; referral+promo UI22/22
+PASS9.4s. Генерация Go/web, vet, naming, Compose config и diff checks PASS.
+Исходники во время проверок не менялись; последующая правка добавляет только
+эту запись. Commit, независимое ревью и новые обязательные CI gates относятся
+к окончательной объединённой ревизии и фиксируются в #51/PR.

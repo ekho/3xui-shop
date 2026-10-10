@@ -12,7 +12,7 @@ for(const [lang,activate,setting] of [['ru','Активировать триал
  test(`ordinary Telegram trial ${lang}`,async({page})=>{
   await fixture(page);let calls=0;
   await page.route('**/api/v1/trials/activate',async r=>{calls++;expect(r.request().postDataJSON()).toEqual({});expect(r.request().headers()['x-csrf-token']).toBe(account.csrf_token);expect(r.request().headers()['idempotency-key']).toMatch(/^[a-f0-9-]{36}$/);await r.fulfill({status:201,json:trial});});
-  await page.goto('/cabinet?lang='+lang);const button=page.getByRole('button',{name:activate,exact:true});await expect(button).toBeVisible();await expect(page.getByRole('textbox')).toHaveCount(0);await button.focus();await page.keyboard.press('Enter');await expect.poll(()=>calls).toBe(1);
+  await page.goto('/cabinet?lang='+lang);const button=page.getByRole('button',{name:activate,exact:true});await expect(button).toBeVisible();await expect(page.getByRole('textbox',{name:lang==='en'?'Comment for support':'Комментарий для поддержки',exact:true})).toHaveCount(0);await expect(page.getByRole('textbox',{name:lang==='en'?'Promocode':'Промокод',exact:true})).toBeVisible();await button.focus();await page.keyboard.press('Enter');await expect.poll(()=>calls).toBe(1);
   await page.unroute('**/api/v1/**');await fixture(page,{...account,capabilities:{trial_available:false,trial_mode:'activate'}},trial,{...none,status:'provisioning'});await page.reload();await expect(page.getByRole('status').filter({hasText:setting})).toBeVisible();await expect(button).toHaveCount(0);await expect(page.getByRole('button',{name:/Показать ссылку|Show subscription link/})).toHaveCount(0);
  });
 }
