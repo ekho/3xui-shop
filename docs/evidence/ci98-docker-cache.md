@@ -14,7 +14,7 @@ Plan:
 
 Source checks: `python3 -m unittest discover -s .github/scripts -v`, Python TOML
 parser, `git diff --check`, and the existing pinned actionlint 1.7.12 command in
-`docs/releases-v2.md`, applied to both changed workflows. The daemon regression
+`docs/releases.md`, applied to both changed workflows. The daemon regression
 check covers preservation/idempotency, malformed settings, refusal on local or
 self-hosted runners, and refusal to restart with existing containers.
 The trace verifier covers exact HTTPS host/port/method/status, missing evidence,

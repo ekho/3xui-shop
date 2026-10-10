@@ -292,7 +292,7 @@ Telegram-модуль содержит интеграцию и маршрути�
   [Telegram claim/result](../../../backend/internal/modules/notifications/telegram.go).
 - [Python-адаптер С01](../../../deploy/acceptance/bot_adapter.py),
   [Compose стенда](../../../deploy/acceptance/compose.acceptance.yml),
-  [v2 release workflow](../../../.github/workflows/v2-release.yml).
+  [v2 release workflow](../../../.github/workflows/preview-release.yml).
 - [PR #3](https://github.com/ekho/3xui-shop/pull/3),
   [PR #5](https://github.com/ekho/3xui-shop/pull/5),
   [GitHub-план v2](https://github.com/users/ekho/projects/1/views/4).

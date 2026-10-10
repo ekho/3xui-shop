@@ -1,4 +1,4 @@
-name: V2 preview release
+name: 3xui-mole preview release
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  VERSION: 2.0.0-dev.${{ github.run_number }}
+  VERSION: 0.1.0-dev.${{ github.run_number }}
 
 concurrency:
   group: v2-release-${{ github.ref }}
@@ -70,9 +70,9 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ github.repository }}${{ matrix.suffix }}
           flavor: latest=false
           tags: |
-            type=raw,value=2-dev
+            type=raw,value=dev
             type=raw,value=${{ env.VERSION }}
-            type=sha,prefix=2-,format=long
+            type=sha,prefix=sha-,format=long
           labels: |
             org.opencontainers.image.version=${{ env.VERSION }}
             org.opencontainers.image.revision=${{ github.event.pull_request.head.sha || github.sha }}
@@ -117,12 +117,12 @@ jobs:
           if git show-ref --verify --quiet "refs/tags/$VERSION"; then
             test "$(git rev-parse "$VERSION^{commit}")" = "$GITHUB_SHA"
           else
-            git tag -a "$VERSION" "$GITHUB_SHA" -m "$VERSION — предварительная сборка v2"
+            git tag -a "$VERSION" "$GITHUB_SHA" -m "$VERSION — предварительная сборка 3xui-mole"
             git push origin "refs/tags/$VERSION"
           fi
           notes="$RUNNER_TEMP/release-notes.md"
           cat > "$notes" <<EOF
-          Предварительная сборка версии 2 из ветки v2.
+          Предварительная сборка 3xui-mole из ветки v2.
 
           Исходный коммит: $GITHUB_SHA
 
@@ -136,6 +136,6 @@ jobs:
             test "$(cat "$RUNNER_TEMP/existing-release")" = true
           else
             gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --verify-tag \
-              --title "$VERSION — предварительная сборка v2" --notes-file "$notes" \
+              --title "$VERSION — предварительная сборка 3xui-mole" --notes-file "$notes" \
               --generate-notes --prerelease --latest=false
           fi

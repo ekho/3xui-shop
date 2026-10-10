@@ -1,4 +1,4 @@
-# Локальная проверка v2
+# Локальная проверка 3xui-mole
 
 После С47 приёмка запускает Go runtime и отдельный web/Caddy; Python используется
 только для независимых stdlib fixtures/orchestration. Старые adapter-команды
