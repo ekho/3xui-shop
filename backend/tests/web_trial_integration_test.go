@@ -748,7 +748,7 @@ func TestWebTrialBackupRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = provider.Down(ctx); err == nil || !strings.Contains(err.Error(), "server pool downgrade blocked") {
+	if _, err = provider.DownTo(ctx, 34); err == nil || !strings.Contains(err.Error(), "server pool downgrade blocked") {
 		t.Fatal("restored server history allowed downgrade", err)
 	}
 	if err = db.Migrate(ctx, restored); err != nil {

@@ -121,25 +121,34 @@ test-fixture adapter и его runbook/evidence одобрены отдельн�
 reviewer самостоятельно сверил connected и guard race logs. Product source
 между этими review не менялся. Проверки CI этим review не подтверждаются.
 
-Push/PR и CI окончательного HEAD отложены по сообщению головного чата:
-общий Docker Hub anonymous HTTP 429 имеет owner [#98](https://github.com/ekho/3xui-shop/issues/98)
-и fix PR [#99](https://github.com/ekho/3xui-shop/pull/99). Read-only сверка
-2026-10-09 22:16 UTC: #98 и PR #99 OPEN, PR head
-`e810e4c9c528545500226e0608d99e0f76bf48ed`, три Image checks FAILURE, два
-Platform checks IN_PROGRESS. Recovery ещё не подтверждён; собственные повторные
-expensive GitHub runs без owning fix не запускались.
-В последующем мандате головной чат сообщил об исправлении owning source в
-`e810e4c` и продолжающихся final-head runtime checks. Это не подтверждение recovery
-со стороны данного чата; push/PR требуют отдельной команды головного чата.
+Общий Docker Hub anonymous HTTP 429 имел owner
+[#98](https://github.com/ekho/3xui-shop/issues/98). На прежнем checkpoint
+[PR #99](https://github.com/ekho/3xui-shop/pull/99) был draft с failed Image jobs;
+повторы без owning fix не запускались. Recovery теперь подтверждён live:
+проверенный source `b320f8eef415bb48e4c1cebdb12409b143eb9501` merged как
+`376df1eeaa0ea825f85e24d776aa46aee132e576`; его
+[post-merge preview](https://github.com/ekho/3xui-shop/actions/runs/38005580860)
+завершился SUCCESS. Это подтверждает owning fix, но не CI будущего HEAD #45.
+Новый мандат разрешает этой сессии push/PR, собственный ручной merge в `v2`,
+закрытие issue и Project Done после gates. Preview GHCR/prerelease разрешён,
+production и auto-merge не разрешены. Root координирует и архивирует.
 В Platform checks сохранены все прежние Go/generated/web/Python/image/native
 scopes и добавлен отдельный backup rehearsal с always-cleanup.
 
-Головной чат сообщил о test integration overlap с #44: его commit
-`1b2e4105615a39850d137a206de48e50335db20f` тоже меняет container prerequisite в
-`backend/tests/web_trial_integration_test.go`. Здесь этот caller использует
-`backend/tests/postgres_fixture_test.go`. Сведение в один безопасный adapter
-при доставке принадлежит головному чату; второй интерфейс не добавляется.
-Текущий собственный fixture требует private canonical 0600 files
+Интеграция общего restore fixture с #44 принадлежит этой сессии #45.
+Прочитаны минимальный `1b2e4105615a39850d137a206de48e50335db20f` и actual
+`7e7cf856a274d99c5f23433c0c662feb4d26a731` source #44. До изменения записан
+[совместимый контракт](https://github.com/ekho/3xui-shop/issues/45#issuecomment-6091389100)
+`2026-10-10-owned-postgres-restore-v1`, связанный с #44. Один helper сохраняет
+существующие private metadata и optional Compose inputs с общими ownership,
+identity и точными loopback/port guards. Все restore assertions сохраняются;
+запрет downgrade проверяется `DownTo(ctx, 34)`. Технический порядок:
+#42 → #44 → #45 → #47; полная несмерженная ветка #44 в #45 не переносится.
+До дальнейшей правки записано
+[дополнение v2](https://github.com/ekho/3xui-shop/issues/45#issuecomment-6091458915):
+backup constructor теперь `operations.NewBackup`, чтобы совместиться с
+`operations.New` maintenance #44 без изменения его callers или поведения.
+Текущий собственный fixture использует private canonical 0600 files
 `TEST_DATABASE_URL_FILE`, `TEST_REDIS_URL_FILE`, `TEST_POSTGRES_FIXTURE_FILE`;
 `backup_restore.py up` создаёт все три. После интеграции нужно повторить
 affected guard/restore assertions; нынешняя local acceptance остаётся evidence
@@ -158,11 +167,35 @@ containers, одна network, один volume и private files. Остаток �
 ноль; сверка до/после снова не обнаружила потерянных чужих существовавших ресурсов.
 Shared images сохранены.
 
-Implementation готова и review одобрена; delivery и acceptance остаются pending.
-Текущая full local Go verification пройдена и разрешает scoped local commit.
-Push/PR остаются на паузе до отдельной команды головного чата после #98.
-Интеграция adapter с #44 и дальнейшее решение по историческому funding failure
-принадлежат головному чату; backup scope не расширялся.
+Исходная implementation и full local Go verification прошли; локальный commit
+`69bf87505f45aacde47f70e32075b5a7c77375a7` сохранён. Изменённый общий fixture
+требует focused checks и delta review; delivery и acceptance остаются pending
+до CI окончательного HEAD, merge в `v2` и разрешённой preview-публикации.
+Исторический funding failure сохраняет неизвестную причину; финансовое
+поведение и исходный assertion не меняются в backup scope.
+
+## Интеграция текущего v2
+
+При интеграции merged `376df1eeaa0ea825f85e24d776aa46aee132e576` сохранены
+readiness/lifecycle/shutdown и owning CI cache fix. Backup dispatch остаётся
+до конфигурации и инициализации runtime. Все прежние CI scopes сохранены;
+backup rehearsal добавлен отдельно. Независимый review обнаружил, что ошибка
+нового первого cleanup могла пропустить прежние cleanup из-за shell `-e`.
+Теперь backup, native acceptance и test services имеют отдельные `always()`
+steps; YAML self-check проверил их независимость.
+
+После интеграции прошли: cmd/server, operations, app и Telegram `-race`
+(четыре пакета, 18 секунд); HTTP readiness `-race` (3.186 секунды);
+10/10 CI script tests; workflow YAML / BuildKit TOML / producer syntax;
+semantic naming и diff-check. После переименования constructor повторены
+только cmd/server и operations `-race` — PASS.
+Metadata-only real restore вместе с пятью fixture guard tests прошёл
+с `-count=1 -race`: 41.941 секунды. Отдельные real restore прогоны с
+Compose-only и двумя согласованными входами прошли на текущем source:
+37.204 и 37.212 секунды. Во всех трёх случаях сохранён полный restore
+test, включая downgrade, replay, reservation, running job и повторный login.
+Неизменённые дорогие полные локальные Go/web/Python scopes не повторялись;
+окончательный HEAD требует полного CI.
 
 ## Границы
 

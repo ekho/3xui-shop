@@ -1,10 +1,10 @@
 name: Platform checks
 on:
   pull_request:
-    paths: ['backend/**', 'web/**', 'docs/api/**', 'app/**', 'tests/**', 'pyproject.toml', 'poetry.lock', 'deploy/**', '.github/workflows/platform-checks.yml']
+    paths: ['backend/**', 'web/**', 'docs/api/**', 'app/**', 'tests/**', 'pyproject.toml', 'poetry.lock', 'deploy/**', '.github/workflows/platform-checks.yml', '.github/scripts/**', '.github/buildkitd.toml']
   push:
     branches: ['feature/**']
-    paths: ['backend/**', 'web/**', 'docs/api/**', 'app/**', 'tests/**', 'pyproject.toml', 'poetry.lock', 'deploy/**', '.github/workflows/platform-checks.yml']
+    paths: ['backend/**', 'web/**', 'docs/api/**', 'app/**', 'tests/**', 'pyproject.toml', 'poetry.lock', 'deploy/**', '.github/workflows/platform-checks.yml', '.github/scripts/**', '.github/buildkitd.toml']
 permissions:
   contents: read
 concurrency:
@@ -16,6 +16,36 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # existing repository v4 pin
+      - name: Configure Docker Hub cache before containers
+        run: |
+          printf 'DOCKER_CONFIG=%s\n' "$(mktemp -d "$RUNNER_TEMP/ci-docker-config.XXXXXX")" >> "$GITHUB_ENV"
+          python3 -m unittest discover -s .github/scripts -v
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT python3 .github/scripts/configure_docker_cache.py
+      - name: Verify runner registry boundary
+        shell: bash
+        run: |
+          docker version --format 'Docker server={{.Server.Version}} API={{.Server.APIVersion}}'
+          docker info --format 'Image storage driver={{.Driver}}'
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          import tomllib
+          path = Path('/etc/docker/certs.d/docker.io/hosts.toml')
+          config = tomllib.loads(path.read_text()) if path.exists() else {}
+          print('docker.io hosts.toml exists:', path.exists(), 'configured host count:', len(config.get('host', {})))
+          PY
+          curl --fail --silent --show-error --head --max-time 30 \
+            'https://mirror.gcr.io/v2/library/redis/manifests/sha256:6f81e8915c60b065a524e6967e0ad1c639ba6efa84d669f823683ea04d9150ee?ns=docker.io' \
+            | awk 'tolower($0) ~ /^(http\/|docker-content-digest:)/'
+      - name: Set up mirrored BuildKit for all Compose consumers
+        id: buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+        with:
+          buildkitd-config: .github/buildkitd.toml
+          buildkitd-flags: --log-level=debug --allow-insecure-entitlement security.insecure --allow-insecure-entitlement network.host
+      - name: Select builder for Compose and native scripts
+        env:
+          BUILDER: ${{ steps.buildx.outputs.name }}
+        run: printf 'BUILDX_BUILDER=%s\n' "$BUILDER" >> "$GITHUB_ENV"
       - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
           go-version-file: backend/go.mod
@@ -68,13 +98,34 @@ jobs:
         run: |
           python deploy/acceptance/backup_restore.py up
           python deploy/acceptance/backup_restore.py check
-      - name: Cleanup
+      - name: Verify BuildKit mirror requests
+        shell: bash
+        run: python3 .github/scripts/verify_buildkit_cache.py
+      - name: Diagnose daemon fallback without raw logs
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import re, subprocess
+          result = subprocess.run(['sudo', 'journalctl', '-u', 'docker', '--no-pager', '-o', 'cat'], check=True, capture_output=True, text=True)
+          for line in result.stdout.splitlines():
+              if 'Error getting v2 registry' in line or 'Attempting next endpoint for pull after error' in line:
+                  hosts = [host for host in ('mirror.gcr.io', 'registry-1.docker.io', 'auth.docker.io') if host in line]
+                  errors = [error for error in ('timeout', 'deadline exceeded', 'unauthorized', 'denied', '429', '403', '404', 'x509') if error in line.lower()]
+                  print('Docker registry fallback:', hosts, 'categories:', errors)
+          PY
+      - name: Cleanup backup rehearsal
         if: always()
         run: |
           if [ -f .superpowers/acceptance/backup-restore/runtime.json ]; then
             python deploy/acceptance/backup_restore.py down
           fi
+      - name: Cleanup native acceptance
+        if: always()
+        run: |
           if [ -f .superpowers/acceptance/native-docker/public.env ]; then
             python deploy/acceptance/local.py down
           fi
+      - name: Cleanup test services
+        if: always()
+        run: |
           docker compose -f deploy/acceptance/compose.test.yml down -v

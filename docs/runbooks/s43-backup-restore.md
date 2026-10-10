@@ -164,6 +164,15 @@ TEST_POSTGRES_FIXTURE_FILE="$fixture/test-postgres-fixture" \
   go -C backend test ./tests -run '^TestWebTrialBackupRestore$' -count=1 -race
 ```
 
+Этот же тест принимает `TEST_POSTGRES_COMPOSE_FILE` с Compose-файлом своего
+fixture вместо metadata или вместе с ними. При двух входах project/container
+должны совпасть. Compose-файл может иметь mode 0644, но должен принадлежать
+текущему OS user, быть обычным файлом без symlink и group/world write.
+Helper сверяет выбранный project, service/container и единственный фактический
+`127.0.0.1:<port>` с подключением теста до dump. Без обоих входов используется
+repository test Compose на порту 55491. Ошибка выбранного входа не допускает
+переход к другому контейнеру.
+
 Restore-тест проверяет приватный файл и фактические container ID, Compose
 project/service и loopback port. Явно заданный неверный fixture останавливает
 тест; поиск чужого контейнера по порту не выполняется. Без opt-in CI использует

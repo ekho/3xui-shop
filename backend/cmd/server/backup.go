@@ -75,7 +75,7 @@ func runBackupCommand(args []string) error {
 		return errors.New(code)
 	}
 	defer pool.Close()
-	svc := operations.New(pool, source, restore)
+	svc := operations.NewBackup(pool, source, restore)
 	if args[0] == "create" {
 		err = svc.Create(ctx, actor, args[4])
 	} else {

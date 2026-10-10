@@ -72,7 +72,7 @@ def up():
     assert subnet, 'No free dedicated Backup subnet; do not remove other networks'
     project = 'cabinet-backup-' + uuid4().hex[:8]
     write('runtime.json', json.dumps({'project': project, 'subnet': subnet}))
-    configuration = {'services': {
+    configuration = {'name': project, 'services': {
         'postgres': {'image': PG_IMAGE, 'environment': {'POSTGRES_USER': 'platform_test', 'POSTGRES_DB': 'platform_test', 'POSTGRES_HOST_AUTH_METHOD': 'trust'},
                      'ports': ['127.0.0.1::5432'], 'volumes': ['pg:/var/lib/postgresql/data'],
                      'healthcheck': {'test': ['CMD', 'pg_isready', '-U', 'platform_test', '-d', 'platform_test'], 'interval': '2s', 'timeout': '2s', 'retries': 30}},

@@ -93,14 +93,14 @@ func TestRejectedConnectionHasNoPackageOrDatabaseSideEffects(t *testing.T) {
 	}
 	packageDir := filepath.Join(root, "package")
 	invalid := ordinaryConnectionURL + "&channel_binding=require"
-	create := New(nil, invalid, "")
+	create := NewBackup(nil, invalid, "")
 	if err := create.Create(context.Background(), uuid.New(), packageDir); err == nil || err.Error() != "INVALID_DATABASE_URL" {
 		t.Fatalf("create did not reject before database use: %v", err)
 	}
 	if _, err := os.Lstat(packageDir); !os.IsNotExist(err) {
 		t.Fatalf("create changed package path: %v", err)
 	}
-	rehearse := New(nil, ordinaryConnectionURL, invalid)
+	rehearse := NewBackup(nil, ordinaryConnectionURL, invalid)
 	if err := rehearse.Rehearse(context.Background(), uuid.New(), packageDir, "rehearsal_probe"); err == nil || !strings.Contains(err.Error(), "INVALID_DATABASE_URL") {
 		t.Fatalf("rehearse did not reject before database use: %v", err)
 	}

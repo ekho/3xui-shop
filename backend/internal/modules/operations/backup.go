@@ -30,7 +30,7 @@ type Service struct {
 	restoreURL string
 }
 
-func New(pool *pgxpool.Pool, sourceURL, restoreURL string) *Service {
+func NewBackup(pool *pgxpool.Pool, sourceURL, restoreURL string) *Service {
 	return &Service{pool: pool, sourceURL: sourceURL, restoreURL: restoreURL}
 }
 
