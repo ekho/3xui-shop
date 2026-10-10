@@ -127,6 +127,32 @@ func legacyTerms(p LegacyCataloguePlan, durations []int64) (Terms, error) {
 
 func (s *Service) ImportLegacyCatalogue(ctx context.Context, pkg LegacyCataloguePackage, dryRun bool) (CatalogueImportResult, error) {
 	out := CatalogueImportResult{DryRun: dryRun}
+	if pkg.Version != 1 || pkg.Durations == nil || pkg.Plans == nil || len(pkg.Plans) > 10000 || len(pkg.Durations) > 100 {
+		return out, failure(400, "IMPORT_INVALID_PACKAGE")
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return out, unavailable()
+	}
+	defer tx.Rollback(ctx)
+	// The original CLI dry run checks the same writes and rolls them back.
+	out, err = s.ImportLegacyCatalogueTx(ctx, tx, pkg, false)
+	out.DryRun = dryRun
+	if err != nil || dryRun {
+		return out, err
+	}
+	if tx.Commit(ctx) != nil {
+		return out, unavailable()
+	}
+	return out, nil
+}
+
+// ImportLegacyCatalogueTx participates in the caller's transaction.
+func (s *Service) ImportLegacyCatalogueTx(ctx context.Context, tx pgx.Tx, pkg LegacyCataloguePackage, dryRun bool) (CatalogueImportResult, error) {
+	out := CatalogueImportResult{DryRun: dryRun}
+	if tx == nil {
+		return out, unavailable()
+	}
 	if pkg.Version != 1 || pkg.Durations == nil || pkg.Plans == nil || len(pkg.Plans) > 10000 {
 		return out, failure(400, "IMPORT_INVALID_PACKAGE")
 	}
@@ -161,12 +187,7 @@ func (s *Service) ImportLegacyCatalogue(ctx context.Context, pkg LegacyCatalogue
 		raw, _ := json.Marshal(terms)
 		items = append(items, candidate{p.LegacyPlanID, terms, raw})
 	}
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return out, unavailable()
-	}
-	defer tx.Rollback(ctx)
-	if err = lockCatalogue(ctx, tx); err != nil {
+	if err := lockCatalogue(ctx, tx); err != nil {
 		return out, err
 	}
 	q := store.New(tx)
@@ -196,16 +217,12 @@ func (s *Service) ImportLegacyCatalogue(ctx context.Context, pkg LegacyCatalogue
 		if e = catalogueSlot(ctx, tx, item.terms.Devices, uuid.Nil); e != nil {
 			return out, e
 		}
-		if e = insertCatalogue(ctx, q, uuid.New(), legacy, item.terms, nil, "legacy_import", "", s.now().UTC().Truncate(time.Microsecond)); e != nil {
-			return out, e
+		if !dryRun {
+			if e = insertCatalogue(ctx, q, uuid.New(), legacy, item.terms, nil, "legacy_import", "", s.now().UTC().Truncate(time.Microsecond)); e != nil {
+				return out, e
+			}
 		}
 		out.Created++
-	}
-	if dryRun {
-		return out, nil
-	}
-	if err = tx.Commit(ctx); err != nil {
-		return out, unavailable()
 	}
 	return out, nil
 }

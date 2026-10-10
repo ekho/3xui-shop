@@ -163,6 +163,25 @@ func (s *Service) ImportLegacySupport(ctx context.Context, p LegacySupportInput,
 		return out, unavailable()
 	}
 	defer tx.Rollback(ctx)
+	out, err = s.ImportLegacySupportTx(ctx, tx, p, dry)
+	if err != nil || dry {
+		return out, err
+	}
+	if tx.Commit(ctx) != nil {
+		return LegacySupportResult{}, unavailable()
+	}
+	return out, nil
+}
+
+// ImportLegacySupportTx participates in the caller's transaction.
+func (s *Service) ImportLegacySupportTx(ctx context.Context, tx pgx.Tx, p LegacySupportInput, dry bool) (LegacySupportResult, error) {
+	var out LegacySupportResult
+	if tx == nil {
+		return out, unavailable()
+	}
+	if err := ValidateLegacySupportInput(p); err != nil {
+		return out, err
+	}
 	q := store.New(tx)
 	tickets := append([]LegacySupportRow(nil), p.Tickets...)
 	sort.Slice(tickets, func(i, j int) bool { return tickets[i].SourceID < tickets[j].SourceID })
@@ -289,9 +308,6 @@ func (s *Service) ImportLegacySupport(ctx context.Context, p LegacySupportInput,
 		if err = auditreports.RecordSupportTelegramTx(ctx, tx, event); err != nil {
 			return LegacySupportResult{}, err
 		}
-	}
-	if tx.Commit(ctx) != nil {
-		return LegacySupportResult{}, unavailable()
 	}
 	return out, nil
 }

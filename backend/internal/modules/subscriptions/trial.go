@@ -79,7 +79,7 @@ func (s *Service) ActivateTelegramTrial(ctx context.Context, accountID, key uuid
 	if err = s.allowNew(ctx, tx); err != nil {
 		return out, false, err
 	}
-	if err = s.trialEligibility(ctx, q, a); err != nil {
+	if err = s.trialEligibility(ctx, tx, q, a); err != nil {
 		return out, false, err
 	}
 	current, err := q.CurrentTrial(ctx, accountID)
@@ -117,7 +117,7 @@ func publicTrial(r store.TrialRequest) TrialRequest {
 	}
 	return TrialRequest{RequestId: r.ID, Status: TrialRequestStatus(r.Status), CreatedAt: r.CreatedAt.Time, DecidedAt: decided, OperationId: r.OperationID, PreviousRequestId: r.PreviousRequestID}
 }
-func (s *Service) trialEligibility(ctx context.Context, q *store.Queries, a accounts.Snapshot) error {
+func (s *Service) trialEligibility(ctx context.Context, tx pgx.Tx, q *store.Queries, a accounts.Snapshot) error {
 	if a.Kind == "web" && (!(a.VerifiedAt != nil) || !(a.EmailKey != nil) || !a.PasswordSet) {
 		return failure(403, "EMAIL_VERIFICATION_REQUIRED")
 	}
@@ -132,6 +132,13 @@ func (s *Service) trialEligibility(ctx context.Context, q *store.Queries, a acco
 		return unavailable()
 	}
 	if grant || a.HadSubscription || (a.AssignedPanelID != nil) {
+		return failure(409, "TRIAL_ALREADY_USED")
+	}
+	state, err := accounts.LegacyTrialStateTx(ctx, tx, a.ID)
+	if err != nil {
+		return unavailable()
+	}
+	if state != "" {
 		return failure(409, "TRIAL_ALREADY_USED")
 	}
 	if !s.config().TrialEnabled {
@@ -242,7 +249,7 @@ func (s *Service) CreateTrialRequest(ctx context.Context, accountID, key uuid.UU
 	if err = s.allowNew(ctx, tx); err != nil {
 		return out, false, err
 	}
-	if err = s.trialEligibility(ctx, q, a); err != nil {
+	if err = s.trialEligibility(ctx, tx, q, a); err != nil {
 		return out, false, err
 	}
 	if len(s.config().Operators) == 0 {
@@ -342,7 +349,7 @@ func (s *Service) decideTrialLocked(ctx context.Context, tx pgx.Tx, q *store.Que
 		} else if active {
 			return r, failure(409, "ACCESS_OPERATION_CONFLICT")
 		}
-		if err := s.trialEligibility(ctx, q, a); err != nil {
+		if err := s.trialEligibility(ctx, tx, q, a); err != nil {
 			return r, err
 		}
 		c := s.config()
@@ -532,7 +539,7 @@ func (s *Service) ReconsiderTrialRequest(ctx context.Context, id, key uuid.UUID,
 }
 
 func (s *Service) reconsiderTrialLocked(ctx context.Context, tx pgx.Tx, q *store.Queries, a accounts.Snapshot, old store.TrialRequest, actor trialActor, reason string) (store.TrialRequest, error) {
-	if err := s.trialEligibility(ctx, q, a); err != nil {
+	if err := s.trialEligibility(ctx, tx, q, a); err != nil {
 		return old, err
 	}
 	current, err := q.CurrentTrial(ctx, a.ID)
@@ -555,7 +562,7 @@ func (s *Service) reconsiderTrialLocked(ctx context.Context, tx pgx.Tx, q *store
 	return r, nil
 }
 
-func (s *Service) canRequestTrial(ctx context.Context, q *store.Queries, account accounts.Snapshot) (bool, error) {
+func (s *Service) canRequestTrial(ctx context.Context, tx pgx.Tx, q *store.Queries, account accounts.Snapshot) (bool, error) {
 	if s.TrialMode(account) == "activate" {
 		if err := s.automaticTrialSource(account); err != nil {
 			return false, nil
@@ -569,7 +576,7 @@ func (s *Service) canRequestTrial(ctx context.Context, q *store.Queries, account
 			return false, nil
 		}
 	}
-	if err := s.trialEligibility(ctx, q, account); err != nil {
+	if err := s.trialEligibility(ctx, tx, q, account); err != nil {
 		var domain *Error
 		if errors.As(err, &domain) && domain.Status != 503 {
 			return false, nil

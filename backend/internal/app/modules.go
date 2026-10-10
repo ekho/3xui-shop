@@ -41,6 +41,7 @@ type Modules struct {
 	Notices       *notifications.NoticeService
 	AuditReports  *auditreports.Service
 	Maintenance   *operations.Maintenance
+	LegacyImport  *operations.LegacyImporter
 }
 
 func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[pgx.Tx], cfg *Config) *Modules {
@@ -151,5 +152,6 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 	}, LegacyTargetTx: owner.LegacyAuditTargetTx, LegacyLinksTx: owner.LegacyAuditLinksTx}, cfg.Audit)
 	remindersOwner := notifications.NewReminders(pool, notifications.ReminderPorts{AudienceTx: owner.ReminderAudienceTx, RecipientTx: owner.ReminderRecipientTx, AccessTx: vpnOwner.ReminderAccessTx, PeriodTx: vpnOwner.ReminderPeriodTx, StarsTx: paymentsOwner.ReminderPolicyTx, MailGuard: owner.WithMailGuard}, mailOwner, notificationsOwner, now)
 	noticesOwner := notifications.NewNotices(pool, notifications.NoticePorts{AudienceTx: owner.ReminderAudienceTx, RecipientTx: owner.NoticeRecipientTx, LockOperatorTx: owner.LockNoticeOperatorTx, LockPairTx: owner.LockNoticePairTx, DeliveryGuard: owner.WithNoticeDelivery, RequireOperator: owner.RequireOperator}, mailOwner, notificationsOwner, now)
-	return &Modules{Accounts: owner, Bonuses: bonusesOwner, Catalogue: catalogueOwner, Campaigns: campaignOwner, Subscriptions: subscriptionOwner, VPN: vpnOwner, Payments: paymentsOwner, Support: supportOwner, Notifications: notificationsOwner, MailDelivery: mailOwner, Reminders: remindersOwner, Notices: noticesOwner, AuditReports: reportsOwner, Maintenance: maintenanceOwner}
+	legacyOwner := operations.NewLegacyImporter(pool, operations.LegacyOwners{Accounts: owner, Catalogue: catalogueOwner, Payments: paymentsOwner, Bonuses: bonusesOwner, Campaigns: campaignOwner, Support: supportOwner, Audit: reportsOwner}, now)
+	return &Modules{Accounts: owner, Bonuses: bonusesOwner, Catalogue: catalogueOwner, Campaigns: campaignOwner, Subscriptions: subscriptionOwner, VPN: vpnOwner, Payments: paymentsOwner, Support: supportOwner, Notifications: notificationsOwner, MailDelivery: mailOwner, Reminders: remindersOwner, Notices: noticesOwner, AuditReports: reportsOwner, Maintenance: maintenanceOwner, LegacyImport: legacyOwner}
 }

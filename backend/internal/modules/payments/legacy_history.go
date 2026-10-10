@@ -1,17 +1,13 @@
 package payments
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
-	"errors"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
-	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/audit_reports"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -46,29 +42,6 @@ func (s *Service) ImportLegacyPayments(ctx context.Context, p LegacyPaymentPacka
 	if err := validateLegacyPayments(p); err != nil {
 		return result, err
 	}
-	type located struct {
-		source  LegacyPaymentUser
-		id      uuid.UUID
-		account accounts.Snapshot
-	}
-	locatedUsers := make([]located, 0, len(p.Users))
-	users := make(map[int64]LegacyPaymentUser, len(p.Users))
-	ids := make(map[int64]uuid.UUID, len(p.Users))
-	// Locate before opening the transaction; the same identity is checked under
-	// its account lock below, without borrowing a second pool connection in Tx.
-	for _, u := range p.Users {
-		a, err := s.authority.LookupTelegram(ctx, u.SourceTgID)
-		if errors.Is(err, accounts.ErrNotFound) {
-			return result, failure(409, "IMPORT_IDENTITY_CONFLICT")
-		}
-		if err != nil {
-			return result, unavailable()
-		}
-		locatedUsers = append(locatedUsers, located{source: u, id: a.ID})
-		users[u.SourceTgID] = u
-		ids[u.SourceTgID] = a.ID
-	}
-	sort.Slice(locatedUsers, func(i, j int) bool { return bytes.Compare(locatedUsers[i].id[:], locatedUsers[j].id[:]) < 0 })
 	opts := pgx.TxOptions{}
 	if dryRun {
 		opts.AccessMode = pgx.ReadOnly
@@ -78,25 +51,48 @@ func (s *Service) ImportLegacyPayments(ctx context.Context, p LegacyPaymentPacka
 		return result, unavailable()
 	}
 	defer tx.Rollback(ctx)
-	for i := range locatedUsers {
-		item := &locatedUsers[i]
-		if dryRun {
-			item.account, err = s.authority.LookupTx(ctx, tx, item.id)
-		} else {
-			item.account, err = s.authority.Lock(ctx, tx, item.id)
-		}
-		if errors.Is(err, accounts.ErrNotFound) {
-			return result, failure(409, "IMPORT_IDENTITY_CONFLICT")
-		}
-		if err != nil {
-			return result, unavailable()
-		}
+	result, err = s.ImportLegacyPaymentsTx(ctx, tx, p, dryRun)
+	if err != nil || dryRun {
+		return result, err
 	}
-	for _, item := range locatedUsers {
-		a, u := item.account, item.source
-		if a.TelegramID == nil || *a.TelegramID != u.SourceTgID || a.LegacyUserID == nil || *a.LegacyUserID != u.SourceLegacyUserID {
+	if tx.Commit(ctx) != nil {
+		return result, unavailable()
+	}
+	return result, nil
+}
+
+// ImportLegacyPaymentsTx resolves identities on the caller's transaction.
+func (s *Service) ImportLegacyPaymentsTx(ctx context.Context, tx pgx.Tx, p LegacyPaymentPackage, dryRun bool) (LegacyPaymentImportResult, error) {
+	var result LegacyPaymentImportResult
+	if tx == nil {
+		return result, unavailable()
+	}
+	if err := validateLegacyPayments(p); err != nil {
+		return result, err
+	}
+	users := make(map[int64]LegacyPaymentUser, len(p.Users))
+	tgIDs := make([]int64, 0, len(p.Users))
+	for _, u := range p.Users {
+		users[u.SourceTgID] = u
+		tgIDs = append(tgIDs, u.SourceTgID)
+	}
+	locatedUsers, err := s.authority.LegacyIdentitiesTx(ctx, tx, tgIDs, !dryRun)
+	if err != nil {
+		return result, unavailable()
+	}
+	if len(locatedUsers) != len(p.Users) {
+		return result, failure(409, "IMPORT_IDENTITY_CONFLICT")
+	}
+	ids := make(map[int64]uuid.UUID, len(p.Users))
+	for _, a := range locatedUsers {
+		if a.TelegramID == nil {
 			return result, failure(409, "IMPORT_IDENTITY_CONFLICT")
 		}
+		u := users[*a.TelegramID]
+		if *a.TelegramID != u.SourceTgID || a.LegacyUserID == nil || *a.LegacyUserID != u.SourceLegacyUserID {
+			return result, failure(409, "IMPORT_IDENTITY_CONFLICT")
+		}
+		ids[u.SourceTgID] = a.ID
 	}
 	result.Users = len(p.Users)
 	result.Transactions = len(p.Transactions)
@@ -146,16 +142,13 @@ func (s *Service) ImportLegacyPayments(ctx context.Context, p LegacyPaymentPacka
 	}
 	if !dryRun {
 		for _, item := range locatedUsers {
-			if count := changed[item.id]; count > 0 {
+			if count := changed[item.ID]; count > 0 {
 				reason := strconv.Itoa(count) + " legacy payment transactions imported"
 				system := true
-				if auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), AccountID: item.id, CreatedAt: now, Action: "legacy_payment_history_imported", SystemActor: &system, Reason: &reason}) != nil {
+				if auditreports.RecordTx(ctx, tx, auditreports.Event{ID: uuid.New(), AccountID: item.ID, CreatedAt: now, Action: "legacy_payment_history_imported", SystemActor: &system, Reason: &reason}) != nil {
 					return result, unavailable()
 				}
 			}
-		}
-		if tx.Commit(ctx) != nil {
-			return result, unavailable()
 		}
 	}
 	return result, nil
