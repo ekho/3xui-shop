@@ -30,11 +30,12 @@ Passed local checks (2026-10-10):
 | Whole-process shared-owner restart, `-race`, 6.114s | Real HTTP cookie + signed MiniApp accept persistent grants; stop/recreate HTTP/River/Telegram, replay old responses, run jobs, recover lost panel reply, native private bot activation/status, foreign-owner denial and code privacy |
 | Integrated native promo + referrals, `-race`, 12.235s | Both actual HTTP/Telegram flows after delivered #50 integration; same owner, registration attribution, restart and stable activation behavior |
 | Native Chromium + real API, `-race`, 8.715s | RU/EN, labelled keyboard form, actual POST/GET, current status, single retained grant, no code in URL/storage |
+| Integrated native Chromium promo + referrals, `-race`, 10.329s | Both real API UI flows after integration and the two UI review fixes |
 | Telegram focused real principal/unit checks, `-race`, 2.880s | Stable update key/lost Bot API reply, private verified actor, reject group/forwarded messages, safe responses and legacy callback compatibility |
-| Focused Chromium mock checks, 3 passed, 5.7s | Same key after uncertain response, current status, invalid/used errors and focus, signed MiniApp bearer/CSRF and EN, responsive width |
+| Focused Chromium mock checks, 7 passed | Same key after 502/503/504, current status, invalid/used errors and focus, signed MiniApp bearer/CSRF and EN, responsive width, none/expired subscription card and connection controls update without reload |
 | Existing connected browser regression set | Frontend worker ran 50 checks for promo/MiniApp/web trial successfully; mandatory full CI remains a separate gate |
 | Module/runtime/SQL boundaries | `go test ./internal/app -run 'Boundary\|Boundaries\|SharedFacade' -count=1`: passed, 1.333s |
-| Generated contracts | Second `make generate` + web `api:generate` produced no changes across 48 generated files |
+| Generated contracts | Repeated `make generate` + web `api:generate` leave both combined contracts unchanged |
 | Static/build | Go vet, web typecheck, test-mode build and `git diff --check`: passed |
 
 Focused commands, with this task's private fixture URL files:
@@ -45,8 +46,17 @@ go -C backend test -race ./internal/httpapi -run '^TestPromoActivationWorkerGuar
 go -C backend test -race ./internal/modules/telegram -run '^Test(ClientPromocode|ClientLegacy)' -count=1 -timeout=1m
 go -C backend test -race ./tests -run '^TestNativePromoActivationSharedOwnerRestart$' -count=1 -timeout=2m
 RUN_BROWSER_TESTS=1 go -C backend test -race ./tests -run '^TestNativePromoActivationBrowser$' -count=1 -timeout=2m
+go -C backend test -race ./tests -run '^(TestNativePromoActivationSharedOwnerRestart|TestNativeReferralsFlow)$' -count=1 -timeout=3m
+RUN_BROWSER_TESTS=1 go -C backend test -race ./tests -run '^(TestNativePromoActivationBrowser|TestNativeReferralsBrowser)$' -count=1 -timeout=3m
 E2E_PORT=4189 npm --prefix web run test:e2e -- tests/promo-activation.spec.ts
 ```
+
+Independent source review of `a21b9757c68efd59a1e335ad60f9d1bfc71889d4`
+found two UI P2 issues: losing the retry key on gateway 502/504 and leaving the
+subscription card stale after a grant. Both were reproduced by four new failing
+browser scenarios, then fixed with retained 5xx attempts and the existing
+Cabinet revision refresh. All seven focused tests passed. Final integrated
+revision review is a separate gate recorded in the PR.
 
 ## Границы приёмки и delivery gates
 

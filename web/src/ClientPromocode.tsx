@@ -2,7 +2,7 @@ import {useEffect,useRef,useState,type FormEvent} from 'react';
 import * as api from './api/client';
 import {errorText,loginRedirect,text,type Lang} from './i18n';
 
-export function ClientPromocode({lang}:{lang:Lang}){
+export function ClientPromocode({lang,onActivationChange}:{lang:Lang;onActivationChange:()=>void}){
  const t=text(lang),[code,setCode]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[activation,setActivation]=useState<api.PromocodeActivation>();
  const attempt=useRef<{key:string;code:string}|undefined>(undefined),errorRef=useRef<HTMLParagraphElement>(null),controller=useRef(new AbortController());
  useEffect(()=>()=>controller.current.abort(),[]);
@@ -10,6 +10,7 @@ export function ClientPromocode({lang}:{lang:Lang}){
  function showError(reason:unknown){
   if(controller.current.signal.aborted)return;
   if(reason instanceof api.ApiError&&reason.status===401){loginRedirect(lang);return;}
+  if(reason instanceof api.ApiError&&reason.status>=500){setError(t.clientPromoUnavailable);return;}
   const kind=reason instanceof api.ApiError?reason.code:'';
   setError(({PROMOCODE_INVALID:t.clientPromoInvalid,PROMOCODE_USED:t.clientPromoUsed,ACCESS_NOT_ELIGIBLE:t.clientPromoIneligible,ACCESS_OPERATION_CONFLICT:t.clientPromoConflict,IDEMPOTENCY_CONFLICT:t.clientPromoIdempotency,SERVICE_UNAVAILABLE:t.clientPromoUnavailable} as Record<string,string>)[kind]??errorText(reason,lang));
  }
@@ -18,13 +19,13 @@ export function ClientPromocode({lang}:{lang:Lang}){
   const trimmed=code.trim();if(!trimmed){setError(t.clientPromoRequired);return;}
   const current=attempt.current??{key:crypto.randomUUID(),code:trimmed};attempt.current=current;
   setBusy(true);setError('');
-  try{const result=await api.activatePromocode(current.code,current.key,controller.current.signal);if(controller.current.signal.aborted)return;setActivation(result);setCode('');attempt.current=undefined;}
-  catch(reason){if(!(reason instanceof api.ApiError&&reason.status===503))attempt.current=undefined;showError(reason);}
+  try{const result=await api.activatePromocode(current.code,current.key,controller.current.signal);if(controller.current.signal.aborted)return;setActivation(result);setCode('');attempt.current=undefined;onActivationChange();}
+  catch(reason){if(!(reason instanceof api.ApiError&&reason.status>=500))attempt.current=undefined;showError(reason);}
   finally{if(!controller.current.signal.aborted)setBusy(false);}
  }
  async function refresh(){
   if(busy||!activation)return;setBusy(true);setError('');
-  try{const result=await api.getPromocodeActivation(activation.operation_id,controller.current.signal);if(!controller.current.signal.aborted)setActivation(result);}
+  try{const result=await api.getPromocodeActivation(activation.operation_id,controller.current.signal);if(!controller.current.signal.aborted){setActivation(result);onActivationChange();}}
   catch(reason){showError(reason);}
   finally{if(!controller.current.signal.aborted)setBusy(false);}
  }

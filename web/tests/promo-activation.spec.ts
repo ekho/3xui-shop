@@ -1,11 +1,13 @@
 import {test,expect,type Page,type Route} from '@playwright/test';
+import type {components} from '../src/api/schema.gen';
+type Model<K extends keyof components['schemas']>=components['schemas'][K];
 
 const id='11111111-1111-4111-8111-111111111111';
 const operation='22222222-2222-4222-8222-222222222222';
 const csrf='x'.repeat(43);
 const activation={promocode_id:id,duration_days:30,operation_id:operation,status:'pending'};
 const account={account:{account_id:id,email:'client@example.test',email_verified:true,locale:'ru',telegram_linked:false},csrf_token:csrf,capabilities:{trial_available:false}};
-const subscription={status:'none',devices:0,traffic_limit_bytes:0,traffic_used_bytes:null,observed_at:null,data_stale:true,expires_at:null,access_profile:'unknown',vpn_banned:false,access_operation_id:null,access_operation_status:null};
+const subscription:Model<'Subscription'>={status:'none',devices:0,traffic_limit_bytes:0,traffic_used_bytes:null,observed_at:null,data_stale:true,expires_at:null,access_profile:'unknown',vpn_banned:false,access_operation_id:null,access_operation_status:null};
 
 async function fixture(page:Page,extra?:(route:Route,path:string)=>Promise<boolean>,mini=false){
  if(mini)await page.route('https://telegram.org/js/telegram-web-app.js',route=>route.fulfill({contentType:'application/javascript',body:"window.Telegram={WebApp:{initData:'owned-init-data',version:'9.6',platform:'web',themeParams:{},ready(){},expand(){},onEvent(){},offEvent(){},BackButton:{show(){},hide(){},onClick(){},offClick(){}}}};"}));
@@ -24,12 +26,12 @@ async function fixture(page:Page,extra?:(route:Route,path:string)=>Promise<boole
  });
 }
 
-test('cabinet keeps the same key after uncertain response, then refreshes operation status',async({page})=>{
+for(const status of [502,503,504])test('cabinet keeps the same key after '+status+', then refreshes operation status',async({page})=>{
  const keys:string[]=[];let refreshed=false;
  await fixture(page,async(route,path)=>{
   if(path==='/api/v1/promocodes/activate'){
    const req=route.request();keys.push(req.headers()['idempotency-key']);expect(req.headers()['x-csrf-token']).toBe(csrf);expect(req.postDataJSON()).toEqual({code:'MiXeD'});
-   if(keys.length===1)await route.fulfill({status:503,json:{error:{code:'SERVICE_UNAVAILABLE',message:'private',request_id:''}}});else await route.fulfill({status:201,json:activation});return true;
+   if(keys.length===1)await route.fulfill({status,json:{error:{code:'SERVICE_UNAVAILABLE',message:'private',request_id:''}}});else await route.fulfill({status:201,json:activation});return true;
   }
   if(path==='/api/v1/promocodes/activations/'+operation){refreshed=true;await route.fulfill({json:{...activation,status:'applied'}});return true;}
   return false;
@@ -42,6 +44,27 @@ test('cabinet keeps the same key after uncertain response, then refreshes operat
  expect(keys).toHaveLength(2);expect(keys[0]).toBeTruthy();expect(keys[1]).toBe(keys[0]);
  await form.getByRole('button',{name:'Обновить статус'}).click();await expect(form.getByRole('status')).toContainText('Применён');expect(refreshed).toBe(true);
  expect(page.url()).not.toContain('MiXeD');expect(await page.evaluate(()=>JSON.stringify(localStorage)+JSON.stringify(sessionStorage))).not.toContain('MiXeD');
+});
+
+for(const initial of ['none','expired'] as const)test('subscription refreshes from '+initial+' after POST and GET without reload',async({page})=>{
+ const firstExpiry='2026-10-12T12:00:00Z',secondExpiry='2026-11-11T12:00:00Z';
+ let current:Model<'Subscription'>={...subscription,status:initial,access_profile:initial==='expired'?'regular':'unknown',expires_at:initial==='expired'?'2026-10-01T12:00:00Z':null};
+ let reads=0;
+ await fixture(page,async(route,path)=>{
+  if(path==='/api/v1/subscription'){reads++;await route.fulfill({json:current});return true;}
+  if(path==='/api/v1/promocodes/activate'){current={...current,status:'active',access_profile:'regular',expires_at:firstExpiry};await route.fulfill({status:201,json:activation});return true;}
+  if(path==='/api/v1/promocodes/activations/'+operation){current={...current,expires_at:secondExpiry};await route.fulfill({json:{...activation,status:'applied'}});return true;}
+  return false;
+ });
+ await page.goto('/cabinet');await expect.poll(()=>reads).toBe(1);
+ const form=page.getByRole('region',{name:'Активировать промокод'});
+ await form.getByLabel('Промокод').fill('A1');await form.getByRole('button',{name:'Активировать'}).click();
+ await expect.poll(()=>reads).toBe(2);
+ await expect(page.locator('.stats-grid')).toContainText(new Date(firstExpiry).toLocaleString('ru-RU'));
+ await expect(page.getByRole('button',{name:'Показать ссылку'})).toBeVisible();
+ await form.getByRole('button',{name:'Обновить статус'}).click();await expect.poll(()=>reads).toBe(3);
+ await expect(page.locator('.stats-grid')).toContainText(new Date(secondExpiry).toLocaleString('ru-RU'));
+ await expect(page.getByRole('button',{name:'Показать ссылку'})).toBeVisible();
 });
 
 test('invalid and used codes show specific errors, focus and keyboard flow',async({page})=>{
