@@ -1,4 +1,4 @@
-# Развёртывание v2
+# Развёртывание 3xui-mole v2
 
 Продукт состоит из одного Go backend и отдельного web/Caddy image. Backend
 объединяет HTTP/River/main и support Telegram/schedulers. PostgreSQL содержит
