@@ -5,9 +5,51 @@ import (
 	"errors"
 
 	"example.com/cabinet/backend/internal/modules/audit_reports"
+	"example.com/cabinet/backend/internal/modules/notifications"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
+
+func (s *Service) InfrastructureAlertRecipientsTx(ctx context.Context, tx pgx.Tx) ([]notifications.ReminderRecipient, error) {
+	rows, err := tx.Query(ctx, `SELECT a.id FROM accounts a JOIN infrastructure_operators i ON i.account_id=a.id JOIN operator_accounts o ON o.account_id=a.id
+ WHERE a.kind='web' AND a.verified_at IS NOT NULL AND a.password_hash IS NOT NULL AND a.email_key IS NOT NULL AND NOT a.restricted ORDER BY a.id`)
+	if err != nil {
+		return nil, unavailable()
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+	if err != nil {
+		return nil, unavailable()
+	}
+	out := []notifications.ReminderRecipient{}
+	for _, id := range ids {
+		r, err := s.ReminderRecipientTx(ctx, tx, id, false)
+		if err != nil {
+			return nil, err
+		}
+		if r.Eligible && r.TelegramID > 0 && r.TelegramID <= 1<<52-1 {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+// The binding guard holds the account while the narrower grant is checked
+// and the bounded send completes; revocation cannot race the send.
+func (s *Service) WithInfrastructureDelivery(ctx context.Context, id uuid.UUID, tg, version int64, work func(pgx.Tx) error) (bool, error) {
+	denied := false
+	valid, err := s.WithTelegramDelivery(ctx, id, tg, version, func(tx pgx.Tx) error {
+		if err := s.RequireInfrastructureTx(ctx, tx, id); err != nil {
+			var auth *Error
+			denied = errors.As(err, &auth) && (auth.Status == 401 || auth.Status == 403)
+			return err
+		}
+		return work(tx)
+	})
+	if denied {
+		return false, nil
+	}
+	return valid, err
+}
 
 // RequireInfrastructureTx checks current account, source proof, operator role,
 // and the narrower explicit grant while holding the account row until commit.

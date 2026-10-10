@@ -28,13 +28,14 @@ func failure(status int, code string) error { return &Error{Status: status, Code
 func unavailable() error                    { return failure(503, "SERVICE_UNAVAILABLE") }
 
 type Service struct {
-	pool     *pgxpool.Pool
-	accounts *accounts.Service
-	queue    func() *river.Client[pgx.Tx]
-	config   func() Settings
-	now      func() time.Time
-	outcome  func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID, string) error
-	purchase PurchaseHooks
+	pool         *pgxpool.Pool
+	accounts     *accounts.Service
+	queue        func() *river.Client[pgx.Tx]
+	config       func() Settings
+	now          func() time.Time
+	outcome      func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID, string) error
+	purchase     PurchaseHooks
+	groupFailure func(context.Context, pgx.Tx, uuid.UUID, string) error
 }
 
 type PurchaseHooks struct {

@@ -94,13 +94,13 @@ jobs:
         run: |
           python deploy/acceptance/local.py up --reuse-images
           python deploy/acceptance/local.py check
-      - name: Server management with two TLS panels and Chromium
+      - name: Server management and group reconciliation with two TLS panels and Chromium
         env:
           SERVER_MANAGEMENT_NATIVE_STATE: ${{ runner.temp }}/server-management-native
         run: |
           python deploy/server-management/local.py up
           python deploy/server-management/local.py check
-          RUN_BROWSER_TESTS=1 go -C backend test -race ./tests -run '^(TestNativeServerManagementPrimaryRetirement|TestNativeServerManagement|TestServerManagementBrowser)$' -count=1 -timeout=5m -v
+          RUN_BROWSER_TESTS=1 go -C backend test -race ./tests -run '^(TestNativeServerManagementPrimaryRetirement|TestNativeServerManagement|TestServerManagementBrowser|TestNativeGroupReconciliationRealPanel)$' -count=1 -timeout=5m -v
       - name: Isolated backup and restore rehearsal
         run: |
           python deploy/acceptance/backup_restore.py up

@@ -313,7 +313,7 @@ func (p *PanelClient) Attach(ctx context.Context, key string, ids []int64) error
 	return nil
 }
 
-func (p *PanelClient) inboundTags(ctx context.Context) (map[int64][]string, error) {
+func (p *PanelClient) inboundTags(ctx context.Context) (map[int64]statisticsInbound, error) {
 	if p.auth(ctx) != nil {
 		return nil, ErrPanel
 	}
@@ -322,23 +322,22 @@ func (p *PanelClient) inboundTags(ctx context.Context) (map[int64][]string, erro
 		return nil, ErrPanel
 	}
 	var rows []struct {
-		ID     int64  `json:"id"`
-		Enable bool   `json:"enable"`
-		Tag    string `json:"tag"`
+		ID     *int64  `json:"id"`
+		Enable *bool   `json:"enable"`
+		Tag    *string `json:"tag"`
 	}
 	if json.Unmarshal(out.Obj, &rows) != nil || rows == nil {
 		return nil, ErrPanel
 	}
-	tags := map[int64][]string{}
+	tags := map[int64]statisticsInbound{}
 	for _, r := range rows {
-		if r.ID <= 0 || tags[r.ID] != nil {
+		if r.ID == nil || r.Enable == nil || r.Tag == nil {
+			return nil, ErrPanel
+		}
+		if _, exists := tags[*r.ID]; *r.ID <= 0 || exists {
 			return nil, ErrMembership
 		}
-		if r.Enable {
-			tags[r.ID] = strings.Split(r.Tag, "-")
-		} else {
-			tags[r.ID] = []string{}
-		}
+		tags[*r.ID] = statisticsInbound{tags: strings.Split(*r.Tag, "-"), enabled: *r.Enable}
 	}
 	return tags, nil
 }
@@ -361,8 +360,8 @@ func (p *PanelClient) ProfileInboundIDs(ctx context.Context, profile string) ([]
 		return nil, e
 	}
 	ids := []int64{}
-	for id, segments := range tags {
-		if hasSegment(segments, profile) || profile == "unlimited" && hasSegment(segments, "regular") {
+	for id, inbound := range tags {
+		if inbound.enabled && (hasSegment(inbound.tags, profile) || profile == "unlimited" && hasSegment(inbound.tags, "regular")) {
 			ids = append(ids, id)
 		}
 	}
@@ -388,7 +387,7 @@ func (p *PanelClient) MembershipDiff(ctx context.Context, current, desired []int
 		need[id] = true
 	}
 	for _, id := range current {
-		if _, ok := tags[id]; !ok {
+		if id <= 0 {
 			return nil, nil, ErrMembership
 		}
 		have[id] = true
@@ -400,7 +399,7 @@ func (p *PanelClient) MembershipDiff(ctx context.Context, current, desired []int
 		}
 	}
 	for id := range have {
-		if !need[id] && (hasSegment(tags[id], "regular") || hasSegment(tags[id], "euru") || hasSegment(tags[id], "unlimited")) {
+		if !need[id] && (hasSegment(tags[id].tags, "regular") || hasSegment(tags[id].tags, "euru") || hasSegment(tags[id].tags, "unlimited")) {
 			detach = append(detach, id)
 		}
 	}

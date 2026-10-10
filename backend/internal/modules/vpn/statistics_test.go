@@ -231,6 +231,18 @@ func TestPanelStatisticsActivity(t *testing.T) {
 			a.VpnBanned = true
 			v.Enabled = false
 		}, false, true},
+		{"group-ban-only-disabled", func(a *accounts.Snapshot, b *statisticsBaseline, v *PanelClientView, _ map[int64]statisticsInbound) {
+			t := AccessTarget{OperationID: op, PanelID: panel, PanelKey: a.PanelKey, VPNID: id, SubID: a.SubID, Profile: profile, Banned: true, PreviousBanned: true}
+			b.AccessID, b.AccessKind = &op, "group_reconcile"
+			b.AccessTarget, _ = json.Marshal(t)
+			a.VpnBanned, v.Enabled = true, false
+		}, false, true},
+		{"group-ban-only-enabled-drift", func(a *accounts.Snapshot, b *statisticsBaseline, v *PanelClientView, _ map[int64]statisticsInbound) {
+			t := AccessTarget{OperationID: op, PanelID: panel, PanelKey: a.PanelKey, VPNID: id, SubID: a.SubID, Profile: profile, Banned: true, PreviousBanned: true}
+			b.AccessID, b.AccessKind = &op, "group_reconcile"
+			b.AccessTarget, _ = json.Marshal(t)
+			a.VpnBanned = true
+		}, false, false},
 		{"applied-access-over-trial", func(_ *accounts.Snapshot, b *statisticsBaseline, _ *PanelClientView, _ map[int64]statisticsInbound) {
 			b.AccessID, b.AccessTarget, b.TrialID, b.TrialStatus = &op, b.TrialTarget, nil, ""
 		}, true, true},

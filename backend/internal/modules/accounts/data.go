@@ -26,6 +26,15 @@ func (s *Service) Lookup(ctx context.Context, id uuid.UUID) (Snapshot, error) {
 	a, err := store.New(s.pool).AccountByID(ctx, id)
 	return accountResult(a, err)
 }
+
+func (s *Service) AssignedVPNAccounts(ctx context.Context) ([]uuid.UUID, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id FROM accounts WHERE assigned_panel_id IS NOT NULL ORDER BY id`)
+	if err != nil {
+		return nil, unavailable()
+	}
+	defer rows.Close()
+	return pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+}
 func (s *Service) LookupTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (Snapshot, error) {
 	a, err := store.New(tx).AccountByID(ctx, id)
 	return accountResult(a, err)

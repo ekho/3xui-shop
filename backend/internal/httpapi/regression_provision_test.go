@@ -36,6 +36,7 @@ type fakePanel struct {
 	server                                                                           *httptest.Server
 	client                                                                           map[string]any
 	ids                                                                              []int64
+	inboundRows                                                                      []map[string]any
 	adds, attaches, otherWrites                                                      int
 	updates, resets, disables, detaches                                              int
 	up, down                                                                         int64
@@ -116,6 +117,9 @@ func (p *fakePanel) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		if p.sharedRegularUnlimited {
 			rows[0]["tag"] = "node-regular-unlimited-tcp"
+		}
+		if p.inboundRows != nil {
+			rows = p.inboundRows
 		}
 		reply(map[string]any{"success": true, "obj": rows})
 	case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/panel/api/clients/get/"):

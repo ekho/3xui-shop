@@ -23,8 +23,17 @@ func (s *Service) ConfirmedAccessProfile(ctx context.Context, baseline AccessBas
 			if limit > 0 {
 				limit++
 			}
+			if baseline.AccessKind == "group_reconcile" {
+				limit = target.PreviousLimitIP
+			}
 			if target.Profile == "" || strict && (v.ExpiryTimeMS != target.ExpiryTimeMS || v.LimitIP != limit || v.TrafficLimitBytes != target.TrafficLimitBytes) {
 				return "", ErrIdentity
+			}
+			if baseline.AccessKind == "group_reconcile" && target.Banned && len(target.InboundIDs) == 0 {
+				if !a.VpnBanned || v.Enabled {
+					return "", ErrIdentity
+				}
+				return target.Profile, nil
 			}
 			attach, detach, e := p.MembershipDiff(ctx, v.InboundIDs, target.InboundIDs)
 			if e != nil || len(attach) > 0 || len(detach) > 0 {
@@ -62,6 +71,7 @@ func (s *Service) ConfirmedAccessProfile(ctx context.Context, baseline AccessBas
 }
 
 type AccessBaseline struct {
+	AccessKind                string
 	AccessID, TrialID         *uuid.UUID
 	AccessTarget, TrialTarget json.RawMessage
 	TrialStatus               string
@@ -72,7 +82,7 @@ func (s *Service) AccessBaselineTx(ctx context.Context, tx pgx.Tx, account uuid.
 	var out AccessBaseline
 	access, e := q.LatestAppliedAccess(ctx, account)
 	if e == nil {
-		out.AccessID, out.AccessTarget = &access.ID, access.Target
+		out.AccessID, out.AccessTarget, out.AccessKind = &access.ID, access.Target, access.Kind
 	} else if !errors.Is(e, pgx.ErrNoRows) {
 		return out, e
 	}

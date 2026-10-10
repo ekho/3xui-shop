@@ -94,6 +94,19 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 	}, Outcome: func(ctx context.Context, tx pgx.Tx, operation uuid.UUID, status, reason string) error {
 		return paymentsOwner.RecordPurchaseAccessTx(ctx, tx, operation, status, reason)
 	}})
+	notificationsOwner.WithInfrastructureDeliveryGuard(owner.WithInfrastructureDelivery)
+	vpnOwner.WithGroupFailureNotifier(func(ctx context.Context, tx pgx.Tx, account uuid.UUID, code string) error {
+		recipients, err := owner.InfrastructureAlertRecipientsTx(ctx, tx)
+		if err != nil {
+			return err
+		}
+		for _, recipient := range recipients {
+			if err = notificationsOwner.EnqueueGroupAlertTx(ctx, tx, recipient, account, code, now()); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	subscriptionOwner = subscriptions.New(pool, owner, catalogueOwner, vpnOwner, notificationsOwner, func() subscriptions.Config {
 		c := cfg.Subscriptions
 		c.Admission = maintenanceOwner.AllowNew

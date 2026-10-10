@@ -242,6 +242,11 @@ func (s *Service) RequeueAccessTx(ctx context.Context, tx pgx.Tx, id, a, actor u
 	if r.Status != "needs_review" {
 		return AccessState{}, failure(409, "ACCESS_OPERATION_CONFLICT")
 	}
+	if r.Kind == "group_reconcile" {
+		if e = s.accounts.RequireInfrastructureTx(ctx, tx, actor); e != nil {
+			return AccessState{}, e
+		}
+	}
 	if !r.ResetStarted && ack {
 		return AccessState{}, failure(400, "INVALID_INPUT")
 	}
