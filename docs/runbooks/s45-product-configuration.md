@@ -134,6 +134,10 @@ RUB/USD/XTR цену. Отсутствующая цена не конверти�
 | `CABINET_MAINTENANCE` | Gateway stop-traffic flag. Подписанные PSP callbacks проходят к backend и при true; это не persisted business maintenance С42, не drain/backup. |
 | `PUBLIC_CERT_FILE`, `PUBLIC_KEY_FILE` | TLS mounts gateway. Private keys вне env/Git; `/internal/*` всегда возвращает 404. |
 
+Для названия проекта в шапке и вкладке браузера можно задать
+`PRODUCT_NAME=3xui-mole`, как в `web/.env.example`. Это необязательная настройка:
+собственное имя установки и стандартные ru/en подписи сохраняются.
+
 `/config.json` содержит только allowlist public fields: versions/URLs и optional
 productName. Нет DB/SMTP/panel/token/recipient. Caddy и browser не кешируют config;
 build не включает deployment env. Missing/invalid config закрывает registration

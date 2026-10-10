@@ -1,4 +1,4 @@
-# 3xui-shop v2
+# 3xui-mole v2
 
 [Русский](README.ru_RU.md)
 
@@ -7,6 +7,15 @@ One Go process owns HTTP, River jobs, main/support Telegram and schedulers.
 The web application and Caddy run in a separate image; PostgreSQL holds product
 state and Redis supports throttling. Product Python and the transitional HTTP
 bot adapter have been retired.
+
+The project is named **3xui-mole**. Its GitHub repository is still
+[`ekho/3xui-shop`](https://github.com/ekho/3xui-shop), and the current GHCR image
+addresses remain unchanged; see [preview releases](docs/releases-v2.md).
+Historical records and upstream references retain their original names.
+
+Set the optional `PRODUCT_NAME=3xui-mole` web runtime setting to display this
+name in the cabinet header and browser tab. Existing deployment names and the
+generic cabinet labels remain available.
 
 Build the backend with Go 1.27.1 and the web application with Node 24.11.1:
 
