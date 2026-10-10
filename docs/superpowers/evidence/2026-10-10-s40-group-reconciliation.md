@@ -137,6 +137,18 @@ Names/generation/vet PASS. Platform run38020894575 отменён после о�
 конфликта, до полного завершения; его PASS static и три image builds не заменяют
 новый exact-head CI. Итог CI и delivery фиксируются в canonical issue43/PR.
 
+Exact-head Platform38021649511 на `cf1ad8d`: Go17 packages с race/browser и
+Python112 **PASS**, Web560 PASS/1 FAIL. Baseline Telegram trial retry test
+проверял массив request bodies сразу после второго click; получил только первый
+payload. Его исходники и соответствующий product-код после local Web561 не менялись.
+Управляемая задержка наблюдения второго запроса200ms воспроизвела тот же FAIL3/3.
+Existing `await expect.poll` с теми же двумя точными payload исправил ожидание:
+delayed GREEN3/3, natural GREEN20/20 (32.9s). Временная задержка удалена;
+осталась одна строка assertion, обе payload/decimal ID/locale/key проверки сохранены.
+Независимое bounded review PASS: existing finite10s timeout, без sleep/skip/retry
+и изменений product-кода. Names/diff check PASS. Следующий CI получает этот
+исправленный test input; прежний failed run не считается полной CI-приёмкой.
+
 ## Эксплуатационные пределы
 
 Native scheduler работает при старте и раз в час; legacy adapter mode не запускает
