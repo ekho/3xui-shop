@@ -3,7 +3,11 @@
 Issue: #49. Base: `f64c13ce9fbc3b2dfccc6ec67d0558987f0c0fd4`.
 Contract: `2026-10-10-promocode-activation-v1`,
 [canonical decision](https://github.com/ekho/3xui-shop/issues/49#issuecomment-6095033564).
-No DDL; existing 00040/code history and persistent access operations are reused.
+No own DDL; existing 00040/code history and persistent access operations are reused.
+Integrated delivered target `f75dbb72c65c40dce099e2919e8809ee947951ea`
+(#50/PR105, migration 00041) after actual shared-file conflicts were confirmed.
+The existing early-created bonuses owner and campaign→referral registration
+hook are retained; subscriptions is configured on that same owner.
 
 ## Среда и доказательства
 
@@ -24,6 +28,7 @@ Passed local checks (2026-10-10):
 | HTTP/grant regression, `-race`, 60.667s | Rights, strict input, ownership, concurrent clients, atomic rollback, same-key replay/conflict, account restriction, native compensation limits, stable identities/devices/traffic, expired access, real edit/delete lock races including operator self-activation, preparation races, and existing operator/server regressions |
 | Worker guard/uncertain write, `-race`, 5.076s | Restriction after acceptance prevents panel write. Failure after panel update retains activation/history and exposes `needs_review`; restart replay and operator reconciliation reuse the same absolute target with one update and no traffic reset |
 | Whole-process shared-owner restart, `-race`, 6.114s | Real HTTP cookie + signed MiniApp accept persistent grants; stop/recreate HTTP/River/Telegram, replay old responses, run jobs, recover lost panel reply, native private bot activation/status, foreign-owner denial and code privacy |
+| Integrated native promo + referrals, `-race`, 12.235s | Both actual HTTP/Telegram flows after delivered #50 integration; same owner, registration attribution, restart and stable activation behavior |
 | Native Chromium + real API, `-race`, 8.715s | RU/EN, labelled keyboard form, actual POST/GET, current status, single retained grant, no code in URL/storage |
 | Telegram focused real principal/unit checks, `-race`, 2.880s | Stable update key/lost Bot API reply, private verified actor, reject group/forwarded messages, safe responses and legacy callback compatibility |
 | Focused Chromium mock checks, 3 passed, 5.7s | Same key after uncertain response, current status, invalid/used errors and focus, signed MiniApp bearer/CSRF and EN, responsive width |

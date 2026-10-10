@@ -15189,6 +15189,73 @@
           }
         }
       }
+    },
+    "/api/v1/referrals": {
+      "get": {
+        "operationId": "getReferrals",
+        "description": "Current eligible account only, for browser or signed Mini App. No account selector/query/body. Stable personal link uses current deployment origin. Granted and pending DAYS are persisted facts; MONEY record counts do not represent a wallet or payout.",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "miniAppBearer": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Safe error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferralsResult"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -22420,6 +22487,97 @@
             ]
           }
         }
+      },
+      "ReferralsResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "string",
+            "enum": [
+              "2026-10-10-referrals-v1"
+            ]
+          },
+          "web_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "levels": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "$ref": "#/components/schemas/ReferralLevel"
+            }
+          },
+          "unclassified_records": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "version",
+          "web_url",
+          "levels",
+          "unclassified_records"
+        ]
+      },
+      "ReferralLevel": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "level": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ]
+          },
+          "invited": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "granted_days": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$"
+          },
+          "pending_days": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$"
+          },
+          "granted_rewards": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "pending_rewards": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "money_records": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "pending_money_records": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "level",
+          "invited",
+          "granted_days",
+          "pending_days",
+          "granted_rewards",
+          "pending_rewards",
+          "money_records",
+          "pending_money_records"
+        ]
       }
     }
   }

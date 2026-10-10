@@ -28,9 +28,9 @@ import (
 type Modules struct {
 	MiniApp       *telegram.MiniApp
 	Accounts      *accounts.Service
+	Bonuses       *bonuses.Service
 	Catalogue     *catalogue.Service
 	Campaigns     *campaigns.Service
-	Bonuses       *bonuses.Service
 	Subscriptions *subscriptions.Service
 	VPN           *vpn.Service
 	Payments      *payments.Service
@@ -53,6 +53,7 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 	var owner *accounts.Service
 	var paymentsOwner *payments.Service
 	var campaignOwner *campaigns.Service
+	var bonusesOwner *bonuses.Service
 	mailOwner := notifications.NewMail(pool, queue, func() notifications.MailConfig {
 		c := cfg.Mail
 		c.CabinetOrigin, c.Now = cfg.HTTP.CabinetOrigin, now
@@ -71,9 +72,13 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 		return paymentsOwner.CanUnlinkTelegramTx(ctx, tx, id)
 	}
 	accountConfig.CaptureRegistration = func(ctx context.Context, tx pgx.Tx, id uuid.UUID, channel, code string) error {
-		return campaignOwner.CaptureRegistrationTx(ctx, tx, id, channel, code)
+		if err := campaignOwner.CaptureRegistrationTx(ctx, tx, id, channel, code); err != nil {
+			return err
+		}
+		return bonusesOwner.CaptureRegistrationTx(ctx, tx, id, channel, code)
 	}
 	owner = accounts.New(pool, limiter, mailOwner, accountConfig)
+	bonusesOwner = bonuses.New(pool, owner, now)
 	maintenanceOwner := operations.New(pool, owner, now)
 	catalogueOwner := catalogue.New(pool, owner, now)
 	var subscriptionOwner *subscriptions.Service
@@ -123,8 +128,7 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 		return c
 	}, now, notificationsOwner)
 	campaignOwner = campaigns.New(pool, limiter, owner, subscriptionOwner, paymentsOwner, cfg.Accounts.RateNamespace, now)
-	bonusOwner := bonuses.New(pool, owner, now)
-	bonusOwner.ConfigureSubscriptions(subscriptionOwner)
+	bonusesOwner.ConfigureSubscriptions(subscriptionOwner)
 	supportOwner := support.New(pool, limiter, owner, cfg.Accounts.RateNamespace, now, notificationsOwner)
 	reportsOwner := auditreports.New(pool, auditreports.StatisticsPorts{RequireOperator: owner.RequireOperator, AccountsTx: owner.StatisticsTx, ReportCohortTx: campaignOwner.ReportCohortTx, PaymentsTx: paymentsOwner.StatisticsTx, TrialsTx: subscriptionOwner.StatisticsTx, PlansTx: catalogueOwner.StatisticsTx, VPNTx: vpnOwner.StatisticsTx}, auditreports.HistoryPorts{LockOperatorTx: owner.LockNoticeOperatorTx, AccountExistsTx: func(ctx context.Context, tx pgx.Tx, id uuid.UUID) (bool, error) {
 		_, err := owner.LookupTx(ctx, tx, id)
@@ -135,5 +139,5 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 	}, LegacyTargetTx: owner.LegacyAuditTargetTx, LegacyLinksTx: owner.LegacyAuditLinksTx}, cfg.Audit)
 	remindersOwner := notifications.NewReminders(pool, notifications.ReminderPorts{AudienceTx: owner.ReminderAudienceTx, RecipientTx: owner.ReminderRecipientTx, AccessTx: vpnOwner.ReminderAccessTx, PeriodTx: vpnOwner.ReminderPeriodTx, StarsTx: paymentsOwner.ReminderPolicyTx, MailGuard: owner.WithMailGuard}, mailOwner, notificationsOwner, now)
 	noticesOwner := notifications.NewNotices(pool, notifications.NoticePorts{AudienceTx: owner.ReminderAudienceTx, RecipientTx: owner.NoticeRecipientTx, LockOperatorTx: owner.LockNoticeOperatorTx, LockPairTx: owner.LockNoticePairTx, DeliveryGuard: owner.WithNoticeDelivery, RequireOperator: owner.RequireOperator}, mailOwner, notificationsOwner, now)
-	return &Modules{Accounts: owner, Catalogue: catalogueOwner, Campaigns: campaignOwner, Bonuses: bonusOwner, Subscriptions: subscriptionOwner, VPN: vpnOwner, Payments: paymentsOwner, Support: supportOwner, Notifications: notificationsOwner, MailDelivery: mailOwner, Reminders: remindersOwner, Notices: noticesOwner, AuditReports: reportsOwner, Maintenance: maintenanceOwner}
+	return &Modules{Accounts: owner, Bonuses: bonusesOwner, Catalogue: catalogueOwner, Campaigns: campaignOwner, Subscriptions: subscriptionOwner, VPN: vpnOwner, Payments: paymentsOwner, Support: supportOwner, Notifications: notificationsOwner, MailDelivery: mailOwner, Reminders: remindersOwner, Notices: noticesOwner, AuditReports: reportsOwner, Maintenance: maintenanceOwner}
 }

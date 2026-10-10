@@ -52,6 +52,8 @@ export const getSubscriptionKey=(signal?:AbortSignal)=>request<SubscriptionKey>(
 export type PromocodeActivation=components['schemas']['PromocodeActivation'];
 export const activatePromocode=(code:string,key:string,signal?:AbortSignal)=>request<PromocodeActivation>('promocodes/activate','POST',{code},signal,true,key);
 export const getPromocodeActivation=(operationId:string,signal?:AbortSignal)=>request<PromocodeActivation>('promocodes/activations/'+encodeURIComponent(operationId),'GET',undefined,signal);
+export type ReferralsResult=components['schemas']['ReferralsResult'];
+export const getReferrals=(signal?:AbortSignal)=>request<ReferralsResult>('referrals','GET',undefined,signal);
 function maintenanceStatus(value:MaintenanceStatus){if(typeof value?.enabled!=='boolean'||!Number.isSafeInteger(value.revision)||value.revision<0||(value.changed_at!==null&&(typeof value.changed_at!=='string'||!Number.isFinite(Date.parse(value.changed_at)))))throw new ApiError(503,'SERVICE_UNAVAILABLE','');return value;}
 export const getMaintenance=(signal?:AbortSignal)=>request<MaintenanceStatus>('maintenance','GET',undefined,signal).then(maintenanceStatus);
 export const getOperatorMaintenance=(signal?:AbortSignal)=>request<MaintenanceStatus>('operator/maintenance','GET',undefined,signal).then(maintenanceStatus);

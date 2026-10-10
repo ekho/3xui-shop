@@ -43,7 +43,8 @@ access_operation_id, history/audit, idempotency response, grant и River job
 оператором. Edit/delete race не теряет использованный код или историю.
 
 No DDL: используются 00040 и existing access_operations/idempotency_records.
-00042 не создаётся; referral-specific/#50/00041 не включаются в исходную ветку.
+00042 не создаётся. Доставленный #50/00041 сохраняется при интеграции v2;
+один bonuses owner обслуживает рефералы и активацию промокода.
 Код отсутствует в audit/events/operation reason/worker/logs/URL. В events
 сохраняется только metadata и ссылка на operation. Legacy Python сохраняется
 до #54; он не запускается вторым исполнителем PostgreSQL-операций.
