@@ -29,6 +29,12 @@ func (s *Service) ConfirmedAccessProfile(ctx context.Context, baseline AccessBas
 			if target.Profile == "" || strict && (v.ExpiryTimeMS != target.ExpiryTimeMS || v.LimitIP != limit || v.TrafficLimitBytes != target.TrafficLimitBytes) {
 				return "", ErrIdentity
 			}
+			if baseline.AccessKind == "group_reconcile" && target.Banned && len(target.InboundIDs) == 0 {
+				if !a.VpnBanned || v.Enabled {
+					return "", ErrIdentity
+				}
+				return target.Profile, nil
+			}
 			attach, detach, e := p.MembershipDiff(ctx, v.InboundIDs, target.InboundIDs)
 			if e != nil || len(attach) > 0 || len(detach) > 0 {
 				return "", ErrMembership

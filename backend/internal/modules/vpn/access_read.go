@@ -33,9 +33,11 @@ func (s *Service) ReadAccess(ctx context.Context, op AccessState) (AccessTarget,
 	if v == nil || v.VPNID != target.VPNID || v.SubID != target.SubID || v.ExpiryTimeMS != target.ExpiryTimeMS || v.LimitIP != limit || v.TrafficLimitBytes != target.TrafficLimitBytes || target.Banned && v.Enabled {
 		return target, nil, 0, 0, ErrIdentity
 	}
-	attach, detach, err := p.MembershipDiff(ctx, v.InboundIDs, target.InboundIDs)
-	if err != nil || len(attach) > 0 || len(detach) > 0 {
-		return target, nil, 0, 0, ErrMembership
+	if !(op.Kind == "group_reconcile" && target.Banned && len(target.InboundIDs) == 0) {
+		attach, detach, err := p.MembershipDiff(ctx, v.InboundIDs, target.InboundIDs)
+		if err != nil || len(attach) > 0 || len(detach) > 0 {
+			return target, nil, 0, 0, ErrMembership
+		}
 	}
 	up, down, err := p.Traffic(ctx, target.PanelKey, target.VPNID, target.SubID)
 	if err != nil {

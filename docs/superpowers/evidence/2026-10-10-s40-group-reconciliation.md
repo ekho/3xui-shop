@@ -26,6 +26,12 @@ Migration39 reservation: [canonical record](https://github.com/ekho/3xui-shop/is
   `group_reconcile` есть только в output enum, API creation этого kind даёт400.
 - Migration Down/Up с ordinary delivery сохраняет её; group history запрещает
   downgrade. SQL payload guard отказывает incomplete/arbitrary alerts.
+- Independent review обнаружило два integration дефекта: aligned membership
+  после удаления inbound/manual recovery не обновлял confirmed baseline;
+  ban-only target ошибочно читался как membership drift. Regression tests
+  воспроизвели оба до исправлений. Fresh read-only confirmation сохраняет старые
+  targets и URL; ban-only читатели проверяют identity/limits/disable, а unban
+  требует непустого enabled profile. Статистика считает подтверждённый ban inactive.
 
 ## Проверки
 
@@ -35,16 +41,20 @@ URL/credential files находятся за пределами repository, perm
 
 Focused Go `TestGroup*`, migration guard и HTTP recovery: PASS с `-race`.
 Fresh `cmd/server` SHA256:
-`1d8cf21e50b7abf3f3b6534d4ebb9c3edf597ecaee08be0e7b7078f4289a27ad`.
+`58a2d85a2e393457bd73c0bf527e7f8eb52fcf877edb68ff6d277debc86cdfe8`.
 Native test запускает настоящий HTTP/River/Telegram process пять раз: initial
 trial, panel outage/guarded alerts, recovery, no-op restart, ban. Он подтверждает
-original grant/target/key, physical limitIP1, traffic42 и unknown inbound91.
+original grant/target/key, physical limitIP1, traffic42 и unknown inbound91,
+а также HTTP banned/non-stale при empty enabled profile.
 Provider transport симулируется; native Go consumers и jobs не подменяются.
 
 Python connected suite: **112 passed**. Web E2E: **551 passed**, существующие
 ru/en, keyboard/error/empty-state flows. Typecheck/build/runtime-config и vet PASS.
-Полный Go race/browser-consumer прогон выполняется; независимое ревью и exact-head
-CI/merge фиксируются после результата, ранее полученные PASS не заменяют их.
+Полный Go race/browser-consumer прогон выполняется на исходниках до review fixes.
+Независимое whole-branch review и follow-up review исправлений PASS: оба Important
+закрыты, новых actionable findings нет. Повторный focused Go `TestGroup*` и
+statistics PASS с `-race`; fresh native binary PASS. Exact-head CI/merge
+фиксируются после результата, ранее полученные PASS не заменяют их.
 
 ## Эксплуатационные пределы
 

@@ -129,6 +129,9 @@ func statisticsAccountActivity(a accounts.Snapshot, b statisticsBaseline, snapsh
 	if !exists || v.PanelKey != a.PanelKey || v.VPNID != a.VpnID || v.SubID != a.SubID || v.ExpiryTimeMS != target.ExpiryTimeMS || v.LimitIP != limit || v.TrafficLimitBytes != target.TrafficLimitBytes || v.UsedTraffic == nil || *v.UsedTraffic < 0 || target.Banned && v.Enabled {
 		return false, false
 	}
+	if b.AccessKind == "group_reconcile" && target.Banned && len(target.InboundIDs) == 0 {
+		return false, true
+	}
 	need, have := map[int64]bool{}, map[int64]bool{}
 	for _, id := range target.InboundIDs {
 		need[id] = true
@@ -220,7 +223,8 @@ func statisticsTarget(a accounts.Snapshot, b statisticsBaseline, panelID string)
 	if !accessTarget && target.Profile == "" {
 		target.Profile = "regular"
 	}
-	if a.AssignedPanelID == nil || *a.AssignedPanelID != panelID || target.PanelID != panelID || target.PanelKey != a.PanelKey || target.VPNID != a.VpnID || target.SubID != a.SubID || target.VPNID == uuid.Nil || target.PanelKey == "" || target.SubID == "" || target.Banned != a.VpnBanned || target.DeviceCount < 0 || target.DeviceCount >= math.MaxInt64 || target.ExpiryTimeMS < 0 || target.TrafficLimitBytes < 0 || len(target.InboundIDs) == 0 {
+	banOnly := b.AccessKind == "group_reconcile" && target.Banned && len(target.InboundIDs) == 0
+	if a.AssignedPanelID == nil || *a.AssignedPanelID != panelID || target.PanelID != panelID || target.PanelKey != a.PanelKey || target.VPNID != a.VpnID || target.SubID != a.SubID || target.VPNID == uuid.Nil || target.PanelKey == "" || target.SubID == "" || target.Banned != a.VpnBanned || target.DeviceCount < 0 || target.DeviceCount >= math.MaxInt64 || target.ExpiryTimeMS < 0 || target.TrafficLimitBytes < 0 || len(target.InboundIDs) == 0 && !banOnly {
 		return ProvisionTarget{}, false, false
 	}
 	if target.Profile != "regular" && target.Profile != "unlimited" && target.Profile != "euru" || a.AccessProfile != nil && *a.AccessProfile != target.Profile {

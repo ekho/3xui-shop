@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"slices"
 	"time"
 
 	"example.com/cabinet/backend/internal/modules/audit_reports"
@@ -158,7 +159,27 @@ func (s *Service) PrepareGroupReconciliation(ctx context.Context, account uuid.U
 		return uuid.Nil, nil
 	}
 	if len(attach) == 0 && len(detach) == 0 && (!a.VpnBanned || !v.Enabled) {
-		return uuid.Nil, tx.Commit(ctx)
+		baseline, err := s.AccessBaselineTx(ctx, tx, account)
+		if err != nil {
+			return uuid.Nil, unavailable()
+		}
+		var captured AccessTarget
+		if baseline.AccessID != nil && json.Unmarshal(baseline.AccessTarget, &captured) != nil {
+			return uuid.Nil, unavailable()
+		}
+		if (baseline.AccessID == nil || captured.NoClientIntent) && baseline.TrialStatus == "applied" {
+			captured = AccessTarget{}
+			if json.Unmarshal(baseline.TrialTarget, &captured) != nil {
+				return uuid.Nil, unavailable()
+			}
+			if captured.Profile == "" {
+				captured.Profile = "regular"
+			}
+		}
+		// Confirm changed group targets even when the panel already applied their memberships.
+		if prior == nil && (captured.OperationID == uuid.Nil || captured.NoClientIntent || captured.Profile == profile && slices.Equal(captured.InboundIDs, ids)) {
+			return uuid.Nil, tx.Commit(ctx)
+		}
 	}
 	if banOnly && s.groupFailureTx(ctx, tx, account, "empty_membership", nil) != nil {
 		return uuid.Nil, unavailable()

@@ -27,14 +27,19 @@ Known account profile определяет desired enabled inbounds. Unknown pro
 пропускается; unknown-tag memberships сохраняются. Disabled known inbounds
 можно detach; отсутствующий current ID не передаётся в detach.
 
-Непустой desired и подтверждённый drift создают `group_reconcile` operation +
-existing River AccessArgs атомарно. Цель фиксирует IDs и наблюдаемые лимиты.
+Непустой desired и подтверждённый drift или устаревшая подтверждённая group-цель
+создают `group_reconcile` operation + existing River AccessArgs атомарно. Если
+memberships уже исправлены самой панелью, worker подтверждает новую цель без
+panel writes. Цель фиксирует IDs и наблюдаемые лимиты.
 Executor — existing AccessWorker, без второго writer. Только attach/detach и
 disable при account VPN-ban; никогда add/delete/reset/enable/remap. Empty desired
 сохраняет membership и вызывает alert; VPN-ban может выполнить только disable.
 Срок, quota, limitIP (включая 1), traffic и unknown membership не меняются.
 
-Повтор подготовки без drift — no-op. Pending operation не дублируется; River
+Повтор подготовки без drift с актуальной подтверждённой целью — no-op.
+Ban-only цель с пустыми IDs подтверждает disable, сохраняет memberships и
+читается как banned; unban требует восстановленного непустого enabled profile.
+Pending operation не дублируется; River
 сохраняет её при restart. Частичный membership write восстанавливается только
 идемпотентными attach/detach после fresh readback того же клиента. Если target
 устарел или нужна проверка, system operation остаётся needs_review с alert.

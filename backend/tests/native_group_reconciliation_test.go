@@ -184,6 +184,9 @@ func TestNativeGroupReconciliation(t *testing.T) {
 	if _, err := f.env.Pool.Exec(ctx, `UPDATE accounts SET vpn_banned=true WHERE id=$1`, account); err != nil {
 		t.Fatal(err)
 	}
+	f.panel.mu.Lock()
+	f.panel.inbounds[1]["enable"] = false
+	f.panel.mu.Unlock()
 	start()
 	wait(t, func() bool {
 		var n int
@@ -191,6 +194,11 @@ func TestNativeGroupReconciliation(t *testing.T) {
 	})
 	if status, _, _ := f.send(t, client, "GET", "/api/v1/subscription/key", nil, "", "", false); status != 403 || snapshot() != before {
 		t.Fatal("compiled VPN-ban gate lost its frozen identity/grant")
+	}
+	status, raw, _ := f.send(t, client, "GET", "/api/v1/subscription", nil, "", "", false)
+	var banned wire.Subscription
+	if status != 200 || json.Unmarshal(raw, &banned) != nil || banned.Status != "banned" || banned.DataStale {
+		t.Fatal("compiled ban-only readback lost its confirmed status", status, banned.Status)
 	}
 	f.panel.mu.Lock()
 	provider, _ := f.panel.clients[identity.PanelKey]["enable"].(bool)
