@@ -67,6 +67,7 @@ type Service struct {
 	now           func() time.Time
 	http          *http.Client
 	stars         *StarsGateway
+	paidPurchase  func(context.Context, pgx.Tx, uuid.UUID) error
 }
 
 func New(pool *pgxpool.Pool, authority *accounts.Service, catalogueOwner *catalogue.Service, subscriptionOwner *subscriptions.Service, accessOwner *vpn.Service, queue func() *river.Client[pgx.Tx], config func() Config, now func() time.Time, notices *notifications.Service) *Service {
@@ -74,6 +75,11 @@ func New(pool *pgxpool.Pool, authority *accounts.Service, catalogueOwner *catalo
 		now = time.Now
 	}
 	return &Service{pool: pool, notifications: notices, authority: authority, catalogue: catalogueOwner, subscriptions: subscriptionOwner, vpn: accessOwner, queue: queue, config: config, now: now, http: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+}
+
+// ConfigurePaidPurchase is called once by root composition, before serving requests.
+func (s *Service) ConfigurePaidPurchase(hook func(context.Context, pgx.Tx, uuid.UUID) error) {
+	s.paidPurchase = hook
 }
 
 func accountResult(a accounts.Snapshot, err error) (accounts.Snapshot, error) {

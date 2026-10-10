@@ -152,6 +152,11 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 	if bonus && err == nil && !bonusAccountEligible(a) {
 		return cleanup("bonus_guard_changed", true)
 	}
+	if bonus {
+		if reason := s.checkBonus(ctx, nil, op.AccountID, id); reason != "" {
+			return cleanup(reason, true)
+		}
+	}
 	if op.Kind == "monthly_reset" && !op.WriteStarted && !op.ResetStarted && err == nil && (a.VpnBanned || !(a.AccessProfile != nil) || stringValue(a.AccessProfile) != "unlimited") {
 		stop()
 		return s.finishMonthlyWithoutWrite(ctx, op, lease, "eligibility_changed")
@@ -184,12 +189,13 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		return cleanup("actor_revoked", true)
 	}
 	if panelErr != nil {
-		return cleanup("panel_unavailable", true)
+		return cleanup("panel_unavailable", !bonus)
 	}
 	if !banOnly && (t.Profile == "regular" || t.Profile == "euru" || t.Profile == "unlimited") {
+		// Failed provider reads are retryable before a bonus write; profile changes still need review.
 		selected, e := p.ProfileInboundIDs(ctx, t.Profile)
 		if e != nil {
-			return cleanup("profile_changed", true)
+			return cleanup("profile_changed", !bonus || !errors.Is(e, ErrPanel))
 		}
 		switch op.Kind {
 		case "purchase", "assign_plan", "starter_trial", "set_profile", "monthly_reset", "group_reconcile":
@@ -200,10 +206,10 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		default:
 			attach, detach, e := p.MembershipDiff(ctx, t.InboundIDs, selected)
 			if e != nil || len(attach) > 0 || len(detach) > 0 {
-				return cleanup("profile_changed", true)
+				return cleanup("profile_changed", !bonus || !errors.Is(e, ErrPanel))
 			}
 			if _, _, e = p.MembershipDiff(ctx, nil, t.InboundIDs); e != nil {
-				return cleanup("profile_changed", true)
+				return cleanup("profile_changed", !bonus || !errors.Is(e, ErrPanel))
 			}
 		}
 	}
@@ -235,6 +241,9 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		}
 		current, e := s.accountByID(ctx, op.AccountID)
 		if bonus && e == nil && !bonusAccountEligible(current) {
+			return false
+		}
+		if bonus && s.checkBonus(ctx, nil, op.AccountID, id) != "" {
 			return false
 		}
 		if e != nil || current.PanelKey != t.PanelKey || current.VpnID != t.VPNID || current.SubID != t.SubID || current.VpnBanned != expectedBan || group && stringValue(current.AccessProfile) != t.Profile || stringValue(current.AssignedPanelID) != t.PanelID && (!t.Missing || current.AssignedPanelID != nil) || op.Kind == "purchase" && current.Restricted || op.Kind == "monthly_reset" && (!(current.AccessProfile != nil) || stringValue(current.AccessProfile) != "unlimited") {
@@ -420,6 +429,12 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		tx.Rollback(ctx)
 		return cleanup("bonus_guard_changed", true)
 	}
+	if bonus {
+		if reason := s.checkBonus(ctx, tx, op.AccountID, id); reason != "" {
+			tx.Rollback(ctx)
+			return cleanup(reason, true)
+		}
+	}
 	if err != nil || a.PanelKey != t.PanelKey || a.VpnID != t.VPNID || a.SubID != t.SubID || a.VpnBanned != expectedBan || group && stringValue(a.AccessProfile) != t.Profile || stringValue(a.AssignedPanelID) != t.PanelID && (!t.Missing || a.AssignedPanelID != nil) {
 		tx.Rollback(ctx)
 		return cleanup("identity_changed", true)
@@ -460,6 +475,12 @@ func (s *Service) ApplyAccess(parent context.Context, id uuid.UUID) error {
 		if err = s.purchaseOutcome(ctx, tx, id, "applied", ""); err != nil {
 			tx.Rollback(ctx)
 			return cleanup("purchase_status_failed", true)
+		}
+	}
+	if bonus && s.bonus.Applied != nil {
+		if err = s.bonus.Applied(ctx, tx, op.AccountID, id); err != nil {
+			tx.Rollback(ctx)
+			return cleanup("bonus_status_failed", true)
 		}
 	}
 	if group {
