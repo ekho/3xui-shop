@@ -18,6 +18,17 @@ import (
 // All five funding paths retain valid money proof before checking live access.
 // An eligibility conflict needs review; it must not invalidate the receipt.
 func (s *Service) queueFundedPurchaseTx(ctx context.Context, tx pgx.Tx, p purchaseRow) (string, error) {
+	if s.paidPurchase != nil {
+		_, funded, err := s.ConfirmedPurchaseTx(ctx, tx, p.id)
+		if err != nil {
+			return "", err
+		}
+		if funded {
+			if err = s.paidPurchase(ctx, tx, p.id); err != nil {
+				return "", err
+			}
+		}
+	}
 	reason, err := s.purchasePolicyTx(ctx, tx, p)
 	if err != nil {
 		return "", err

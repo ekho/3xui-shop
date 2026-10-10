@@ -6,6 +6,7 @@ import (
 	"example.com/cabinet/backend/db"
 	"example.com/cabinet/backend/internal/app"
 	"example.com/cabinet/backend/internal/httpapi"
+	"example.com/cabinet/backend/internal/modules/bonuses"
 	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/operations"
 	"example.com/cabinet/backend/internal/modules/payments"
@@ -172,6 +173,7 @@ func run() (runErr error) {
 	river.AddWorker(workers, &vpn.ProvisionWorker{Service: svc.VPN})
 	river.AddWorker(workers, &vpn.AccessWorker{Service: svc.VPN})
 	river.AddWorker(workers, &payments.PurchaseWorker{Service: svc.Payments})
+	river.AddWorker(workers, &bonuses.RewardWorker{Service: svc.Bonuses})
 	river.AddWorker(workers, &payments.YooKassaWorker{Service: svc.Payments})
 	river.AddWorker(workers, &payments.CryptomusWorker{Service: svc.Payments})
 	river.AddWorker(workers, &payments.HeleketWorker{Service: svc.Payments})

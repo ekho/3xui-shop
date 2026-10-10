@@ -425,9 +425,9 @@ func TestCampaignsSQLBoundary(t *testing.T) {
 }
 
 func TestBonusesSQLBoundary(t *testing.T) {
-	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:promocodes|promocode_events)\b`)
+	pattern := regexp.MustCompile(`(?i)\b(?:from|join|update|into|truncate(?:\s+table)?)\s+(?:public\.)?(?:promocodes|promocode_events|referrals|referral_links|referrer_rewards)\b`)
 	owns := func(text string) bool { return pattern.MatchString(strings.ReplaceAll(text, `"`, "")) }
-	for _, sql := range []string{"SELECT * FROM promocodes", "UPDATE promocode_events SET reason=NULL", "DELETE FROM public.promocodes"} {
+	for _, sql := range []string{"SELECT * FROM promocodes", "UPDATE promocode_events SET reason=NULL", "DELETE FROM public.promocodes", "SELECT * FROM referrals", "SELECT code FROM referral_links", "UPDATE referrer_rewards SET rewarded_at=now()"} {
 		if !owns(sql) {
 			t.Fatal("bonuses ownership negative fixture escaped", sql)
 		}

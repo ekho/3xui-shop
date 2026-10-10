@@ -38,6 +38,10 @@ x-backend: &backend
     TRIAL_PERIOD: '${TRIAL_PERIOD:-3}'
     TRIAL_TRAFFIC_GB: '${TRIAL_TRAFFIC_GB:-15}'
     BONUS_DEVICES_COUNT: '${BONUS_DEVICES_COUNT:-1}'
+    SHOP_REFERRER_REWARD_ENABLED: '${SHOP_REFERRER_REWARD_ENABLED:-true}'
+    SHOP_REFERRED_REWARD_TYPE: '${SHOP_REFERRED_REWARD_TYPE:-days}'
+    SHOP_REFERRER_LEVEL_ONE_PERIOD: '${SHOP_REFERRER_LEVEL_ONE_PERIOD:-10}'
+    SHOP_REFERRER_LEVEL_TWO_PERIOD: '${SHOP_REFERRER_LEVEL_TWO_PERIOD:-3}'
   secrets: [database_url, redis_url, mail_key, code_key, adapter_token, smtp_password, smtp_ca, panel_token, panel_ca]
 services:
   postgres:

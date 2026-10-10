@@ -13,6 +13,7 @@ import (
 	"example.com/cabinet/backend/internal/httpapi"
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/audit_reports"
+	"example.com/cabinet/backend/internal/modules/bonuses"
 	"example.com/cabinet/backend/internal/modules/campaigns"
 	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/payments"
@@ -377,6 +378,7 @@ func launchNative(t *testing.T, f *fixture, bot *nativeBot, enabled, provision b
 	river.AddWorker(workers, &vpn.AccessWorker{Service: f.svc.VPN})
 	river.AddWorker(workers, &vpn.MonthlyResetWorker{Service: f.svc.VPN})
 	river.AddWorker(workers, &payments.PurchaseWorker{Service: f.svc.Payments})
+	river.AddWorker(workers, &bonuses.RewardWorker{Service: f.svc.Bonuses})
 	queues := map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: 2}}
 	if provision {
 		queues["provision"] = river.QueueConfig{MaxWorkers: 2}

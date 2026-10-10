@@ -6,6 +6,7 @@ import (
 	"errors"
 	"example.com/cabinet/backend/internal/modules/accounts"
 	"example.com/cabinet/backend/internal/modules/audit_reports"
+	"example.com/cabinet/backend/internal/modules/bonuses"
 	"example.com/cabinet/backend/internal/modules/notifications"
 	"example.com/cabinet/backend/internal/modules/payments"
 	"example.com/cabinet/backend/internal/modules/subscriptions"
@@ -27,6 +28,7 @@ type Config struct {
 	OperationsEmail       string
 	HTTP                  HTTPConfig
 	Accounts              accounts.Config
+	Bonuses               bonuses.RewardConfig
 	Subscriptions         subscriptions.Config
 	VPN                   vpn.Settings
 	Payments              payments.Config
@@ -65,12 +67,17 @@ func LoadConfig() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	rewards, err := readRewardConfig()
+	if err != nil {
+		return Config{}, err
+	}
 	c := Config{
 		OperationsEmail: operationsEmail,
 		HTTP:            HTTPConfig{CabinetOrigin: os.Getenv("CABINET_ORIGIN")},
 		Accounts:        accounts.Config{TermsVersion: os.Getenv("TERMS_VERSION"), PrivacyVersion: os.Getenv("PRIVACY_VERSION"), RateNamespace: "platform"},
 		Mail:            notifications.MailConfig{SMTPAddress: os.Getenv("SMTP_ADDRESS"), SMTPUser: os.Getenv("SMTP_USER"), SMTPFrom: os.Getenv("SMTP_FROM")},
 		Audit:           audit,
+		Bonuses:         rewards,
 	}
 	if value := os.Getenv("TRUSTED_PROXY_CIDRS"); value != "" {
 		c.HTTP.TrustedProxyCIDRs = strings.Split(value, ",")

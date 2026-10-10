@@ -35,6 +35,7 @@ type Service struct {
 	now          func() time.Time
 	outcome      func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID, string) error
 	purchase     PurchaseHooks
+	bonus        BonusHooks
 	groupFailure func(context.Context, pgx.Tx, uuid.UUID, string) error
 }
 

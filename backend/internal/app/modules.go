@@ -121,12 +121,16 @@ func NewModules(pool *pgxpool.Pool, limiter *redis.Client, queue *river.Client[p
 		c.RequireStarsCancellation = accountConfig.RequireStarsCancellation
 		return c
 	}, now)
+	bonusesOwner.ConfigureSubscriptions(subscriptionOwner)
 	paymentsOwner = payments.New(pool, owner, catalogueOwner, subscriptionOwner, vpnOwner, func() *river.Client[pgx.Tx] { return queue }, func() payments.Config {
 		c := cfg.Payments
 		c.Admission = maintenanceOwner.AllowNew
 		c.CabinetOrigin, c.PanelID = cfg.HTTP.CabinetOrigin, cfg.Subscriptions.PanelID
 		return c
 	}, now, notificationsOwner)
+	bonusesOwner.ConfigureRewards(paymentsOwner, func() *river.Client[pgx.Tx] { return queue }, func() bonuses.RewardConfig { return cfg.Bonuses })
+	paymentsOwner.ConfigurePaidPurchase(bonusesOwner.RecordPaidPurchaseTx)
+	vpnOwner.ConfigureBonusHooks(vpn.BonusHooks{Check: bonusesOwner.CheckRewardAccess, Applied: bonusesOwner.RecordRewardAccessTx})
 	campaignOwner = campaigns.New(pool, limiter, owner, subscriptionOwner, paymentsOwner, cfg.Accounts.RateNamespace, now)
 	supportOwner := support.New(pool, limiter, owner, cfg.Accounts.RateNamespace, now, notificationsOwner)
 	reportsOwner := auditreports.New(pool, auditreports.StatisticsPorts{RequireOperator: owner.RequireOperator, AccountsTx: owner.StatisticsTx, ReportCohortTx: campaignOwner.ReportCohortTx, PaymentsTx: paymentsOwner.StatisticsTx, TrialsTx: subscriptionOwner.StatisticsTx, PlansTx: catalogueOwner.StatisticsTx, VPNTx: vpnOwner.StatisticsTx}, auditreports.HistoryPorts{LockOperatorTx: owner.LockNoticeOperatorTx, AccountExistsTx: func(ctx context.Context, tx pgx.Tx, id uuid.UUID) (bool, error) {
