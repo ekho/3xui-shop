@@ -50,11 +50,41 @@ Provider transport симулируется; native Go consumers и jobs не п
 
 Python connected suite: **112 passed**. Web E2E: **551 passed**, существующие
 ru/en, keyboard/error/empty-state flows. Typecheck/build/runtime-config и vet PASS.
-Полный Go race/browser-consumer прогон выполняется на исходниках до review fixes.
+Полный Go race/browser-consumer прогон на исходниках до review fixes не прошёл:
+HTTP package достиг локального cutoff25m во время текущего теста длительностью7s
+(stack: OpenAPI JSON decode); backup test потребовал стандартный Compose endpoint.
+Остальные packages PASS. Это не доказательство полного Go PASS или зависания.
+Согласованный restore consumer берётся из доставленной #44 через public
+`TEST_POSTGRES_COMPOSE_FILE`, контракт `2026-10-10-owned-postgres-restore-v1`
+[owner #45](https://github.com/ekho/3xui-shop/issues/45#issuecomment-6091389100).
+Нового общего fixture adapter в #43 нет. Итоговый полный прогон использует
+fixture с явным project name, random loopback ports и cutoff60m как в CI.
 Независимое whole-branch review и follow-up review исправлений PASS: оба Important
 закрыты, новых actionable findings нет. Повторный focused Go `TestGroup*` и
 statistics PASS с `-race`; fresh native binary PASS. Exact-head CI/merge
 фиксируются после результата, ранее полученные PASS не заменяют их.
+
+## Целевой настоящий panel API
+
+`TestNativeGroupReconciliationRealPanel` PASS с `-count=2 -race`,29.136s на исходниках
+implementation `3e52058` и добавленном acceptance test. Fresh compiled
+cmd/server SHA256 `0c02cb12b6717c5d7ed65656668bcdfdec163fc217fab8e0eec684dadb1822bd`.
+Owned fixture переиспользует `deploy/server-management`: pinned 3X-UI3.7.0,
+настоящий TLS gateway, уникальный project/image/state; две synthetic client
+records. Через provider API создаются unknown/new regular inbound и ненулевой
+счётчик traffic. Disabled old regular требует detach, новый regular — attach.
+Проверены unchanged UUID/subID/panel key/expiry/quota/physical limitIP1/traffic,
+unknown membership, foreign client, HTTP active/non-stale и тот же no-store URL
+после restart, одна operation и неизменный frozen target. Fixture удаляет только
+собственные записи/инбаунды и восстанавливает old inbound. Cleanup зарегистрирован
+до первой mutation, ошибки отдельных удалений не прерывают остальные действия.
+Независимое дополнительное review закрыло Minor cleanup finding; повтор на той
+же панели прошёл без оставшихся записей и конфликта тестовых портов.
+
+Panel API/HTTP/River здесь настоящие; Bot API и TLS SMTP — fixtures. Browser
+проверки записаны отдельно выше. VPN data-plane traffic не генерируется.
+Existing CI stage двух TLS panels запускает этот тест, без второй тяжёлой
+fixture stage. Переиспользованный baseline CI не заменяет целевой С40 сценарий.
 
 ## Эксплуатационные пределы
 
