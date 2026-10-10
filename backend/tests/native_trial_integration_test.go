@@ -29,6 +29,7 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -414,12 +415,13 @@ func launchNative(t *testing.T, f *fixture, bot *nativeBot, enabled, provision b
 		if err := worker.StopAndCancel(stop); err != nil {
 			t.Error("native worker shutdown failed")
 		}
+		// Serve allows a 20-second HTTP drain, including connections awaiting their first request.
 		select {
 		case err := <-done:
 			if err != nil {
 				t.Error("native application shutdown failed")
 			}
-		case <-stop.Done():
+		case <-time.After(25 * time.Second):
 			t.Error("native application shutdown timed out")
 		}
 		schedulerDone.Wait()
@@ -431,6 +433,32 @@ func trialStatus(f *fixture, id uuid.UUID) string {
 	var s string
 	f.env.Pool.QueryRow(context.Background(), `SELECT status FROM trial_requests WHERE id=$1`, id).Scan(&s)
 	return s
+}
+
+func TestNativeShutdownDrainsUnstartedConnection(t *testing.T) {
+	f := openMode(t, true)
+	f.public.Close()
+	accepted := make(chan struct{})
+	f.public = httptest.NewUnstartedServer(http.NotFoundHandler())
+	f.public.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			close(accepted)
+		}
+	}
+	f.public.StartTLS()
+	t.Cleanup(f.public.Close)
+	_, stop := launchNative(t, f, &nativeBot{}, false, false)
+	connection, err := net.DialTimeout("tcp", f.public.Listener.Addr().String(), time.Second)
+	if err != nil {
+		t.Fatal("owned pending connection unavailable")
+	}
+	defer connection.Close()
+	select {
+	case <-accepted:
+	case <-time.After(time.Second):
+		t.Fatal("owned pending connection was not accepted")
+	}
+	stop()
 }
 
 func TestNativeTrialIdentityRecovery(t *testing.T) {

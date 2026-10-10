@@ -50,6 +50,19 @@ contracts и прошёл без ошибок. Остальные packages, вк
 сборка проходит один полный principal CI на exact final source. Неизменённый
 дорогой local suite повторно не запускался.
 
+Первый полный exact-source CI на `d4719c0` (run `38063106732`) остановился на
+`TestNativeReferredTrialReservationRecovery`: общий fixture ждал shutdown5s,
+хотя приложение разрешает HTTP drain20s. Отдельно исходный сценарий прошёл
+race6.471s; новая regression с принятым TCP-соединением без первого запроса
+детерминированно дала ту же ошибку на старом helper (RED6.71s). В Go такое
+соединение считается idle лишь после более5s. Helper теперь ждёт приложение25s,
+сохраняя worker timeout5s и проверку ошибки shutdown. Все шесть referred-trial
+сценариев и новая regression прошли вместе с race (GREEN59.746s).
+Независимый reviewer одобрил эту test-only дельту; product code и checkpoint
+не менялись. Backend/web image gates первого SHA прошли (`38063106723`).
+Новый final SHA требует собственного полного principal CI и image gates;
+первый failed run не считается выполненной общей проверкой.
+
 ## Реальная смена rollback artifact
 
 `checkpoint.txt` содержит конкретный совместимый commit, а не исходный `e53746c`.
