@@ -20,7 +20,8 @@ try{
    const brand=page.getByRole('banner').getByRole('link',{name:config.productName+' · '+cabinet});
    await brand.waitFor();
    assert.equal(await page.title(),cabinet+' · '+config.productName);
-   assert.equal(await brand.locator('*').count(),0);
+   assert.equal(await brand.locator('span *').count(),0);
+   assert.equal(await brand.locator('span').textContent(),config.productName+' · '+cabinet);
    await page.keyboard.press('Tab');
    assert.equal(await brand.evaluate(element=>document.activeElement===element),true);
    assert.equal(await page.getByRole('link',{name:lang==='ru'?'Условия':'Terms'}).first().getAttribute('href'),config.termsURL);

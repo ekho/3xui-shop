@@ -1,5 +1,7 @@
 # 3xui-mole
 
+![3xui-mole](docs/assets/3xui-mole-banner.png)
+
 [Русский](README.ru_RU.md)
 
 A web cabinet and Telegram interface for subscription access managed by 3X-UI.

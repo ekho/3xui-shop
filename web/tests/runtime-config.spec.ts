@@ -54,7 +54,8 @@ for(const lang of ['ru','en'] as const){
   const brand=page.getByRole('banner').getByRole('link',{name:active.productName+' · '+cabinet});
   await expect(brand).toBeVisible();
   await page.keyboard.press('Tab');await expect(brand).toBeFocused();
-  expect(await brand.locator('*').count()).toBe(0);
+  expect(await brand.locator('span *').count()).toBe(0);
+  await expect(brand.locator('span')).toHaveText(active.productName+' · '+cabinet);
   active={...active,productName:'Second deployment'};
   await page.reload();
   await expect(page).toHaveTitle(cabinet+' · '+active.productName);
